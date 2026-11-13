@@ -178,12 +178,22 @@ texture blossom_side paint bark 86 56 60
 texture blossom_top paint rings 214 150 150
 texture blossom_planks paint planks 214 150 150
 texture blossom_leaves paint blossom 240 150 190
+texture acacia_side paint bark 138 110 92
+texture acacia_top paint rings 196 140 100
+texture acacia_planks paint planks 196 140 100
+texture acacia_leaves paint leaves 110 150 50
+texture dark_oak_side paint bark 58 40 24
+texture dark_oak_top paint rings 96 70 40
+texture dark_oak_planks paint planks 96 70 40
+texture dark_oak_leaves paint leaves 48 100 40
 texture oak_chest paint chest 176 136 84
 texture pine_chest paint chest 122 88 56
 texture birch_chest paint chest 214 196 150
 texture maple_chest paint chest 190 140 96
 texture palm_chest paint chest 196 170 120
 texture blossom_chest paint chest 214 150 150
+texture acacia_chest paint chest 196 140 100
+texture dark_oak_chest paint chest 96 70 40
 texture white_chest paint chest 236 238 238
 texture light_gray_chest paint chest 158 158 152
 texture gray_chest paint chest 78 82 86
@@ -529,6 +539,44 @@ block blossom_leaves
 block blossom_planks
   name Blossom Planks
   tex blossom_planks
+  category Wood
+  hardness 1.4
+  tool axe
+block acacia_log
+  name Acacia Log
+  tex acacia_top acacia_side acacia_top
+  category Wood
+  hardness 1.6
+  tool axe
+block acacia_leaves
+  name Acacia Leaves
+  shape cutout
+  tex acacia_leaves
+  category Wood
+  skyloss 1
+  hardness 0.25
+block acacia_planks
+  name Acacia Planks
+  tex acacia_planks
+  category Wood
+  hardness 1.4
+  tool axe
+block dark_oak_log
+  name Dark Oak Log
+  tex dark_oak_top dark_oak_side dark_oak_top
+  category Wood
+  hardness 1.6
+  tool axe
+block dark_oak_leaves
+  name Dark Oak Leaves
+  shape cutout
+  tex dark_oak_leaves
+  category Wood
+  skyloss 1
+  hardness 0.25
+block dark_oak_planks
+  name Dark Oak Planks
+  tex dark_oak_planks
   category Wood
   hardness 1.4
   tool axe
@@ -1041,6 +1089,20 @@ block blossom_planks_stairs
   category Shapes
   hardness 1.4
   tool axe
+block acacia_planks_stairs
+  name Acacia Stairs
+  shape stairs
+  tex acacia_planks
+  category Shapes
+  hardness 1.4
+  tool axe
+block dark_oak_planks_stairs
+  name Dark Oak Stairs
+  shape stairs
+  tex dark_oak_planks
+  category Shapes
+  hardness 1.4
+  tool axe
 block white_concrete_stairs
   name White Concrete Stairs
   shape stairs
@@ -1269,6 +1331,20 @@ block blossom_planks_slab
   name Blossom Slab
   shape slab
   tex blossom_planks
+  category Shapes
+  hardness 1.4
+  tool axe
+block acacia_planks_slab
+  name Acacia Slab
+  shape slab
+  tex acacia_planks
+  category Shapes
+  hardness 1.4
+  tool axe
+block dark_oak_planks_slab
+  name Dark Oak Slab
+  shape slab
+  tex dark_oak_planks
   category Shapes
   hardness 1.4
   tool axe
@@ -1503,6 +1579,20 @@ block blossom_planks_fence
   category Shapes
   hardness 1.4
   tool axe
+block acacia_planks_fence
+  name Acacia Fence
+  shape fence
+  tex acacia_planks
+  category Shapes
+  hardness 1.4
+  tool axe
+block dark_oak_planks_fence
+  name Dark Oak Fence
+  shape fence
+  tex dark_oak_planks
+  category Shapes
+  hardness 1.4
+  tool axe
 
 # ---- Furniture: a crafting table and chests ----
 # `use craft` opens the full recipe list; `use chest` gives the block storage.
@@ -1556,6 +1646,22 @@ block palm_chest
 block blossom_chest
   name Blossom Chest
   tex blossom_chest
+  category Storage
+  hardness 1.4
+  use chest
+  box 1 0 1 15 14 15
+  tool axe
+block acacia_chest
+  name Acacia Chest
+  tex acacia_chest
+  category Storage
+  hardness 1.4
+  use chest
+  box 1 0 1 15 14 15
+  tool axe
+block dark_oak_chest
+  name Dark Oak Chest
+  tex dark_oak_chest
   category Storage
   hardness 1.4
   use chest
@@ -1922,6 +2028,8 @@ recipe birch_planks 4 birch_log 1
 recipe maple_planks 4 maple_log 1
 recipe palm_planks 4 palm_log 1
 recipe blossom_planks 4 blossom_log 1
+recipe acacia_planks 4 acacia_log 1
+recipe dark_oak_planks 4 dark_oak_log 1
 recipe stick 4 planks 2
 recipe crafting_table 1 planks 4
 recipe wood_pick 1 planks 3 stick 2
@@ -1959,6 +2067,10 @@ craft palm_planks_stairs 4 palm_planks 3
 craft palm_planks_slab 2 palm_planks 1
 craft blossom_planks_stairs 4 blossom_planks 3
 craft blossom_planks_slab 2 blossom_planks 1
+craft acacia_planks_stairs 4 acacia_planks 3
+craft acacia_planks_slab 2 acacia_planks 1
+craft dark_oak_planks_stairs 4 dark_oak_planks 3
+craft dark_oak_planks_slab 2 dark_oak_planks 1
 craft stone_wall 2 stone 1
 craft cobble_wall 2 cobble 1
 craft stone_bricks_wall 2 stone_bricks 1
@@ -1976,6 +2088,8 @@ craft birch_planks_fence 3 birch_planks 2
 craft maple_planks_fence 3 maple_planks 2
 craft palm_planks_fence 3 palm_planks 2
 craft blossom_planks_fence 3 blossom_planks 2
+craft acacia_planks_fence 3 acacia_planks 2
+craft dark_oak_planks_fence 3 dark_oak_planks 2
 craft wood_pick 1 planks 3 stick 2
 craft wood_axe 1 planks 3 stick 2
 craft wood_shovel 1 planks 1 stick 2
@@ -2000,6 +2114,8 @@ craft birch_chest 1 birch_planks 8
 craft maple_chest 1 maple_planks 8
 craft palm_chest 1 palm_planks 8
 craft blossom_chest 1 blossom_planks 8
+craft acacia_chest 1 acacia_planks 8
+craft dark_oak_chest 1 dark_oak_planks 8
 craft white_chest 1 oak_chest 1 white_wool 1
 craft light_gray_chest 1 oak_chest 1 light_gray_wool 1
 craft gray_chest 1 oak_chest 1 gray_wool 1
@@ -2692,6 +2808,138 @@ block blossom_gate_open
 craft blossom_door 1 blossom_planks 6
 craft blossom_trapdoor 2 blossom_planks 3
 craft blossom_gate 1 blossom_planks 2 stick 4
+texture acacia_door paint door 196 140 100
+block acacia_door
+  name Acacia Door
+  tex acacia_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 13 16 16 16
+  toggle acacia_door_open
+  tall
+block acacia_door_open
+  name Acacia Door
+  tex acacia_door
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 0 3 16 16
+  toggle acacia_door
+  drops acacia_door
+  tall
+block acacia_trapdoor
+  name Acacia Trapdoor
+  tex acacia_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle acacia_trapdoor_open
+block acacia_trapdoor_open
+  name Acacia Trapdoor
+  tex acacia_door
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle acacia_trapdoor
+  drops acacia_trapdoor
+block acacia_gate
+  name Acacia Gate
+  tex acacia_planks
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle acacia_gate_open
+block acacia_gate_open
+  name Acacia Gate
+  tex acacia_planks
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle acacia_gate
+  drops acacia_gate
+craft acacia_door 1 acacia_planks 6
+craft acacia_trapdoor 2 acacia_planks 3
+craft acacia_gate 1 acacia_planks 2 stick 4
+texture dark_oak_door paint door 96 70 40
+block dark_oak_door
+  name Dark Oak Door
+  tex dark_oak_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 13 16 16 16
+  toggle dark_oak_door_open
+  tall
+block dark_oak_door_open
+  name Dark Oak Door
+  tex dark_oak_door
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 0 3 16 16
+  toggle dark_oak_door
+  drops dark_oak_door
+  tall
+block dark_oak_trapdoor
+  name Dark Oak Trapdoor
+  tex dark_oak_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle dark_oak_trapdoor_open
+block dark_oak_trapdoor_open
+  name Dark Oak Trapdoor
+  tex dark_oak_door
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle dark_oak_trapdoor
+  drops dark_oak_trapdoor
+block dark_oak_gate
+  name Dark Oak Gate
+  tex dark_oak_planks
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle dark_oak_gate_open
+block dark_oak_gate_open
+  name Dark Oak Gate
+  tex dark_oak_planks
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle dark_oak_gate
+  drops dark_oak_gate
+craft dark_oak_door 1 dark_oak_planks 6
+craft dark_oak_trapdoor 2 dark_oak_planks 3
+craft dark_oak_gate 1 dark_oak_planks 2 stick 4
 block white_bed
   name White Bed
   tex white_wool planks planks
@@ -3350,6 +3598,176 @@ craft blossom_door_mid 1 blossom_door 1
 craft blossom_glass_door 1 blossom_door 1 glass 2
 craft blossom_sliding_door 1 blossom_glass_door 1 iron_ore 1
 craft blossom_revolving_door 1 blossom_glass_door 2
+texture acacia_glass_door paint glassdoor 196 140 100
+block acacia_door_mid
+  name Acacia Door (Centred)
+  tex acacia_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle acacia_door_mid_open
+  sound door
+block acacia_door_mid_open
+  name Acacia Door (Centred)
+  tex acacia_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 7 0 0 9 16 16
+  toggle acacia_door_mid
+  drops acacia_door_mid
+  sound door
+block acacia_glass_door
+  name Acacia Glazed Door
+  tex acacia_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 13 16 16 16
+  toggle acacia_glass_door_open
+  sound door
+block acacia_glass_door_open
+  name Acacia Glazed Door
+  tex acacia_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 0 0 0 3 16 16
+  toggle acacia_glass_door
+  drops acacia_glass_door
+  sound door
+block acacia_sliding_door
+  name Acacia Sliding Door
+  tex acacia_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle acacia_sliding_door_open
+  sound door
+block acacia_sliding_door_open
+  name Acacia Sliding Door
+  tex acacia_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 13 0 7 16 16 9
+  toggle acacia_sliding_door
+  drops acacia_sliding_door
+  sound door
+block acacia_revolving_door
+  name Acacia Revolving Door
+  tex acacia_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  tall
+  solid no
+  box 7 0 0 9 16 16
+  box 0 0 7 16 16 9
+  sound door
+craft acacia_door_mid 1 acacia_door 1
+craft acacia_glass_door 1 acacia_door 1 glass 2
+craft acacia_sliding_door 1 acacia_glass_door 1 iron_ore 1
+craft acacia_revolving_door 1 acacia_glass_door 2
+texture dark_oak_glass_door paint glassdoor 96 70 40
+block dark_oak_door_mid
+  name Dark Oak Door (Centred)
+  tex dark_oak_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle dark_oak_door_mid_open
+  sound door
+block dark_oak_door_mid_open
+  name Dark Oak Door (Centred)
+  tex dark_oak_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 7 0 0 9 16 16
+  toggle dark_oak_door_mid
+  drops dark_oak_door_mid
+  sound door
+block dark_oak_glass_door
+  name Dark Oak Glazed Door
+  tex dark_oak_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 13 16 16 16
+  toggle dark_oak_glass_door_open
+  sound door
+block dark_oak_glass_door_open
+  name Dark Oak Glazed Door
+  tex dark_oak_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 0 0 0 3 16 16
+  toggle dark_oak_glass_door
+  drops dark_oak_glass_door
+  sound door
+block dark_oak_sliding_door
+  name Dark Oak Sliding Door
+  tex dark_oak_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle dark_oak_sliding_door_open
+  sound door
+block dark_oak_sliding_door_open
+  name Dark Oak Sliding Door
+  tex dark_oak_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 13 0 7 16 16 9
+  toggle dark_oak_sliding_door
+  drops dark_oak_sliding_door
+  sound door
+block dark_oak_revolving_door
+  name Dark Oak Revolving Door
+  tex dark_oak_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  tall
+  solid no
+  box 7 0 0 9 16 16
+  box 0 0 7 16 16 9
+  sound door
+craft dark_oak_door_mid 1 dark_oak_door 1
+craft dark_oak_glass_door 1 dark_oak_door 1 glass 2
+craft dark_oak_sliding_door 1 dark_oak_glass_door 1 iron_ore 1
+craft dark_oak_revolving_door 1 dark_oak_glass_door 2
 texture white_boards paint planks 236 238 238
 block white_fence
   name White Fence

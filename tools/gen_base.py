@@ -132,7 +132,9 @@ WOODS = [("oak", "Oak", None, None, None),
          ("birch", "Birch", (224, 222, 212), (214, 196, 150), ("leaves", (96, 160, 70))),
          ("maple", "Maple", (110, 82, 60), (190, 140, 96), ("leaves", (204, 96, 40))),
          ("palm", "Palm", (150, 120, 80), (196, 170, 120), ("leaves", (70, 150, 60))),
-         ("blossom", "Blossom", (86, 56, 60), (214, 150, 150), ("blossom", (240, 150, 190)))]
+         ("blossom", "Blossom", (86, 56, 60), (214, 150, 150), ("blossom", (240, 150, 190))),
+         ("acacia", "Acacia", (138, 110, 92), (196, 140, 100), ("leaves", (110, 150, 50))),
+         ("dark_oak", "Dark Oak", (58, 40, 24), (96, 70, 40), ("leaves", (48, 100, 40)))]
 for id, _, bark, wood, leaf in WOODS:
     if bark:
         tex(f"{id}_side", "paint bark %d %d %d" % bark)

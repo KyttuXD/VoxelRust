@@ -532,17 +532,17 @@ fn tree(w: &mut Writer, wk: &WellKnown, h: u32, x: i32, y: i32, z: i32, biome: B
             }
         }
         Biome::Savanna => {
-            // A flat-topped tree on a leaning trunk.
+            // An acacia: a flat-topped crown on a leaning trunk.
             let th = 4 + size;
             let (lx, lz) = (((h >> 4) % 3) as i32 - 1, ((h >> 6) % 3) as i32 - 1);
             for i in 1..=th {
                 let (ox, oz) = if i > th / 2 { (lx, lz) } else { (0, 0) };
-                w.put(x + ox, y + i, z + oz, wk.maple_log, false);
+                w.put(x + ox, y + i, z + oz, wk.acacia_log, false);
             }
             for dx in -3..=3i32 {
                 for dz in -3..=3i32 {
                     if dx.abs() + dz.abs() <= 4 {
-                        w.put(x + lx + dx, y + th + 1, z + lz + dz, wk.leaves, true);
+                        w.put(x + lx + dx, y + th + 1, z + lz + dz, wk.acacia_leaves, true);
                     }
                 }
             }
@@ -575,6 +575,14 @@ fn tree(w: &mut Writer, wk: &WellKnown, h: u32, x: i32, y: i32, z: i32, biome: B
             canopy(w, h, x, y + th, z, 3, false, wk.maple_leaves);
             for i in 1..=th {
                 w.put(x, y + i, z, wk.maple_log, false);
+            }
+        }
+        Biome::Forest if roll < 60 => {
+            // Dark oak: a dense, dark, round crown on a short thick trunk.
+            let th = 4 + size;
+            canopy(w, h, x, y + th, z, 3, false, wk.dark_oak_leaves);
+            for i in 1..=th {
+                w.put(x, y + i, z, wk.dark_oak_log, false);
             }
         }
         Biome::Plains if roll < 22 => {
@@ -1001,6 +1009,35 @@ mod tests {
         let a = generate(9, 0, 0);
         let _ = generate(9, 1, 0);
         assert_eq!(a, generate(9, 0, 0));
+    }
+
+    #[test]
+    fn savanna_and_forest_grow_their_own_trees() {
+        use crate::chunk::ChunkData;
+        let r = reg();
+        let (acacia, dark) = (r.wk.acacia_log, r.wk.dark_oak_log);
+        assert!(acacia != AIR && dark != AIR, "the new woods are in the registry");
+        let count = |biome: Biome, block: Block| {
+            let mut found = 0;
+            for h in 0..200u32 {
+                let mut data = ChunkData::new();
+                let mut w = Writer { data: &mut data, ox: 0, oz: 0 };
+                tree(&mut w, &r.wk, h.wrapping_mul(2654435761), 8, 60, 8, biome, false);
+                for y in 0..CH {
+                    for z in 0..CW {
+                        for x in 0..CW {
+                            if data.get(x, y, z) == block {
+                                found += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            found
+        };
+        assert!(count(Biome::Savanna, acacia) > 200, "savanna trees are acacia");
+        assert!(count(Biome::Forest, dark) > 30, "forest trees include dark oak");
+        assert_eq!(count(Biome::Savanna, dark), 0);
     }
 
     #[test]

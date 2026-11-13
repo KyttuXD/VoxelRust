@@ -522,6 +522,10 @@ pub struct WellKnown {
     pub clay: Block,
     pub birch_log: Block,
     pub birch_leaves: Block,
+    pub acacia_log: Block,
+    pub acacia_leaves: Block,
+    pub dark_oak_log: Block,
+    pub dark_oak_leaves: Block,
     pub maple_log: Block,
     pub maple_leaves: Block,
     pub palm_log: Block,
@@ -1951,6 +1955,10 @@ impl Registry {
             // Optional: a pack without these woods just grows oak instead.
             birch_log: AIR,
             birch_leaves: AIR,
+            acacia_log: AIR,
+            acacia_leaves: AIR,
+            dark_oak_log: AIR,
+            dark_oak_leaves: AIR,
             maple_log: AIR,
             maple_leaves: AIR,
             palm_log: AIR,
@@ -1984,6 +1992,10 @@ impl Registry {
         let or = |id: &str, fallback: Block| by_id.get(id).copied().unwrap_or(fallback);
         wk.birch_log = or("birch_log", wk.log);
         wk.birch_leaves = or("birch_leaves", wk.leaves);
+        wk.acacia_log = or("acacia_log", wk.log);
+        wk.acacia_leaves = or("acacia_leaves", wk.leaves);
+        wk.dark_oak_log = or("dark_oak_log", wk.log);
+        wk.dark_oak_leaves = or("dark_oak_leaves", wk.leaves);
         wk.maple_log = or("maple_log", wk.log);
         wk.maple_leaves = or("maple_leaves", wk.leaves);
         wk.palm_log = or("palm_log", wk.log);
