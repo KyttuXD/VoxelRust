@@ -156,6 +156,8 @@ pub struct Session {
     pub forced_sky: Option<f32>,
     /// Skin images that arrived from other players, for the renderer.
     pub skin_events: Vec<(u16, Vec<u8>, bool)>,
+    /// The player may move: the chunks right around them are in.
+    pub playable: bool,
     pub inv: Inventory,
     /// The stack carried by the mouse in the inventory screen.
     pub cursor: Slot,
@@ -484,6 +486,7 @@ impl Session {
             file_prefix: alloc::format!("{}{}.", world_dir(base), name),
             forced_sky: None,
             skin_events: Vec::new(),
+            playable: false,
             inv,
             cursor: None,
             selected: kv(&meta, "selected").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(HOTBAR - 1),

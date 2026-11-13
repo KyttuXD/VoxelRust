@@ -8,7 +8,7 @@ There are two ways to host, and both use the game program itself:
   card, so any machine that can start the game can host, including a 2008
   Mac on Mac OS X 10.6.8.
 
-The project runs no public server and keeps no list of servers. To play
+The project runs one public server, 195.62.47.178 (port 25590), and has a button for it on the multiplayer screen. It keeps no list of other servers. To play
 together, one of you hosts and gives the others an address.
 
 ## Hosting from inside the game
@@ -205,7 +205,7 @@ the server. Tiles are cached on both machines.
 - Forward TCP port 25590 (or the one you chose with `--port`) on your router
   to the machine running the server. The game does not do this for you.
 - Give your players your public address.
-- There is no server list and no public server run by the project.
+- There is no server list. The project runs one public server, which you reach from the multiplayer screen.
 
 Be clear about what the server does **not** have:
 

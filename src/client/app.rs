@@ -282,6 +282,9 @@ pub const BUILD: &str = match option_env!("VOXELRUST_BUILD") {
     }
 };
 
+/// The project's public server (port 25590, the default).
+const PUBLIC_SERVER: &str = "195.62.47.178";
+
 /// The minimap is this many pixels square.
 const MINIMAP: usize = 64;
 const TABS: [&str; 6] = ["VIDEO", "AUDIO", "CONTROLS", "GAME", "SKIN", "MODS"];
@@ -293,6 +296,23 @@ fn arm_models(slim: bool) -> (&'static str, &'static str) {
 
 /// The player's skin as 64 x 64 RGBA: a tinted copy of the default body, or
 /// `skin.png` from the data folder. `None` if a custom skin cannot be used.
+/// A temporary panel while the chunks around the player are still arriving.
+fn draw_loading(r: &mut Renderer, w: f32, h: f32, s: f32, g: &Session) {
+    let (cx, cz) = crate::world::chunk_at(g.player.pos[0], g.player.pos[2]);
+    let (done, total) = g.world.progress(cx, cz, 2);
+    r.rect(0.0, 0.0, w, h, [12, 14, 20, 170]);
+    let title = "LOADING THE WORLD";
+    r.label((w - Renderer::text_width(title, 2.0 * s)) * 0.5, h * 0.5 - 52.0 * s, 2.0 * s, title, WHITE);
+    let (bw, bh) = (260.0 * s, 12.0 * s);
+    let (x, y) = ((w - bw) * 0.5, h * 0.5 - 14.0 * s);
+    r.rect(x - 2.0 * s, y - 2.0 * s, bw + 4.0 * s, bh + 4.0 * s, [10, 11, 16, 255]);
+    r.rect(x, y, bw, bh, [40, 44, 60, 255]);
+    let frac = if total == 0 { 0.0 } else { (done as f32 / total as f32).min(1.0) };
+    r.rect(x, y, bw * frac, bh, [120, 200, 110, 255]);
+    let line = alloc::format!("{} OF {} AREAS READY", done, total);
+    r.label((w - Renderer::text_width(&line, s)) * 0.5, y + 22.0 * s, s, &line, WHITE);
+}
+
 fn skin_pixels(base: &str, r: &Renderer, name: &str) -> Option<Vec<u8>> {
     if name == "custom" {
         let img = crate::png::decode(&sys::read_file(&alloc::format!("{}skin.png", base))?)?;
@@ -340,6 +360,8 @@ struct App {
     tune_timer: f32,
     show_debug: bool,
     help_timer: f32,
+    /// When the world started waiting for its first chunks (0 once playable).
+    loading_since: f64,
     /// Camera behind the player instead of in their head.
     third_person: bool,
     /// In the third-person view, from the front (the camera faces the player).
@@ -563,6 +585,7 @@ impl App {
     }
 
     fn close_world(&mut self, r: &mut Renderer) {
+        self.loading_since = 0.0;
         if let Some(mut s) = self.session.take() {
             if !self.scripted && !s.save() {
                 logf!("voxelrust: some files of world `{}` could not be written", s.name);
@@ -886,7 +909,22 @@ impl App {
         let distance = self.distance;
         let mut died = false;
         if let Some(g) = self.session.as_mut() {
-            if playing {
+            // The player may move once the chunks right around them are in;
+            // the rest of the world keeps streaming in behind them.
+            if !g.playable {
+                let (cx, cz) = crate::world::chunk_at(g.player.pos[0], g.player.pos[2]);
+                let (done, total) = g.world.progress(cx, cz, 2);
+                if total > 0 && done == total {
+                    g.playable = true;
+                    if self.loading_since > 0.0 {
+                        logf!("voxelrust: playable {:.2} s after the world started", sys::now() - self.loading_since);
+                    }
+                    self.loading_since = 0.0;
+                } else if self.loading_since == 0.0 {
+                    self.loading_since = sys::now();
+                }
+            }
+            if playing && g.playable {
                 g.update(dt, &controls, distance, self.settings.far_distance, r, &mut self.audio);
                 if g.flags != self.settings.flags {
                     g.flags = self.settings.flags.clone();
@@ -1107,6 +1145,12 @@ impl App {
         }
         if self.session.is_some() && (!self.scripted || self.show_hud) && !(self.hud_hidden && self.screen == Screen::Game) {
             self.draw_hud(r, w, h, s);
+        }
+        // A loading panel, but only when the wait is long enough to notice.
+        if let Some(g) = self.session.as_ref() {
+            if !g.playable && self.screen == Screen::Game && self.loading_since > 0.0 && sys::now() - self.loading_since > 0.35 {
+                draw_loading(r, w, h, s, g);
+            }
         }
         let before = self.screen;
         let mut focus = self.focus;
@@ -2050,9 +2094,16 @@ impl App {
         if ui.button(x, y + step * 2.7, bw, bh, "BACK") {
             self.set_screen(Screen::Title);
         }
-        ui.centered(ui.w() * 0.5, y + step * 3.9, 1.0, &self.status, ui::ACCENT);
+        // The project's own server, underneath everything else.
+        if ui.button(x, y + step * 3.5, bw, bh, "PUBLIC SERVER") {
+            self.status.clear();
+            if self.join_address(ui.r, PUBLIC_SERVER) {
+                return;
+            }
+        }
+        ui.centered(ui.w() * 0.5, y + step * 4.4, 1.0, &self.status, ui::ACCENT);
         let mine = self.my_address.get_or_insert_with(sys::net::local_address).as_ref().map(|a| alloc::format!("YOUR ADDRESS ON THIS NETWORK: {}", a)).unwrap_or_default();
-        ui.centered(ui.w() * 0.5, y + step * 4.7, 1.0, &mine, ui::DIM);
+        ui.centered(ui.w() * 0.5, y + step * 5.2, 1.0, &mine, ui::DIM);
     }
 
     /// Add a server to the list, or change one already there.
@@ -3020,6 +3071,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         tune_timer: 0.0,
         show_debug: opts.show.contains("debug"),
         help_timer: 0.0,
+        loading_since: 0.0,
         third_person: opts.show.contains("third") || opts.show.contains("front"),
         third_front: opts.show.contains("front"),
         swallow_text: false,

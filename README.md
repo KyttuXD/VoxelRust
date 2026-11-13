@@ -281,7 +281,7 @@ voxelrust --server --world myworld
 ```
 
 Others choose MULTIPLAYER on the title screen and type the host's address, or
-run `voxelrust --join host`. There is no public server: someone has to host. The port is 25590 (TCP); forward it on your
+run `voxelrust --join host`. The project runs one public server (the PUBLIC SERVER button on the multiplayer screen); everyone else can host. The port is 25590 (TCP); forward it on your
 router to let people outside your network in.
 [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) has the rest.
 

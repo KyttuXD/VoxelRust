@@ -134,6 +134,23 @@ impl World {
         }
     }
 
+    /// How many of the chunks within `radius` of (ccx, ccz) are loaded and
+    /// meshed, and how many there are in all.
+    pub fn progress(&self, ccx: i32, ccz: i32, radius: i32) -> (usize, usize) {
+        let (mut done, mut total) = (0, 0);
+        for dx in -radius..=radius {
+            for dz in -radius..=radius {
+                total += 1;
+                if let Some(c) = self.chunks.get(&(ccx + dx, ccz + dz)) {
+                    if c.data.is_some() && !c.dirty && !c.mesh_in_flight && c.mesh.is_some() {
+                        done += 1;
+                    }
+                }
+            }
+        }
+        (done, total)
+    }
+
     pub fn is_loaded(&self, x: i32, z: i32) -> bool {
         self.chunks.get(&(chunk_of(x), chunk_of(z))).map_or(false, |c| c.data.is_some())
     }
