@@ -69,7 +69,7 @@ Textures are 16 x 16 pixels. Up to 1024 can be defined (they share one 512 x
 ```
 texture <id> builtin <painter>            one of the built-in painted textures
 texture <id> paint <style> <r> <g> <b>    a built-in pattern in any colour
-texture <id> flat <r> <g> <b> [noise <n>] a colour, with optional grain 0..255
+texture <id> flat <r> <g> <b> [noise <n>] a flat colour; with `noise` (any number) a block face with a darker frame
 texture <id> file <image>                 a PNG, JPEG, GIF, BMP or TGA file (any size, fitted to 16 x 16), path relative to this file
 ```
 
@@ -79,7 +79,8 @@ Colours are three numbers 0..255.
 log_side log_top pine_side leaves pine_leaves planks cobble brick
 stone_bricks glass coal_ore iron_ore copper_ore crystal_ore ruby_ore snow
 snow_side ice sandstone cactus_side cactus_top lamp flower_red flower_yellow
-tall_grass deepstone clay sun moon wand`. An unknown painter name gives a
+tall_grass deepstone clay sun moon wand`, all drawn flat in the OCD style
+(see [TEXTURING.md](TEXTURING.md#the-painters)). An unknown painter name gives a
 pink and black checkerboard.
 
 **`paint` styles for blocks:** `concrete wool terracotta glass rock polished
