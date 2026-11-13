@@ -7467,21 +7467,21 @@ def sundial():
             return hg_metal(HG_BRASS)(p)
         dx, dy = p.i - (p.w - 1) / 2.0, p.j - (p.h - 1) / 2.0
         d = math.hypot(dx, dy)
-        if d > 5.2:
+        if min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) == 0:
             return mul(HG_BRASS, 0.7)
-        if d > 3.6 and int((math.degrees(math.atan2(dy, dx)) + 360) / 30) % 2 == 0:
-            return (70, 56, 36)
-        return HG_BRASS if d > 1 else mul(HG_BRASS, 1.2)
-
-    def gnomon(p):
-        return hg_metal(HG_BRASS)(p) if p.lz > 1 - p.ly * 1.02 - 0.05 else CLEAR
+        if d > 2.4 and (abs(dx) < 0.6 or abs(dy) < 0.6 or (abs(abs(dx) - abs(dy)) < 0.1 and d > 4)):
+            return (84, 64, 40)     # the hour lines
+        return HG_BRASS if d > 1.6 else mul(HG_BRASS, 1.2)
 
     b("foot", (-4, 0, -4), (4, 2, 4), st)
     b("step", (-3, 2, -3), (3, 3, 3), st)
     b("shaft", (-2, 3, -2), (2, 10, 2), hg_edge(st, mul((172, 168, 158), 0.84), faces=("north", "south", "east", "west")))
     b("capital", (-3.5, 10, -3.5), (3.5, 11, 3.5), st)
     b("dial", (-5, 11, -5), (5, 12, 5), dial)
-    b("gnomon", (-0.4, 12, -3.5), (0.4, 16, 3.5), gnomon, skip=("up", "down", "north", "south"), noise=0)
+    gn = hg_metal(mul(HG_BRASS, 0.86))
+    b("gnomon", (-0.5, 12, -3), (0.5, 13.2, 3.5), gn)
+    b("gnomon-mid", (-0.5, 13.2, -0.5), (0.5, 14.4, 3.5), gn)
+    b("gnomon-tip", (-0.5, 14.4, 2), (0.5, 15.6, 3.5), gn)
     return m
 
 
@@ -7504,18 +7504,19 @@ def lamp_post():
 
 def garden_lantern():
     m, b, pr = hg("garden_lantern", 773)
-    st = hg_stone((150, 152, 150), 773, moss=(98, 140, 90))
+    mossy = hg_stone((150, 152, 150), 773, moss=(98, 140, 90))
+    st = hg_stone((150, 152, 150), 773)
 
     def lamp(p):
         if p.side() and 1 <= p.i < p.w - 1 and 1 <= p.j < p.h - 1 and p.i != p.w // 2:
             return mix((255, 240, 180), (250, 190, 90), abs(p.j - 1.5) / 2.0)
         return hg_stone((150, 152, 150), 774)(p)
 
-    b("foot", (-5, 0, -5), (5, 2, 5), st)
+    b("foot", (-5, 0, -5), (5, 2, 5), mossy)
     b("stem", (-2.5, 2, -2.5), (2.5, 5, 2.5), st)
     b("shelf", (-4.5, 5, -4.5), (4.5, 6.5, 4.5), st)
     b("firebox", (-3, 6.5, -3), (3, 10.5, 3), lamp, noise=3)
-    b("roof", (-6, 10.5, -6), (6, 12, 6), st)
+    b("roof", (-6, 10.5, -6), (6, 12, 6), mossy)
     b("roof-top", (-4, 12, -4), (4, 13.5, 4), st)
     b("knob", (-1, 13.5, -1), (1, 15.5, 1), st)
     return m
@@ -7810,10 +7811,11 @@ def globe():
     b("sphere-y", (-3.5, 6, -3.5), (3.5, 18, 3.5), earth)
     b("sphere-x", (-6, 9, -3.5), (6, 15, 3.5), earth)
     b("sphere-z", (-3.5, 9, -6), (3.5, 15, 6), earth)
-    b("arc-low", (-7, 4.5, -0.6), (7, 5.5, 0.6), br)
-    pr("arc-side", (-7.5, 4.5, -0.6), (-6.5, 19.5, 0.6), br)
-    b("arc-top", (-7, 18.5, -0.6), (7, 19.5, 0.6), br)
+    b("arc-low", (-6.5, 4.5, -0.6), (1, 5.5, 0.6), br)
+    b("arc-side", (-7.5, 4.5, -0.6), (-6.5, 19.5, 0.6), br)
+    b("arc-top", (-6.5, 18.5, -0.6), (1, 19.5, 0.6), br)
     b("pin", (-0.5, 5.5, -0.5), (0.5, 6, 0.5), br)
+    b("pin-top", (-0.5, 18, -0.5), (0.5, 18.5, 0.5), br)
     return m
 
 

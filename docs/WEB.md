@@ -68,8 +68,9 @@ screenshots (F2 downloads a `.bmp`).
 | --- | --- | --- |
 | Joining a server | A page cannot open TCP sockets | JOIN says COULD NOT CONNECT (NOT POSSIBLE IN A BROWSER) |
 | Hosting a game, `--server` | The same | HOST A GAME says COULD NOT LISTEN... |
-| Earth worlds | The map data is fetched by running `curl`, and a page cannot run programs | The world is created but is open sea; a notice on the page says why |
-| Mods and packs from a folder | There are no folders (`list_dir` finds nothing) | Only the built-in content and the three mods that come inside the program, which SETTINGS > MODS still switches on and off |
+| Earth worlds | The Earth mod is a folder, and the map data is fetched by running `curl`; a page has no folders and cannot run programs | The EARTH terrain is not offered |
+| Mods and packs from a folder | There are no folders (`list_dir` finds nothing) | Only the built-in content. The three mods that come with the game are folders now, so they are not in the browser version: no land vehicles, no disasters, and SETTINGS > MODS says NO MODS FOUND |
+| Updating itself | The page is the program | No check is made; reload the page to get what the site serves |
 | Command-line options | There is no command line | The game starts at the title screen |
 | Worker threads | The page runs the game on its one thread | Terrain is made a little each frame: loading takes longer, and the frame rate dips while new terrain arrives |
 | EXPORT / IMPORT of worlds | They read and write a path, which here is browser storage | Not useful |
@@ -83,10 +84,22 @@ Other differences:
   the game reports that the world could not be written, as for a full
   disk. Clearing the site's data deletes the worlds. In a private window
   with storage switched off the game still runs, and keeps nothing.
+- **The mouse has to be handed over by the browser.** To look around, the
+  game captures the mouse, and a browser only allows that during a click or
+  a key press. So while the game wants the mouse and does not have it, the
+  page asks again on every click and every key press (except Esc). Until
+  the browser hands it over, a line at the top of the page says `Click the
+  game to look around with the mouse`.
+- **Where the capture does not last.** Some places (a browser view embedded
+  in another program, some remote desktops) grant the capture and take it
+  straight back. When that has happened twice, each within 0.7 seconds of
+  being asked for or granted, the page stops asking and the game looks
+  around by plain mouse movement over the page instead. The view then stops
+  turning when the pointer reaches the edge of the page.
 - **Esc belongs to the browser** while the mouse is captured: it frees the
   mouse, and the game opens its pause menu. Clicking BACK TO THE GAME
   captures it again; browsers refuse that for a second or so after Esc, in
-  which case the next click does it.
+  which case the next click or key press does it.
 - **Ctrl+W closes the tab**, and Ctrl is SPRINT. The page asks before
   closing while a game is in progress; in full screen, browsers that can
   (Chrome, Edge) hand the game every key; or choose another sprint key in
@@ -169,6 +182,14 @@ flat world drawn with its HUD and minimap, with no errors in the console.
 The longer list above was checked on earlier builds and has not been gone
 through again.
 
-Not tested: Firefox and Safari; mouse capture and full screen (they need a
-real person's click); whether the sound is audible (the mixer was seen to
-produce samples); phones and touch screens (there are no touch controls).
+Mouse capture was tested in that same embedded Chromium, which is of the
+kind that grants the capture and withdraws it at once. So only the fallback
+(looking around by plain mouse movement) could be exercised there. Lasting
+capture in an ordinary browser window, and the notice going away when it is
+granted, have not been seen working.
+
+Not tested: Firefox and Safari; lasting mouse capture and full screen (they
+need a real person's click in an ordinary browser); whether the sound is
+audible (the mixer was seen to produce samples); phones and touch screens
+(there are no touch controls). The build made after the three mods moved out
+of the program has not been gone through again either.

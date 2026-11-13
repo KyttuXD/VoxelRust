@@ -1,5 +1,18 @@
 # Running on old and new systems
 
+## Machines it has been run on
+
+| Machine | System | Build | What was seen |
+| --- | --- | --- | --- |
+| 2008 Mac Pro (Xeon E5462, Radeon HD 2600) | Mac OS X 10.6.8 | `macos-legacy-x86_64` | The game, hosting a server, benchmarks: about 256 FPS in a 1280 x 720 window. Details [below](#on-a-2008-mac-pro) |
+| 2015 MacBook Air (Intel HD 6000) | macOS 12.7.6 | `macos-x86_64`, as an app with the SDL2 2.0.4 framework inside it | 246 FPS in a 1280 x 720 window at default settings; an Earth world rendered; started plainly, the app stays open |
+| Linux PC (AMD Radeon 840M) | Linux | `linux-x86_64` | Where the game is developed: everything, and the figures under [Measured](#measured) |
+| The same PC, under Wine 10 | Windows program | `windows-x86_64` | The game and a server. Never run on real Windows |
+
+Not tested: an Apple-silicon Mac (none could be reached; there is also no
+build of its own for it), real Windows, PowerPC, and browsers other than an
+embedded Chromium (see [WEB.md](WEB.md#what-has-been-tested)).
+
 ## Why the game is built the way it is
 
 | Constraint | Consequence |
@@ -21,7 +34,11 @@ time the program needs only:
 - **SDL2**, any release with the 2.0.0 API or later, found and opened when
   the game starts (not when it is built);
 - an **OpenGL 1.5** driver;
-- `curl` on the `PATH`, and only for Earth worlds.
+- `curl` on the `PATH`, for Earth worlds and for the game updating itself.
+
+The three mods that come with the game are folders read at start-up, from
+`mods/` beside the program or, in a Mac app, from `Contents/Resources/mods`
+(see [MODDING.md](MODDING.md#where-packs-are-read-from)).
 
 Building needs a Rust toolchain and nothing else; see
 [BUILDING.md](BUILDING.md).
@@ -48,6 +65,11 @@ x86_64-apple-darwin`) and Python 3. It needs no Xcode and no Apple SDK:
 
 The result is `dist/macos-legacy/voxelrust` (build name
 `macos-legacy-x86_64`). It should also start on every later Intel macOS.
+
+This build cannot update itself on 10.6: the updater downloads with the
+system's `curl`, and the one in Mac OS X 10.6 cannot make modern HTTPS
+connections. Replace the app by hand (see
+[BUILDING.md](BUILDING.md#how-the-game-updates-itself)).
 
 **This has been run on a real machine**: a 2008 Mac Pro (Xeon E5462, Radeon
 HD 2600) on Mac OS X 10.6.8, with the official SDL2 2.0.4 framework beside
@@ -159,7 +181,13 @@ app on anything older (see
 [BUILDING.md](BUILDING.md#packaging-the-mac-apps)). On a
 Mac you can instead `brew install sdl2` and `cargo build --release`. The
 game uses the legacy OpenGL 2.1 context, which macOS still ships (deprecated,
-but present). Not yet run on a Mac.
+but present).
+
+**This has been run on a real machine**: a 2015 MacBook Air (Intel HD 6000)
+on macOS 12.7.6, with the 10.12+ build packaged as an app and the SDL2
+2.0.4 framework inside it. It ran at 246 FPS in a 1280 x 720 window at
+default settings, rendered an Earth world, and stays open when started
+plainly. No Apple-silicon Mac could be reached, so that remains untested.
 
 ## Linux
 
