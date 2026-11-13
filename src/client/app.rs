@@ -3524,7 +3524,7 @@ fn load_content(pack_paths: &[String], off: &str) -> (Registry, Vec<u8>) {
     let mut named: Vec<String> = Vec::new();
     all.retain(|p| {
         let n = mod_name(p);
-        let fresh = !p.contains("/mods/") && !p.starts_with("mods/") || !named.contains(&n);
+        let fresh = !crate::native::in_mods_folder(p) || !named.contains(&n);
         named.push(n);
         fresh
     });

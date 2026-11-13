@@ -165,6 +165,24 @@ pub fn all() -> &'static [&'static Native] {
     crate::mods::NATIVES
 }
 
+/// The mods that come with the game, as (path, bytes). For tests and tools:
+/// the game itself reads its mods through the functions in this module.
+#[cfg(test)]
+pub fn shipped() -> &'static [(&'static str, &'static [u8])] {
+    crate::mods::SHIPPED
+}
+
+/// Outside the tests there are no shipped mods to hand out.
+#[cfg(not(test))]
+pub fn shipped() -> &'static [(&'static str, &'static [u8])] {
+    &[]
+}
+
+/// Whether a path is inside a mods folder (the program's or the game's own).
+pub fn in_mods_folder(path: &str) -> bool {
+    path.contains("/mods/") || path.starts_with("mods/")
+}
+
 /// The code whose mods are switched on, with each one's place in [`all`]
 /// (its channel number in a shared game).
 pub fn active() -> impl Iterator<Item = (usize, &'static Native)> {

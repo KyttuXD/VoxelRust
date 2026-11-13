@@ -636,14 +636,14 @@ pub fn reg() -> &'static Registry {
     #[allow(unused_mut)]
     let mut sources: Vec<(&str, &str)> = alloc::vec![("base.txt", BASE_DATA)];
     #[cfg(test)]
-    for (path, bytes) in crate::mods::SHIPPED {
+    for (path, bytes) in crate::native::shipped() {
         if path.ends_with("/pack.txt") {
             sources.push((path, core::str::from_utf8(bytes).unwrap()));
         }
     }
     install(Registry::from_sources(&sources, &mut |_path| {
         #[cfg(test)]
-        if let Some(f) = crate::mods::SHIPPED.iter().find(|f| f.0 == _path) {
+        if let Some(f) = crate::native::shipped().iter().find(|f| f.0 == _path) {
             return Some(f.1.to_vec());
         }
         None
