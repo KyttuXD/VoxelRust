@@ -6,7 +6,9 @@
 
 # --- animal models
 # The first-person hand: the player's own right arm, drawn with their skin.
+# hand_slim is the same arm for slim (Alex-style) skins.
 model hand builtin hand
+model hand_slim builtin hand_slim
 model cow file models/cow.bbmodel
 model pig file models/pig.bbmodel
 model chicken file models/chicken.bbmodel

@@ -318,6 +318,7 @@ mod tests {
     }
 
     const PLAYER: &str = include_str!("../../data/models/player.bbmodel");
+    const PLAYER_SLIM: &str = include_str!("../../data/models/player_slim.bbmodel");
 
     fn bounds(v: &[ModelVert]) -> ([f32; 3], [f32; 3]) {
         let mut lo = [f32::MAX; 3];
@@ -329,6 +330,23 @@ mod tests {
             }
         }
         (lo, hi)
+    }
+
+    #[test]
+    fn slim_arms_are_narrower_and_keep_their_uvs_on_the_atlas() {
+        let classic = ModelDef::from_bbmodel("player", PLAYER).unwrap();
+        let slim = ModelDef::from_bbmodel("player_slim", PLAYER_SLIM).unwrap();
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        classic.quads(&Pose::default(), [0.0, 0.0, 0.0], 0.0, 1.8, false, &mut a);
+        slim.quads(&Pose::default(), [0.0, 0.0, 0.0], 0.0, 1.8, false, &mut b);
+        let ((lo_a, hi_a), (lo_b, hi_b)) = (bounds(&a), bounds(&b));
+        // The outer edge of each arm (and its sleeve) moves in by one skin
+        // pixel: 3.56 model units, which is 1.8 / 113.92 of the height per unit.
+        let pixel = 3.56 * 1.8 / 113.92;
+        assert!(hi_a[0] - hi_b[0] > 0.9 * pixel && lo_b[0] - lo_a[0] > 0.9 * pixel, "{lo_a:?} {hi_a:?} / {lo_b:?} {hi_b:?}");
+        assert!((hi_a[1] - hi_b[1]).abs() < 1e-3 && (lo_a[1] - lo_b[1]).abs() < 1e-3, "only the width changes");
+        assert!(b.iter().all(|p| (0.0..=1.0).contains(&p.uv[0]) && (0.0..=1.0).contains(&p.uv[1])));
     }
 
     #[test]

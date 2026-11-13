@@ -7,7 +7,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub const VERSION: u16 = 5;
+pub const VERSION: u16 = 6;
 pub const DEFAULT_PORT: u16 = 25590;
 /// Most bytes of pack text in one message.
 pub const MAX_PACK_PART: usize = 40_000;
@@ -42,8 +42,9 @@ pub enum Msg {
     /// A block changed (sent by whoever changed it, relayed to the rest).
     SetBlock { x: i32, y: i32, z: i32, block: u16 },
     Chat { id: u16, text: String },
-    /// A player's skin: a small PNG (sent by its owner, relayed with their id).
-    Skin { id: u16, png: Vec<u8> },
+    /// A player's skin: a small PNG, and whether their arms are slim
+    /// (sent by its owner, relayed with their id).
+    Skin { id: u16, png: Vec<u8>, slim: bool },
     // Server to client.
     Welcome { id: u16, seed: u32, time: f32, kind: String },
     /// The server will not let you in.
@@ -171,12 +172,13 @@ impl Msg {
                 w.u16(*id);
                 w.str(text);
             }
-            Msg::Skin { id, png } => {
+            Msg::Skin { id, png, slim } => {
                 w.u8(5);
                 w.u16(*id);
                 let n = png.len().min(MAX_SKIN);
                 w.u16(n as u16);
                 w.0.extend_from_slice(&png[..n]);
+                w.u8(*slim as u8);
             }
             Msg::State { id, channel, keep, key, data } => {
                 w.u8(6);
@@ -249,7 +251,8 @@ impl Msg {
                 if n > MAX_SKIN {
                     return None;
                 }
-                Msg::Skin { id, png: r.take(n)?.to_vec() }
+                let png = r.take(n)?.to_vec();
+                Msg::Skin { id, png, slim: r.u8()? != 0 }
             }
             6 => {
                 let (id, channel, keep, key) = (r.u16()?, r.u8()?, r.u8()? != 0, r.str()?);
@@ -352,7 +355,7 @@ mod tests {
             Msg::Move { id: 7, pos: [1.5, -64.25, 1e6], yaw: -3.1, pitch: 0.5, held: 9 },
             Msg::SetBlock { x: -100_000, y: 127, z: 5, block: 4095 },
             Msg::Chat { id: 2, text: String::from("hello there") },
-            Msg::Skin { id: 4, png: alloc::vec![1, 2, 3, 250] },
+            Msg::Skin { id: 4, png: alloc::vec![1, 2, 3, 250], slim: true },
             Msg::State { id: 4, channel: 3, keep: true, key: String::from("1 2 3"), data: b"chest".to_vec() },
             Msg::Welcome { id: 3, seed: 42, time: 0.25, kind: String::from("somewhere 46.8 -121.7 30 75") },
             Msg::Refuse { reason: String::from("server full") },

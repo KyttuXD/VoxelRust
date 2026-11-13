@@ -337,6 +337,7 @@ w("""
 #     biomes <names...>        night (appears only after dark)
 #     drops <item> <count>     what it leaves when killed in survival
 model player builtin player
+model player_slim builtin player_slim
 model grazer builtin grazer
 
 entity wanderer

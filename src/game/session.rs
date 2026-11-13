@@ -155,7 +155,7 @@ pub struct Session {
     /// Rain set by `/weather` (0 clear ..= 1 storm), overriding the sky.
     pub forced_sky: Option<f32>,
     /// Skin images that arrived from other players, for the renderer.
-    pub skin_events: Vec<(u16, Vec<u8>)>,
+    pub skin_events: Vec<(u16, Vec<u8>, bool)>,
     pub inv: Inventory,
     /// The stack carried by the mouse in the inventory screen.
     pub cursor: Slot,
@@ -1553,7 +1553,7 @@ impl Session {
                 crate::netplay::Event::Chat(line) => self.push_chat(line),
                 crate::netplay::Event::Time(t) => self.time = t,
                 crate::netplay::Event::Lost => self.lost = true,
-                crate::netplay::Event::Skin(id, png) => self.skin_events.push((id, png)),
+                crate::netplay::Event::Skin(id, png, slim) => self.skin_events.push((id, png, slim)),
                 crate::netplay::Event::State(_, channel, key, data) => {
                     use crate::proto::channel as ch;
                     let text = String::from_utf8_lossy(&data).into_owned();

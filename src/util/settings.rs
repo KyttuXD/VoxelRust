@@ -98,6 +98,9 @@ pub struct Settings {
     pub weather: bool,
     /// The small map in the corner of the screen.
     pub minimap: bool,
+    /// Slim (Alex-style) arms for the player model, instead of the classic
+    /// four-pixel arms. Other players see it too.
+    pub slim_arms: bool,
     /// The switches packs add (`setting <id> ...`), as last set here.
     pub flags: Vec<(String, bool)>,
     /// Settings the game itself has no name for: what the mods' own code
@@ -143,6 +146,7 @@ impl Default for Settings {
             auto_tuned: false,
             weather: true,
             minimap: true,
+            slim_arms: false,
             flags: Vec::new(),
             extras: Vec::new(),
             mods_off: String::new(),
@@ -230,6 +234,7 @@ impl Settings {
             auto_tuned: flag("auto_tuned", false),
             weather: flag("weather", true),
             minimap: flag("minimap", true),
+            slim_arms: flag("slim_arms", false),
             flags: text.lines().filter_map(|l| l.strip_prefix("flag_")).filter_map(|l| l.split_once('=')).map(|(k, v)| (String::from(k.trim()), v.trim() == "1")).take(64).collect(),
             extras: {
                 // Whatever is not one of the game's own settings.
@@ -271,7 +276,7 @@ impl Settings {
             self.autosave_seconds,
             self.view_bobbing as i32,
         );
-        s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32));
+        s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\nslim_arms={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.slim_arms as i32));
         s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.auto_update as i32));
         for (i, a) in ACTIONS.iter().enumerate() {
             s.push_str(&alloc::format!("key_{}={}\n", a.1, self.keys[i]));

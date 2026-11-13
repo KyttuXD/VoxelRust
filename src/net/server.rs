@@ -42,6 +42,7 @@ struct Conn {
     /// Where this player last said they were, for telling newcomers.
     last_move: Option<([f64; 3], f32, f32, u16)>,
     skin: Vec<u8>,
+    skin_slim: bool,
     /// Ticks since anything arrived; idle strangers are dropped.
     quiet: u32,
     gone: bool,
@@ -183,7 +184,7 @@ impl Server {
             match self.listener.accept(0) {
                 Ok(Some(mut stream)) => {
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), quiet: 0, gone: false });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, quiet: 0, gone: false });
                 }
                 _ => break,
             }
@@ -289,7 +290,7 @@ impl Server {
                         for other in self.conns.iter().filter(|c| c.joined && !c.gone) {
                             out.extend(Msg::Join { id: other.id, name: other.name.clone() }.encode());
                             if !other.skin.is_empty() {
-                                out.extend(Msg::Skin { id: other.id, png: other.skin.clone() }.encode());
+                                out.extend(Msg::Skin { id: other.id, png: other.skin.clone(), slim: other.skin_slim }.encode());
                             }
                             if let Some((pos, yaw, pitch, held)) = other.last_move {
                                 out.extend(Msg::Move { id: other.id, pos, yaw, pitch, held }.encode());
@@ -333,9 +334,10 @@ impl Server {
                         }
                         self.broadcast(&Msg::State { id, channel, keep, key, data }, id);
                     }
-                    Msg::Skin { png, .. } if joined => {
+                    Msg::Skin { png, slim, .. } if joined => {
                         self.conns[i].skin = png.clone();
-                        self.broadcast(&Msg::Skin { id, png }, id);
+                        self.conns[i].skin_slim = slim;
+                        self.broadcast(&Msg::Skin { id, png, slim }, id);
                     }
                     Msg::Chat { text, .. } if joined && text.starts_with('/') => {
                         let name = self.conns[i].name.clone();

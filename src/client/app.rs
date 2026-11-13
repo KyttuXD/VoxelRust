@@ -286,6 +286,11 @@ pub const BUILD: &str = match option_env!("VOXELRUST_BUILD") {
 const MINIMAP: usize = 64;
 const TABS: [&str; 6] = ["VIDEO", "AUDIO", "CONTROLS", "GAME", "SKIN", "MODS"];
 
+/// The player model and the first-person hand for classic or slim arms.
+fn arm_models(slim: bool) -> (&'static str, &'static str) {
+    if slim { ("player_slim", "hand_slim") } else { ("player", "hand") }
+}
+
 /// The player's skin as 64 x 64 RGBA: a tinted copy of the default body, or
 /// `skin.png` from the data folder. `None` if a custom skin cannot be used.
 fn skin_pixels(base: &str, r: &Renderer, name: &str) -> Option<Vec<u8>> {
@@ -370,6 +375,8 @@ struct App {
     /// send to a server.
     skin_tex: u32,
     remote_skins: BTreeMap<u16, u32>,
+    /// Which other players have slim arms.
+    remote_slim: BTreeMap<u16, bool>,
     skin_png: Vec<u8>,
     skin_sent: bool,
     /// Pack files read at start-up, for reading again on request.
@@ -895,7 +902,7 @@ impl App {
         if let Some(g) = self.session.as_mut() {
             if let (Some(net), false) = (g.net.as_mut(), self.skin_sent) {
                 if self.skin_png.len() <= crate::proto::MAX_SKIN {
-                    net.send_skin(&self.skin_png);
+                    net.send_skin(&self.skin_png, self.settings.slim_arms);
                 }
                 self.skin_sent = true;
             }
@@ -915,7 +922,8 @@ impl App {
                     g.say("USING THE SERVER'S CONTENT");
                 }
             }
-            for (id, png) in g.skin_events.drain(..) {
+            for (id, png, slim) in g.skin_events.drain(..) {
+                self.remote_slim.insert(id, slim);
                 if let Some(img) = crate::png::decode(&png).filter(|i| i.w == 64 && i.h == 64) {
                     let tex = r.add_texture(64, 64, &img.rgba);
                     self.remote_skins.insert(id, tex);
@@ -1041,7 +1049,7 @@ impl App {
             r.finish_world(&cam, &env);
             // The hand and what it holds, in their own close-up pass.
             if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried {
-                if let Some(hand) = reg().models.iter().position(|m| m.id == "hand") {
+                if let Some(hand) = reg().models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).1) {
                     let swing = hand_swing(g);
                     let v = g.player.vel;
                     let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
@@ -1217,12 +1225,17 @@ impl App {
             }
         }
         // Other players, with their names over their heads.
-        if let (Some(net), Some(model)) = (&g.net, reg.models.iter().position(|m| m.id == "player")) {
+        if let Some(net) = &g.net {
             for (id, p) in net.players.iter().filter(|p| p.1.seen) {
                 let at = rel(p.pos);
                 if at[0] * at[0] + at[2] * at[2] > 96.0 * 96.0 {
                     continue;
                 }
+                let slim = self.remote_slim.get(id).copied().unwrap_or(false);
+                let model = match reg.models.iter().position(|m| m.id == arm_models(slim).0) {
+                    Some(model) => model,
+                    None => continue,
+                };
                 let l = (light_at(p.pos) * 255.0) as u8;
                 let pose = crate::model::Pose { phase: p.phase, stride: p.stride, head_pitch: -p.pitch * 180.0 / PI, head_yaw: 0.0, ..Default::default() };
                 r.tex_override = self.remote_skins.get(id).copied().unwrap_or(0);
@@ -1238,7 +1251,7 @@ impl App {
             }
         }
         if self.third_person {
-            if let Some(model) = reg.models.iter().position(|m| m.id == "player") {
+            if let Some(model) = reg.models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).0) {
                 let v = g.player.vel;
                 let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
                 let pose = crate::model::Pose {
@@ -1798,7 +1811,7 @@ impl App {
                 }
                 4 => {
                     // A turning preview on the left, choices on the right.
-                    let model = ui.r.models.iter().position(|m| m.id == "player");
+                    let model = ui.r.models.iter().position(|m| m.id == arm_models(st.slim_arms).0);
                     ui.panel(x, row(0), 100.0 * s, 150.0 * s);
                     if let Some(model) = model {
                         let pose = crate::model::Pose { phase: ui.clock * 3.0, stride: 0.5, ..Default::default() };
@@ -1819,6 +1832,7 @@ impl App {
                     if ui.button(cx, row(4) - 3.0 * s, cw, bh, "USE THIS FILE") {
                         skin_import = true;
                     }
+                    skin_changed |= ui.toggle(cx, row(5) + 4.0 * s, cw, bh, "SLIM ARMS (ALEX SKINS)", &mut st.slim_arms);
                 }
                 5 => {
                     // Every mod, built in or from a mods folder, with a
@@ -2444,7 +2458,7 @@ impl App {
 
         // A portrait of the player beside the panel, where there is room.
         if px > 70.0 * s {
-            if let Some(model) = r.models.iter().position(|m| m.id == "player") {
+            if let Some(model) = r.models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).0) {
                 ui.panel(px - 66.0 * s, py, 60.0 * s, 124.0 * s);
                 let pose = crate::model::Pose { phase: g.clock * 2.0, stride: 0.12, ..Default::default() };
                 ui.r.tex_override = self.skin_tex;
@@ -3030,6 +3044,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         text_selected: false,
         skin_tex: 0,
         remote_skins: BTreeMap::new(),
+        remote_slim: BTreeMap::new(),
         skin_png: Vec::new(),
         skin_sent: false,
         pack_paths,

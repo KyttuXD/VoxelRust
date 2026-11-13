@@ -28,8 +28,8 @@ pub enum Event {
     Time(f32),
     /// A piece of the server's content pack; the flag marks the last one.
     Pack(bool, Vec<u8>),
-    /// A player's skin image arrived.
-    Skin(u16, Vec<u8>),
+    /// A player's skin image arrived, and whether their arms are slim.
+    Skin(u16, Vec<u8>, bool),
     /// Shared state from another player: who, channel, key, data.
     State(u16, u8, String, Vec<u8>),
     /// The connection is gone.
@@ -163,7 +163,7 @@ impl Client {
                         }
                     }
                     Msg::Time { time } => events.push(Event::Time(time)),
-                    Msg::Skin { id, png } => events.push(Event::Skin(id, png)),
+                    Msg::Skin { id, png, slim } => events.push(Event::Skin(id, png, slim)),
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
                     _ => {}
@@ -200,9 +200,9 @@ impl Client {
         self.send(&Msg::SetBlock { x, y, z, block });
     }
 
-    pub fn send_skin(&mut self, png: &[u8]) {
+    pub fn send_skin(&mut self, png: &[u8], slim: bool) {
         let id = self.id;
-        self.send(&Msg::Skin { id, png: png.to_vec() });
+        self.send(&Msg::Skin { id, png: png.to_vec(), slim });
     }
 
     /// Share a piece of state with the other players (see [`Msg::State`]).
