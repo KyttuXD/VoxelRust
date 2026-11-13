@@ -29,12 +29,12 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | --- | --- |
 | W A S D * | move |
 | Mouse | look |
-| Space * | jump; fly up when flying; in creative, press twice quickly to start or stop flying |
+| Space * | jump; fly up when flying; in creative, press twice quickly to start or stop flying; get up from a seat |
 | Left Shift * | fly down when flying |
 | Left Ctrl * | sprint |
-| F * | toggle flying (creative mode only); get out of a vehicle |
+| F * | get out of a vehicle; get up from a seat |
 | Left click | break a block, hit a creature, pick up a vehicle |
-| Right click | place a block; use a crafting table, chest, oven or bed; open or shut a door; till soil with a hoe; eat; get into a vehicle; collect from or trade with a creature |
+| Right click | place a block; use a crafting table, chest, oven, furnace or bed; open or shut a door; sit on a chair; till soil with a hoe; eat; shoot a bow; get into a vehicle; collect from, trade with or tame a creature |
 | Middle click | pick the block you are looking at |
 | 1-9, mouse wheel | choose a hotbar slot |
 | E * | inventory |
@@ -47,15 +47,18 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | F5 | third-person view |
 | F11 | full screen |
 
-A short reminder of the main keys is shown for a few seconds when you first
-enter a new world.
+Flying is creative only and has no key of its own: press jump twice
+quickly to take off, and twice again to land. Nothing on screen lists the
+keys; SETTINGS > CONTROLS does.
 
 ### The minimap
 
 A small map sits in the top right corner, north up, with you as a dot that
 shows which way you face. It only shows ground you have been near; the rest
-stays dark. In normal worlds M switches it between small and large; in Earth
-worlds M opens the full map instead (see [EARTH.md](EARTH.md#the-map-m)).
+stays dark. In normal worlds M switches it between small and large. In Earth
+worlds the minimap shows the whole map from the start, dimmed where you have
+not been yet, and M opens the full map instead (see
+[EARTH.md](EARTH.md#the-map-m)).
 SETTINGS > GAME > MINIMAP turns it off.
 
 ## Survival and creative
@@ -73,9 +76,9 @@ breaks.
 
 **Creative.** The inventory screen offers every item, sorted into tabs. Each
 tab is a small picture of something it holds; point at it to see its name.
-Blocks are drawn as little 3D blocks, other items as flat pictures. Blocks
-break at once, nothing hurts you, and F (or pressing jump twice quickly)
-toggles flying. You reach 6 blocks. Area tools such as the Builder's Wand (which works on a ball
+Blocks are drawn as little cubes in a true isometric view, other items as
+flat pictures. Blocks break at once, nothing hurts you, and pressing jump
+twice quickly starts or stops flying. You reach 6 blocks. Area tools such as the Builder's Wand (which works on a ball
 of blocks at a time) only work in creative.
 
 The mode is chosen when the world is made and can be switched at any time in
@@ -101,7 +104,9 @@ restores its points of hunger and half as much health.
 | Cooked Meat | 8 | oven, or crafting table with coal |
 
 More filling food is made at a crafting table or baked in an oven; see
-[The oven and baking](#the-oven-and-baking).
+[The oven and baking](#the-oven-and-baking). Some food can also be set out
+as a block and eaten where it stands; see
+[Furniture and food on the table](#furniture-and-food-on-the-table).
 
 ### Tools and ores
 
@@ -121,8 +126,9 @@ same six materials; see [Farming](#farming) and [Swords](#swords).
 
 Ores are found in stone: coal at any depth, iron below height 60, copper
 below 44, crystal below 24 and ruby below 16 (sea level is 48). Coal, crystal
-and ruby ore drop coal, crystals and rubies; iron and copper ore are used in
-recipes as they are.
+and ruby ore drop coal, crystals and rubies. Iron and copper ore go into
+tool recipes as they are; a furnace turns them into ingots, which other
+recipes need (see [Furnaces](#furnaces)).
 
 ### Crafting
 
@@ -138,6 +144,11 @@ what it needs. Click a recipe to make it.
   so on.
 - **At an oven** (right click it) the baking recipes are offered; see
   [The oven and baking](#the-oven-and-baking).
+- **At a furnace** the smelting recipes are offered; see
+  [Furnaces](#furnaces).
+
+There is no crafting grid: nothing is laid out in a pattern. The lists are
+the recipe book.
 
 In the inventory, left click picks up or puts down a whole stack, right click
 picks up half or puts down one. Clicking outside the panel throws away what
@@ -162,9 +173,25 @@ or breaking either half does the same to the other. At a crafting table: 6
 planks make a door, 3 planks make 2 trapdoors, 2 planks and 4 sticks make a
 gate. They are in the Doors tab in creative.
 
+Each wood also has four more doors, all two blocks high:
+
+| Door | Made from | What is different |
+| --- | --- | --- |
+| Centred | 1 door | stands in the middle of its block instead of on the edge |
+| Glazed | 1 door, 2 glass | has a window |
+| Sliding | 1 glazed door, 1 iron ore | slides into the wall beside it |
+| Revolving | 2 glazed doors | never shuts: walk through it |
+
+Trapdoors, gates and fences also come in the sixteen colours (an oak
+trapdoor, oak gate or oak fence plus white wool, red wool and so on).
+
+Doors do not swing: a door switches at once between its shut shape and its
+open shape.
+
 ### Beds
 
-A bed is made from 3 wool and 3 oak planks, in any of the sixteen colours.
+A bed is made from 3 wool and 3 oak planks, in any of the sixteen colours
+of wool.
 Right click it:
 
 - It becomes the place you come back to after dying.
@@ -222,6 +249,67 @@ make Cheese, 2 Tomatoes make Tomato Sauce, a Tomato and a Carrot make a Salad
 Cheese is worth 4 points, Tomato Sauce 2 and Dough 1; Flour cannot be eaten.
 Pizzas, pies, stew and soup stack to 16.
 
+The **Stove** (an oven and 3 iron ingots), the **Smoker** (an oven and 4
+logs) and the **Campfire** (3 logs, 3 sticks, 1 coal) offer the same baking
+list as the oven.
+
+### Furnaces
+
+A **Furnace** is 8 cobble at a crafting table. Right click it for the
+smelting list; like baking, smelting takes no time, and coal is simply one
+of the ingredients.
+
+| Smelted | From |
+| --- | --- |
+| 1 Iron Ingot | 1 Iron Ore, 1 Coal |
+| 3 Iron Ingots | 2 Iron Ore, 2 Coal |
+| 1 Copper Ingot | 1 Copper Ore, 1 Coal |
+| 3 Copper Ingots | 2 Copper Ore, 2 Coal |
+| 4 Glass | 4 Sand, 1 Coal |
+| 4 Stone | 4 Cobble, 1 Coal |
+| 4 Brick | 4 Clay, 1 Coal |
+| 2 Crystal | 1 Crystal Ore, 1 Coal |
+| 2 Ruby | 1 Ruby Ore, 1 Coal |
+| 2 Coal | 2 Oak Log |
+| 2 Cooked Meat | 2 Raw Meat, 1 Coal |
+| 2 Cooked Fish | 2 Raw Fish, 1 Coal |
+
+The **Blast Furnace** (a furnace, 5 iron ingots, 3 stone bricks) and the
+**Kiln** (8 brick) offer the same list.
+
+### Furniture and food on the table
+
+Furniture is made at a crafting table and is in the Furniture tab in
+creative.
+
+- **Seats**: chair, stool, bench, toilet, bathtub, and a couch and an
+  armchair in each of the sixteen colours (wool and planks). Right click to
+  sit down; jump, or the get-out key (F), to stand up.
+- **Storage**: cupboard, kitchen counter, wardrobe and fridge open like
+  chests (27 slots each). The wardrobe and the fridge are two blocks high.
+- **Kitchen and bathroom**: stove (bakes like an oven), kitchen sink, wash
+  basin, towel rail.
+- **The rest**: desk, shelf, bookshelf, television and floor lamp (both give
+  light).
+- **Food set out**: a Plate (2 clay make 4), Pizza on a Plate, Cake, Loaf of
+  Bread and Fruit Bowl are blocks. Right click one to eat it where it
+  stands: it restores its points like other food and the block is gone. A
+  Pizza Box opens and shuts.
+
+### Bows
+
+| Weapon | Damage | Made from |
+| --- | --- | --- |
+| Bow | 6 | 3 sticks, 3 string |
+| Longbow | 9 | 1 bow, 2 sticks, 2 string |
+| Crossbow | 13 | 1 bow, 2 iron ingots, 2 planks |
+
+Right click to shoot where you look. Each shot uses one Arrow (1 stick and
+1 gravel make 4) in survival; none are needed in creative. The stronger
+weapons shoot faster arrows but take longer between shots (0.7, 1.1 and 1.8
+seconds). Arrows drop as they fly, stop at blocks and hurt the first
+creature they meet.
+
 ### Swords
 
 A sword is 2 of the material and 1 stick at a crafting table. A bare hand (or
@@ -270,10 +358,14 @@ at, or on water.
 | Cargo Boat | water | has storage |
 | Rail Cart | rails | follows the track, including corners and slopes |
 | Chest Cart | rails | has storage |
+| Locomotive | rails | keeps going by itself; see [Railways](#railways) |
+| Passenger Cart | rails | |
+| Freight Cart | rails | has storage |
 | Buggy | land | has storage |
 | Plane | air | |
 
-- **Get in**: right click it. **Get out**: F.
+- **Get in**: right click it. **Get out**: F (GET OUT OF A VEHICLE in the
+  controls).
 - **Drive**: W / S for forward and reverse, A / D to steer. Carts steer
   themselves along the track; lay it with Rail blocks.
 - **Plane**: hold W to gather speed. Once fast enough it flies, and climbs or
@@ -286,13 +378,70 @@ at, or on water.
 Vehicles are saved with the world. They are single items that you place, not
 ships built from blocks.
 
+### Railways
+
+All of this is in the Travel tab in creative and has crafting table recipes.
+
+| Track or block | What it does |
+| --- | --- |
+| Rail | ordinary track |
+| Speed Rail | carts run at 220% of their speed on it |
+| Slow Rail | carts run at 40% |
+| Station Rail | a cart running by itself stops here for 6 seconds |
+| Depot Rail | the same, for 30 seconds |
+| Station Platform | a low stone block to stand on beside the track |
+| Buffer Stop | marks the end of a line |
+| Signal Post | a lit post |
+
+The platform, buffer stop and signal post are for looks: they do not control
+anything. A cart stops wherever the track ends.
+
+- **Trains.** A **Chain** joins rail carts. Hold it and right click the cart
+  in front, then the cart to pull behind it; each chained cart follows the
+  one ahead. Right click a chained cart with a chain to unhook it. A chain
+  comes off by itself if the carts end up more than 12 blocks apart.
+- **The Locomotive** remembers the way and speed it was last driven. Drive
+  it, get out, and it carries on by itself, pulling whatever is chained
+  behind. It waits at station and depot rails for their time, and at the end
+  of the line it turns back the way it came. A cart you are driving does not
+  stop at stations.
+- A **Passenger Cart** is a cart to ride in and a **Freight Cart** carries
+  27 slots of cargo; chain them behind a locomotive.
+
+This is simple automation: timed stops and shuttling back and forth along a
+line. There are no timetables, routes, junction switching or working
+signals.
+
 ## Creatures
 
-There are 58 kinds: farm animals that give milk, wool and eggs, pets that
-follow you for food, wildlife with their own temperaments, birds and fish,
-night monsters, cave dwellers, and villagers who trade and work. Right click
-a creature to collect from it or trade; left click to hit it. All of it is in
-[CREATURES.md](CREATURES.md).
+There are 75 kinds: farm animals that give milk, wool and eggs, animals you
+can tame with their favourite food, wildlife with their own temperaments,
+birds and fish, night monsters (some of which shoot), cave dwellers, and
+villagers who trade and work. Right click a creature to collect from it,
+trade or tame it; left click to hit it. Creatures and vehicles behind the
+camera are not drawn. All of it is in [CREATURES.md](CREATURES.md).
+
+## Dimensions
+
+Every world has other worlds inside it, each with its own land:
+
+| Name | Land |
+| --- | --- |
+| `sky` | islands in the sky |
+| `flatland` | flat ground |
+| `void` | nothing at all; you arrive on a small stone platform |
+| `mirror` | ordinary terrain from a different seed |
+
+`/dim NAME` takes you there and `/dim home` (or `/dim` alone) brings you
+back; `/dim` with an unknown name lists them. You arrive at the same x and z
+you left from. Each dimension keeps its own blocks and its own vehicles in
+the same world (files named `<world>.<dimension>.*` in the data folder), and
+they are included when the world is exported. Wild creatures stay behind;
+pets come with you. Your inventory, the chests' contents and the explored
+map belong to the world as a whole. Packs can add dimensions and portals to
+them (see [MODDING.md](MODDING.md#scripts-and-commands)).
+
+Dimensions are not available on a server.
 
 ## Weather and disasters
 
@@ -312,25 +461,56 @@ Disasters only happen in singleplayer.
 
 ## Chat and commands
 
-T opens the chat line; Enter sends, Esc cancels. A line that starts with `/`
-is a command. Commands and ids are typed in lower case (the line is lowered
-for you); ids are the ones in the data files, such as `iron_pick` or `wolf`.
+T opens the chat line; Enter sends, Esc cancels. Chat is shown in capitals.
+Each player's name is shown in a colour of its own, the same every time.
+
+**Colours.** `&` followed by one of sixteen characters changes the colour of
+the text after it, in chat and in anything a pack says with `/say`:
+
+| Code | Colour | Code | Colour |
+| --- | --- | --- | --- |
+| `&0` | black | `&8` | dark grey |
+| `&1` | dark blue | `&9` | blue |
+| `&2` | dark green | `&a` | green |
+| `&3` | dark cyan | `&b` | cyan |
+| `&4` | dark red | `&c` | red |
+| `&5` | purple | `&d` | pink |
+| `&6` | orange | `&e` | yellow |
+| `&7` | grey | `&f` | white |
+
+A line that starts with `/` is a command. Commands and ids are typed in
+lower case (the line is lowered for you); ids are the ones in the data
+files, such as `iron_pick` or `wolf`. In `/tp` and `/set`, a coordinate may
+be written `~` for the block you stand in, or `~3` or `~-2` for that many
+blocks from it.
 
 | Command | Effect | On a server |
 | --- | --- | --- |
-| `/help` | list the commands | works |
+| `/help` | list some of the commands (the older ones; it has not caught up with this table) | works |
 | `/reload` | read the content packs and the mods folders again without restarting | no: the server decides the content |
 | `/give ITEM [N]` | put N of an item in your inventory (1 if N is left out, 999 at most) | works |
 | `/time WHEN` | set the time: `day` or `noon`, `night` or `midnight`, `dawn` or `morning`, `dusk` or `evening`, or a number from 0 up to (not including) 1, where 0 is dawn and 0.25 noon | no |
 | `/tp X Y Z` | move to that position | works |
-| `/spawn CREATURE [N] [young]` | put N of a creature (1 to 20) in front of you; with `young`, young ones if that kind has them | no |
+| `/set X Y Z BLOCK [TURNS]` | put a block at that position (whole numbers; the place must be loaded). TURNS, 0 to 3, picks which way a block with `rotate` faces | no |
+| `/spawn CREATURE [N] [young]` | put N of a creature (1 to 20) in front of you; with `young`, young ones if that kind has them | only for the player whose game runs the creatures (see [MULTIPLAYER.md](MULTIPLAYER.md#what-is-shared-and-what-is-not)) |
 | `/mode creative` or `/mode survival` | switch game mode | no |
 | `/weather clear`, `rain` or `storm` | hold the weather that way; any other word (or none) gives it back to the game | no |
-| `/set X Y Z BLOCK [TURNS]` | put a block at that position (whole numbers; the place must be loaded). TURNS, 0 to 3, picks which way a block with `rotate` faces. Meant for building test scenes | no |
 | `/seed` | show the world's seed | works |
+| `/dim NAME`, `/dim home` | go to a dimension, or back (see [Dimensions](#dimensions)) | no |
+| `/say TEXT` | show a line in your own chat area (it is not sent to other players) | works |
+| `/sound ID` | play a sound by its id, for example `/sound chime` | works |
+| `/heal [N]` | give yourself N health (4 if left out) | works |
+| `/feed [N]` | give yourself N hunger points (4 if left out) | works |
+| `/hurt [N]` | take N damage (1 if left out, 100 at most) | works |
+| `/launch [UP] [FORWARD]` | throw yourself upward and the way you face, in blocks per second (8 and 0 if left out; -40 to 40) | works |
+| `/shoot [DAMAGE] [SPEED] [BLOCK]` | loose a shot the way you look (damage 4 and speed 30 if left out). BLOCK, if given, is left where the shot lands | no |
+| `/aim BLOCK` | put that block against the face you are pointing at | no |
+| `/strike [DAMAGE]` | lightning on the block you point at: thunder, a flash, and DAMAGE (12 if left out) to every creature within 4 blocks | no |
 
-`/time`, `/spawn`, `/mode`, `/weather` and `/set` answer `NOT ON A SERVER`
-there. `/give` and `/tp` work in survival too; there are no permissions.
+The commands marked "no" answer `NOT ON A SERVER` there. `/give` and `/tp`
+work in survival too; there are no permissions. `/say` to `/strike` are
+mostly there for packs, which run them from scripts and can add commands of
+their own (see [MODDING.md](MODDING.md#scripts-and-commands)).
 
 ## Settings
 
@@ -342,7 +522,10 @@ Settings are kept in `settings.txt` in the data folder.
   clouds, 3D DETAIL (draws the 3D view at a lower resolution; a big help on
   old graphics cards), show frame rate, full screen and its resolution.
   Vsync is off unless you turn it on.
-- **AUDIO**: master, effects, footsteps and interface volume.
+- **AUDIO**: master, effects, footsteps and interface volume, and SUBTITLES
+  FOR SOUNDS, which names what you hear (`THUNDER`, `DOOR`, `WOLF HOWLS`) at
+  the right of the screen for a couple of seconds. All sound stops when you
+  leave a world.
 - **CONTROLS**: mouse speed, invert mouse, every key marked * above, RESET
   KEYS. Click a binding, then press the new key (Esc cancels).
 - **GAME**: player name, autosave interval, view bobbing, weather, natural
@@ -424,7 +607,8 @@ created from the menu is survival unless you change it.
 
 ## Moving a world to another machine
 
-A whole world can be written as one `.vxworld` file.
+A whole world can be written as one `.vxworld` file. It holds the world's
+dimensions and your pets as well.
 
 **From the menu.** On the SINGLEPLAYER screen, EXPORT beside a world writes
 `<data folder>/<name>.vxworld`. To bring one in, type its path in the IMPORT

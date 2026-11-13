@@ -17,6 +17,8 @@ pub const SEA: i32 = 48;
 pub enum WorldKind {
     /// Invented terrain from the seed.
     Normal,
+    /// Level grassland as far as you go: a place to build.
+    Flat,
     /// The real Earth, from elevation data. Block (0, 0) is at `lat`/`lon`
     /// (degrees); one block is `scale` metres across and `vscale` metres tall.
     /// `features` adds roads and buildings from the map.
@@ -27,6 +29,7 @@ impl WorldKind {
     pub fn to_text(&self) -> String {
         match self {
             WorldKind::Normal => String::from("normal"),
+            WorldKind::Flat => String::from("flat"),
             WorldKind::Earth { lat, lon, scale, vscale, features } => alloc::format!("earth {} {} {} {} {}", lat, lon, scale, vscale, *features as i32),
         }
     }
@@ -35,6 +38,7 @@ impl WorldKind {
         let mut w = text.split(' ');
         match w.next()? {
             "normal" => Some(WorldKind::Normal),
+            "flat" => Some(WorldKind::Flat),
             "earth" => {
                 let lat = w.next()?.parse::<f64>().ok()?;
                 let lon = w.next()?.parse::<f64>().ok()?;
@@ -65,8 +69,9 @@ pub fn set_kind(kind: WorldKind) {
             p.features = *features;
             Box::into_raw(Box::new(p))
         }
-        WorldKind::Normal => core::ptr::null_mut(),
+        WorldKind::Normal | WorldKind::Flat => core::ptr::null_mut(),
     };
+    set_shape(home_shape(&kind));
     PROJ.store(proj, Ordering::Release);
     KIND.store(Box::into_raw(Box::new(kind)), Ordering::Release);
 }
@@ -77,6 +82,15 @@ static PROJ: AtomicPtr<crate::earth::Proj> = AtomicPtr::new(core::ptr::null_mut(
 /// terrain, 1 flat, 2 empty, 3 islands in the sky.
 static SHAPE: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
 pub const SHAPES: [&str; 4] = ["normal", "flat", "void", "islands"];
+
+/// The lie of the land of a world's own dimension.
+pub fn home_shape(kind: &WorldKind) -> u8 {
+    if *kind == WorldKind::Flat {
+        1
+    } else {
+        0
+    }
+}
 
 pub fn set_shape(shape: u8) {
     SHAPE.store(shape, Ordering::Release);

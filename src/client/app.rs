@@ -342,6 +342,7 @@ struct App {
     form_seed: String,
     form_mode: GameMode,
     form_earth: bool,
+    form_flat: bool,
     form_place: usize,
     form_address: String,
     /// World name typed for hosting, and the server thread while hosting.
@@ -1384,9 +1385,15 @@ impl App {
         if ui.button_lr(x, y + step * 2.7, bw, bh, &mode, true) != 0 {
             self.form_mode = if self.form_mode == GameMode::Survival { GameMode::Creative } else { GameMode::Survival };
         }
-        let kind = alloc::format!("TERRAIN  {}", if self.form_earth { "EARTH" } else { "NORMAL" });
-        if ui.button_lr(x, y + step * 3.7, bw, bh, &kind, true) != 0 {
-            self.form_earth = !self.form_earth;
+        let kind = alloc::format!("TERRAIN  {}", if self.form_earth { "EARTH" } else if self.form_flat { "FLAT" } else { "NORMAL" });
+        let turn = ui.button_lr(x, y + step * 3.7, bw, bh, &kind, true);
+        if turn != 0 {
+            // Normal, flat, and (when the Earth mod is on) the real Earth.
+            let kinds = if reg().has("earth") { 3 } else { 2 };
+            let now = if self.form_earth { 2 } else { self.form_flat as i32 };
+            let next = (now + turn).rem_euclid(kinds);
+            self.form_flat = next == 1;
+            self.form_earth = next == 2;
         }
         if self.form_earth {
             let half = (bw - 4.0 * s) * 0.5;
@@ -1418,6 +1425,8 @@ impl App {
                 let kind = if self.form_earth {
                     let p = crate::earth::PLACES[self.form_place];
                     WorldKind::Earth { lat: p.1, lon: p.2, scale: self.form_scale as u32, vscale: self.form_vscale as u32, features: self.form_features }
+                } else if self.form_flat {
+                    WorldKind::Flat
                 } else {
                     WorldKind::Normal
                 };
@@ -2535,6 +2544,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         form_seed: String::new(),
         form_mode: GameMode::Survival,
         form_earth: false,
+        form_flat: false,
         form_place: 0,
         form_address: String::new(),
         form_host: String::from("shared"),

@@ -20,36 +20,51 @@ own procedurally painted textures and its own terrain generator.
 - **Survival and creative modes.** Survival has health, hunger, falling,
   drowning, mining times with cracks spreading over the block, tools, hoes
   and swords in six materials, drops, crafting by hand and at a crafting
-  table, chests, and monsters at night and in caves. Creative has flying
-  (F, or jump twice), instant building, area tools, and an item list with
-  picture tabs and 3D block icons.
+  table, furnaces, bows, chests, and monsters at night and in caves. Creative
+  has flying (press jump twice), instant building, area tools, and an item
+  list with picture tabs and block icons drawn as isometric cubes.
 - **Farming and cooking.** Hoes till soil; wheat, carrots, potatoes and
   tomatoes grow in four stages; an oven bakes bread, pies, stew and three
   kinds of pizza.
-- **About 270 blocks.** Sixteen colours of concrete, wool, terracotta,
-  glass and beds; six woods with doors, trapdoors and gates that open;
-  stone kinds; stairs, slabs, walls and fences that join up; lamps; chests;
-  rails; sand and gravel that fall; animated water; custom shapes.
-- **Creatures.** 58 kinds: farm animals that give milk, wool and eggs and
-  have young, pets that follow you for food, hunters and prey, birds and
-  fish, night monsters, cave dwellers, and villagers who trade, farm, build
-  and stand guard. See [docs/CREATURES.md](docs/CREATURES.md).
-- **Vehicles.** Boats, rail carts, a buggy and a plane, some with storage.
+- **About 410 blocks.** Sixteen colours of concrete, wool, terracotta,
+  glass, beds, couches and armchairs; six woods with five kinds of door,
+  trapdoors and gates that open; furniture to sit on, store things in and
+  cook at; food set out on plates; stone kinds; stairs, slabs, walls and
+  fences that join up; lamps; chests; sand and gravel that fall; animated
+  water; custom shapes.
+- **Creatures.** 75 kinds: farm animals that give milk, wool and eggs and
+  have young, animals you can tame, hunters and prey, birds and fish, night
+  monsters (skeleton archers among them), cave dwellers, and villagers who
+  trade, farm, build and stand guard. See
+  [docs/CREATURES.md](docs/CREATURES.md).
+- **Vehicles and railways.** Boats, a buggy, a plane and rail carts, some
+  with storage. Speed, slow and station track; chains that join carts into
+  trains; a locomotive that runs by itself, stops at stations and shuttles
+  along its line.
+- **Dimensions.** Other worlds inside each world (`sky`, `flatland`, `void`,
+  `mirror`), reached with `/dim`; packs can add more.
+- **Sound.** Every sound is made from a line of numbers in the data files,
+  so packs can retune them or add their own. Optional subtitles name what
+  you hear.
 - **Weather.** Regional rain, snow and thunderstorms; optional earthquakes,
   tsunamis and tornadoes.
 - **Multiplayer.** HOST A GAME from the menu runs a server inside the game
   while you play; `voxelrust --server` runs one on its own. Players join
-  from the title screen. Positions, edits, chat, time and skins are shared,
-  and the server sends its content packs to every player.
-- **Modding.** Textures, blocks (including doors, crops and falling
-  blocks), shapes, items, tools, food, recipes, ores, plants, models,
-  creatures and vehicles are declared in text files. Drop a mod into the
+  from the title screen. Positions, edits, chat, time, skins, creatures,
+  vehicles and chest contents are shared, and the server sends its content
+  packs to every player.
+- **Modding.** Textures, blocks (including doors, crops, seats and falling
+  blocks), shapes, items, tools, weapons, food, recipes, ores, plants,
+  models, creatures, vehicles, sounds, dimensions, chat commands and small
+  scripts (`when <event> do <commands>`) are declared in text files. Drop a
+  mod into the
   `mods` folder and it loads; `/reload` picks up changes without
   restarting. Blockbench `.bbmodel` files are read directly. Player skins
   are 64 x 64 PNGs. The default player model is the LastRoute mannequin.
 - **Long views.** Detailed chunks near you, simplified terrain beyond (tested
   out to 2 km).
-- **A minimap** in the corner showing the ground you have explored.
+- **A minimap** in the corner showing the ground you have explored (in
+  Earth worlds, the whole map, dimmed where you have not been).
 - **Settings** for video (including a 3D detail scale that speeds up old
   graphics cards), audio, controls (every key can be changed), game and skin.
 - **Worlds as files.** Export a world to one `.vxworld` file and import it on
@@ -59,19 +74,19 @@ own procedurally painted textures and its own terrain generator.
 
 | | |
 | --- | --- |
-| [docs/PLAYING.md](docs/PLAYING.md) | controls, game modes, crafting, farming, baking, caves, vehicles, chat commands, settings, command-line options |
-| [docs/CREATURES.md](docs/CREATURES.md) | wildlife, monsters and villagers: what lives where, milk, wool and eggs, trading |
+| [docs/PLAYING.md](docs/PLAYING.md) | controls, game modes, crafting, farming, baking, furnaces, furniture, bows, caves, vehicles and railways, dimensions, chat commands, settings, command-line options |
+| [docs/CREATURES.md](docs/CREATURES.md) | wildlife, monsters and villagers: what lives where, milk, wool and eggs, taming, trading |
 | [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | hosting and joining, what is shared |
 | [docs/EARTH.md](docs/EARTH.md) | real-world terrain, the map, data sources |
-| [docs/MODDING.md](docs/MODDING.md) | packs, the mods folder, models, skins |
+| [docs/MODDING.md](docs/MODDING.md) | packs, the mods folder, scripts and commands, models, skins |
 | [docs/DATA.md](docs/DATA.md) | the content file format |
 | [docs/BUILDING.md](docs/BUILDING.md) | building for each platform, build names and updating, tests, CI, icons |
 | [docs/PORTING.md](docs/PORTING.md) | how it stays portable, old Macs, PowerPC, measurements |
 
 ## How it stays portable
 
-The program is `no_std` Rust with **no dependencies**: about 22,000 lines,
-and a Linux binary of about 2 MB. It needs the C library and SDL2 (opened at run
+The program is `no_std` Rust with **no dependencies**: about 23,000 lines,
+and a Linux binary of about 2.5 MB. It needs the C library and SDL2 (opened at run
 time); graphics are fixed-function OpenGL 1.5 with no shaders. JSON, PNG,
 sockets, sound synthesis and the map projection are all written here. Why,
 and how each platform is built: [docs/PORTING.md](docs/PORTING.md).
@@ -131,13 +146,25 @@ are not touched.
 ## Known limits
 
 - The world is 128 blocks high.
+- There is no crafting grid. Recipes are lists you click to make; the lists
+  are the recipe book.
+- Doors do not animate: a door switches at once between its shut shape and
+  its open shape.
+- Rivers do not flow. Water is animated but stays where it is.
 - There are no moving ships built from blocks: vehicles are items you place.
-- In multiplayer, creatures, vehicles, chest contents and inventories are
-  not synchronised. Every player has their own animals, monsters and
-  villagers; inventories are per player and not kept by the server; and
-  villagers' farming and building is not applied to a shared world.
+- Railways are simple automation (timed stops and a locomotive that shuttles
+  along its line), not a scheduling system: no timetables, routes or working
+  signals.
+- Pack scripts are a small event-and-command system, not a programming
+  language, and Rust code cannot be loaded as a mod.
+- In multiplayer, creatures, vehicles and chest contents are shared, but one
+  player's game runs the creatures and unridden vehicles for everyone, and
+  inventories, health and hunger stay per player and are not kept by the
+  server. Villagers' farming and building is not applied to a shared world.
+  Dimensions are not available on a server. The sharing has only been tested
+  between two copies of the game on one machine.
 - Creatures and villagers are not saved with the world: new ones appear
-  when you come back. (Vehicles and chests are saved.)
+  when you come back. (Pets, vehicles and chests are saved.)
 - There are no generated villages, and no breeding: villagers and young
   animals simply turn up.
 - Servers have no accounts, passwords or encryption, and **the project hosts
@@ -146,8 +173,11 @@ are not touched.
 - The Windows build has only been tested under Wine, not on real Windows.
 - Modern macOS is untested: the 10.12 build has never been run.
 - PowerPC is only compile-checked (`cargo check`); it has never been run.
-- The GitHub workflows (CI and nightly builds) have not been run yet, so
-  there are no nightly files until they have.
+- The repository is on GitHub (private, `KyttuXD/VoxelRust`), but its
+  workflows (CI and nightly builds) have not been able to run: the account's
+  Actions budget blocks them on private repositories. So there are no
+  nightly files yet.
+- The website is not deployed.
 - In Earth worlds, building heights are guesses from the size of the
   footprint: the map tiles carry no heights.
 
@@ -187,8 +217,9 @@ Tiles.
 | --- | --- |
 | W A S D, mouse | move, look |
 | Space, Ctrl | jump, sprint |
-| F, or Space twice | fly, in creative (Space / Shift go up / down). F also gets you out of a vehicle |
-| Left / right / middle click | break or hit / place, use, open, trade / pick |
+| Space twice | fly, in creative (Space / Shift go up / down) |
+| F | get out of a vehicle, or up from a seat |
+| Left / right / middle click | break or hit / place, use, open, sit, shoot, trade, tame / pick |
 | 1-9, mouse wheel | choose a hotbar slot |
 | E | inventory |
 | M | world map (Earth worlds); bigger minimap (other worlds) |

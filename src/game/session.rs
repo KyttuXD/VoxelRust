@@ -642,7 +642,7 @@ impl Session {
         let r = reg();
         let shape = match r.dimensions.iter().find(|d| d.0 == id) {
             Some(d) => d.1,
-            None if id.is_empty() => 0,
+            None if id.is_empty() => worldgen::home_shape(&self.kind),
             None => return,
         };
         if id == self.dim || self.net.is_some() {

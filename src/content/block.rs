@@ -533,6 +533,9 @@ pub struct Registry {
     /// Other worlds inside a world: a name and the lie of its land
     /// (an index into `worldgen::SHAPES`).
     pub dimensions: Vec<(String, u8)>,
+    /// Parts of the game that packs switch on (`feature earth`): things
+    /// built into the program that only run when a pack asks for them.
+    pub features: Vec<String>,
     pub plants: Vec<PlantRule>,
     /// Per-state lookup tables for the hot loops.
     pub opaque: Vec<u8>,
@@ -931,7 +934,7 @@ impl Parser<'_> {
                     cur = Cur::Vehicle(i);
                 }
                 // (Inside a block or creature, `sound <id>` names the sound it makes.)
-                "ore" | "plant" | "sound" | "command" | "when" | "dimension" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
+                "ore" | "plant" | "sound" | "command" | "when" | "dimension" | "feature" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
                     cur = Cur::None;
                     let mut words: Vec<String> = args.iter().map(|a| a.to_string()).collect();
                     words.insert(0, key.to_string());
@@ -1733,6 +1736,7 @@ impl Registry {
         let mut commands: Vec<(String, Vec<String>)> = Vec::new();
         let mut scripts: Vec<Script> = Vec::new();
         let mut dimensions: Vec<(String, u8)> = Vec::new();
+        let mut features: Vec<String> = Vec::new();
         for (at, w) in &raw_rules {
             let f = |k: usize| w.get(k).and_then(|v| v.parse::<f32>().ok());
             match w[0].as_str() {
@@ -1777,6 +1781,13 @@ impl Registry {
                     _ => warnings.push(alloc::format!("{}: when needs <event> [what] do <commands>", at)),
                 },
                 "command" => warnings.push(alloc::format!("{}: command needs <name> <what it does>", at)),
+                "feature" => {
+                    for f in &w[1..] {
+                        if !features.contains(f) {
+                            features.push(f.to_ascii_lowercase());
+                        }
+                    }
+                }
                 // dimension <id> <normal|flat|void|islands>
                 "dimension" => {
                     let id = w.get(1).map(|s| s.to_ascii_lowercase()).unwrap_or_default();
@@ -1947,6 +1958,7 @@ impl Registry {
             commands,
             scripts,
             dimensions,
+            features,
             plants,
             by_id,
             warnings,
@@ -1954,6 +1966,11 @@ impl Registry {
     }
 
     /// First state of the block with this data-file id.
+    /// Whether a pack has switched this part of the game on.
+    pub fn has(&self, feature: &str) -> bool {
+        self.features.iter().any(|f| f == feature)
+    }
+
     pub fn block(&self, id: &str) -> Option<Block> {
         self.by_id.get(id).copied()
     }
