@@ -108,6 +108,8 @@ pub struct Session {
     pub sitting: Option<[i32; 3]>,
     /// The cart a chain has been hooked to, waiting for the second one.
     coupling: Option<usize>,
+    /// The creature being ridden (its id).
+    pub riding_mob: Option<u32>,
     /// Shared games: when state was last sent, the chest last opened and
     /// what was last said about it.
     share_timer: f32,
@@ -326,6 +328,7 @@ impl Session {
             call_timer: 3.0,
             sitting: None,
             coupling: None,
+            riding_mob: None,
             share_timer: 0.0,
             bite_timer: 0.0,
             open_chest: None,
@@ -1348,6 +1351,25 @@ impl Session {
             self.player.vel = [0.0; 3];
         }
         let seat = self.vehicles.update(dt, &self.world, &c.input, (self.player.yaw, self.player.pitch));
+        // On a creature's back: carried along until getting off (the
+        // leave key), or until it is gone.
+        if let Some(id) = self.riding_mob {
+            let mount = self.mobs.list.iter().find(|m| m.id == id).map(|m| (m.body.pos, m.look().2));
+            match mount {
+                Some((pos, height)) if !c.leave && !self.dead => {
+                    self.player.pos = [pos[0], pos[1] + height as f64 * 0.8 + 0.55 - crate::player::EYE, pos[2]];
+                    self.player.vel = [0.0; 3];
+                    self.player.on_ground = true;
+                    self.peak_y = self.player.pos[1];
+                    self.was_airborne = false;
+                }
+                _ => {
+                    self.riding_mob = None;
+                    self.mobs.rider = None;
+                    self.player.pos[1] += 0.3;
+                }
+            }
+        }
         // Seated: held in place on the chair until getting up (jump, or
         // the leave key), or until the chair is gone.
         if let Some(at) = self.sitting {
@@ -1357,7 +1379,9 @@ impl Session {
                 self.player.pos[1] = at[1] as f64 + 1.05;
             }
         }
-        if let Some(at) = self.sitting {
+        if self.riding_mob.is_some() {
+            // (Placed above; nothing more to move.)
+        } else if let Some(at) = self.sitting {
             let seat_height = block::def(self.world.get(at[0], at[1], at[2])).x.seat as f64 / 16.0;
             // Eyes about 0.75 above the seat.
             self.player.pos = [at[0] as f64 + 0.5, at[1] as f64 + seat_height + 0.75 - crate::player::EYE, at[2] as f64 + 0.5];
@@ -1396,6 +1420,7 @@ impl Session {
         // In a shared game one player's program runs the creatures and
         // the empty vehicles; the others are told where everything is.
         let host = self.runs_the_world();
+        self.mobs.rider = self.riding_mob.map(|id| (id, c.input.clone(), self.player.yaw));
         let bitten = if host {
             self.mobs.update(dt, &self.world, self.player.pos, self.time, hunted, held_item)
         } else {
@@ -1716,6 +1741,11 @@ impl Session {
                         }
                         Interaction::Say(text) => {
                             self.say(&text);
+                            return;
+                        }
+                        Interaction::Ride(id) => {
+                            self.riding_mob = Some(id);
+                            self.sitting = None;
                             return;
                         }
                         Interaction::Tame(item) => {

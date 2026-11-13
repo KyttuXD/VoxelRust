@@ -112,12 +112,17 @@ pub enum Interaction {
     Say(String),
     /// It took the food and is now the player's: the item to use up.
     Tame(usize),
+    /// Climb on: the creature's id.
+    Ride(u32),
 }
 
 pub struct Mobs {
     pub list: Vec<Mob>,
     /// Work and bites decided this step, for the session to carry out.
     pub actions: Vec<Action>,
+    /// The creature a player is riding and how they steer it: its id,
+    /// their controls, and where they look (yaw).
+    pub rider: Option<(u32, Input, f32)>,
     spawn_timer: f32,
     rng: u32,
     next_id: u32,
@@ -145,7 +150,7 @@ fn crop_start(b: Block) -> Block {
 
 impl Mobs {
     pub fn new(seed: u32) -> Mobs {
-        Mobs { list: Vec::new(), actions: Vec::new(), spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
+        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
     }
 
     fn rand(&mut self) -> u32 {
@@ -321,10 +326,16 @@ impl Mobs {
                 m.anger = 0.0;
                 return Interaction::Tame(held.unwrap_or(0));
             }
+            if m.tamed && d.x.rideable && held.is_none() {
+                return Interaction::Ride(m.id);
+            }
             if m.tamed && held != d.x.likes {
                 m.stay = !m.stay;
                 return Interaction::Say(alloc::format!("{} WILL {}", m.title(), if m.stay { "WAIT HERE" } else { "FOLLOW YOU" }).to_ascii_uppercase());
             }
+        }
+        if d.x.rideable && !d.x.tamable && m.young <= 0.0 {
+            return Interaction::Ride(m.id);
         }
         if let Some((want, n, give, count)) = d.x.trades.iter().copied().find(|t| Some(t.0) == held && have(t.0) >= t.1 as u32) {
             return Interaction::Trade((want, n), (give, count));
@@ -503,6 +514,31 @@ impl Mobs {
             if !world.is_loaded(px, pz) {
                 i += 1;
                 continue; // frozen until its chunk comes back
+            }
+            // Ridden: it goes where its rider steers, and thinks of nothing else.
+            if let Some((_, steer, yaw)) = self.rider.as_ref().filter(|r| r.0 == m.id) {
+                let flyer = d.behavior == Behavior::Fly;
+                m.body.yaw = *yaw;
+                m.body.flying = flyer;
+                let input = Input {
+                    forward: steer.forward,
+                    strafe: steer.strafe,
+                    jump: steer.jump && (flyer || m.body.on_ground || m.body.in_water),
+                    descend: flyer && steer.descend,
+                    sprint: steer.sprint,
+                };
+                let before = m.body.pos;
+                m.body.update(dt, &input, &|x, y, z| world.get_for_physics(x, y, z));
+                let (mx, mz) = ((m.body.pos[0] - before[0]) as f32, (m.body.pos[2] - before[2]) as f32);
+                let speed = if dt > 0.0 { sqrtf(mx * mx + mz * mz) / dt } else { 0.0 };
+                m.stride += (if flyer { 1.0 } else { (speed / d.speed.max(0.1)).min(1.0) } - m.stride) * (dt * 8.0).min(1.0);
+                m.phase += if flyer { dt * 12.0 } else { speed * dt * 3.2 };
+                if m.phase > TAU {
+                    m.phase -= TAU;
+                }
+                m.path.clear();
+                i += 1;
+                continue;
             }
 
             if d.behavior == Behavior::Swim {

@@ -75,6 +75,10 @@ enum Swing {
     Wing(f32),
     Ear(f32),
     Body,
+    /// The lower half of a leg (bends at the knee), same side sign as its leg.
+    Shin(f32),
+    /// The lower half of an arm (bends at the elbow).
+    Forearm(f32),
 }
 
 pub struct ModelDef {
@@ -120,6 +124,15 @@ fn classify(name: &str) -> Swing {
     }
     if n == "body" {
         return Swing::Body;
+    }
+    if n.starts_with("shin") || n.starts_with("forearm") {
+        // The same side-and-pair sign as the limb it hangs from.
+        let limb = alloc::format!("leg{}", &n[if n.starts_with("shin") { 4 } else { 7 }..]);
+        let sign = match classify(&limb) {
+            Swing::Limb(s) => s,
+            _ => 1.0,
+        };
+        return if n.starts_with("shin") { Swing::Shin(sign) } else { Swing::Forearm(-sign) };
     }
     let leg = n.contains("thigh") || (n.contains("leg") && !n.contains("lower"));
     let arm = n.contains("arm") && !n.contains("forearm");
@@ -227,6 +240,15 @@ impl ModelDef {
                     Anim::Float => rot[0] += sinf(ck * 1.5) * 4.0,
                     _ => {}
                 },
+                // A knee folds as its leg comes forward and straightens as
+                // it pushes back; elbows keep a slight bend and swing a little.
+                Swing::Shin(sign) => {
+                    let lift = if a == Anim::Hop { sinf(ph) } else { sign * sinf(if a == Anim::Scuttle { ph * 2.0 } else { ph } + 0.9) };
+                    rot[0] += lift.max(0.0) * reach * 1.25 * st;
+                }
+                Swing::Forearm(sign) => {
+                    rot[0] -= (8.0 + (sign * sinf(ph)).max(0.0) * reach * 0.8) * st.max(0.15);
+                }
                 Swing::None => {}
             }
             let local = rotate_about(b.origin, rot);
