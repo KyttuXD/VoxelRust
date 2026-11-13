@@ -3887,7 +3887,7 @@ fn run_server(opts: &Opts, base: &str, pack_text: &[u8]) -> Result<(), String> {
     let _ = crate::update::consume_restart_marker(base);
     if !opts.no_update {
         let (scratch, install) = (String::from(base), true);
-        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::run(BUILD, &scratch, install)));
+        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::watch(BUILD, &scratch, install)));
     }
     let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, &Settings::default())?;
     let address = sys::net::local_address().unwrap_or_else(|| String::from("<this machine's address>"));

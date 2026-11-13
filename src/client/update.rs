@@ -241,6 +241,24 @@ pub fn run(build: &str, folder: &str, install: bool) {
     run_inner(build, folder, install);
 }
 
+/// For a program that stays up for days (a server): look again every ten
+/// minutes until a newer version is installed. Call it from a thread of its own.
+pub fn watch(build: &str, folder: &str, install: bool) {
+    if build.starts_with("macos-legacy") {
+        return;
+    }
+    sys::sleep_ms(4000);
+    loop {
+        run_inner(build, folder, install);
+        if STATE.load(Ordering::Acquire) == UPDATED {
+            return;
+        }
+        for _ in 0..600 {
+            sys::sleep_real_ms(1000);
+        }
+    }
+}
+
 fn run_inner(build: &str, folder: &str, install: bool) {
     set_state(CHECKING);
     let list = match fetch(&alloc::format!("{}nightly.txt", RELEASE), &alloc::format!("{}nightly.txt", folder), 15) {
