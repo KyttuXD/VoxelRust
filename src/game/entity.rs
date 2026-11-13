@@ -72,6 +72,16 @@ impl Mob {
         (model, tint, d.height * size * self.growth())
     }
 
+    /// The picture it is painted with (see `pack_entities`): its variant's or its kind's
+    /// own `tex`, or empty for the model's own.
+    pub fn tex(&self) -> &'static str {
+        let d = &reg().entities[self.kind];
+        match (self.variant as usize).checked_sub(1).and_then(|i| d.x.variants.get(i)) {
+            Some(v) if !v.tex.is_empty() => v.tex.as_str(),
+            _ => d.x.tex.as_str(),
+        }
+    }
+
     /// Size relative to an adult: young ones grow steadily.
     pub fn growth(&self) -> f32 {
         match reg().entities[self.kind].x.baby {

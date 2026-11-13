@@ -20,9 +20,13 @@ format is in [DATA.md](DATA.md#creatures).
   none appear, and switching to creative removes the ones present.
 - Herd animals arrive in twos and threes. Kinds that have young sometimes
   bring one along.
-- Many kinds come in several looks (a brown cow, a black sheep, a pony, a
-  rooster); one is picked for each creature. F3 shows how many creatures are
-  around you.
+- Every kind comes in several looks, with their own colours and patterns
+  (a black-and-white, brown or red cow; a pink, spotted or black pig; a
+  white, black, grey or brown sheep; a pony; a rooster; villagers of every job
+  in four faces); one is picked for each creature. The pictures are drawn in
+  the OCD style by `tools/entity_textures.py`, and a texture pack can
+  replace them (see [TEXTURING.md](TEXTURING.md#creatures-and-players)). F3
+  shows how many creatures are around you.
 
 Wild creatures and villagers are not saved with the world: when you come
 back, new ones appear.

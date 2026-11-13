@@ -9,7 +9,9 @@
 #     night              comes out only after dark
 #     trait <names>      flees herd jumps territorial hunter prey lazy pack follows
 #     anim walk | hop | slither | flap | scuttle | waddle | float
-#     variant <name> [<r> <g> <b>] [model <id>] [size <factor>]   another look
+#     tex <name>                 the picture it is painted with (data/textures/entity/<name>.png);
+#                                without it, the model's own picture (named after the model)
+#     variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <name>]   another look
 #     baby <size> <seconds>      young ones: how small, and how long they take to grow
 #     gives <item> <seconds>     right click collects it, then again after that long
 #     likes <item>               what it follows a player for (with trait follows)
@@ -106,9 +108,10 @@ entity cow
   gives milk 180
   baby 0.5 600
   sound moo
-  variant Brown 190 140 100
-  variant Red 220 130 90
-  variant Longhorn 214 170 130 model cow_longhorn
+  variant Brown tex cow_brown
+  variant Red tex cow_red
+  variant Longhorn model cow_longhorn
+  variant Dark_Longhorn model cow_longhorn tex cow_longhorn_dark
 entity pig
   name Pig
   model pig
@@ -124,8 +127,8 @@ entity pig
   likes carrot
   baby 0.5 480
   sound oink
-  variant Spotted 200 170 160
-  variant Black 95 85 90
+  variant Spotted tex pig_spotted
+  variant Black tex pig_black
 entity boar
   name Wild Boar
   model pig_boar
@@ -139,8 +142,10 @@ entity boar
   drops raw_meat 3
   trait territorial pack
   damage 4
-  tint 150 120 100
   baby 0.5 480
+  variant Grey tex pig_boar_grey
+  variant Black tex pig_boar_black
+  variant Ginger tex pig_boar_ginger
 entity sheep
   name Sheep
   model sheep
@@ -157,8 +162,9 @@ entity sheep
   gives white_wool 240
   baby 0.5 540
   sound baa
-  variant Black 88 84 88
-  variant Brown 176 136 104
+  variant Black tex sheep_black
+  variant Grey tex sheep_grey
+  variant Brown tex sheep_brown
   variant Ram model sheep_ram size 1.1
 entity goat
   name Goat
@@ -175,8 +181,9 @@ entity goat
   damage 3
   gives milk 200
   baby 0.5 480
-  variant Brown 170 130 100
-  variant Black 80 78 84
+  variant Brown tex goat_brown
+  variant Black tex goat_black
+  variant Pied tex goat_pied
 entity chicken
   name Chicken
   model chicken
@@ -194,8 +201,8 @@ entity chicken
   baby 0.45 300
   anim waddle
   sound cluck
-  variant Brown 205 150 100
-  variant Black 100 100 110
+  variant Brown tex chicken_brown
+  variant Black tex chicken_black
   variant Rooster model chicken_rooster size 1.15
 entity duck
   name Duck
@@ -212,7 +219,9 @@ entity duck
   gives egg 200
   baby 0.45 300
   anim waddle
-  variant Mallard 150 190 150
+  variant Mallard tex duck_mallard
+  variant Brown tex duck_brown
+  variant Black tex duck_black
 entity horse
   name Horse
   model horse
@@ -229,10 +238,12 @@ entity horse
   tamable
   likes apple
   rideable
-  variant Bay 190 124 84
-  variant Black 92 86 90
-  variant Palomino 255 214 150
-  variant Pony 200 160 120 model horse_pony size 0.7
+  variant Bay tex horse_bay
+  variant Black tex horse_black
+  variant Palomino tex horse_palomino
+  variant Grey tex horse_grey
+  variant Pony model horse_pony size 0.7
+  variant Chestnut_Pony model horse_pony size 0.7 tex horse_pony_chestnut
 entity dog
   name Dog
   model dog
@@ -249,12 +260,15 @@ entity dog
   damage 3
   sound bark
   baby 0.5 420
-  variant Golden 255 214 140
-  variant Brown 176 130 100
-  variant Grey 170 176 190
+  variant Brown tex dog_brown
+  variant Grey tex dog_grey
+  variant Tan tex dog_tan
   variant Shepherd model dog_shepherd size 1.15
+  variant Sable_Shepherd model dog_shepherd size 1.15 tex dog_shepherd_sable
   variant Terrier model dog_terrier size 0.7
+  variant Black_Terrier model dog_terrier size 0.7 tex dog_terrier_black
   variant Hound model dog_hound size 1.05
+  variant Lemon_Hound model dog_hound size 1.05 tex dog_hound_lemon
 entity cat
   name Cat
   model cat
@@ -272,11 +286,14 @@ entity cat
   tamable
   sound meow
   hunts mouse beetle
-  variant Ginger 255 176 104
-  variant Black 84 82 92
-  variant Cream 255 236 204
+  variant Black tex cat_black
+  variant Cream tex cat_cream
+  variant Grey tex cat_grey
   variant Fluffy model cat_fluffy size 1.1
-  variant Lynx 214 180 140 model cat_lynx size 1.4
+  variant Cream_Fluffy model cat_fluffy size 1.1 tex cat_fluffy_cream
+  variant Smoke_Fluffy model cat_fluffy size 1.1 tex cat_fluffy_smoke
+  variant Lynx model cat_lynx size 1.4
+  variant Snow_Lynx model cat_lynx size 1.4 tex cat_lynx_snow
 entity deer
   name Deer
   model deer
@@ -290,7 +307,9 @@ entity deer
   drops raw_meat 2
   trait herd flees prey
   baby 0.5 600
-  variant Pale 230 210 180
+  variant Pale tex deer_pale
+  variant Spotted tex deer_spotted
+  variant Dark tex deer_dark
 entity rabbit
   name Rabbit
   model rabbit
@@ -305,9 +324,9 @@ entity rabbit
   trait flees prey jumps
   anim hop
   baby 0.5 240
-  variant White 250 250 250
-  variant Brown 170 130 96
-  variant Black 70 68 72
+  variant White tex rabbit_white
+  variant Brown tex rabbit_brown
+  variant Black tex rabbit_black
 entity mouse
   name Mouse
   model mouse
@@ -320,7 +339,8 @@ entity mouse
   biomes plains forest savanna
   trait flees prey
   anim scuttle
-  variant Brown 160 120 90
+  variant Brown tex mouse_brown
+  variant White tex mouse_white
 entity elephant
   name Elephant
   model elephant
@@ -337,6 +357,9 @@ entity elephant
   tamable
   rideable
   baby 0.4 900
+  variant Brown tex elephant_brown
+  variant Pale tex elephant_pale
+  variant Dusk tex elephant_dusk
 entity monkey
   name Monkey
   model monkey
@@ -349,7 +372,9 @@ entity monkey
   biomes jungle
   trait flees jumps herd
   baby 0.5 420
-  variant Golden 230 180 110
+  variant Golden tex monkey_golden
+  variant Black tex monkey_black
+  variant Grey tex monkey_grey
 entity penguin
   name Penguin
   model penguin
@@ -363,6 +388,9 @@ entity penguin
   trait herd
   anim waddle
   baby 0.5 420
+  variant Emperor tex penguin_emperor
+  variant Little tex penguin_little
+  variant Rockhopper tex penguin_rockhopper
 entity turtle
   name Turtle
   model turtle
@@ -375,6 +403,8 @@ entity turtle
   biomes swamp desert jungle
   trait lazy
   baby 0.4 600
+  variant Brown tex turtle_brown
+  variant Sea tex turtle_sea
 entity crab
   name Crab
   model crab
@@ -388,7 +418,9 @@ entity crab
   anim scuttle
   trait territorial
   damage 1
-  variant Blue 120 160 230
+  variant Blue tex crab_blue
+  variant Sand tex crab_sand
+  variant Purple tex crab_purple
 entity frog
   name Frog
   model frog
@@ -403,8 +435,9 @@ entity frog
   anim hop
   hunts worm ant
   damage 1
-  variant Red 230 90 70
-  variant Blue 90 150 240
+  variant Red tex frog_red
+  variant Blue tex frog_blue
+  variant Marsh tex frog_marsh
 entity wolf
   name Wolf
   model wolf
@@ -422,8 +455,9 @@ entity wolf
   likes raw_meat
   sound howl
   hunts sheep merino rabbit lop_rabbit deer goat chicken turkey
-  variant Arctic 250 250 255
-  variant Black 70 70 80
+  variant Arctic tex wolf_arctic
+  variant Black tex wolf_black
+  variant Timber tex wolf_timber
 entity fox
   name Fox
   model fox
@@ -440,8 +474,9 @@ entity fox
   tamable
   likes berries
   hunts rabbit lop_rabbit chicken duck mouse
-  variant Arctic 245 248 255
-  variant Silver 120 124 136
+  variant Arctic tex fox_arctic
+  variant Silver tex fox_silver
+  variant Dark tex fox_dark
 entity bear
   name Bear
   model bear
@@ -456,7 +491,8 @@ entity bear
   trait territorial
   damage 6
   baby 0.45 720
-  variant Black 70 64 66
+  variant Black tex bear_black
+  variant Cinnamon tex bear_cinnamon
 entity polar_bear
   name Polar Bear
   model bear
@@ -470,9 +506,11 @@ entity polar_bear
   drops raw_meat 3
   trait territorial hunter
   damage 7
-  tint 250 250 255
+  tex bear_polar
   baby 0.45 720
   hunts penguin
+  variant Cream tex bear_polar_cream
+  variant Frosted tex bear_polar_frosted
 entity tiger
   name Tiger
   model tiger
@@ -485,7 +523,9 @@ entity tiger
   biomes jungle
   drops raw_meat 2
   damage 7
-  variant White 240 240 250
+  variant White tex tiger_white
+  variant Golden tex tiger_golden
+  variant Dark tex tiger_dark
 entity gator
   name Alligator
   model gator
@@ -502,6 +542,9 @@ entity gator
   anim slither
   baby 0.4 600
   hunts duck goose frog turtle
+  variant Dark tex gator_dark
+  variant Olive tex gator_olive
+  variant Albino tex gator_albino
 entity snake
   name Snake
   model snake
@@ -516,9 +559,9 @@ entity snake
   damage 3
   anim slither
   hunts mouse frog rabbit
-  variant Sand 220 190 130
-  variant Coral 230 90 70
-  variant Black 60 60 70
+  variant Sand tex snake_sand
+  variant Coral tex snake_coral
+  variant Black tex snake_black
 entity spider
   name Spider
   model spider
@@ -534,6 +577,9 @@ entity spider
   anim scuttle
   drops string 1
   hunts beetle ant worm
+  variant Black tex spider_black
+  variant Tan tex spider_tan
+  variant Green tex spider_green
 entity bird
   name Songbird
   model bird
@@ -547,10 +593,10 @@ entity bird
   trait flees
   anim flap
   sound chirp
-  variant Blue 110 160 250
-  variant Red 230 80 70
-  variant Yellow 250 220 90
-  variant Green 110 200 110
+  variant Blue tex bird_blue
+  variant Red tex bird_red
+  variant Yellow tex bird_yellow
+  variant Green tex bird_green
 entity owl
   name Owl
   model owl
@@ -563,7 +609,9 @@ entity owl
   biomes forest taiga
   night
   anim flap
-  variant Snowy 250 250 250
+  variant Snowy tex owl_snowy
+  variant Barn tex owl_barn
+  variant Grey tex owl_grey
 entity butterfly
   name Butterfly
   model butterfly
@@ -575,11 +623,10 @@ entity butterfly
   weight 14
   biomes plains forest jungle savanna
   anim flap
-  variant Blue 110 170 255
-  variant Orange 255 160 60
-  variant White 250 250 250
-  variant Violet 190 120 240
-  variant Lime 170 240 110
+  variant Blue tex butterfly_blue
+  variant White tex butterfly_white
+  variant Violet tex butterfly_violet
+  variant Lime tex butterfly_lime
 entity bee
   name Bee
   model bee
@@ -592,6 +639,9 @@ entity bee
   biomes plains forest
   anim flap
   sound buzz
+  variant Honey tex bee_honey
+  variant Pale tex bee_pale
+  variant Dark tex bee_dark
 entity firefly
   name Firefly
   model bee
@@ -604,8 +654,10 @@ entity firefly
   biomes swamp forest jungle
   night
   anim flap
-  tint 230 255 120
+  tex firefly
   glow 15
+  variant Amber tex firefly_amber
+  variant Cyan tex firefly_cyan
 entity bat
   name Bat
   model bat
@@ -617,6 +669,9 @@ entity bat
   weight 18
   biomes cave mushroom_cave crystal_cave lush_cave webbed_cave
   anim flap
+  variant Black tex bat_black
+  variant Grey tex bat_grey
+  variant Pale tex bat_pale
 entity worm
   name Worm
   model worm
@@ -629,6 +684,9 @@ entity worm
   biomes plains forest swamp jungle
   anim slither
   trait prey
+  variant Brown tex worm_brown
+  variant Pale tex worm_pale
+  variant Green tex worm_green
 entity ant
   name Ant
   model ant
@@ -641,7 +699,9 @@ entity ant
   biomes desert savanna jungle badlands forest
   anim scuttle
   trait herd
-  variant Red 220 90 60
+  variant Red tex ant_red
+  variant Brown tex ant_brown
+  variant Black tex ant_black
 entity beetle
   name Beetle
   model beetle
@@ -653,9 +713,9 @@ entity beetle
   weight 8
   biomes forest jungle swamp plains
   anim scuttle
-  variant Green 90 200 120
-  variant Blue 80 120 230
-  variant Gold 240 200 80
+  variant Green tex beetle_green
+  variant Blue tex beetle_blue
+  variant Gold tex beetle_gold
 entity turkey
   name Turkey
   model turkey
@@ -671,6 +731,9 @@ entity turkey
   anim waddle
   baby 0.45 360
   sound cluck
+  variant White tex turkey_white
+  variant Black tex turkey_black
+  variant Wild tex turkey_wild
 entity goose
   name Goose
   model goose
@@ -687,6 +750,9 @@ entity goose
   anim waddle
   gives egg 220
   baby 0.45 360
+  variant Grey tex goose_grey
+  variant Brown tex goose_brown
+  variant Canada tex goose_canada
 entity donkey
   name Donkey
   model donkey
@@ -702,7 +768,9 @@ entity donkey
   tamable
   rideable
   baby 0.55 720
-  variant Grey 170 170 176
+  variant Brown tex donkey_brown
+  variant White tex donkey_white
+  variant Dark tex donkey_dark
 entity llama
   name Llama
   model llama
@@ -717,8 +785,9 @@ entity llama
   damage 2
   gives white_wool 300
   baby 0.5 600
-  variant Brown 170 130 100
-  variant Black 80 76 80
+  variant Brown tex llama_brown
+  variant Black tex llama_black
+  variant Patchy tex llama_patchy
 entity bison
   name Bison
   model bison
@@ -734,6 +803,9 @@ entity bison
   damage 6
   baby 0.5 720
   sound moo
+  variant Tan tex bison_tan
+  variant Dark tex bison_dark
+  variant Pale tex bison_pale
 entity yak
   name Yak
   model yak
@@ -750,6 +822,9 @@ entity yak
   gives milk 200
   baby 0.5 720
   sound moo
+  variant Brown tex yak_brown
+  variant Cream tex yak_cream
+  variant Grey tex yak_grey
 entity camel
   name Camel
   model camel
@@ -765,6 +840,9 @@ entity camel
   tamable
   rideable
   baby 0.5 720
+  variant Dark tex camel_dark
+  variant Cream tex camel_cream
+  variant Grey tex camel_grey
 entity bull
   name Bull
   model bull
@@ -779,6 +857,9 @@ entity bull
   trait territorial
   damage 6
   sound moo
+  variant Black tex bull_black
+  variant Red tex bull_red
+  variant Pied tex bull_pied
 entity highland_cow
   name Highland Cow
   model cow_highland
@@ -795,6 +876,9 @@ entity highland_cow
   gives milk 180
   baby 0.5 600
   sound moo
+  variant Dun tex cow_highland_dun
+  variant Black tex cow_highland_black
+  variant Red tex cow_highland_red
 entity merino
   name Merino Sheep
   model sheep_merino
@@ -811,8 +895,9 @@ entity merino
   gives white_wool 150
   baby 0.5 540
   sound baa
-  variant Grey 180 180 186
-  variant Brown 190 150 120
+  variant Grey tex sheep_merino_grey
+  variant Brown tex sheep_merino_brown
+  variant Black tex sheep_merino_black
 entity lop_rabbit
   name Lop Rabbit
   model rabbit_lop
@@ -828,8 +913,9 @@ entity lop_rabbit
   tamable
   anim hop
   baby 0.5 240
-  variant Grey 170 170 176
-  variant Sandy 220 190 150
+  variant Sandy tex rabbit_lop_sandy
+  variant White tex rabbit_lop_white
+  variant Dutch tex rabbit_lop_dutch
 entity fish
   name Fish
   model fish
@@ -841,11 +927,11 @@ entity fish
   weight 40
   drops raw_fish 1
   anim float
-  variant Orange 255 160 80
-  variant Blue 120 180 255
-  variant Green 150 215 130
-  variant Big 200 200 220 size 1.6
-  variant Tiny 255 230 120 size 0.6
+  variant Orange tex fish_orange
+  variant Blue tex fish_blue
+  variant Green tex fish_green
+  variant Big size 1.6 tex fish_big
+  variant Tiny size 0.6 tex fish_tiny
 entity squid
   name Squid
   model squid
@@ -857,8 +943,9 @@ entity squid
   weight 8
   drops raw_fish 1
   anim float
-  variant Red 240 110 100
-  variant Giant 180 140 200 size 1.8
+  variant Red tex squid_red
+  variant Giant size 1.8 tex squid_giant
+  variant Teal tex squid_teal
 entity lurker
   name Lurker
   model player
@@ -870,10 +957,10 @@ entity lurker
   weight 14
   night
   damage 3
-  tint 70 110 90
+  tex lurker
   sound growl
-  variant Pale 150 170 160
-  variant Ashen 96 96 104
+  variant Pale tex lurker_pale
+  variant Ashen tex lurker_ashen
 entity wraith
   name Wraith
   model wraith
@@ -888,6 +975,9 @@ entity wraith
   damage 4
   anim float
   glow 7
+  variant Pale tex wraith_pale
+  variant Violet tex wraith_violet
+  variant Green tex wraith_green
 entity bone_hound
   name Bone Hound
   model skeleton_hound
@@ -901,6 +991,8 @@ entity bone_hound
   night
   damage 3
   trait pack
+  variant Charred tex skeleton_hound_charred
+  variant Mossy tex skeleton_hound_mossy
 entity skeleton
   name Skeleton
   model skeleton
@@ -915,6 +1007,9 @@ entity skeleton
   shoots 3
   sound rattle
   drops arrow 2
+  variant Mossy tex skeleton_mossy
+  variant Charred tex skeleton_charred
+  variant Bleached tex skeleton_bleached
 entity zombie
   name Zombie
   model zombie
@@ -927,6 +1022,9 @@ entity zombie
   night
   damage 4
   sound groan
+  variant Pale tex zombie_pale
+  variant Drowned tex zombie_drowned
+  variant Rotten tex zombie_rotten
 entity werewolf
   name Werewolf
   model werewolf
@@ -941,6 +1039,9 @@ entity werewolf
   damage 7
   trait pack
   sound howl
+  variant Grey tex werewolf_grey
+  variant Black tex werewolf_black
+  variant Pale tex werewolf_pale
 entity ghoul
   name Ghoul
   model ghoul
@@ -954,6 +1055,9 @@ entity ghoul
   night
   damage 4
   sound hiss
+  variant Sallow tex ghoul_sallow
+  variant Dark tex ghoul_dark
+  variant Pale tex ghoul_pale
 entity ogre
   name Ogre
   model ogre
@@ -968,6 +1072,9 @@ entity ogre
   damage 11
   sound roar
   drops raw_meat 4
+  variant Grey tex ogre_grey
+  variant Red tex ogre_red
+  variant Blue tex ogre_blue
 entity scarecrow
   name Scarecrow
   model scarecrow
@@ -981,6 +1088,9 @@ entity scarecrow
   night
   damage 3
   drops wheat 3
+  variant Red tex scarecrow_red
+  variant Blue tex scarecrow_blue
+  variant Green tex scarecrow_green
 entity slime
   name Slime
   model slime
@@ -994,10 +1104,9 @@ entity slime
   damage 2
   trait jumps
   anim hop
-  variant Blue 110 170 250
-  variant Small 150 240 150 size 0.55
-  variant Big 90 200 110 size 1.5
-  tint 130 220 130
+  variant Blue tex slime_blue
+  variant Small size 0.55 tex slime_small
+  variant Big size 1.5 tex slime_big
 entity magma_slime
   name Magma Slime
   model slime
@@ -1011,8 +1120,10 @@ entity magma_slime
   damage 4
   trait jumps
   anim hop
-  tint 255 140 60
+  tex slime_magma
   glow 13
+  variant Dark tex slime_magma_dark
+  variant Bright tex slime_magma_bright
 entity crawler
   name Crawler
   model crawler
@@ -1026,6 +1137,9 @@ entity crawler
   damage 4
   anim scuttle
   drops string 2
+  variant Grey tex crawler_grey
+  variant Green tex crawler_green
+  variant Red tex crawler_red
 entity cave_spider
   name Cave Spider
   model spider
@@ -1039,7 +1153,10 @@ entity cave_spider
   damage 3
   anim scuttle
   drops string 2
-  tint 90 80 100
+  tex spider_cave
+  variant Violet tex spider_cave_violet
+  variant Teal tex spider_cave_teal
+  variant Ash tex spider_cave_ash
 entity frost_crawler
   name Frost Crawler
   model crawler
@@ -1052,7 +1169,10 @@ entity frost_crawler
   biomes frozen_cave
   damage 4
   anim scuttle
-  tint 170 220 255
+  tex crawler_frost
+  variant White tex crawler_frost_white
+  variant Teal tex crawler_frost_teal
+  variant Deep tex crawler_frost_deep
 entity golem
   name Rock Golem
   model golem
@@ -1066,6 +1186,9 @@ entity golem
   damage 9
   drops crystal 2
   glow 4
+  variant Mossy tex golem_mossy
+  variant Crystal tex golem_crystal
+  variant Basalt tex golem_basalt
 entity glow_beetle
   name Glow Beetle
   model beetle
@@ -1077,8 +1200,10 @@ entity glow_beetle
   weight 14
   biomes mushroom_cave lush_cave
   anim scuttle
-  tint 110 255 230
+  tex beetle_glow
   glow 15
+  variant Green tex beetle_glow_green
+  variant Amber tex beetle_glow_amber
 entity cave_fishlet
   name Blind Newt
   model frog
@@ -1091,7 +1216,9 @@ entity cave_fishlet
   biomes lush_cave frozen_cave
   trait jumps
   anim hop
-  tint 240 220 230
+  tex frog_newt
+  variant Spotted tex frog_newt_spotted
+  variant Grey tex frog_newt_grey
 entity villager_farmer
   name Farmer
   model player
@@ -1103,13 +1230,16 @@ entity villager_farmer
   weight 2
   biomes plains savanna forest taiga desert
   job farmer
-  tint 150 200 130
+  tex villager_farmer
   damage 2
   trade wheat 6 bread 2
   trade carrot 5 ruby 1
   trade ruby 1 wheat_seeds 8
   trade ruby 1 potato_seeds 6
   baby 0.55 900
+  variant Tan tex villager_farmer_tan
+  variant Dark tex villager_farmer_dark
+  variant Ruddy tex villager_farmer_ruddy
 entity villager_builder
   name Builder
   model player
@@ -1121,12 +1251,15 @@ entity villager_builder
   weight 2
   biomes plains savanna forest taiga desert
   job builder
-  tint 220 180 130
+  tex villager_builder
   damage 2
   trade log 8 planks 40
   trade cobble 16 stone_bricks 12
   trade ruby 1 glass 12
   baby 0.55 900
+  variant Tan tex villager_builder_tan
+  variant Dark tex villager_builder_dark
+  variant Ruddy tex villager_builder_ruddy
 entity villager_guard
   name Guard
   model player
@@ -1138,11 +1271,14 @@ entity villager_guard
   weight 2
   biomes plains savanna forest taiga desert
   job guard
-  tint 150 160 200
+  tex villager_guard
   damage 6
   trade ruby 2 iron_sword 1
   trade raw_meat 3 cooked_meat 3
   baby 0.55 900
+  variant Tan tex villager_guard_tan
+  variant Dark tex villager_guard_dark
+  variant Ruddy tex villager_guard_ruddy
 entity villager_baker
   name Baker
   model player
@@ -1154,7 +1290,7 @@ entity villager_baker
   weight 2
   biomes plains savanna forest taiga desert
   job baker
-  tint 250 230 200
+  tex villager_baker
   damage 2
   trade wheat 4 bread 2
   trade ruby 1 pizza 1
@@ -1162,6 +1298,9 @@ entity villager_baker
   trade apple 3 apple_pie 1
   trade milk 2 cheese 2
   baby 0.55 900
+  variant Tan tex villager_baker_tan
+  variant Dark tex villager_baker_dark
+  variant Ruddy tex villager_baker_ruddy
 entity villager_smith
   name Smith
   model player
@@ -1173,13 +1312,16 @@ entity villager_smith
   weight 2
   biomes plains savanna forest taiga desert
   job smith
-  tint 150 130 130
+  tex villager_smith
   damage 2
   trade iron_ore 6 iron_pick 1
   trade iron_ore 4 iron_hoe 1
   trade coal 8 ruby 1
   trade ruby 3 crystal_pick 1
   baby 0.55 900
+  variant Tan tex villager_smith_tan
+  variant Dark tex villager_smith_dark
+  variant Ruddy tex villager_smith_ruddy
 entity villager_trader
   name Trader
   model player
@@ -1191,7 +1333,7 @@ entity villager_trader
   weight 2
   biomes plains savanna forest taiga desert
   job trader
-  tint 230 200 110
+  tex villager_trader
   damage 2
   trade ruby 1 bread 6
   trade ruby 1 oak_door 2
@@ -1199,6 +1341,9 @@ entity villager_trader
   trade crystal 2 ruby 1
   trade string 6 ruby 1
   baby 0.55 900
+  variant Tan tex villager_trader_tan
+  variant Dark tex villager_trader_dark
+  variant Ruddy tex villager_trader_ruddy
 entity villager_shepherd
   name Shepherd
   model player
@@ -1210,12 +1355,15 @@ entity villager_shepherd
   weight 2
   biomes plains savanna forest taiga desert
   job shepherd
-  tint 200 200 220
+  tex villager_shepherd
   damage 2
   trade white_wool 4 ruby 1
   trade ruby 1 white_wool 6
   trade milk 3 ruby 1
   baby 0.55 900
+  variant Tan tex villager_shepherd_tan
+  variant Dark tex villager_shepherd_dark
+  variant Ruddy tex villager_shepherd_ruddy
 entity villager_fisher
   name Fisher
   model player
@@ -1227,12 +1375,15 @@ entity villager_fisher
   weight 2
   biomes plains savanna forest taiga desert
   job fisher
-  tint 130 190 220
+  tex villager_fisher
   damage 2
   trade raw_fish 4 ruby 1
   trade ruby 1 cooked_fish 5
   trade ruby 2 fish_soup 3
   baby 0.55 900
+  variant Tan tex villager_fisher_tan
+  variant Dark tex villager_fisher_dark
+  variant Ruddy tex villager_fisher_ruddy
 entity wanderer
   name Wanderer
   model player
@@ -1242,6 +1393,9 @@ entity wanderer
   health 74
   behavior npc
   weight 4
-  tint 210 220 255
+  tex wanderer
   trade ruby 1 apple 6
   trade berries 8 ruby 1
+  variant Green tex wanderer_green
+  variant Red tex wanderer_red
+  variant Grey tex wanderer_grey

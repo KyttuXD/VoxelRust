@@ -502,6 +502,7 @@ entity <id>
   name <display name>
   model <model id>
   tint <r> <g> <b>          colour the model is multiplied by
+  tex <picture>             the picture it is painted with (default: the model's own)
   height <0.1..6>           blocks; the model is scaled to this height (default 1.8)
   width <0.1..3>            blocks, for collision (default 0.6)
   speed <0..12>             blocks per second (default 2.5)
@@ -514,7 +515,7 @@ entity <id>
   drops <item> [<count>]    left behind when killed in survival (count 1..64, default 1)
   trait <names...>          flees herd jumps territorial hunter prey lazy pack follows
   anim walk | hop | slither | flap | scuttle | waddle | float
-  variant <name> [<r> <g> <b>] [model <id>] [size <factor>]   another look
+  variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>]   another look
   baby <size> <seconds>     it has young: how small, and how long they take to grow
   gives <item> <seconds>    right click collects one, then again after that long
   likes <item>              the food it follows a player for (with trait follows)
@@ -555,14 +556,25 @@ one look at random: the entity's own, or one of its variants. The name is
 shown before the creature's name (`Black Sheep`); an underscore in it
 becomes a space. The three numbers, if present, are the variant's tint;
 `model <id>` gives it another model; `size` (0.2..3) scales it relative to
-the entity's `height`.
+the entity's `height`; `tex <picture>` paints it with another picture.
 
 ```
 entity sheep
   ...
-  variant Black 88 84 88
+  variant Black tex sheep_black
   variant Ram model sheep_ram size 1.1
 ```
+
+**Pictures.** A creature is painted with the picture called `tex` (on the
+entity or on a variant), or else with the picture named after its model.
+A picture name is looked for in a texture pack's `textures/entity` folder,
+then among the game's own (`data/textures/entity/<picture>.png`, written by
+`tools/entity_textures.py`). The picture must be laid out like the model's own
+texture (the same shape, with each part where the model's faces say); a
+picture of another shape is ignored for a model's own picture. The tint still
+multiplies the picture, so a creature with a picture of its own usually has no
+tint. How the pictures are made, and how a pack replaces them, is in
+[TEXTURING.md](TEXTURING.md#creatures-and-players).
 
 `baby <size> <seconds>`: the size is relative to an adult (0.2..0.9) and the
 time at least 5 seconds. Young have half the health, grow steadily, and are

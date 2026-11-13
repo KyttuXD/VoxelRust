@@ -532,9 +532,15 @@ with their models made by `tools/gen_props.py`.
 
 SETTINGS > SKIN shows a turning preview of your character.
 
-- **LOOK** steps through the built-in looks: `default`, `clay`, `moss`,
-  `slate`, `charcoal`, `snow`, `rose`, `gold` (tints of the default body) and
-  `custom`.
+- **LOOK** steps through the built-in skins: `default`, `explorer`, `miner`,
+  `farmer`, `sailor`, `knight`, `mage`, `ranger`, `baker` and `custom`.
+  `default` is the skin your **player name** picks: the same name always
+  wears the same one of the eight (any capitals count as small letters), and
+  so do players in multiplayer whose own skin has not arrived. Change your
+  name and the skin changes with it (`default` only). The skins are drawn by
+  `tools/entity_textures.py` in the OCD style (see
+  [TEXTURING.md](TEXTURING.md#creatures-and-players)); a texture pack can
+  replace them.
 - **Your own skin**: a **64 x 64 PNG** in the usual player-skin layout. Type
   the path of the file and click USE THIS FILE. The game copies it into the
   data folder as `skin.png` and selects `custom`. You can also put `skin.png`

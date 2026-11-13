@@ -1,4 +1,4 @@
-# Texturing blocks and items (OCD style)
+# Texturing blocks, items, creatures and players (OCD style)
 
 VoxelRust's pictures are drawn in the **OCD style**: flat, bold and simple,
 like the OCD texture pack. The game's older look (noisy, shaded, painted by
@@ -121,6 +121,138 @@ the game's own pictures until someone draws OCD ones.
 4. Check the checklist: 16 x 16, one-pixel frame (blocks) or outline (items),
    two to eight flat colours, no dithering, upright if it is a tool.
 
+## Creatures and players
+
+Every creature, villager and player is drawn in the same style: flat colours,
+a one-pixel darker frame round each face, no noise, no dithering, three to
+eight colours a picture. Nobody paints them in an editor. They are **made by a
+script from a table of colours**, so a change of palette repaints everything.
+
+### The workflow
+
+1. The colours are in `tools/entity_palettes.py`. There is one `sp(model, base,
+   looks)` entry per model: `base` gives the colours of the parts (`main`,
+   `head`, `belly`, `snout`, `ear`, `leg`, `hoof`, `tail`, `mane`, `horn`,
+   `eye`...) and a few patterns (`spots`, `stripes`, `socks`, `blaze`, `belly`,
+   `back`, `band`...); every entry in `looks` is another look made from the
+   base by changing some of the colours (`cow` has `brown` and `red`, which
+   become `cow_brown` and `cow_red`). The header of the file lists every key.
+2. Run
+
+   ```
+   python3 tools/entity_textures.py                  # writes data/textures/entity/*.png
+   python3 tools/entity_textures.py --only cow,pig   # just these
+   python3 tools/entity_textures.py --sheet all.png  # a contact sheet to look at
+   python3 tools/entity_textures.py --template cow   # cow_layout.png: where each part goes
+   ```
+
+   It needs Python 3 and Pillow. The output is the same every time, so a
+   change shows in `git diff` as the pictures that changed.
+3. Run `python3 tools/gen_creatures.py` if you added a look or a creature. It
+   writes `data/wildlife.txt`, where each look is one line,
+   `variant Brown tex cow_brown` (the `L(...)` helper in the script), and
+   checks that every picture it names exists.
+4. Look at it in the game (creatures show on the inventory's spawn eggs, and
+   in the world; the skin tab of SETTINGS shows the player).
+
+How the script paints. It reads each model (`data/models/<model>.bbmodel`), which
+says where on the picture every face of every box is, and for each face: finds
+the part from the box's name (`head`, `ear-l`, `shin-f-r`, `sleeve-l`...),
+fills it with the part's colour, lets the patterns recolour pixels (a pattern
+is worked out from the 3D place of the pixel, so a spot goes on across an
+edge), draws the frame on faces of 3 x 3 pixels or more, and puts the eyes and
+nose holes where they go. Parts the palette does not name take the colour of
+a related part (`tail_tip` is the tail, `hoof` the leg, anything else the
+body). The bottom third of every lower leg is the `hoof` colour, when the
+palette has one (hooves, paws, boots).
+
+**What looks right.** Light colours for belly and muzzle, dark ones for ears,
+hooves and the end of the tail, a light/dark pair in each pattern, and eyes of
+a very dark colour (yellow for night creatures and cats, red for the sinister).
+Do not add more patterns than two: the pictures are small and the frame
+already makes them busy.
+
+### The looks
+
+Each creature has a base look (the picture named after its model) and two to
+nine more, as `variant` lines of its data (see [DATA.md](DATA.md#creatures)).
+One is picked for each creature that appears. The base game's creatures:
+
+| Creature | Looks |
+| --- | --- |
+| Cow | black and white, brown, red, longhorn, dark longhorn |
+| Pig | pink, spotted, black |
+| Sheep, Merino | white, black, grey, brown (the sheep also a ram) |
+| Chicken | white, brown, black, rooster |
+| Horse | chestnut, bay, black, palomino, grey, pony, chestnut pony |
+| Dog | golden, brown, grey, tan, shepherd, terrier, hound (each in two colours) |
+| Cat | ginger, black, cream, grey, fluffy, lynx |
+| Wolf, fox, bear | the usual colours, also arctic or black |
+| Songbird | brown, blue, red, yellow, green |
+| Butterfly | orange, blue, white, violet, lime |
+| Zombie, skeleton, ghoul | three each (pale, drowned, mossy, charred...) |
+| Villagers | each job has its own outfit, worn by four faces (fair, tan, dark, ruddy) |
+
+The rest (goat, duck, goose, turkey, donkey, llama, camel, bison, yak, rabbits,
+deer, elephant, monkey, penguin, turtle, crab, frog, tiger, alligator, snake,
+spiders, owl, bee, firefly, bat, worm, ant, beetles, fish, squid, wraith,
+werewolf, ogre, scarecrow, slimes, crawlers, golem...) have two to nine
+looks each: see the table in `tools/entity_palettes.py`, which is the
+complete list.
+
+### Player skins
+
+Players are painted the same way, on the usual 64 x 64 skin layout (so a skin
+from anywhere works in the game). The eight built-in skins are `skin_explorer`,
+`skin_miner`, `skin_farmer`, `skin_sailor`, `skin_knight`, `skin_mage`,
+`skin_ranger` and `skin_baker`: each has its own skin tone, hair, shirt,
+trousers and a hat, apron, belt or beard. A player whose LOOK is `default` wears the
+one their name picks (a hash of the lower-case name modulo eight; see
+`default_skin_for` in `src/content/pack_entities.rs`), and so do other
+players in multiplayer until their own skin arrives. The model's overlay
+layers (hat, jacket, sleeves, trousers) are only painted when the palette has
+a colour for them (`o_hat`, `o_jacket`...), and a pointed hat or helmet covers only the
+top of the head (`keep_top`). The first-person hand uses the same skin.
+
+### Using a pack's creature pictures
+
+The pack folders you give `--texture-pack` (see [Using the pack](#using-the-pack))
+are also searched for creature pictures, in the pack's
+`assets/<namespace>/textures/entity/` folder (or `textures/entity/`, `entity/`,
+or the folder itself) and in the folders inside it, down to three deep. A
+picture is found by its file name, or by its path inside the entity folder.
+The name table (`pack_names` and `ALIASES` in `src/content/pack_entities.rs`):
+
+| Our picture | The pack may call it |
+| --- | --- |
+| `cow`, `pig`, `horse`, `skeleton`... (the model's name) | the same, `cow/cow` |
+| `cow_brown`, `pig_spotted`... | the same, or `cow/cow_brown` (the name's front half as a folder) |
+| `villager_farmer_tan` | `villager_farmer_tan`, `villager_farmer/villager_farmer_tan` |
+| `player`, `skin_explorer` | `player/wide/steve`, `steve` |
+| `player_slim` | `player/slim/alex`, `alex` |
+| `skin_miner`, `skin_farmer`, `skin_sailor`, `skin_knight`, `skin_mage`, `skin_ranger`, `skin_baker` | `kai`, `sunny`, `makena`, `ari`, `noor`, `efe`, `zuri` (in `player/wide/`, or anywhere) |
+
+A pack's picture wins over the game's. For the model's own picture (a picture
+called the same as the model) it must have the shape of the model's texture
+(`128 x 64`, or any size with that proportion), or it is ignored; a variant's
+picture is used whatever its shape, so make it the same shape. **The picture
+must follow our layout**: the models decide where on the picture each part is,
+and a picture drawn for another game's models will look scrambled. Run
+`python3 tools/entity_textures.py --template cow` for a map of one model's
+layout (each part in its own colour); the player skins use the usual layout.
+The pack's colour settings (hue, saturation, brightness) do not change these
+pictures.
+
+### Making a new creature's pictures
+
+1. Write the model (see [DATA.md](DATA.md)): name the boxes like the
+   other models do (`head`, `ear-l`, `leg-f-l`, `tail`...) so the parts are found.
+2. In `tools/entity_palettes.py` add `sp("mymodel", dict(main="#a05030", ...), {...looks})`.
+3. `python3 tools/entity_textures.py --only mymodel`, look at the picture,
+   and name the looks with `variant <name> tex mymodel_<look>` in the data.
+   Mods that ship their own model texture inside the `.bbmodel` need none
+   of this: the picture inside the model is used when no `tex` is named.
+
 ## Checklist
 
 - [ ] 16 x 16 pixels, RGBA.
@@ -130,3 +262,5 @@ the game's own pictures until someone draws OCD ones.
 - [ ] Tools upright, handle down.
 - [ ] Greys for things the biome tints (grass, leaves, water).
 - [ ] Named like the pack names it, or added to `pack_names`.
+- [ ] Creatures: the palette is in `tools/entity_palettes.py`, the pictures are
+  made by `tools/entity_textures.py`, nothing is painted by hand.

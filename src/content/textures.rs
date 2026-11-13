@@ -978,6 +978,8 @@ static PACKS: core::sync::atomic::AtomicPtr<PackIndex> = core::sync::atomic::Ato
 
 /// Use these packs (folders), in order, and index their pictures. Returns how many pictures were found.
 pub fn set_texture_packs(paths: &[alloc::string::String]) -> usize {
+    // The packs' pictures of creatures and players are looked for too.
+    crate::pack_entities::set_packs(paths);
     let mut files = Vec::new();
     for root in paths {
         let root = if root.ends_with('/') { root.clone() } else { alloc::format!("{}/", root) };
