@@ -733,11 +733,14 @@ sound <id> <effects|steps|ui> file <path> [loudness] [caption]
 
 `path` is relative to the pack file, as for textures. The file is a WAV (PCM of
 8, 16, 24 or 32 bits, 32-bit float, A-law, mu-law, MS ADPCM or IMA ADPCM), an
-AIFF or AIFF-C (PCM), a FLAC, or an Ogg Vorbis file (`.ogg`: Vorbis I, any
+AIFF or AIFF-C (PCM), a FLAC, an Ogg Vorbis file (`.ogg`: Vorbis I, any
 number of channels up to 8, mono and stereo being the usual; floor types 0 and
 1, residue types 0, 1 and 2, all codebook types; only the first stream of the
-file is read); any number of channels, any rate, at most 12
-seconds. (MP3 is not read: convert it to Ogg, FLAC or WAV.) It is turned into one channel at 22050 Hz when the
+file is read), or an MP3; any number of channels, any rate, at most 12
+seconds. An MP3 is MPEG-1, 2 or 2.5 layer III at any constant or variable bitrate (mono, stereo,
+joint stereo); ID3 tags are skipped, and when the encoder's LAME tag says how much silence it added
+at the start and end, that is cut off. Free-format MP3s and the older layers I and II are not read.
+It is turned into one channel at 22050 Hz when the
 pack is read, and its pitch varies a little less than a made sound's.
 `loudness` is 0..2 (default 1). A file that cannot be read is a warning in
 the log, and that sound does not exist. Zip packs may hold the files too.
@@ -747,7 +750,7 @@ sound ding ui file sounds/ding.wav 0.8 A ding
 ```
 
 Players can also replace any sound, made or recorded, without a pack: put
-`<id>.wav` (or `.flac`, `.aiff`, `.ogg`) in the `sounds/` folder inside the game's data folder (next to
+`<id>.wav` (or `.flac`, `.aiff`, `.ogg`, `.mp3`) in the `sounds/` folder inside the game's data folder (next to
 `worlds/`), for example `sounds/step.wav` or `sounds/thunder.wav`. They are
 read when the game starts and the log lists them.
 

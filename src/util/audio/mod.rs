@@ -1,4 +1,4 @@
-//! Reading sound files: WAV (PCM, float, A-law, mu-law, ADPCM), AIFF, FLAC and Ogg Vorbis,
+//! Reading sound files: WAV (PCM, float, A-law, mu-law, ADPCM), AIFF, FLAC, Ogg Vorbis and MP3,
 //! any number of channels and any rate. The result is what the mixer plays:
 //! one channel of 16-bit samples at [`RATE`].
 
@@ -20,7 +20,7 @@ pub(super) fn u32le(b: &[u8], at: usize) -> Option<u32> {
 
 /// Sound the mixer can play, from a file of any kind this reads: WAV (PCM of
 /// 8, 16, 24 or 32 bits, 32-bit float, A-law, mu-law, MS ADPCM, IMA ADPCM),
-/// AIFF and AIFF-C (PCM), FLAC, and Ogg Vorbis. Any number of channels (averaged), any
+/// AIFF and AIFF-C (PCM), FLAC, Ogg Vorbis, and MP3 (MPEG-1/2/2.5 layer III). Any number of channels (averaged), any
 /// rate (resampled). `None` if it is none of those, damaged, or too long.
 pub fn decode(bytes: &[u8]) -> Option<Vec<i16>> {
     if bytes.len() > MAX_BYTES || bytes.len() < 16 {
@@ -34,6 +34,8 @@ pub fn decode(bytes: &[u8]) -> Option<Vec<i16>> {
         flac(bytes)?
     } else if &bytes[0..4] == b"OggS" {
         ogg(bytes)?
+    } else if mp3::is_mp3(bytes) {
+        mp3::mp3(bytes)?
     } else {
         return None;
     };
@@ -77,6 +79,7 @@ mod aiff;
 mod flac;
 mod ogg;
 mod vorbis;
+mod mp3;
 mod wav;
 
 use adpcm::{ima_adpcm, ms_adpcm};
