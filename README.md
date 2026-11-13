@@ -13,16 +13,20 @@ own procedurally painted textures and its own terrain generator.
   forest, desert, tundra, taiga, mountain, swamp, savanna, jungle, badlands),
   six kinds of tree, oceans, ores, and seven kinds of cave (mushroom,
   crystal, lush, frozen, magma, webbed and plain) each with its own blocks
-  and creatures. Or **the real Earth**: heights from public elevation tiles;
+  and creatures. Or a **flat** world of level grassland to build on. Or
+  **the real Earth** (a mod that comes with the game): heights from public
+  elevation tiles;
   water, forests, sand, ice, asphalt roads with painted lines, hollow
   buildings with floors, stairs and furniture, and fields of crops from
   OpenStreetMap; and an in-game map (M) to look around and travel anywhere.
+  The world is 256 blocks high.
 - **Survival and creative modes.** Survival has health, hunger, falling,
   drowning, mining times with cracks spreading over the block, tools, hoes
   and swords in six materials, drops, crafting by hand and at a crafting
   table, furnaces, bows, chests, and monsters at night and in caves. Creative
   has flying (press jump twice), instant building, area tools, and an item
-  list with picture tabs and block icons drawn as isometric cubes.
+  list with picture tabs and block icons drawn as isometric cubes, including
+  a spawn egg for every creature.
 - **Farming and cooking.** Hoes till soil; wheat, carrots, potatoes and
   tomatoes grow in four stages; an oven bakes bread, pies, stew and three
   kinds of pizza.
@@ -35,19 +39,19 @@ own procedurally painted textures and its own terrain generator.
 - **Creatures.** 75 kinds: farm animals that give milk, wool and eggs and
   have young, animals you can tame, hunters and prey, birds and fish, night
   monsters (skeleton archers among them), cave dwellers, and villagers who
-  trade, farm, build and stand guard. See
-  [docs/CREATURES.md](docs/CREATURES.md).
-- **Vehicles and railways.** Boats, a buggy, a plane and rail carts, some
-  with storage. Speed, slow and station track; chains that join carts into
-  trains; a locomotive that runs by itself, stops at stations and shuttles
-  along its line.
+  trade, farm, build and stand guard. Horses, donkeys, camels and elephants
+  can be tamed and ridden. See [docs/CREATURES.md](docs/CREATURES.md).
+- **Vehicles and railways.** Boats, a plane and rail carts, some with
+  storage; a buggy, a truck and a kart in the Land Vehicles mod. Speed, slow
+  and station track; chains that join carts into trains; a locomotive that
+  runs by itself, stops at stations and shuttles along its line.
 - **Dimensions.** Other worlds inside each world (`sky`, `flatland`, `void`,
   `mirror`), reached with `/dim`; packs can add more.
 - **Sound.** Every sound is made from a line of numbers in the data files,
   so packs can retune them or add their own. Optional subtitles name what
   you hear.
 - **Weather.** Regional rain, snow and thunderstorms; optional earthquakes,
-  tsunamis and tornadoes.
+  tsunamis and tornadoes (the Natural Disasters mod).
 - **Multiplayer.** HOST A GAME from the menu runs a server inside the game
   while you play; `voxelrust --server` runs one on its own. Players join
   from the title screen. Positions, edits, chat, time, skins, creatures,
@@ -56,17 +60,19 @@ own procedurally painted textures and its own terrain generator.
 - **Modding.** Textures, blocks (including doors, crops, seats and falling
   blocks), shapes, items, tools, weapons, food, recipes, ores, plants,
   models, creatures, vehicles, sounds, dimensions, chat commands and small
-  scripts (`when <event> do <commands>`) are declared in text files. Drop a
-  mod into the
-  `mods` folder and it loads; `/reload` picks up changes without
-  restarting. Blockbench `.bbmodel` files are read directly. Player skins
+  scripts (`when <event> do <commands>`, with variables and conditions) are
+  declared in text files. Drop a mod into the `mods` folder and it loads;
+  `/reload` picks up changes without restarting. Three mods come inside the
+  program (Natural Disasters, Earth, Land Vehicles); SETTINGS > MODS switches
+  any mod on or off. Blockbench `.bbmodel` files are read directly. Player skins
   are 64 x 64 PNGs. The default player model is the LastRoute mannequin.
 - **Long views.** Detailed chunks near you, simplified terrain beyond (tested
   out to 2 km).
 - **A minimap** in the corner showing the ground you have explored (in
   Earth worlds, the whole map, dimmed where you have not been).
 - **Settings** for video (including a 3D detail scale that speeds up old
-  graphics cards), audio, controls (every key can be changed), game and skin.
+  graphics cards), audio, controls (every key can be changed), game, skin and
+  mods.
 - **Worlds as files.** Export a world to one `.vxworld` file and import it on
   another machine.
 
@@ -78,7 +84,7 @@ own procedurally painted textures and its own terrain generator.
 | [docs/CREATURES.md](docs/CREATURES.md) | wildlife, monsters and villagers: what lives where, milk, wool and eggs, taming, trading |
 | [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | hosting and joining, what is shared |
 | [docs/EARTH.md](docs/EARTH.md) | real-world terrain, the map, data sources |
-| [docs/MODDING.md](docs/MODDING.md) | packs, the mods folder, scripts and commands, models, skins |
+| [docs/MODDING.md](docs/MODDING.md) | packs, the mods folder, the mods that come with the game, scripts and commands, models, skins |
 | [docs/DATA.md](docs/DATA.md) | the content file format |
 | [docs/BUILDING.md](docs/BUILDING.md) | building for each platform, build names and updating, tests, CI, icons |
 | [docs/PORTING.md](docs/PORTING.md) | how it stays portable, old Macs, PowerPC, measurements |
@@ -86,8 +92,8 @@ own procedurally painted textures and its own terrain generator.
 
 ## How it stays portable
 
-The program is `no_std` Rust with **no dependencies**: about 23,000 lines,
-and a Linux binary of about 2.5 MB. It needs the C library and SDL2 (opened at run
+The program is `no_std` Rust with **no dependencies**: about 25,000 lines,
+and a Linux binary of about 2.6 MB. It needs the C library and SDL2 (opened at run
 time); graphics are fixed-function OpenGL 1.5 with no shaders. JSON, PNG,
 sockets, sound synthesis and the map projection are all written here. Why,
 and how each platform is built: [docs/PORTING.md](docs/PORTING.md).
@@ -146,7 +152,10 @@ are not touched.
 
 ## Known limits
 
-- The world is 128 blocks high.
+- There are no vertical chunk sections. The world is 256 blocks high and
+  each chunk is one column of that height, so there is no building above
+  256 or digging below 0. Invented terrain tops out at height 114; the rest
+  is room to build, and for mountains in Earth worlds.
 - There is no crafting grid. Recipes are lists you click to make; the lists
   are the recipe book.
 - Doors do not animate: a door switches at once between its shut shape and
@@ -156,15 +165,16 @@ are not touched.
 - Railways are simple automation (timed stops and a locomotive that shuttles
   along its line), not a scheduling system: no timetables, routes or working
   signals.
-- Pack scripts are a small event-and-command system, not a programming
-  language, and Rust code cannot be loaded as a mod.
-- In multiplayer, creatures, vehicles and chest contents are shared, but one
-  player's game runs the creatures and unridden vehicles for everyone, and
-  inventories, health and hunger stay per player and are not kept by the
-  server. Villagers' farming and building is not applied to a shared world.
+- Pack scripts are an event-and-command language with variables and
+  conditions, not a general programming language, and compiled Rust code
+  cannot be loaded as a mod.
+- In multiplayer, inventories, health and hunger stay per player and are not
+  kept by the server. Creatures, vehicles and chest contents are shared, but
+  one player's game runs the creatures and unridden vehicles for everyone.
+  Villagers' farming and building is not applied to a shared world.
   Dimensions are not available on a server. The sharing has only been tested
   between two copies of the game on one machine.
-- Creatures and villagers are not saved with the world: new ones appear
+- Villagers and wild creatures are not saved with the world: new ones appear
   when you come back. (Pets, vehicles and chests are saved.)
 - There are no generated villages, and no breeding: villagers and young
   animals simply turn up.
@@ -178,8 +188,10 @@ are not touched.
   workflows (CI and nightly builds) have not been able to run: the account's
   Actions budget blocks them on private repositories. So there are no
   nightly files yet.
-- The browser build is described in [docs/WEB.md](docs/WEB.md). The website
-  is not deployed.
+- The browser build ([docs/WEB.md](docs/WEB.md)) has been built and run
+  locally in Chromium, but the website is not deployed: the server meant for
+  it (`voxelrust.games.kyttuslab.org`) could not be reached over SSH without
+  credentials.
 - In Earth worlds, building heights are guesses from the size of the
   footprint: the map tiles carry no heights.
 
@@ -206,8 +218,9 @@ router to let people outside your network in.
 
 ## Earth worlds
 
-Choose TERRAIN: EARTH when creating a world, pick a starting place and a
-scale. This needs the internet and the system's `curl`.
+Earth is a mod that comes with the game and is on unless you switch it off
+in SETTINGS > MODS. Choose TERRAIN: EARTH when creating a world, pick a
+starting place and a scale. This needs the internet and the system's `curl`.
 [docs/EARTH.md](docs/EARTH.md) has the rest.
 
 Map data (c) OpenStreetMap contributors. Elevation: Mapzen / AWS Terrain
@@ -220,8 +233,8 @@ Tiles.
 | W A S D, mouse | move, look |
 | Space, Ctrl | jump, sprint |
 | Space twice | fly, in creative (Space / Shift go up / down) |
-| F | get out of a vehicle, or up from a seat |
-| Left / right / middle click | break or hit / place, use, open, sit, shoot, trade, tame / pick |
+| F | get out of a vehicle, off a creature, or up from a seat |
+| Left / right / middle click | break or hit / place, use, open, sit, shoot, trade, tame, ride / pick |
 | 1-9, mouse wheel | choose a hotbar slot |
 | E | inventory |
 | M | world map (Earth worlds); bigger minimap (other worlds) |

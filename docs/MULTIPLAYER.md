@@ -123,7 +123,9 @@ leaves, the next lowest takes over.
   **the server keeps the latest contents of each chest** and sends them to
   players who join later. It keeps them in memory, not in a file: they last
   as long as the server runs.
-- `/spawn` works only for the player whose game runs the creatures.
+- `/spawn` and spawn eggs work only for the player whose game runs the
+  creatures. A creature being ridden is moved by that game too, so riding
+  one works for that player only.
 
 This has been tested only between two copies of the game on one machine. It
 has not been tried over a real network, with slow connections, or with
@@ -139,9 +141,12 @@ many players.
 - **Pets** are not saved on a server.
 - **Dimensions.** `/dim` does not work on a server.
 
+World variables set by scripts (`/var`) are per player and are not saved on
+a server.
+
 Natural disasters do not happen on servers. Sleeping in a bed sets where you
 come back to but does not skip the night. The commands `/time`, `/mode`,
-`/weather`, `/set`, `/dim`, `/shoot`, `/aim`, `/strike` and `/reload` do not
+`/weather`, `/set`, `/dim`, `/shoot`, `/aim`, `/strike`, `/blast` and `/reload` do not
 work, and `/spawn` only for one player (see
 [PLAYING.md](PLAYING.md#chat-and-commands)). Pack scripts run in each
 player's own game.
@@ -161,6 +166,11 @@ disk; when they go back to singleplayer their own packs are in use again.
 So players do not need to install anything to join a modded server. While on
 a server, `/reload` and RELOAD CONTENT PACKS NOW do nothing: the server
 decides the content. To change a server's packs, restart it.
+
+The mods that come with the game (Natural Disasters, Earth, Land Vehicles)
+count as packs here: the ones switched on where the server runs are sent
+with the rest, so players on a server whose Land Vehicles mod is off have
+no buggy, truck or kart there, whatever their own settings say.
 
 ## The map-data relay
 

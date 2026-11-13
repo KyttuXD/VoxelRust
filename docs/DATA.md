@@ -6,11 +6,16 @@ which includes [data/creatures.txt](../data/creatures.txt) (models) and
 [data/wildlife.txt](../data/wildlife.txt) (every creature); all three are
 built into the program. Packs are read after it:
 
-1. `pack.txt` in the game's data folder, if it exists (the folder is printed
+1. The three mods that come inside the program (`data/packs/disasters`,
+   `data/packs/earth`, `data/packs/landvehicles`), unless switched off.
+2. `pack.txt` in the game's data folder, if it exists (the folder is printed
    at start-up; `--data DIR` chooses another).
-2. Every mod in the data folder's `mods` folder, then every mod in a `mods`
-   folder beside where the game was started.
-3. Every file given with `--pack FILE`.
+3. Every mod in the data folder's `mods` folder, then every mod in a `mods`
+   folder beside where the game was started, unless switched off.
+4. Every file given with `--pack FILE`.
+
+Mods are switched on and off in SETTINGS > MODS (see
+[MODDING.md](MODDING.md#switching-mods-on-and-off)).
 
 A pack can add new things, or redefine anything by reusing its id. There is a
 worked example in [examples/pack.txt](../examples/pack.txt). How packs are
@@ -26,7 +31,7 @@ or tabs; indentation is optional.
 
 These keywords start something new: `texture`, `block`, `item`, `recipe`,
 `craft`, `bake`, `smelt`, `ore`, `plant`, `model`, `entity`, `vehicle`,
-`sound`, `command`, `when`, `dimension`, `include`. Any other line sets a
+`sound`, `command`, `when`, `dimension`, `feature`, `include`. Any other line sets a
 property of the block, item, entity or vehicle most recently started.
 (`sound` with a single word, inside a block or an entity, is a property; see
 [Sounds](#sounds).)
@@ -36,8 +41,9 @@ declaration completely (it keeps its place in the order).
 
 Properties that are switches (`rotate`, `flip`, `hidden`, `unbreakable`,
 `night`, `storage`, `powered` and `solid`) are on when written alone or with
-`yes`, and off when followed by `no`, `false` or `0`. `falls`, `tall` and
-`tamable` are on when written alone and off only when followed by `no`.
+`yes`, and off when followed by `no`, `false` or `0`. `falls`, `tall`,
+`tamable` and `rideable` are on when written alone and off only when
+followed by `no`.
 
 ```
 include other-file.txt        # path relative to this file
@@ -257,6 +263,10 @@ Every block that is not `hidden` gets an item that places it. Declare an item
 for anything else: materials, tools, food, or an item that places a block in
 a special way.
 
+Two more kinds of item are made for you: one for each vehicle (see
+[Vehicles](#vehicles)) and a spawn egg for each creature (see
+[Spawn eggs](#spawn-eggs)).
+
 ```
 item <id>
   name <display name>
@@ -385,11 +395,16 @@ Bones are animated by name (capitals do not matter):
 | names containing `Thigh`, `Leg` (but not `Lower`) or `Arm` (but not `Forearm`) | swing when walking. The side comes from `L-`/`R-` or `Left`/`Right` at the start, or `-L`/`-R` at the end |
 | `Leg-FL`, `Leg-FR`, `Leg-BL`, `Leg-BR` | four-legged walkers: diagonal pairs move together |
 | `Leg-L1`, `Leg-R1`, `Leg-L2`, ... | many-legged creatures: odd and even pairs step in turn |
+| names starting with `Shin`: `Shin-FL` under `Leg-FL`, `Shin-L1` under `Leg-L1`, ... | the lower half of a leg. Make it a child bone of its leg, pivoted at the knee, with the same ending as the leg's name. It folds as the leg comes forward and straightens as it pushes back |
+| names starting with `Forearm`: `Forearm-L` under `Arm-L`, ... | the lower half of an arm, a child bone of its arm, pivoted at the elbow. It keeps a slight bend and swings a little |
 | `tail`, or `tail-a`, `tail-b` ... `tail-h` | wags; lettered pieces follow one another along the tail |
 | `wing-l`, `wing-r` | flap |
 | `ear-l`, `ear-r` | twitch |
 
-Other bones keep still.
+Other bones keep still. Shins and forearms are optional: a leg or an arm
+without one is a single stiff piece, as before. The name has to start with
+`Shin` or `Forearm` (a bone called `L-Forearm` keeps still). The base dog
+model (`data/models/dog.bbmodel`) is one with shins.
 
 Redefining the model `player` replaces the player's own body (and the
 Lurker's and Wanderer's, which use it).
@@ -418,6 +433,7 @@ entity <id>
   gives <item> <seconds>    right click collects one, then again after that long
   likes <item>              the food it follows a player for (with trait follows)
   tamable                   feeding it what it likes makes it a pet
+  rideable                  right click with an empty hand to ride it
   shoots <damage>           it looses shots at the player from a distance
   sound <sound id>          its call
   trade <item> <n> <item> <n>   takes the first from a player, hands over the second
@@ -478,8 +494,18 @@ with that item in hand tames it (the item is used up in survival). A pet
 follows its owner, catches up when left far behind, no longer flees or
 attacks them, and, if it has a `damage`, goes for hostile creatures within
 12 blocks. Right click it with anything else in hand to make it wait or
-follow again. Pets are saved with the world (`<world>.pets.txt`) and come
+follow again (for a `rideable` pet an empty hand means riding, so hold
+something). Pets are saved with the world (`<world>.pets.txt`) and come
 along into other dimensions.
+
+`rideable`: a player who right clicks a grown one with an empty hand gets
+on. If the creature is also `tamable`, it has to be tamed first; if it is
+not, anyone can ride it straight away. The creature turns to face the way
+the rider looks and moves at its own `speed` with the rider's movement
+keys; jump makes it jump (or swim upward in water). A `fly` creature flies
+while ridden: jump climbs and the fly-down key descends. The get-out key
+gets off. Getting on fires the script event `ride`. In the base data the
+horse, donkey, camel and elephant are `tamable` and `rideable`.
 
 `shoots <damage>`: 0..100 (3 if written alone). A creature that is
 attacking the player (a `hostile` one, or an angry `territorial` or `pack`
@@ -510,6 +536,16 @@ cave name in the list, its surface biomes are ignored.
 
 Inside an `entity` or `vehicle`, a `model` line with one word names the model
 to use; anywhere else (or with more words) `model` declares a model.
+
+### Spawn eggs
+
+Every creature gets an item called `<id>_egg` (`wolf_egg`, `horse_egg`),
+named after it (`Wolf Egg`), in the tab `Eggs`. Its picture is the creature
+itself standing in half an eggshell. Right click with it and one of that
+creature appears on the block aimed at; in survival the egg is used up.
+Nothing needs declaring. A pack that declares an item with that id itself
+keeps its own item, and no egg is made for that creature. Eggs can be used
+in recipes, trades and `/give` like any other item.
 
 ## Vehicles
 
@@ -543,6 +579,11 @@ sets it down, so recipes can make it: `craft boat 1 planks 5`.
 
 How they are driven is in [PLAYING.md](PLAYING.md#vehicles).
 
+The base data declares the boats, the rail carts, the locomotive and the
+plane. The `land` vehicles (`buggy`, `truck`, `kart`) are declared in the
+Land Vehicles mod, `data/packs/landvehicles/pack.txt`, which is a short
+complete example of textures, vehicles and recipes.
+
 ## Sounds
 
 Every sound is made when it is played, from a burst of noise and a tone
@@ -575,7 +616,8 @@ Declaring an id again retunes that sound. The game itself plays these ids,
 so a pack may restyle them: `step break place hurt click pop splash thunder
 rain rumble wave door bow rail`. The base data also defines `glass wood moo
 baa oink cluck bark meow howl growl hiss chirp buzz groan rattle roar chime
-whoosh sizzle` for blocks, creatures and packs to use.
+whoosh sizzle` for blocks, creatures and packs to use. The Natural Disasters
+mod defines `quake` and `twister`.
 
 A sound is used by naming it:
 
@@ -611,6 +653,24 @@ dimension mirror normal
 Players move with `/dim <name>` and `/dim home`; a pack usually wraps that
 in a script (`when use my_portal do /dim sky`). Not available on a server.
 
+## Features
+
+```
+feature <name> [<name> ...]
+```
+
+Switches on a part of the program that is otherwise left off. The program
+asks for two names:
+
+| Feature | What it switches on | Declared by |
+| --- | --- | --- |
+| `disasters` | earthquakes, tsunamis and tornadoes (which still need NATURAL DISASTERS on in SETTINGS > GAME) | the Natural Disasters mod |
+| `earth` | the EARTH terrain choice and the `--earth` option | the Earth mod |
+
+Both are declared by mods that come with the game, so they are on unless
+that mod is switched off. Any other name is accepted and does nothing: a
+`feature` line cannot add behaviour the program does not already have.
+
 ## Commands and scripts
 
 ```
@@ -621,10 +681,16 @@ when <event> [what] do <commands separated by ;>
 `command` adds a chat command (`$1`..`$9` and `$*` stand for what was typed
 after it). `when` runs commands when something happens: `start`, `every
 <seconds>`, `break <block>`, `place <block>`, `use <block>`, `useitem
-<item>`, `eat <item>`, `kill <entity>`, `tame <entity>`, `dimension
-<name>`. `when` lines are added, never replaced; a `command` with a name
-already used replaces the earlier one. The full description, and what this
-system cannot do, is in [MODDING.md](MODDING.md#scripts-and-commands).
+<item>`, `eat <item>`, `hit <entity>`, `kill <entity>`, `tame <entity>`,
+`ride <entity>`, `dimension <name>`, `night`, `day`, `death`. `when` lines
+are added, never replaced; a `command` with a name already used replaces the
+earlier one.
+
+The commands themselves can use numbered variables (`/var`, `$NAME`, and
+`$x $y $z` for where the player stands), conditions (`/if ... then ...
+[else ...]`), delays (`/after`) and repeats (`/repeat`). The full
+description, worked examples, and what this language cannot do, are in
+[MODDING.md](MODDING.md#scripts-and-commands).
 
 ## Terrain
 
@@ -636,8 +702,9 @@ plant <block> <one in N> [<biomes...>]
 ```
 
 - `ore`: the block replaces about one stone block in N between the two
-  heights (inclusive; sea level is 48, the world is 128 high). `ore amethyst
-  5 40 400`.
+  heights (inclusive). Sea level is 48 and the world is 256 high, but
+  invented terrain tops out at height 114, so there is no stone to replace
+  above that. `ore amethyst 5 40 400`.
 - `plant`: the block is set on about one grass block in N, in the listed
   surface biomes, or everywhere if none are listed. `plant glowberry_3 300
   jungle swamp`.
@@ -684,7 +751,10 @@ Likewise the textures `sun` and `moon`, and the model `player`.
 | Boxes in a custom shape | 8 |
 | Nested includes | 8 |
 | Stack size | 999 |
-| World height | 128 blocks |
+| World height | 256 blocks (heights 0 to 255). There are no vertical chunk sections: a chunk is one 16 x 16 column of that height |
+| Script variables | 256 in a world |
+| Commands waiting on `/after` | 64 |
+| Nesting of pack commands, `/if` and `/repeat` | 6 |
 
 ## Saves and changing content
 

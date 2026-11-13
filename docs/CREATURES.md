@@ -24,7 +24,8 @@ format is in [DATA.md](DATA.md#creatures).
   rooster); one is picked for each creature. F3 shows how many creatures are
   around you.
 
-Creatures are not saved with the world: when you come back, new ones appear.
+Wild creatures and villagers are not saved with the world: when you come
+back, new ones appear.
 The exception is [pets](#taming-and-pets), which are saved. In multiplayer
 everyone sees the same creatures; one player's game runs them for all (see
 [MULTIPLAYER.md](MULTIPLAYER.md#what-is-shared-and-what-is-not)).
@@ -39,7 +40,7 @@ screen.
 | Action | What happens |
 | --- | --- |
 | Left click | Hit it. A bare hand does 3 damage, a sword 6 to 15 (see [PLAYING.md](PLAYING.md#swords)); bows hit from a distance (see [PLAYING.md](PLAYING.md#bows)). In survival a killed creature leaves its drop; in creative one hit removes it and gives nothing |
-| Right click | Tame it (holding its favourite food), tell a pet to wait or follow, collect what it gives (milk, wool, an egg), trade, or hear what it has to say |
+| Right click | Tame it (holding its favourite food), ride it (a tamed horse, donkey, camel or elephant, with an empty hand), tell a pet to wait or follow, collect what it gives (milk, wool, an egg), trade, or hear what it has to say |
 | Hold its favourite food | Some animals walk after you while you hold it, from up to 10 blocks away |
 
 ### Milk, wool and eggs
@@ -70,13 +71,13 @@ White Wool at a crafting table.
 | Cow, Highland Cow, Sheep, Merino Sheep, Camel | Wheat |
 | Pig, Donkey, Lop Rabbit | Carrot |
 | Chicken | Wheat Seeds |
-| Horse | Apple |
+| Horse, Elephant | Apple |
 | Dog | Raw Meat |
 | Cat | Raw Fish |
 
 ### Taming and pets
 
-Eight kinds can be tamed. Hold the animal's favourite food and right click
+Nine kinds can be tamed. Hold the animal's favourite food and right click
 a grown one: the game says `THE ... IS NOW YOURS` and, in survival, one of
 the food is used up.
 
@@ -85,7 +86,7 @@ the food is used up.
 | Dog, Wolf | Raw Meat |
 | Cat | Raw Fish |
 | Fox | Berries |
-| Horse | Apple |
+| Horse, Elephant | Apple |
 | Donkey, Lop Rabbit | Carrot |
 | Camel | Wheat |
 
@@ -98,12 +99,41 @@ A pet:
   12 blocks;
 - waits where it is when you right click it with anything but its food in
   hand (`... WILL WAIT HERE`), and follows again after another right click
-  (`... WILL FOLLOW YOU`);
+  (`... WILL FOLLOW YOU`). For the four you can ride, an empty hand means
+  riding, so hold some other item to tell it to wait or follow;
 - comes with you into other dimensions;
 - is saved with the world, in `<world>.pets.txt`, and is there when you
   come back. On a server pets are not saved.
 
-Pets cannot be ridden.
+### Riding
+
+A tamed **horse, donkey, camel or elephant** can be ridden. Right click it
+with an empty hand to get on.
+
+- It faces the way you look. The movement keys (W A S D) move it, at its
+  own speed: a horse is quick, an elephant is not.
+- Jump makes it jump, and swim upward in water.
+- The get-out key (F) gets you off.
+- You also come off if the creature dies.
+
+Dogs, wolves, cats, foxes and lop rabbits cannot be ridden. Packs can make
+any creature rideable, flying ones included: on those, jump climbs and the
+fly-down key (Left Shift) descends. See
+[DATA.md](DATA.md#creatures) (`rideable`).
+
+On a server, a ridden creature obeys, and a spawn egg hatches, only for
+the player whose game runs the creatures (see
+[MULTIPLAYER.md](MULTIPLAYER.md#how-creatures-vehicles-and-chests-are-shared)).
+Riding has not been tested between two games.
+
+### Spawn eggs
+
+In creative mode the Eggs tab of the item list holds an egg for every
+creature, drawn as the creature standing in half an eggshell. Right click
+with one to set that creature down on the block you aim at. They are
+ordinary items (`<id>_egg`, for example `/give wolf_egg 3`); in survival an
+egg is used up when it hatches. No more hatch once 200 creatures are
+about.
 
 ### Young
 
@@ -141,23 +171,24 @@ kinds.
 | Goat | mountain, badlands | herd, hops, pack (hits back for 3); milk; drops 2 Raw Meat |
 | Chicken | plains, forest, savanna | prey, flees; eggs; drops 1 Raw Meat; follows Wheat Seeds |
 | Duck | swamp, plains, forest | herd, flees; eggs; drops 1 Raw Meat |
-| Horse | plains, savanna | herd, flees; fast; drops 2 Raw Meat; follows Apple. Horses cannot be ridden |
+| Horse | plains, savanna | herd, flees; fast; drops 2 Raw Meat; follows Apple; can be ridden once tamed |
 | Dog | plains, forest, savanna | follows Raw Meat; several breeds |
 | Cat | plains, forest, savanna, desert | lazy, hunts small prey; follows Raw Fish |
 | Turkey | forest, plains | herd, flees, prey; drops 2 Raw Meat |
 | Goose | swamp, plains | herd, territorial (1 damage); eggs; drops 1 Raw Meat |
-| Donkey | plains, savanna, badlands | herd; follows Carrot |
+| Donkey | plains, savanna, badlands | herd; follows Carrot; can be ridden once tamed |
 | Llama | mountain, badlands | herd, pack (hits back for 2); wool |
 | Bison | plains | herd, pack (6 damage); 40 health; drops 4 Raw Meat |
 | Yak | mountain, tundra | herd, pack (5 damage); milk; drops 3 Raw Meat |
-| Camel | desert | herd; follows Wheat |
+| Camel | desert | herd; follows Wheat; can be ridden once tamed |
 | Bull | plains, savanna | territorial (6 damage); drops 3 Raw Meat |
 | Highland Cow | mountain, taiga, tundra | herd; milk; drops 2 Raw Meat; follows Wheat |
 | Merino Sheep | plains, mountain | herd, prey; wool, ready sooner than a sheep's; drops 2 Raw Meat; follows Wheat |
 | Lop Rabbit | plains, forest | flees, prey, hops; follows Carrot |
 
 The horse, dog, cat, donkey, camel and lop rabbit can be tamed, and so can
-the wolf and the fox below; see [Taming and pets](#taming-and-pets).
+the wolf, the fox and the elephant below; the horse, donkey, camel and
+elephant can then be ridden; see [Taming and pets](#taming-and-pets).
 
 ## Wildlife
 
@@ -166,7 +197,7 @@ the wolf and the fox below; see [Taming and pets](#taming-and-pets).
 | Deer | forest, taiga, plains | herd, flees, prey; drops 2 Raw Meat |
 | Rabbit | plains, forest, tundra, taiga, desert | flees, prey; drops 1 Raw Meat |
 | Mouse | plains, forest, savanna | flees, prey |
-| Elephant | savanna | herd, pack: hit one and the herd answers, 9 damage a blow; 80 health |
+| Elephant | savanna | herd, pack: hit one and the herd answers, 9 damage a blow; 80 health; follows Apple, tamed with Apple, and can then be ridden |
 | Monkey | jungle | herd, flees |
 | Penguin | tundra | herd |
 | Turtle | swamp, desert, jungle | lazy |
@@ -303,3 +334,4 @@ voxelrust --show creatures --screenshot creatures.bmp
 lines up one of every creature and vehicle model and writes a picture. In a
 world, `/spawn <id>` puts one in front of you; the ids are the `entity` names
 in [data/wildlife.txt](../data/wildlife.txt), for example `/spawn wolf 3`.
+In creative mode the [spawn eggs](#spawn-eggs) do the same by hand.

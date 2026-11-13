@@ -206,6 +206,10 @@ latter only uses models whose files exist.
 
 Rebuild after changing anything under `data/`.
 
+The mods that come with the game are embedded the same way: each
+`data/packs/<name>/pack.txt` (`disasters`, `earth`, `landvehicles`) is
+written by hand and listed in SETTINGS > MODS under its folder name.
+
 ## Icons
 
 The game draws its own emblem. `--write-icon` saves it as a PNG:

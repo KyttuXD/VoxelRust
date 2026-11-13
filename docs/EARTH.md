@@ -3,9 +3,21 @@
 An Earth world is real terrain: you start at a real place and can walk, sail
 or travel by map to anywhere between 85 degrees north and south.
 
+## The Earth mod
+
+Earth is a mod that comes with the game. The code is part of the program;
+the pack `data/packs/earth/pack.txt`, which is built in too, switches it on
+with one line (`feature earth`). It is on unless you turn it off under
+SETTINGS > MODS, where it is listed as EARTH.
+
+With the mod off, the NEW WORLD screen does not offer EARTH as a terrain,
+and `--earth` stops with the message `--earth needs the Earth mod, which is
+switched off (Settings > MODS)`. Earth worlds made earlier stay playable.
+
 ## Making one
 
-On the NEW WORLD screen set TERRAIN to EARTH, then choose:
+On the NEW WORLD screen set TERRAIN to EARTH (the button steps through
+NORMAL, FLAT and EARTH), then choose:
 
 - **START AT**: one of ten places (Mount Rainier, Grand Canyon, Mount Fuji,
   Matterhorn, Manhattan, London, Sydney Harbour, Mount Everest, Nile Delta,
@@ -16,11 +28,16 @@ On the NEW WORLD screen set TERRAIN to EARTH, then choose:
   1:2, 1:5, 1:10, 1:25, 1:50, 1:75, 1:150, 1:300.
 - **ROADS AND BUILDINGS**: on or off.
 
-The defaults are 1:30 across and 1:75 up, which fits most mountains into the
-128-block world height. With blocks less than 20 metres tall the world cannot
-hold real altitudes, so heights are measured from near the starting place's
-own altitude instead of from sea level; very tall terrain is cut off at the
-top of the world.
+The defaults are 1:30 across and 1:75 up. The world is 256 blocks high, sea
+level is at height 48, and land can rise to height 242, which leaves 193
+blocks above the sea: about 14,400 metres at 1:75, 9,600 at 1:50 (enough for
+Mount Everest) and 4,800 at 1:25. Anything taller is cut off flat at that
+height. With blocks less than 20 metres tall the world cannot hold real
+altitudes, so heights are measured from near the starting place's own
+altitude instead of from sea level.
+
+There are no vertical chunk sections: 256 blocks is all the height there
+is, at any scale.
 
 From the command line, for any latitude and longitude:
 

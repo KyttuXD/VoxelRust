@@ -23,7 +23,7 @@ The result is the folder `dist/web/`:
 | --- | --- |
 | `index.html` | The page: a canvas, a click-to-start screen, an error box |
 | `voxelrust.js` | The browser side of the platform layer |
-| `voxelrust.wasm` | The game (about 1.9 MB; about 0.75 MB when the server compresses it) |
+| `voxelrust.wasm` | The game (about 2.4 MB; a little under 1 MB when the server compresses it) |
 | `icon.png`, `favicon.ico` | The icon |
 
 Under the script is one ordinary command, `cargo build --release --target
@@ -43,7 +43,12 @@ and open <http://localhost:8000/>. Any static web server does.
 
 ## Publishing
 
-Copy the contents of `dist/web/` to any static host (GitHub Pages, an S3
+**The website is not deployed.** The address meant for it is
+`voxelrust.games.kyttuslab.org`, but its server could not be reached over
+SSH without credentials, so nothing has been put there. The build exists
+only as `dist/web/` on the machine that made it.
+
+To publish it anywhere, copy the contents of `dist/web/` to any static host (GitHub Pages, an S3
 bucket, a folder on a web server). There is nothing to configure: the page
 loads no outside resources and needs no special headers, only that `.wasm`
 files are served at all (every common server does; the page does not depend
@@ -64,7 +69,7 @@ screenshots (F2 downloads a `.bmp`).
 | Joining a server | A page cannot open TCP sockets | JOIN says COULD NOT CONNECT (NOT POSSIBLE IN A BROWSER) |
 | Hosting a game, `--server` | The same | HOST A GAME says COULD NOT LISTEN... |
 | Earth worlds | The map data is fetched by running `curl`, and a page cannot run programs | The world is created but is open sea; a notice on the page says why |
-| Mods and packs from a folder | There are no folders (`list_dir` finds nothing) | Only the built-in content |
+| Mods and packs from a folder | There are no folders (`list_dir` finds nothing) | Only the built-in content and the three mods that come inside the program, which SETTINGS > MODS still switches on and off |
 | Command-line options | There is no command line | The game starts at the title screen |
 | Worker threads | The page runs the game on its one thread | Terrain is made a little each frame: loading takes longer, and the frame rate dips while new terrain arrives |
 | EXPORT / IMPORT of worlds | They read and write a path, which here is browser storage | Not useful |
@@ -156,6 +161,13 @@ creating and loading worlds, terrain, fog, water, rain, creatures, the HUD,
 the inventory, digging, chat and text fields, 3D DETAIL at 50%, saving and
 loading across page reloads, the multiplayer and Earth failures above, and
 QUIT.
+
+The current build (world height 256, flat worlds, the built-in mods, spawn
+eggs, riding, the scripting commands) was made from the merged code and run
+the same way, more briefly: the title screen, the NEW WORLD screen, and a
+flat world drawn with its HUD and minimap, with no errors in the console.
+The longer list above was checked on earlier builds and has not been gone
+through again.
 
 Not tested: Firefox and Safari; mouse capture and full screen (they need a
 real person's click); whether the sound is audible (the mixer was seen to

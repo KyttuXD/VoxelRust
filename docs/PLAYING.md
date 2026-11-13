@@ -14,8 +14,20 @@ The title screen has four buttons:
 - **QUIT**.
 
 A new world needs a name (letters, digits, `-` and `_`), optionally a seed (a
-number or any word; empty means random), a game mode, and a terrain: NORMAL
-(invented from the seed) or EARTH (see [EARTH.md](EARTH.md)).
+number or any word; empty means random), a game mode, and a terrain. The
+TERRAIN button steps through:
+
+- **NORMAL**: terrain invented from the seed.
+- **FLAT**: level grassland as far as you go (grass at height 51 over dirt
+  and stone; no hills, water, trees, caves or ores). A place to build.
+- **EARTH**: the real planet (see [EARTH.md](EARTH.md)). Offered only while
+  the Earth mod is on (see [Mods](#mods)).
+
+Every world is 256 blocks high, from height 0 to 255. Sea level is 48 and
+invented terrain never rises above 114, so there is plenty of room to build
+upward. A chunk is one column of the full height: there are no vertical
+chunk sections, and nothing above 255 or below 0. Worlds saved when the
+height was 128 still open; their chunks become the lower half.
 
 In a world, Esc opens the pause menu: BACK TO THE GAME, SETTINGS, SAVE AND
 QUIT TO TITLE. The game also saves by itself (every 30 seconds unless you
@@ -32,9 +44,9 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | Space * | jump; fly up when flying; in creative, press twice quickly to start or stop flying; get up from a seat |
 | Left Shift * | fly down when flying |
 | Left Ctrl * | sprint |
-| F * | get out of a vehicle; get up from a seat |
+| F * | get out of a vehicle; get off a creature; get up from a seat |
 | Left click | break a block, hit a creature, pick up a vehicle |
-| Right click | place a block; use a crafting table, chest, oven, furnace or bed; open or shut a door; sit on a chair; till soil with a hoe; eat; shoot a bow; get into a vehicle; collect from, trade with or tame a creature |
+| Right click | place a block; use a crafting table, chest, oven, furnace or bed; open or shut a door; sit on a chair; till soil with a hoe; eat; shoot a bow; get into a vehicle; collect from, trade with, tame or ride a creature; hatch a spawn egg |
 | Middle click | pick the block you are looking at |
 | 1-9, mouse wheel | choose a hotbar slot |
 | E * | inventory |
@@ -79,7 +91,8 @@ tab is a small picture of something it holds; point at it to see its name.
 Blocks are drawn as little cubes in a true isometric view, other items as
 flat pictures. Blocks break at once, nothing hurts you, and pressing jump
 twice quickly starts or stops flying. You reach 6 blocks. Area tools such as the Builder's Wand (which works on a ball
-of blocks at a time) only work in creative.
+of blocks at a time) only work in creative. The Eggs tab holds a spawn egg
+for every creature (see [CREATURES.md](CREATURES.md#spawn-eggs)).
 
 The mode is chosen when the world is made and can be switched at any time in
 SETTINGS > GAME while the world is open.
@@ -361,8 +374,15 @@ at, or on water.
 | Locomotive | rails | keeps going by itself; see [Railways](#railways) |
 | Passenger Cart | rails | |
 | Freight Cart | rails | has storage |
-| Buggy | land | has storage |
 | Plane | air | |
+| Buggy | land | has storage. Land Vehicles mod |
+| Truck | land | slower than the buggy; has storage. Land Vehicles mod |
+| Kart | land | the fastest of the three; no storage. Land Vehicles mod |
+
+Boats, rail carts and the plane are part of the base game. The buggy, truck
+and kart come from the Land Vehicles mod, which is on unless you switch it
+off (see [Mods](#mods)); with it off they are gone from the item list, the
+recipes and the world.
 
 - **Get in**: right click it. **Get out**: F (GET OUT OF A VEHICLE in the
   controls).
@@ -421,6 +441,11 @@ villagers who trade and work. Right click a creature to collect from it,
 trade or tame it; left click to hit it. Creatures and vehicles behind the
 camera are not drawn. All of it is in [CREATURES.md](CREATURES.md).
 
+**Riding.** A horse, donkey, camel or elephant can be ridden once it is
+tamed: right click it with an empty hand. It faces the way you look; the
+movement keys move it, jump makes it jump or climb, and the get-out key (F)
+gets you off. See [CREATURES.md](CREATURES.md#riding).
+
 ## Dimensions
 
 Every world has other worlds inside it, each with its own land:
@@ -449,7 +474,10 @@ Rain, snow and thunderstorms come and go by region: walk far enough and you
 leave a storm behind. Cold biomes get snow, which settles on the ground;
 deserts stay almost dry. Turn weather off with SETTINGS > GAME > WEATHER.
 
-NATURAL DISASTERS (same tab, **off** by default) adds:
+Disasters belong to the Natural Disasters mod, which comes with the game.
+With the mod on (it is, unless you switch it off under SETTINGS > MODS), the
+GAME tab has a NATURAL DISASTERS switch, **off** by default. Turned on, it
+adds:
 
 - **Earthquakes**: the view shakes for a few seconds.
 - **Tsunamis**: after an earthquake near the sea, the water rises about three
@@ -457,7 +485,8 @@ NATURAL DISASTERS (same tab, **off** by default) adds:
 - **Tornadoes**: form under thunderstorms over plains and savanna, pull you
   in and throw you upward, and tear up leaves and plants along their path.
 
-Disasters only happen in singleplayer.
+Disasters only happen in singleplayer. With the mod switched off the switch
+is not shown and they cannot happen at all.
 
 ## Chat and commands
 
@@ -486,7 +515,7 @@ blocks from it.
 
 | Command | Effect | On a server |
 | --- | --- | --- |
-| `/help` | list some of the commands (the older ones; it has not caught up with this table) | works |
+| `/help` | list the commands from `/reload` to `/strike` (not the scripting ones at the end of this table) | works |
 | `/reload` | read the content packs and the mods folders again without restarting | no: the server decides the content |
 | `/give ITEM [N]` | put N of an item in your inventory (1 if N is left out, 999 at most) | works |
 | `/time WHEN` | set the time: `day` or `noon`, `night` or `midnight`, `dawn` or `morning`, `dusk` or `evening`, or a number from 0 up to (not including) 1, where 0 is dawn and 0.25 noon | no |
@@ -506,11 +535,19 @@ blocks from it.
 | `/shoot [DAMAGE] [SPEED] [BLOCK]` | loose a shot the way you look (damage 4 and speed 30 if left out). BLOCK, if given, is left where the shot lands | no |
 | `/aim BLOCK` | put that block against the face you are pointing at | no |
 | `/strike [DAMAGE]` | lightning on the block you point at: thunder, a flash, and DAMAGE (12 if left out) to every creature within 4 blocks | no |
+| `/blast [R]` | clear a ball of blocks of radius R (1 to 5; 2 if left out) around the block you point at. Unbreakable blocks and height 0 stay | no |
+| `/take ITEM [N]` | remove N of an item from your inventory (1 if left out), if you have it | works |
+| `/title TEXT` | show a notice in large letters in the middle of the screen for two seconds | works |
+| `/var NAME = N`, `+ N`, `- N`, `random N` | set, add to or subtract from a numbered variable, or set it to a random whole number from 0 to N-1 | works |
+| `/if CONDITION then COMMAND [else COMMAND]` | carry out a command only if the condition holds | works |
+| `/after SECONDS COMMAND` | carry out a command later (up to 3600 seconds) | works |
+| `/repeat N COMMAND` | carry out a command N times (64 at most) | works |
 
 The commands marked "no" answer `NOT ON A SERVER` there. `/give` and `/tp`
-work in survival too; there are no permissions. `/say` to `/strike` are
-mostly there for packs, which run them from scripts and can add commands of
-their own (see [MODDING.md](MODDING.md#scripts-and-commands)).
+work in survival too; there are no permissions. `/say` and everything after
+it are mostly there for packs, which run them from scripts and can add
+commands of their own. Variables, conditions and the rest of the scripting
+commands are explained in [MODDING.md](MODDING.md#scripts-and-commands).
 
 ## Settings
 
@@ -529,11 +566,30 @@ Settings are kept in `settings.txt` in the data folder.
 - **CONTROLS**: mouse speed, invert mouse, every key marked * above, RESET
   KEYS. Click a binding, then press the new key (Esc cancels).
 - **GAME**: player name, autosave interval, view bobbing, weather, natural
-  disasters, place notices (Earth worlds), game mode of the open world, the
+  disasters (shown while the Natural Disasters mod is on), place notices
+  (Earth worlds), game mode of the open world, the
   map data relay (see [EARTH.md](EARTH.md)), the minimap, and RELOAD CONTENT
   PACKS NOW.
 - **SKIN**: pick one of the built-in looks or use your own 64 x 64 PNG. See
   [MODDING.md](MODDING.md#player-skins).
+- **MODS**: a switch for every mod. See [Mods](#mods).
+
+### Mods
+
+SETTINGS > MODS lists every mod with an on/off switch: first the three that
+come inside the program, then those found in the mods folders (see
+[MODDING.md](MODDING.md#the-mods-folder)). Eight are shown at a time; the
+mouse wheel scrolls. A change takes effect at once: the content is read
+again, as with `/reload`. The mods switched off are remembered in
+`settings.txt` (`mods_off`).
+
+| Mod | What it holds | With it off |
+| --- | --- | --- |
+| DISASTERS | earthquakes, tsunamis and tornadoes, and their two sounds | the NATURAL DISASTERS switch is not shown and disasters cannot happen |
+| EARTH | real-world terrain, the world map and place notices | the EARTH terrain choice is not offered and `--earth` is refused. Earth worlds already made stay playable |
+| LANDVEHICLES | the buggy, the truck and the kart, with their recipes | those vehicles are gone from the item list, recipes and the world |
+
+All three are on to begin with.
 
 ### Full screen on a slow graphics card
 
@@ -565,7 +621,7 @@ uses another folder.
 | `--server` | run a multiplayer server instead of the game (no window); uses `--world`, `--seed`, `--earth`, `--port` and `--players` |
 | `--port N` | server port (default 25590) |
 | `--players N` | most players at once on the server (default 16) |
-| `--earth LAT LON` | make the new world real-world terrain starting there |
+| `--earth LAT LON` | make the new world real-world terrain starting there. Refused, with a message, when the Earth mod is switched off |
 | `--scale M V` | with `--earth`: metres per block across and up (default 30 75) |
 | `--distance N` | view distance in chunks, 2..48 |
 | `--far N` | distant terrain out to N chunks, 0 = off (up to 256) |
@@ -603,7 +659,8 @@ off parts of the drawing so their cost can be timed (add up 1 for the alpha
 test, 2 for fog, 4 for the light texture, 16 for minimap painting).
 
 A world created with `--world` and no `--mode` is a creative world; one
-created from the menu is survival unless you change it.
+created from the menu is survival unless you change it. There is no option
+for a flat world: make one from the NEW WORLD screen.
 
 ## Moving a world to another machine
 
