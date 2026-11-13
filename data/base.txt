@@ -1905,108 +1905,126 @@ item wood_pick
   category Tools
   tool pick 2
   stack 1
+  damage 3
 item wood_axe
   name Wooden Axe
   icon wood_axe
   category Tools
   tool axe 2
   stack 1
+  damage 3
 item wood_shovel
   name Wooden Shovel
   icon wood_shovel
   category Tools
   tool shovel 2
   stack 1
+  damage 3
 item stone_pick
   name Stone Pickaxe
   icon stone_pick
   category Tools
   tool pick 3
   stack 1
+  damage 4
 item stone_axe
   name Stone Axe
   icon stone_axe
   category Tools
   tool axe 3
   stack 1
+  damage 4
 item stone_shovel
   name Stone Shovel
   icon stone_shovel
   category Tools
   tool shovel 3
   stack 1
+  damage 4
 item copper_pick
   name Copper Pickaxe
   icon copper_pick
   category Tools
   tool pick 4
   stack 1
+  damage 5
 item copper_axe
   name Copper Axe
   icon copper_axe
   category Tools
   tool axe 4
   stack 1
+  damage 5
 item copper_shovel
   name Copper Shovel
   icon copper_shovel
   category Tools
   tool shovel 4
   stack 1
+  damage 5
 item iron_pick
   name Iron Pickaxe
   icon iron_pick
   category Tools
   tool pick 6
   stack 1
+  damage 7
 item iron_axe
   name Iron Axe
   icon iron_axe
   category Tools
   tool axe 6
   stack 1
+  damage 7
 item iron_shovel
   name Iron Shovel
   icon iron_shovel
   category Tools
   tool shovel 6
   stack 1
+  damage 7
 item crystal_pick
   name Crystal Pickaxe
   icon crystal_pick
   category Tools
   tool pick 8
   stack 1
+  damage 9
 item crystal_axe
   name Crystal Axe
   icon crystal_axe
   category Tools
   tool axe 8
   stack 1
+  damage 9
 item crystal_shovel
   name Crystal Shovel
   icon crystal_shovel
   category Tools
   tool shovel 8
   stack 1
+  damage 9
 item ruby_pick
   name Ruby Pickaxe
   icon ruby_pick
   category Tools
   tool pick 11
   stack 1
+  damage 12
 item ruby_axe
   name Ruby Axe
   icon ruby_axe
   category Tools
   tool axe 11
   stack 1
+  damage 12
 item ruby_shovel
   name Ruby Shovel
   icon ruby_shovel
   category Tools
   tool shovel 11
   stack 1
+  damage 12
 item apple
   name Apple
   icon apple
@@ -6091,6 +6109,50 @@ block lava_7
   hurts 3
   light 12
   fluid lava 7
+block cactus_joint_px
+  name Cactus
+  tex cactus_top cactus_side cactus_top
+  hardness 0.5
+  hurts 1
+  hidden
+  drops cactus
+  box 5 0 5 11 16 11
+  box 4 3 6 5 7 10
+  box 11 9 6 12 13 10
+  box 11 6 6 16 10 10
+block cactus_joint_nx
+  name Cactus
+  tex cactus_top cactus_side cactus_top
+  hardness 0.5
+  hurts 1
+  hidden
+  drops cactus
+  box 5 0 5 11 16 11
+  box 4 3 6 5 7 10
+  box 11 9 6 12 13 10
+  box 0 6 6 5 10 10
+block cactus_joint_pz
+  name Cactus
+  tex cactus_top cactus_side cactus_top
+  hardness 0.5
+  hurts 1
+  hidden
+  drops cactus
+  box 5 0 5 11 16 11
+  box 4 3 6 5 7 10
+  box 11 9 6 12 13 10
+  box 6 6 11 10 10 16
+block cactus_joint_nz
+  name Cactus
+  tex cactus_top cactus_side cactus_top
+  hardness 0.5
+  hurts 1
+  hidden
+  drops cactus
+  box 5 0 5 11 16 11
+  box 4 3 6 5 7 10
+  box 11 9 6 12 13 10
+  box 6 6 0 10 10 5
 
 # Models, then every creature, live in their own files.
 include creatures.txt

@@ -527,6 +527,8 @@ pub struct WellKnown {
     pub birch_leaves: Block,
     pub cactus_arm: Block,
     pub cactus_arm_z: Block,
+    /// The trunk where an arm leaves it: +x, -x, +z, -z.
+    pub cactus_joint: [Block; 4],
     pub acacia_log: Block,
     pub acacia_leaves: Block,
     pub dark_oak_log: Block,
@@ -1984,6 +1986,7 @@ impl Registry {
             birch_leaves: AIR,
             cactus_arm: AIR,
             cactus_arm_z: AIR,
+            cactus_joint: [AIR; 4],
             acacia_log: AIR,
             acacia_leaves: AIR,
             dark_oak_log: AIR,
@@ -2021,6 +2024,7 @@ impl Registry {
         let or = |id: &str, fallback: Block| by_id.get(id).copied().unwrap_or(fallback);
         wk.cactus_arm = or("cactus_arm", wk.cactus);
         wk.cactus_arm_z = or("cactus_arm_z", wk.cactus);
+        wk.cactus_joint = [or("cactus_joint_px", wk.cactus), or("cactus_joint_nx", wk.cactus), or("cactus_joint_pz", wk.cactus), or("cactus_joint_nz", wk.cactus)];
         wk.birch_log = or("birch_log", wk.log);
         wk.birch_leaves = or("birch_leaves", wk.leaves);
         wk.acacia_log = or("acacia_log", wk.log);
@@ -2168,6 +2172,17 @@ impl Registry {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_better_the_ore_the_harder_the_tool_hits() {
+        let damage = |id: &str| reg().items.iter().find(|i| i.id == id).unwrap().x.damage;
+        for kind in ["pick", "axe", "shovel"] {
+            let tiers = ["wood", "stone", "copper", "iron", "crystal", "ruby"].map(|m| damage(&alloc::format!("{m}_{kind}")));
+            assert!(tiers.windows(2).all(|w| w[0] < w[1]), "{kind}: {tiers:?}");
+        }
+        let swords = ["wood", "copper", "ruby"].map(|m| damage(&alloc::format!("{m}_sword")));
+        assert!(swords.windows(2).all(|w| w[0] < w[1]), "swords: {swords:?}");
+    }
+
     use super::*;
 
     #[test]

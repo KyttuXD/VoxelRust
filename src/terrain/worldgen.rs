@@ -502,6 +502,14 @@ fn tree(w: &mut Writer, wk: &WellKnown, h: u32, x: i32, y: i32, z: i32, biome: B
                 let (dx, dz) = [(1, 0), (-1, 0), (0, 1), (0, -1)][((h >> 11) % 4) as usize];
                 let ay = y + 2 + ((h >> 13) % 2) as i32;
                 let bar = if dx != 0 { wk.cactus_arm } else { wk.cactus_arm_z };
+                // The trunk reaches out to the arm, so the arm is joined to it.
+                let side = match (dx, dz) {
+                    (1, _) => 0,
+                    (-1, _) => 1,
+                    (_, 1) => 2,
+                    _ => 3,
+                };
+                w.put(x, ay, z, wk.cactus_joint[side], false);
                 w.put(x + dx, ay, z + dz, bar, true);
                 for k in 1..=2 {
                     w.put(x + dx, ay + k, z + dz, wk.cactus, true);
@@ -1096,5 +1104,34 @@ mod tests {
             }
         }
         assert!(found > 0, "no lava in any cave around the origin");
+    }
+
+    #[test]
+    fn a_cactus_arm_meets_its_trunk() {
+        let wk = reg().wk.clone();
+        let mut joints = 0;
+        // Look for desert chunks by their biome, then check what grows in them.
+        for seed in [3u32, 7, 11, 42] {
+            for cx in -40..40 {
+                for cz in -40..40 {
+                    if column(seed, cx * 16 + 8, cz * 16 + 8).biome != Biome::Desert {
+                        continue;
+                    }
+                    let c = generate(seed, cx, cz);
+                    for x in 1..15 {
+                        for z in 1..15 {
+                            for y in 1..CH - 1 {
+                                let Some(side) = wk.cactus_joint.iter().position(|&j| j == c.get(x, y, z)) else { continue };
+                                joints += 1;
+                                let (dx, dz) = [(1, 0), (-1, 0), (0, 1), (0, -1)][side];
+                                let arm = if dx != 0 { wk.cactus_arm } else { wk.cactus_arm_z };
+                                assert_eq!(c.get(x + dx, y, z + dz), arm, "joint at {x} {y} {z} has no arm beside it");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(joints > 0, "no cactus arms in the deserts around the test seeds");
     }
 }

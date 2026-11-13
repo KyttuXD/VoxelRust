@@ -56,6 +56,11 @@ pub struct Mob {
     pub id: u32,
 }
 
+/// How tough one animal is: its kind's health, give or take a quarter.
+fn spawn_health(base: i32, roll: u32) -> i32 {
+    ((base * (75 + (roll % 51) as i32) + 50) / 100).max(1)
+}
+
 impl Mob {
     /// How it should be drawn: model, colour and height.
     pub fn look(&self) -> (usize, [u8; 3], f32) {
@@ -177,10 +182,11 @@ impl Mobs {
         self.next_id += 1;
         let think = (self.rand() % 100) as f32 / 100.0;
         let give_timer = (self.rand() % 60) as f32;
+        let health = spawn_health(d.health, self.rand());
         self.list.push(Mob {
             kind,
             body,
-            health: d.health,
+            health,
             hurt: 0.0,
             phase: 0.0,
             stride: 0.0,
@@ -507,7 +513,7 @@ impl Mobs {
                     m.body = Player::with_size(pos, d.width as f64, d.height as f64);
                     m.body.yaw = yaw;
                     m.body.speed_scale = d.speed / 4.4;
-                    m.health = d.health;
+                    m.health = spawn_health(d.health, roll);
                 }
             }
             let (px, pz) = (floord(m.body.pos[0]), floord(m.body.pos[2]));
@@ -917,7 +923,7 @@ impl Mobs {
                 m.variant = (num(1).unwrap_or(0.0) as u8).min(reg().entities[kind].x.variants.len() as u8);
                 m.tamed = true;
                 m.stay = num(5) == Some(1.0);
-                m.health = (num(6).unwrap_or(1.0) as i32).clamp(1, reg().entities[kind].health);
+                m.health = (num(6).unwrap_or(1.0) as i32).clamp(1, reg().entities[kind].health * 5 / 4 + 1);
             }
         }
     }
@@ -1094,6 +1100,19 @@ mod tests {
     }
 
     #[test]
+    fn every_animal_of_a_kind_is_a_little_different() {
+        let mut mobs = Mobs::new(9);
+        mobs.spawn_timer = 1e9;
+        for i in 0..24 {
+            mobs.spawn(kind("cow"), [8.5 + i as f64 * 3.0, 121.01, 5.5]);
+        }
+        let base = reg().entities[kind("cow")].health;
+        let healths: Vec<i32> = mobs.list.iter().map(|m| m.health).collect();
+        assert!(healths.iter().all(|&h| h >= base * 3 / 4 && h <= base * 5 / 4 + 1), "{healths:?}");
+        assert!(healths.iter().any(|&h| h != healths[0]), "all {} cows have {} health", healths.len(), healths[0]);
+    }
+
+    #[test]
     fn a_cow_takes_several_survival_blows_not_one() {
         // Survival hits with bare hands do 3; a cow has 10 health, so it
         // takes four blows. (Creative mode does 1000: one blow.)
@@ -1102,12 +1121,14 @@ mod tests {
         mobs.spawn(kind("cow"), [8.5, 121.01, 5.5]);
         let eye = [8.5, 122.0, 9.5];
         let (i, _) = mobs.hit_test(eye, Vec3::new(0.0, -0.05, -1.0).norm(), 6.0).expect("ray missed");
+        // Each cow has its own health (about ten), so count its blows from that.
         let health = mobs.list[0].health;
-        assert!(health >= 6, "a cow has {health} health");
-        for blow in 0..3 {
+        let blows = (health + 2) / 3;
+        assert!(blows >= 2, "a cow has {health} health");
+        for blow in 0..blows - 1 {
             assert!(!mobs.hurt(i, 3, eye), "dead after blow {}", blow + 1);
         }
-        assert!(mobs.hurt(i, 3, eye), "still alive after four blows");
+        assert!(mobs.hurt(i, 3, eye), "still alive after {blows} blows");
     }
 
     #[test]

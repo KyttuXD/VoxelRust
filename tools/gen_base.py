@@ -271,7 +271,8 @@ for iid, name in [("stick", "Stick"), ("coal", "Coal"), ("ruby", "Ruby"), ("crys
     w(f"item {iid}\n  name {name}\n  icon {iid}\n  category Materials")
 for mid, mname, _, speed, _ in TOOL_MATERIALS:
     for kind, kname in (("pick", "Pickaxe"), ("axe", "Axe"), ("shovel", "Shovel")):
-        w(f"item {mid}_{kind}\n  name {mname} {kname}\n  icon {mid}_{kind}\n  category Tools\n  tool {kind} {speed}\n  stack 1")
+        # A tool hits harder the better its ore: wood 3 up to ruby 12 (swords: 4 + speed).
+        w(f"item {mid}_{kind}\n  name {mname} {kname}\n  icon {mid}_{kind}\n  category Tools\n  tool {kind} {speed}\n  stack 1\n  damage {1 + speed}")
 for iid, name, food in [("apple", "Apple", 3), ("berries", "Berries", 2), ("raw_meat", "Raw Meat", 2),
                         ("cooked_meat", "Cooked Meat", 8), ("raw_fish", "Raw Fish", 2), ("cooked_fish", "Cooked Fish", 6)]:
     w(f"item {iid}\n  name {name}\n  icon {iid}\n  category Food\n  food {food}")
@@ -699,6 +700,15 @@ block("lava", "Lava", "lava", shape="liquid", cat="Nature", hurts=3, light=12, f
 for lvl in range(1, 8):
     block(f"water_{lvl}", "Flowing Water", "water", shape="liquid", hidden=True, skyloss=2, fluid=f"water {lvl}")
     block(f"lava_{lvl}", "Flowing Lava", "lava", shape="liquid", hidden=True, hurts=3, light=12, fluid=f"lava {lvl}")
+
+# ---- Cactus joints ----
+# A cactus trunk where an arm leaves it: the trunk with a stub reaching out to
+# the arm's side, so the arm meets the trunk. Hidden from the creative menu.
+# Worldgen picks the side: px (+x), nx, pz, nz.
+JOINT_TRUNK = "5 0 5 11 16 11", "4 3 6 5 7 10", "11 9 6 12 13 10"
+for side, stub in [("px", "11 6 6 16 10 10"), ("nx", "0 6 6 5 10 10"), ("pz", "6 6 11 10 10 16"), ("nz", "6 6 0 10 10 5")]:
+    block(f"cactus_joint_{side}", "Cactus", "cactus_top cactus_side cactus_top", hardness=0.5, hurts=1,
+          hidden=True, drops="cactus", box=list(JOINT_TRUNK) + [stub])
 
 if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "creatures.txt")):
     w("\n# Models, then every creature, live in their own files.\ninclude creatures.txt")
