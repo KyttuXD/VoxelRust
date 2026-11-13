@@ -289,6 +289,8 @@ enum Screen {
     Chest,
     /// One world's options: export, rename, copy, delete.
     EditWorld,
+    /// The file browser (see `client::picker`), opened from the settings.
+    Picker,
 }
 
 /// Which build this is: the name its download carries. An update must
@@ -376,6 +378,22 @@ fn creative_hand(hand: Option<Stack>, pick: Option<Stack>, over_list: bool, clic
         return None;
     }
     hand
+}
+
+/// Picture kinds a skin can be chosen from (those `image::decode` reads).
+const SKIN_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "tga"];
+
+/// Read the picture at `path` and keep it as the custom skin (`skin.png` in
+/// the data folder). The error is a message for the player.
+fn import_skin(base: &str, path: &str) -> Result<(), String> {
+    let bytes = sys::read_file(path).ok_or_else(|| String::from("COULD NOT READ THAT FILE"))?;
+    let img = crate::image::decode(&bytes).ok_or_else(|| String::from("THAT IS NOT A PICTURE THE GAME CAN READ"))?;
+    let px = crate::client::skinfile::from_image(&img)?;
+    if sys::write_file(&alloc::format!("{}skin.png", base), &crate::png::encode(64, 64, &px)) {
+        Ok(())
+    } else {
+        Err(String::from("COULD NOT SAVE THE SKIN IN THE DATA FOLDER"))
+    }
 }
 
 fn skin_pixels(base: &str, r: &Renderer, name: &str) -> Option<Vec<u8>> {
@@ -494,7 +512,7 @@ struct App {
     full: Option<super::fullmap::FullMap>,
     /// World file name typed on the worlds screen.
     form_import: String,
-    form_skin_path: String,
+    picker: crate::client::picker::Picker,
     /// Name tags to draw this frame: screen position and text.
     tags: Vec<(f32, f32, String)>,
     /// The map screen: centre in "unit" map coordinates (0..1) and zoom.
@@ -828,6 +846,9 @@ impl App {
             Screen::Chat if sc == key::ESCAPE => self.set_screen(Screen::Game),
             Screen::Join if sc == key::ESCAPE && !typing => self.set_screen(Screen::Title),
             Screen::EditWorld if sc == key::ESCAPE && !typing => self.set_screen(Screen::Worlds),
+            Screen::Picker if sc == key::ESCAPE => {
+                self.close_picker(None);
+            }
             Screen::AddServer if sc == key::ESCAPE => self.set_screen(Screen::Join),
             Screen::Map if sc == key::ESCAPE || sc == k_map => self.set_screen(Screen::Game),
             Screen::FullMap if !typing && (sc == key::ESCAPE || sc == k_map || sc == k_waypoints) => self.close_full_map(),
@@ -835,6 +856,56 @@ impl App {
             Screen::NewWorld if sc == key::ESCAPE => self.set_screen(Screen::Worlds),
             Screen::Worlds if sc == key::ESCAPE => self.set_screen(Screen::Title),
             _ => {}
+        }
+    }
+
+    /// Open the file browser to choose a skin picture.
+    fn open_skin_picker(&mut self) {
+        let mut fallbacks: Vec<String> = Vec::new();
+        if let Some(h) = crate::client::picker::home_dir() {
+            fallbacks.push(crate::client::picker::join(&h, "Downloads"));
+            fallbacks.push(h);
+        }
+        fallbacks.push(self.base.clone());
+        let start = self.settings.picker_dir.clone();
+        self.picker.open("CHOOSE A SKIN: A 64 X 64 OR 64 X 32 PICTURE", &start, &fallbacks, SKIN_EXTS, &self.base);
+        self.picker.size_ok = Some(crate::client::skinfile::size_ok);
+        self.picker.hint = String::from("SKINS: 64 X 64 OR 64 X 32");
+        self.set_screen(Screen::Picker);
+    }
+
+    /// The file browser is done: remember where it was, and use the file if one was chosen.
+    fn close_picker(&mut self, chosen: Option<String>) -> bool {
+        self.settings.picker_dir = self.picker.dir.clone();
+        if !self.scripted {
+            sys::write_file(&self.settings_path, self.settings.to_text().as_bytes());
+        }
+        self.set_screen(Screen::Settings);
+        if let Some(path) = chosen {
+            match import_skin(&self.base, &path) {
+                Ok(()) => {
+                    self.settings.skin = String::from("custom");
+                    self.status = String::from("SKIN LOADED");
+                    return true;
+                }
+                Err(e) => self.status = e,
+            }
+        }
+        false
+    }
+
+    fn screen_picker(&mut self, ui: &mut Ui) {
+        ui.r.rect(0.0, 0.0, ui.w(), ui.h(), [8, 9, 14, 235]);
+        match self.picker.show(ui) {
+            crate::client::picker::Outcome::Open => {}
+            crate::client::picker::Outcome::Cancelled => {
+                self.close_picker(None);
+            }
+            crate::client::picker::Outcome::Chosen(p) => {
+                if self.close_picker(Some(p)) {
+                    self.load_skin(ui.r);
+                }
+            }
         }
     }
 
@@ -1248,6 +1319,7 @@ impl App {
                 Screen::Join => self.screen_join(&mut ui),
                 Screen::AddServer => self.screen_add_server(&mut ui),
                 Screen::Chat => self.screen_chat(&mut ui),
+                Screen::Picker => self.screen_picker(&mut ui),
             }
             clicked = ui.clicked_any;
         }
@@ -1889,7 +1961,7 @@ impl App {
         let mut changed = false;
         let mut fullscreen_clicked = false;
         let mut mode_changed = false;
-        let (mut skin_changed, mut skin_import) = (false, false);
+        let (mut skin_changed, mut skin_pick) = (false, false);
         {
             let st = &mut self.settings;
             match self.tab {
@@ -1970,11 +2042,10 @@ impl App {
                         st.skin = String::from(if (i as usize) < list.len() { list[i as usize].0 } else { "custom" });
                         skin_changed = true;
                     }
-                    ui.text(cx, row(1) + 6.0 * s, "YOUR OWN: A 64 X 64 PNG, THE USUAL SKIN LAYOUT.", ui::DIM);
-                    ui.text(cx, row(2) - 2.0 * s, "TYPE WHERE THE FILE IS, THEN USE IT:", ui::DIM);
-                    ui.text_field(40, cx, row(3) - 6.0 * s, cw, bh, &mut self.form_skin_path, 200, ui::any_char);
-                    if ui.button(cx, row(4) - 3.0 * s, cw, bh, "USE THIS FILE") {
-                        skin_import = true;
+                    ui.text(cx, row(1) + 2.0 * s, "YOUR OWN: A 64 X 64 PICTURE IN", ui::DIM);
+                    ui.text(cx, row(2) - 6.0 * s, "THE USUAL SKIN LAYOUT (64 X 32 TOO).", ui::DIM);
+                    if ui.button(cx, row(3) - 4.0 * s, cw, bh, "CHOOSE A SKIN FILE...") {
+                        skin_pick = true;
                     }
                     skin_changed |= ui.toggle(cx, row(5) + 4.0 * s, cw, bh, "SLIM ARMS (ALEX SKINS)", &mut st.slim_arms);
                 }
@@ -2054,18 +2125,8 @@ impl App {
                 }
             }
         }
-        if skin_import {
-            // Copy the chosen file into the data folder as the custom skin.
-            let ok = sys::read_file(self.form_skin_path.trim())
-                .filter(|b| crate::png::decode(b).map_or(false, |i| i.w == 64 && i.h == 64))
-                .map_or(false, |b| sys::write_file(&alloc::format!("{}skin.png", self.base), &b));
-            if ok {
-                self.settings.skin = String::from("custom");
-                self.status = String::from("SKIN LOADED");
-                skin_changed = true;
-            } else {
-                self.status = String::from("THAT IS NOT A 64 X 64 PNG FILE");
-            }
+        if skin_pick {
+            self.open_skin_picker();
         }
         if skin_changed {
             self.load_skin(ui.r);
@@ -3285,7 +3346,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         minimap: super::fullmap::MapPicture::new(super::fullmap::MINIMAP_TEXELS),
         full: None,
         form_import: String::new(),
-        form_skin_path: String::new(),
+        picker: crate::client::picker::Picker::new(),
         tags: Vec::new(),
         map_native: None,
         status: String::new(),
@@ -3315,7 +3376,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     }
 
     // Going straight into a world: asked for by name, or a scripted run.
-    let menu_only = ["title", "worlds", "newworld", "multiplayer"].iter().any(|s| opts.show.contains(s)) || (opts.show.contains("settings") && opts.world.is_none());
+    let menu_only = ["title", "worlds", "newworld", "multiplayer", "picker"].iter().any(|s| opts.show.contains(s)) || (opts.show.contains("settings") && opts.world.is_none());
     if let Some(name) = &opts.host {
         app.form_host = name.clone();
         app.host_game(&mut r);
@@ -3375,6 +3436,27 @@ fn run(args: Vec<String>) -> Result<(), String> {
         if let Some(t) = opts.show.split("settings:").nth(1) {
             let t = t.split(',').next().unwrap_or("").to_ascii_uppercase();
             app.tab = TABS.iter().position(|x| *x == t).unwrap_or(0);
+        }
+        // "picker" or "picker:<folder>" opens the file browser (at that folder);
+        // "pickfile" also selects the first file in it.
+        if opts.show.contains("picker") {
+            let dir = opts.show.split("picker:").nth(1).map(|d| String::from(d.split(',').next().unwrap_or("")));
+            app.tab = 4;
+            app.open_skin_picker();
+            if let Some(d) = dir {
+                app.picker.go(&d, None);
+            }
+            if opts.show.contains("pickfile") {
+                app.picker.sel = app.picker.entries.iter().position(|e| !e.dir);
+            }
+            // "pickgo" chooses the selected file, as a click on SELECT would.
+            if opts.show.contains("pickgo") {
+                if let Some(f) = app.picker.selected_file() {
+                    if app.close_picker(Some(f)) {
+                        app.load_skin(&mut r);
+                    }
+                }
+            }
         }
         app.worlds = session::list_worlds(&app.base);
         if opts.show.contains("editworld") {

@@ -35,4 +35,4 @@ pub use content::{block, textures, font, icon, bbmodel, model};
 pub use terrain::{chunk, world, worldgen, mesh, lod, save, jobs, weather};
 pub use game::{player, inventory, interact, entity, path, session};
 pub use net::{proto, server, netplay};
-pub use client::{app, render, ui, audio, update};
+pub use client::{app, render, ui, audio, update, picker, skinfile};

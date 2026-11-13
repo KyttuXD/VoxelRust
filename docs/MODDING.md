@@ -535,12 +535,39 @@ SETTINGS > SKIN shows a turning preview of your character.
 - **LOOK** steps through the built-in looks: `default`, `clay`, `moss`,
   `slate`, `charcoal`, `snow`, `rose`, `gold` (tints of the default body) and
   `custom`.
-- **Your own skin**: a **64 x 64 PNG** in the usual player-skin layout. Type
-  the path of the file and click USE THIS FILE. The game copies it into the
-  data folder as `skin.png` and selects `custom`. You can also put `skin.png`
+- **Your own skin**: a **64 x 64** picture in the usual player-skin layout
+  (the older **64 x 32** layout works too; the game mirrors the arm and leg
+  to make the left ones). Click CHOOSE A SKIN FILE... to open the file
+  browser (below), pick the picture, and click SELECT (or double click it).
+  PNG, JPEG, GIF, BMP and TGA are read; the game saves the skin in the data
+  folder as `skin.png` and selects `custom`. You can also put `skin.png`
   there yourself.
 
-If the file is not a 64 x 64 PNG the game says so and keeps the current look.
+If the picture is the wrong size or cannot be read, the game says so on the
+SKIN tab and keeps the current look.
+
+### The file browser
+
+A screen of its own, built into the game, so it works the same on every
+system. It shows the folder you are in (path bar on top), its sub-folders
+(`>` in front) and the files that fit (pictures here), with a small preview
+of the picture under the cursor, its size, and whether the size suits.
+
+- Click a folder (or press Enter / Right) to go in; UP, Backspace or Left
+  goes out. Double click a file, or SELECT, to choose it. CANCEL or Escape
+  goes back without choosing.
+- Shortcut buttons jump to HOME, DOWNLOADS, DESKTOP, PICTURES (those that
+  exist), the DATA folder and the top of the disk.
+- Up, Down, Page Up, Page Down, Home and End move the selection; typing a
+  letter jumps to the next name starting with it. The mouse wheel and the
+  scroll bar scroll the list.
+- Hidden names (starting with a dot) are not listed. The folder you were in
+  is remembered (`picker_dir` in the settings file) and opened next time.
+- In a browser page there are no folders to look in, so the list is empty.
+
+For testing, `--show picker:<folder>` opens it at a folder (with `pickfile`
+the first file is selected, with `pickgo` as well it is chosen) in a
+scripted run.
 
 In multiplayer your skin is sent to the server and shown to the other
 players, as long as its PNG file is no larger than 24,000 bytes; a larger one

@@ -134,6 +134,8 @@ pub struct Settings {
     pub pack_brightness: i32,
     /// Install newer versions from the nightly release by itself.
     pub auto_update: bool,
+    /// The folder the file picker was last in (empty: pick a sensible one).
+    pub picker_dir: String,
 }
 
 impl Default for Settings {
@@ -187,6 +189,7 @@ impl Default for Settings {
             pack_saturation: 108,
             pack_brightness: 97,
             auto_update: true,
+            picker_dir: String::new(),
         }
     }
 }
@@ -292,6 +295,7 @@ impl Settings {
                     .collect()
             },
             auto_update: flag("auto_update", true),
+            picker_dir: kv(text, "picker_dir").unwrap_or("").chars().filter(|c| !c.is_control()).take(400).collect(),
             texture_pack: kv(text, "texture_pack").unwrap_or("").chars().filter(|c| !c.is_control()).take(1000).collect(),
             pack_hue: int("pack_hue", d.pack_hue, -180, 180),
             pack_saturation: int("pack_saturation", d.pack_saturation, 0, 300),
@@ -330,6 +334,7 @@ impl Settings {
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\nslim_arms={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.slim_arms as i32));
         s.push_str(&alloc::format!("map_zoom={}\nmap_preset_1={}\nmap_preset_2={}\nmap_preset_3={}\nmap_follow={}\nmap_grid={}\nmap_waypoints={}\n", self.map_zoom, self.map_preset[0], self.map_preset[1], self.map_preset[2], self.map_follow as i32, self.map_grid as i32, self.map_waypoints as i32));
         s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\ntexture_pack={}\npack_hue={}\npack_saturation={}\npack_brightness={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.texture_pack, self.pack_hue, self.pack_saturation, self.pack_brightness, self.auto_update as i32));
+        s.push_str(&alloc::format!("picker_dir={}\n", self.picker_dir));
         for (i, a) in ACTIONS.iter().enumerate() {
             s.push_str(&alloc::format!("key_{}={}\n", a.1, self.keys[i]));
         }

@@ -650,7 +650,7 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   mod is on, its two rows: PLACE NOTICES (off, countries, regions or towns)
   and MAP DATA RELAY (host:port, for old machines; see
   [EARTH.md](EARTH.md)).
-- **SKIN**: pick one of the built-in looks or use your own 64 x 64 PNG. See
+- **SKIN**: pick one of the built-in looks or choose your own 64 x 64 picture with the built-in file browser. See
   [MODDING.md](MODDING.md#player-skins).
 - **MODS**: a switch for every mod, and UPDATE THE GAME AUTOMATICALLY. See
   [Mods](#mods) and [Updating](#updating).
