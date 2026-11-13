@@ -442,13 +442,13 @@ model <id> file <model.bbmodel>      a file, path relative to this file
 ```
 
 Built-in names (every file in `data/models/`): `player grazer ant bat bear
-bee beetle bird bison boat bull butterfly camel car cargo_boat cart cat
-cat_fluffy cat_lynx chest_cart chicken chicken_rooster cow cow_highland
-cow_longhorn crab crawler deer dog dog_hound dog_shepherd dog_terrier donkey
-duck elephant fish fox frog gator ghoul goat golem goose horse horse_pony
-llama monkey mouse ogre owl penguin pig pig_boar plane rabbit rabbit_lop
-scarecrow sheep sheep_merino sheep_ram skeleton skeleton_hound slime snake
-spider squid tiger turkey turtle werewolf wolf worm wraith yak zombie`.
+bee beetle bird bison bull butterfly camel cat cat_fluffy cat_lynx chicken
+chicken_rooster cow cow_highland cow_longhorn crab crawler deer dog dog_hound
+dog_shepherd dog_terrier donkey duck elephant fish fox frog gator ghoul goat
+golem goose horse horse_pony llama monkey mouse ogre owl penguin pig pig_boar
+rabbit rabbit_lop scarecrow sheep sheep_merino sheep_ram skeleton
+skeleton_hound slime snake spider squid tiger turkey turtle werewolf wolf worm
+wraith yak zombie`.
 
 Bones are animated by name (capitals do not matter):
 
@@ -655,8 +655,8 @@ while the player is in a vehicle; `riding` is true there too.
   with the item `chain`, from the Trains mod (see
   [PLAYING.md](PLAYING.md#railways)).
 - `land`: drives on the ground. The default.
-- `air`: rolls slowly until near full throttle, then flies where the rider
-  looks.
+- `air`: rolls slowly until the throttle is past half, then flies where the
+  rider looks.
 
 How they are driven is in [PLAYING.md](PLAYING.md#vehicles).
 

@@ -50,7 +50,7 @@ own (see [Code that mods bring](#code-that-mods-bring)).
 | Natural Disasters | `mods/disasters` | earthquakes, tsunamis and tornadoes, as `episode` lines (see [Episodes](#episodes)), and the `disasters` switch in SETTINGS > GAME, off at first. Pack lines only |
 | Earth | `mods/earth` | `feature earth`, which offers real-world terrain (see [EARTH.md](EARTH.md)) |
 | Vehicles | `mods/vehicles` | `feature vehicles`: how boats float, carts follow track, cars drive and planes fly, getting in and out, and vehicles kept in step between players. It adds no vehicle of its own |
-| Boats | `mods/boats` | the boat |
+| Boats | `mods/boats` | the boat and the cargo boat |
 | Trains | `mods/trains` | rail track (`tag track`), station furniture (`tag station`), the carts and the locomotive |
 | Planes | `mods/planes` | the plane |
 | Land Vehicles | `mods/landvehicles` | the buggy, the truck and the kart, their icons and their recipes, and their model, `models/car.bbmodel` |
@@ -138,7 +138,7 @@ start-up.
 
 After editing a pack, or adding or removing a mod, either:
 
-- SETTINGS > GAME > **RELOAD CONTENT PACKS NOW**, or
+- SETTINGS > GAME > **RELOAD MODS NOW**, or
 - type `/reload` in chat (T).
 
 The files are read again and the open world switches to the new content on
@@ -465,7 +465,7 @@ entity, simply `model <name>` for those the base data already declares.
 
 Redefining the model `player` replaces every player's body.
 
-To look at every creature and vehicle model at once:
+To look at every creature model at once:
 
 ```sh
 voxelrust --pack my-pack.txt --show creatures --screenshot out.bmp
@@ -490,8 +490,9 @@ block stone_lantern
 craft stone_lantern 1 stone 3 lamp 1
 ```
 
-- The block needs at least one `box` line. The boxes are not drawn; they are
-  the solid shape, used for collision and for aiming. For something to walk
+- Give the block at least one `box` line. The boxes are not drawn; they are
+  the solid shape, used for collision and for aiming (with none, the block is
+  solid as a whole block). For something to walk
   through (a bush, a hanging lamp), give a small box and `solid no`.
 - With `rotate`, the model turns to face the way the block was placed.
 - The item shows as the model in the inventory and the creative list.

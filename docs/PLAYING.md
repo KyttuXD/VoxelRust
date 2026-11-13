@@ -41,7 +41,8 @@ height was 128 still open; their chunks become the lower half.
 
 In a world, Esc opens the pause menu: BACK TO THE GAME, SETTINGS, SAVE AND
 QUIT TO TITLE. The game also saves by itself (every 30 seconds unless you
-change it). Singleplayer pauses in menus; a multiplayer world never stops.
+change it). Singleplayer pauses on the pause menu and in Settings; a
+multiplayer world never stops.
 
 ## Controls
 
@@ -429,7 +430,7 @@ The base game has no vehicles and no rails.
 - **Pick up**: left click it from outside. You get the item back, and
   anything in its storage.
 - **Commands**: `/vehicle ID` sets one down 2.5 blocks ahead, `/board` gets
-  into the nearest one within 6 blocks, and `/vehicles` says how many there
+  into a vehicle within 6 blocks, and `/vehicles` says how many there
   are.
 
 Vehicles are saved with the world. They are single items that you place, not
@@ -562,7 +563,7 @@ blocks from it.
 
 | Command | Effect | On a server |
 | --- | --- | --- |
-| `/help` | list the commands from `/reload` to `/strike` (not the scripting ones at the end of this table) | works |
+| `/help` | list the commands in short form, every one in this table except `/help` itself | works |
 | `/reload` | read the content packs and the mods folders again without restarting | no: the server decides the content |
 | `/give ITEM [N]` | put N of an item in your inventory (1 if N is left out, 999 at most) | works |
 | `/time WHEN` | set the time: `day` or `noon`, `night` or `midnight`, `dawn` or `morning`, `dusk` or `evening`, or a number from 0 up to (not including) 1, where 0 is dawn and 0.25 noon | no |
@@ -669,7 +670,6 @@ which of these happened:
 - THIS IS THE NEWEST VERSION
 - A NEWER VERSION IS INSTALLED - START THE GAME AGAIN TO USE IT
 - A NEWER VERSION IS OUT (AUTOMATIC UPDATES ARE OFF)
-- COULD NOT CHECK FOR UPDATES
 
 UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS (on by default) decides
 whether a newer version is installed or only announced. `--no-update` skips
@@ -678,7 +678,7 @@ the check for one run.
 Things to know:
 
 - While the project's repository is private the download is refused, and
-  the game says COULD NOT CHECK FOR UPDATES.
+  the title screen shows no update line at all.
 - On Mac OS X 10.6 the system's `curl` cannot make modern HTTPS
   connections, so the old-Mac build cannot update itself.
 - Only the program is replaced, not the `mods` folder beside it.
@@ -813,7 +813,8 @@ done and open no window.
 Q (it can be rebound in Settings > CONTROLS) tosses one of the held item
 ahead of you. It lies on the ground, glinting, for five minutes; walk over it
 to pick it up again. In the inventory, items are moved by clicking: left
-click picks a stack up or puts it down, right click takes or places one.
+click picks a stack up or puts it down, right click picks up half or puts
+down one.
 
 ## SDL2
 
