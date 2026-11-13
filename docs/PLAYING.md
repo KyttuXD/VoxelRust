@@ -59,7 +59,7 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | (chat) /passenger | ride along in a nearby vehicle with a free seat (buses, ferries, jeeps...) |
 | (chat) /lock, /unlock | lock the vehicle you are in or looking at to you, or release it |
 | Left click | break a block, hit a creature, pick up a vehicle |
-| Right click | place a block; use a crafting table, chest, oven, furnace or bed; open or shut a door; sit on a chair; till soil with a hoe; eat; shoot a bow; get into a vehicle; collect from, trade with, tame or ride a creature; hatch a spawn egg |
+| Right click | place a block; use a crafting table, chest, oven, furnace or bed; open or shut a door; sit on a chair; till soil with a hoe; eat (hold); draw a bow (hold) and shoot it (let go); get into a vehicle; collect from, trade with, tame or ride a creature; hatch a spawn egg |
 | Middle click | pick the block you are looking at |
 | 1-9, mouse wheel | choose a hotbar slot |
 | E * | inventory |
@@ -145,7 +145,8 @@ SETTINGS > GAME while the world is open.
 
 Hunger drops one point every 45 seconds, twice as fast while moving quickly.
 At zero you lose health instead. Right click with food in hand to eat: it
-restores its points of hunger and half as much health.
+restores its points of hunger and half as much health. Eating takes about a
+second with the button held (see [The hand](#the-hand)).
 
 | Food | Points | Where from |
 | --- | --- | --- |
@@ -362,11 +363,39 @@ creative.
 | Longbow | 9 | 1 bow, 2 sticks, 2 string |
 | Crossbow | 13 | 1 bow, 2 iron ingots, 2 planks |
 
-Right click to shoot where you look. Each shot uses one Arrow (1 stick and
-1 gravel make 4) in survival; none are needed in creative. The stronger
-weapons shoot faster arrows but take longer between shots (0.7, 1.1 and 1.8
-seconds). Arrows drop as they fly, stop at blocks and hurt the first
-creature they meet.
+Hold right click to draw the bow, and let go to shoot where you look. The
+string comes back over about a second (a little longer for the longbow): the
+bow in your hand and its picture in the hotbar change through three stages,
+and your arm comes up and pulls back with it. The speed and damage of the
+arrow grow with the draw, to the numbers in the table at a full draw; letting
+go at once is a weak shot (a fifth of the power). The Arrow is used up when
+you let go (1 stick and 1 gravel make 4); none are needed in creative, and
+with none left the bow says `OUT OF AMMUNITION` and does not draw.
+Changing slot or pressing left click (break) while drawing lets the string
+down without shooting. The **crossbow** loads while you hold right click
+(it draws fully, with a click) and shoots with the next right click. A bow
+makes a creak as it is drawn and a crossbow clicks when loaded. Arrows drop
+as they fly, stop at blocks and hurt the first creature they meet; in
+multiplayer they fly as before for everyone.
+
+### The hand
+
+In first person the forearm stays in view and grips what you hold, as in
+Minecraft but with the hand shown:
+
+- a **tool or weapon** is big and thick at the lower right, its head up and to
+  the left (the game's own diagonal pictures and a texture pack's upright ones
+  are both gripped by the handle);
+- a **block** is a small cube turned to show its top and two sides;
+- a **flat item** (food, a torch, a stick) is a card with thickness;
+- a **bow** is drawn back as above;
+- **eating and drinking** take about a second with the button held: the hand
+  rises to the mouth, takes bites (or gulps, for milk and the like) and the
+  food is used up at the end. Letting go, changing slot or pressing break
+  stops it with nothing eaten;
+- the hand **bobs** and sways as you walk, and **swings** when you hit or
+  use things: a tool winds up, strikes and recovers, anything else twists
+  in and back (the timings are LastRoute's).
 
 ### Swords
 
