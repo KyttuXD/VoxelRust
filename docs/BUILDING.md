@@ -20,6 +20,13 @@ cargo build --release
 The program is `target/release/voxelrust`. To run it, install the SDL2
 runtime library (`libsdl2-2.0-0` on Debian and Ubuntu).
 
+The three mods that come with the game are not inside the program: they are
+the folders `mods/disasters`, `mods/earth` and `mods/landvehicles`. The game
+finds them in a `mods` folder beside the program or in `./mods`, so run a
+program you built from the top of the source tree (`cargo run --release`
+does), or copy those three folders into a `mods` folder next to it. Without
+them the game still runs, with no Earth worlds, disasters or land vehicles.
+
 ## Windows (64-bit)
 
 ```sh
@@ -95,6 +102,49 @@ on a system older than 10.12. If you give the script an `SDL2.framework`,
 it is copied inside the app, which then needs nothing else installed. For
 Mac OS X 10.6 use the official SDL2 2.0.4 framework.
 
+The script also copies the three mods that come with the game into the app,
+as `Contents/Resources/mods`, which is one of the places the game looks.
+
+## Packaging a release
+
+```sh
+scripts/package-release.sh [toolchain]
+```
+
+One script builds every version (Linux, Windows, both Mac programs and their
+apps, and the browser version if its target is installed) and lays the files
+of a release out in `dist/nightly/`:
+
+| File | What it is |
+| --- | --- |
+| `voxelrust-linux-x86_64.tar.gz` | the Linux program, with `voxelrust.desktop`, `icon.png` and the icon in the sizes Linux desktops use |
+| `voxelrust-windows-x86_64.zip` | `voxelrust.exe` |
+| `voxelrust-macos-x86_64.zip` | `VoxelRust.app` for macOS 10.12 and later |
+| `voxelrust-macos-legacy-x86_64.zip` | `VoxelRust.app` for Mac OS X 10.6 and later |
+| `voxelrust-web.zip` | the browser version (`dist/web`) |
+| `voxelrust-<build name>.bin`, `voxelrust-windows-x86_64.exe` | the bare programs, for the game's updater |
+| `nightly.txt` | the commit, and each bare program's SHA-256 and size: what the updater reads |
+| `BUILDS.txt`, `SHA256SUMS.txt` | for people: which file is for which machine, and checksums |
+
+Every archive also holds `README.md`, `LICENSE`, `docs/` and `examples/`.
+The Linux and Windows archives hold the three mods that come with the game
+in a `mods/` folder beside the program; the Mac apps carry them inside, in
+`Contents/Resources/mods`. The game's own data (`data/`) is inside the
+program. SDL2 is not included.
+
+The script takes the commit from git (or from `VOXELRUST_COMMIT` if that is
+set) and builds it into every program; that is what `--version` prints and
+what the updater compares.
+
+The files are on the `nightly` release,
+<https://github.com/KyttuXD/VoxelRust/releases/tag/nightly>. They are
+uploaded by hand, because the workflows cannot run (see
+[GitHub workflows](#github-workflows)):
+
+```sh
+gh release upload nightly --clobber dist/nightly/*
+```
+
 ## Build names and updating
 
 Every build has a name, which says what kind of machine it is for:
@@ -106,22 +156,86 @@ Every build has a name, which says what kind of machine it is for:
 | `macos-x86_64` | macOS 10.12 and later, Intel | `scripts/build-macos-legacy.sh` |
 | `macos-legacy-x86_64` | Mac OS X 10.6 and later, 64-bit Intel | `scripts/build-macos-legacy.sh` |
 
-The game prints its name with `--version` and shows it on the F3 screen:
+The game prints its name with `--version`, together with the commit it was
+built from, and shows the name on the F3 screen:
 
 ```
 $ voxelrust --version
-voxelrust 0.1.0 (linux-x86_64)
+voxelrust 0.1.0 (linux-x86_64, commit 5f38cb02e2e3)
 ```
 
-Nightly files are named after it (`voxelrust-<build name>`), and
+A program built without `VOXELRUST_COMMIT` in the environment (plain `cargo
+build`) says `commit dev`. The title screen shows version, build name and
+commit in its corner.
+
+Nightly files are named after the build name (`voxelrust-<build name>`), and
 `BUILDS.txt` in the nightly release lists them.
 
-**There is no updater in the game.** It never downloads or replaces itself.
-To update, download the file with the same build name as the one you have
-and replace the program (or the app) with it. Worlds and settings are kept
-in the data folder, not beside the program, so they are untouched. The two
-Mac builds are different files on purpose: a Mac on 10.6 must keep using
-`macos-legacy-x86_64`.
+### How the game updates itself
+
+When the game starts it looks at the nightly release in the background
+(`src/client/update.rs`):
+
+1. It downloads `nightly.txt` from
+   `https://github.com/KyttuXD/VoxelRust/releases/download/nightly/` with
+   the system's `curl`, into the data folder. The file looks like this:
+
+   ```
+   commit 1a2b3c4d5e6f
+   linux-x86_64 voxelrust-linux-x86_64.bin <sha256> <bytes>
+   windows-x86_64 voxelrust-windows-x86_64.exe <sha256> <bytes>
+   ```
+
+2. If the commit listed is the one the program was built from, it is up to
+   date.
+3. Otherwise it takes the line that begins with its own build name, and
+   only that one, so the build for old Macs is never replaced by the one for
+   new Macs. A line is used only if the file name is a plain name (no
+   path) and the checksum is 64 hexadecimal digits.
+4. It downloads that file as `<program>.new` beside the running program,
+   checks its size and SHA-256 against the list, and puts it in the
+   program's place. (On Windows the running program is first moved aside as
+   `<program>.old`.) The new version is in use **from the next start**.
+
+The title screen shows how far this has got:
+
+| Message | Meaning |
+| --- | --- |
+| CHECKING FOR A NEWER VERSION... | the check is running |
+| THIS IS THE NEWEST VERSION | same commit, or the release has nothing for this build name |
+| A NEWER VERSION IS INSTALLED - START THE GAME AGAIN TO USE IT | replaced |
+| A NEWER VERSION IS OUT (AUTOMATIC UPDATES ARE OFF) | there is one, and it was not installed |
+| COULD NOT CHECK FOR UPDATES | a download failed, the list could not be read, the checksum did not match, or the program could not be replaced |
+
+Switching it off:
+
+- `--no-update` skips the check for that run.
+- UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS (`auto_update` in
+  `settings.txt`, on by default): when off, the game still checks but only
+  reports that a newer version is out.
+- A program built by hand with no commit stamp (`commit dev`) is never
+  replaced; it too only reports a newer version.
+- There is no check at all in scripted runs (`--screenshot`, `--bench`),
+  for `--server`, or in the browser.
+
+What it cannot do:
+
+- **While the repository is private, it does not work.** The download is
+  anonymous, GitHub refuses it, and the game says COULD NOT CHECK FOR
+  UPDATES.
+- **The old-Mac build cannot update itself on Mac OS X 10.6.** The `curl`
+  that comes with 10.6 cannot make modern HTTPS connections. Replace the app
+  by hand there.
+- **Only the program is replaced.** The `mods` folder that came with the
+  game (`mods/` beside the program, or `Contents/Resources/mods` in a Mac
+  app), the docs and SDL2 stay as they were. If a newer version changes the
+  mods that come with it, download the archive.
+
+To update by hand, download the archive with the same build name as the one
+you have and replace the program (or the app) and its `mods` folder. Worlds
+and settings are kept in the data folder, not beside the program, so they
+are untouched. The two Mac builds are different files on purpose: a Mac on
+10.6 must keep using `macos-legacy-x86_64`.
 
 ## Tests
 
@@ -136,11 +250,16 @@ against `std` so that plain `cargo test` works.)
 ## GitHub workflows
 
 The repository is on GitHub as `KyttuXD/VoxelRust`, and it is private. Two
-workflows are in `.github/workflows`. **Neither has been able to run yet**:
+workflows are in `.github/workflows`. **Neither has been able to run**:
 the account's GitHub Actions budget blocks runs on private repositories.
 (Public repositories run Actions free of charge.) Treat both workflows as
-untested until a first run has passed; until then there are no nightly
-files.
+untested until a first run has passed. Until then the nightly files are
+built on the author's machine with `scripts/package-release.sh` and uploaded
+by hand (see [Packaging a release](#packaging-a-release)).
+
+Both workflows keep compiled code between runs (`actions/cache` on `target`
+and the cargo folders), so a run after a small change does not rebuild
+everything.
 
 ### `ci.yml`
 
@@ -160,31 +279,15 @@ Runs every night at 03:00 UTC, and by hand from the Actions tab.
 1. A first job compares the commit the `nightly` tag points at with the
    current commit. A scheduled run stops there if nothing has changed; a run
    started by hand always builds.
-2. On one Ubuntu runner with stable Rust it runs `cargo test --lib`, builds
-   Linux (`cargo build --release`), Windows (`scripts/build-windows.sh`) and
-   both Mac programs (`scripts/build-macos-legacy.sh`).
-3. It wraps both Mac programs as apps (`scripts/package-macos-app.sh`, once
-   plain and once with `VARIANT=modern`) and packages four archives, each
-   holding the program or app plus `README.md`, `LICENSE`, `docs/` and
-   `examples/`. The Linux archive also holds `voxelrust.desktop`, `icon.png`
-   and the icon in the sizes Linux desktops use. The game's data is inside
-   the program, so no `data/` folder is shipped.
-
-   | File | Build name |
-   | --- | --- |
-   | `voxelrust-linux-x86_64.tar.gz` | `linux-x86_64` |
-   | `voxelrust-windows-x86_64.zip` | `windows-x86_64` |
-   | `voxelrust-macos-x86_64.zip` | `macos-x86_64` |
-   | `voxelrust-macos-legacy-x86_64.zip` | `macos-legacy-x86_64` |
-
-   With them go `BUILDS.txt` (which file is for which machine, and the
-   commit) and `SHA256SUMS.txt`.
-4. It uploads them to a rolling pre-release called `nightly` under Releases
-   (created on first use), moving the `nightly` tag to the commit that was
-   built and replacing the previous files. Only the default branch is
-   published; a hand-started run on another branch builds and stops.
-
-SDL2 is not included in the archives.
+2. On one Ubuntu runner with stable Rust it runs `cargo test --lib`.
+3. It runs `scripts/package-release.sh`, the same script used by hand, which
+   builds every version and fills `dist/nightly/` (see
+   [Packaging a release](#packaging-a-release)).
+4. It uploads `dist/nightly/*` to a rolling pre-release called `nightly`
+   under Releases (created on first use), moving the `nightly` tag to the
+   commit that was built and replacing the previous files. Only the default
+   branch is published; a hand-started run on another branch builds and
+   stops.
 
 ## Regenerating data
 
@@ -206,9 +309,12 @@ latter only uses models whose files exist.
 
 Rebuild after changing anything under `data/`.
 
-The mods that come with the game are embedded the same way: each
-`data/packs/<name>/pack.txt` (`disasters`, `earth`, `landvehicles`) is
-written by hand and listed in SETTINGS > MODS under its folder name.
+The mods that come with the game are **not** embedded. Each is a folder
+written by hand, `mods/disasters`, `mods/earth` and `mods/landvehicles`,
+with a `pack.txt` (Land Vehicles also has `models/car.bbmodel`), and is
+listed in SETTINGS > MODS under its folder name. They are the only folders
+under `mods/` that git tracks (`.gitignore` ignores the rest). Changing one
+needs no rebuild: `/reload` reads it again.
 
 ## Icons
 

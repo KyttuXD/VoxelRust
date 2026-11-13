@@ -6,9 +6,10 @@ or travel by map to anywhere between 85 degrees north and south.
 ## The Earth mod
 
 Earth is a mod that comes with the game. The code is part of the program;
-the pack `data/packs/earth/pack.txt`, which is built in too, switches it on
-with one line (`feature earth`). It is on unless you turn it off under
-SETTINGS > MODS, where it is listed as EARTH.
+the pack `mods/earth/pack.txt`, a folder that ships beside the program
+(inside the app on a Mac), switches it on with one line (`feature earth`).
+It is on unless you turn it off under SETTINGS > MODS, where it is listed as
+EARTH, or the folder is missing.
 
 With the mod off, the NEW WORLD screen does not offer EARTH as a terrain,
 and `--earth` stops with the message `--earth needs the Earth mod, which is

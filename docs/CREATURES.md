@@ -331,7 +331,8 @@ shared world.
 voxelrust --show creatures --screenshot creatures.bmp
 ```
 
-lines up one of every creature and vehicle model and writes a picture. In a
+lines up one of every creature and vehicle model and writes a picture
+(`--show creatures,walking` is meant to show them mid-stride). In a
 world, `/spawn <id>` puts one in front of you; the ids are the `entity` names
 in [data/wildlife.txt](../data/wildlife.txt), for example `/spawn wolf 3`.
 In creative mode the [spawn eggs](#spawn-eggs) do the same by hand.

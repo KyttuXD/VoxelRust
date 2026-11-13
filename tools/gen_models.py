@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generates the creature and vehicle models in data/models/ (and the packs'
-in mods/spellsNmagic/models/ and mods/titanlands/models/, see OUTPUTS) and
-data/creatures.txt.
+in mods/spellsNmagic/models/, mods/titanlands/models/, mods/landvehicles/models/
+and mods/hearthgarden/models/, see OUTPUTS) and data/creatures.txt.
 
     python3 tools/gen_models.py                 # write the models, validate
     python3 tools/gen_models.py --creatures     # also rewrite creatures.txt (it has hand edits)
@@ -6812,8 +6812,1636 @@ TITANLANDS = [titan, behemoth, hydra, wyrm, emberwing, stormwing, pocket_dragon,
 # <<< titanlands pack
 
 
+# >>> hearthgarden pack
+# ---------------------------------------------------------------- the Hearth & Garden pack
+#
+# Props: garden and household decorations, written to mods/hearthgarden/models/.
+# 16 model units are one block; a prop stands on y = 0 around the origin (the
+# two hanging ones, HG_HANGING, are built down from y = 16 instead). Nothing
+# here moves: every box hangs on `Body` and articulate() leaves them alone.
+
+HG_DIR = os.path.join(ROOT, "mods", "hearthgarden", "models")
+HG_HANGING = {"chandelier", "hanging_lantern"}
+
+CLEAR = (0, 0, 0, 0)
+HG_OAK, HG_DARK, HG_PINE, HG_WALNUT = (168, 120, 66), (98, 66, 40), (206, 170, 112), (122, 78, 48)
+HG_STONE, HG_SLATE, HG_MARBLE, HG_SAND = (140, 140, 146), (98, 100, 110), (224, 222, 214), (204, 188, 150)
+HG_LEAF, HG_PINEG, HG_LIME = (70, 138, 60), (44, 100, 58), (124, 180, 72)
+HG_IRON, HG_BRASS, HG_GOLD, HG_STEEL = (66, 68, 78), (208, 168, 74), (238, 204, 96), (164, 170, 182)
+HG_TERRA, HG_STRAW, HG_WATER, HG_SOIL = (186, 106, 72), (224, 192, 98), (84, 150, 212), (92, 64, 44)
+HG_GLOW, HG_CREAM, HG_RED, HG_BARK = (255, 226, 130), (240, 230, 204), (176, 48, 52), (104, 76, 52)
+
+
+def hg(mid, seed, noise=7):
+    """A prop model and its two box makers (one box, a mirrored pair), all on `Body`."""
+    m = Model(mid, seed, noise)
+
+    def b(name, lo, hi, sh, dec=None, **kw):
+        return m.box(name, "Body", lo, hi, sh, dec, **kw)
+
+    def pr(name, lo, hi, sh, dec=None, **kw):
+        m.pair(name, "Body", lo, hi, sh, dec, **kw)
+
+    return m, b, pr
+
+
+def hg_quad(b, name, lo, hi, sh, dec=None, **kw):
+    """The box in the -x/-z corner and its three mirror images."""
+    for k, (sx, sz) in enumerate(((1, 1), (-1, 1), (1, -1), (-1, -1))):
+        xs, zs = sorted((lo[0] * sx, hi[0] * sx)), sorted((lo[2] * sz, hi[2] * sz))
+        b("%s-%d" % (name, k), (xs[0], lo[1], zs[0]), (xs[1], hi[1], zs[1]), sh, dec, **kw)
+
+
+def hg_walls(b, name, ro, ri, y0, y1, sh, **kw):
+    """A square ring of four walls, ro outside and ri inside."""
+    b(name + "-n", (-ro, y0, -ro), (ro, y1, -ri), sh, **kw)
+    b(name + "-s", (-ro, y0, ri), (ro, y1, ro), sh, **kw)
+    b(name + "-w", (-ro, y0, -ri), (-ri, y1, ri), sh, **kw)
+    b(name + "-e", (ri, y0, -ri), (ro, y1, ri), sh, **kw)
+
+
+def hg_wood(base, seed, d="v", period=3):
+    """Boards: d = "v" runs them down a face, "h" across it."""
+    if d == "v":
+        return planks(base, lambda p: p.i, lambda p: p.j, period, seed)
+    return planks(base, lambda p: p.j, lambda p: p.i, period, seed)
+
+
+def hg_log(bark, core, seed, axis="z"):
+    """A log lying along axis: growth rings on its ends, streaky bark around."""
+    ends = {"x": ("east", "west"), "y": ("up", "down"), "z": ("north", "south")}[axis]
+    a = "xyz".index(axis)
+
+    def sh(p):
+        if p.face in ends:
+            if min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) == 0:
+                return bark
+            d = max(abs(p.i - (p.w - 1) / 2.0), abs(p.j - (p.h - 1) / 2.0))
+            return mul(core, 0.8) if int(d + 0.5) % 2 == 0 else core
+        q = [math.floor(v) for v in (p.x, p.y, p.z)]
+        t = q[a]
+        q[a] = 0
+        c = mul(bark, 0.84 + 0.3 * hsh(seed, q[0], q[1], q[2]))
+        if hsh(seed + 1, q[0], q[1], q[2], t // 3) > 0.78:
+            c = mul(c, 0.78)
+        return c
+    return sh
+
+
+def hg_stone(base, seed, moss=None):
+    def sh(p):
+        c = mul(base, 0.86 + 0.26 * vnoise(seed, p.x / 2.3, p.y / 2.3, p.z / 2.3))
+        h = hsh(seed, math.floor(p.x * 2), math.floor(p.y * 2), math.floor(p.z * 2))
+        if h > 0.88:
+            c = mul(c, 0.74)
+        elif h < 0.08:
+            c = mul(c, 1.14)
+        if moss and (p.face == "up" or p.j == 0) and vnoise(seed + 3, p.x / 1.7, p.y, p.z / 1.7) > 0.5:
+            c = mix(c, moss, 0.8)
+        return c
+    return sh
+
+
+def hg_leaves(base, seed, dots=(), thr=0.9):
+    """Foliage: light and dark leaf texels, with flowers or berries (dots) here and there."""
+    def sh(p):
+        q = (math.floor(p.x), math.floor(p.y), math.floor(p.z))
+        c = mix(mul(base, 0.68), mul(base, 1.24), hsh(seed, *q))
+        if vnoise(seed, p.x / 3.1, p.y / 3.1, p.z / 3.1) > 0.6:
+            c = mul(c, 0.84)
+        if dots and hsh(seed + 9, *q) > thr:
+            return dots[int(hsh(seed + 17, *q) * len(dots))]
+        return c
+    return sh
+
+
+def hg_metal(base):
+    """Metal: a bright top edge, a dark foot, one streak of shine."""
+    def sh(p):
+        if p.face == "up":
+            return mul(base, 1.2)
+        if p.face == "down":
+            return mul(base, 0.7)
+        c = base
+        if p.j == 0:
+            c = mul(base, 1.3)
+        elif p.j == p.h - 1 and p.h > 2:
+            c = mul(base, 0.72)
+        if p.w > 2 and p.i == p.w // 3:
+            c = mix(c, WHITE, 0.3)
+        return c
+    return sh
+
+
+def hg_cloth(base, alt, kind="stripe", n=3):
+    def sh(p):
+        if kind == "stripe":
+            k = p.i // n % 2
+        elif kind == "band":
+            k = p.j // n % 2
+        elif kind == "check":
+            k = (p.i // n + p.j // n) % 2
+        else:
+            k = (p.i + p.j) % 2
+        c = alt if k else base
+        return mul(c, 0.9) if (p.i * 3 + p.j) % 5 == 0 else c
+    return sh
+
+
+def hg_bricks(base, mortar, seed, bw=4, bh=3):
+    def sh(p):
+        row = p.j // bh
+        s = p.i + (row % 2) * (bw // 2)
+        if p.j % bh == bh - 1 or s % bw == bw - 1:
+            return mortar
+        return mul(base, 0.8 + 0.36 * hsh(seed, row, s // bw, FACES.index(p.face)))
+    return sh
+
+
+def hg_thatch(base, seed, d="v"):
+    def sh(p):
+        u, v = (p.i, p.j) if d == "v" else (p.j, p.i)
+        c = mul(base, 0.78 + 0.4 * hsh(seed, u, v // 3, FACES.index(p.face)))
+        return mul(c, 0.8) if hsh(seed + 1, u, v) > 0.86 else c
+    return sh
+
+
+def hg_edge(sh, col, t=1, faces=None):
+    """sh with a border of col round every face (or just the faces named)."""
+    f = sh if callable(sh) else (lambda p: sh)
+
+    def out(p):
+        if (faces is None or p.face in faces) and min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) < t:
+            return col
+        return f(p)
+    return out
+
+
+def hg_top(side, top):
+    """One shader for the top face, another for the rest."""
+    f = side if callable(side) else (lambda p: side)
+    g = top if callable(top) else (lambda p: top)
+    return lambda p: g(p) if p.face == "up" else f(p)
+
+
+def hg_pot(base, band=None):
+    def sh(p):
+        if p.face == "up":
+            return mul(base, 0.8)
+        if p.side():
+            if p.j == 0:
+                return mul(base, 1.16)
+            if band and p.j in (2, 3):
+                return band if (p.i + p.j) % 2 else mul(band, 0.8)
+            if hsh(77, p.i, p.j, FACES.index(p.face)) > 0.86:
+                return mul(base, 0.84)
+        return base
+    return sh
+
+
+def hg_frond(col, seed):
+    """A leaf seen from above: a midrib with leaflets, cut out between them. The tip is at -z."""
+    def sh(p):
+        k = int(p.lz * p.h)
+        if p.i == p.w // 2:
+            return mul(col, 0.7)
+        if k == 0 or k % 2 == 1 or (k == 1 and p.i in (0, p.w - 1)):
+            return CLEAR
+        if p.w > 3 and p.i in (0, p.w - 1) and k % 4 == 0:
+            return CLEAR
+        return mul(col, 0.9 + 0.3 * hsh(seed, k, p.i))
+    return sh
+
+
+def hg_fire(p):
+    return mix((255, 236, 130), (234, 86, 30), p.ly * 1.1)
+
+
+def hg_glass(frame, glow=HG_GLOW):
+    """A lantern pane: glowing glass in a frame with a glazing bar."""
+    def sh(p):
+        if not p.side():
+            return frame
+        if min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) == 0 or (p.w > 4 and p.i == p.w // 2):
+            return frame
+        d = abs(p.i - (p.w - 1) / 2.0) / p.w + abs(p.j - (p.h - 1) / 2.0) / p.h
+        return mix((255, 246, 200), glow, d * 2.2)
+    return sh
+
+
+def hg_bloom(b, name, x, z, y0, y1, col, eye=HG_GOLD, r=1.0, stem=(64, 126, 58)):
+    """A flower: a stalk from y0 to y1 with a blossom on it."""
+    b(name + "-stalk", (x - 0.4, y0, z - 0.4), (x + 0.4, y1, z + 0.4), stem, skip=("down",))
+    b(name, (x - r, y1, z - r), (x + r, y1 + 2 * r * 0.8, z + r),
+      lambda p: eye if (p.face == "up" and 0 < p.i < p.w - 1 and 0 < p.j < p.h - 1) else (mul(col, 0.84) if (p.i + p.j) % 2 else col), noise=4)
+
+
+# ---- garden and wild
+
+def boulder():
+    m, b, pr = hg("boulder", 701)
+    st = hg_stone(HG_STONE, 701, moss=(86, 132, 70))
+    b("core", (-6, 0, -5), (6, 8, 5), st)
+    b("crown", (-4, 8, -3.5), (3, 11, 3), st)
+    b("lump-w", (-7.5, 0, -2), (-6, 5, 4), st)
+    b("lump-e", (6, 0, -4), (7.5, 6, 2), st)
+    b("lump-n", (-3, 0, -7), (4, 5, -5), st)
+    b("lump-s", (-4, 0, 5), (2, 6, 6.5), st)
+    b("chip", (4.5, 0, 4.5), (7, 2, 7), hg_stone(HG_SLATE, 702))
+    return m
+
+
+def rock_cairn():
+    m, b, pr = hg("rock_cairn", 703)
+    tones = [(128, 128, 136), (152, 146, 138), (116, 122, 132), (162, 156, 148), (134, 130, 126)]
+    specs = [((-6, 0, -5), (6, 4, 5), 0), ((-4.5, 4, -4), (4, 7, 4.5), 14), ((-3.5, 7, -3), (3.5, 10, 3), -10),
+             ((-2.5, 10, -2.5), (2, 12.5, 2), 22), ((-1.5, 12.5, -1.5), (1.5, 15, 1.5), 45)]
+    for k, (lo, hi, ry) in enumerate(specs):
+        b("stone-%d" % k, lo, hi, hg_stone(tones[k], 703 + k, moss=(90, 134, 74) if k == 0 else None), rot=(0, ry, 0))
+    b("pebble-a", (5, 0, 4.5), (7.5, 2, 7), hg_stone(tones[2], 709))
+    b("pebble-b", (-7.5, 0, -7), (-5.5, 1.5, -5.5), hg_stone(tones[3], 710))
+    return m
+
+
+def bush():
+    m, b, pr = hg("bush", 711)
+    lf = hg_leaves(HG_LEAF, 711)
+    b("stem", (-1, 0, -1), (1, 2, 1), HG_BARK)
+    b("core", (-6, 1, -6), (6, 10, 6), lf)
+    b("crown", (-4, 10, -4), (4, 12.5, 4), lf)
+    b("lump-w", (-7.5, 2, -3.5), (-6, 8, 3), lf)
+    b("lump-e", (6, 3, -3), (7.5, 9, 4), lf)
+    b("lump-n", (-3, 2, -7.5), (4, 8, -6), lf)
+    b("lump-s", (-4, 3, 6), (3, 9, 7.5), lf)
+    b("sprig", (2, 12.5, -1), (3, 14, 0), HG_LIME)
+    return m
+
+
+def berry_bush():
+    m, b, pr = hg("berry_bush", 715)
+    lf = hg_leaves((58, 124, 70), 715, dots=((204, 44, 66), (150, 30, 52)), thr=0.9)
+
+    def berry(p):
+        return (255, 170, 180) if (p.face == "up" and p.i == 0 and p.j == 0) else (204, 44, 66)
+
+    b("stem", (-1, 0, -1), (1, 3, 1), HG_BARK)
+    b("core", (-7, 2, -5), (7, 9, 5), lf)
+    b("mid", (-5, 2, -7), (5, 8, 7), lf)
+    b("crown", (-5, 9, -4), (4, 11.5, 4), lf)
+    b("tuft", (-2, 11.5, -2), (1, 13, 1), lf)
+    for k, (x, y, z) in enumerate(((-7.7, 6, -2), (6.3, 5, 1), (-2, 6, -7.7), (3, 4, 6.3), (1, 11, 3.2), (-5, 9.2, -4.8))):
+        b("berry-%d" % k, (x, y, z), (x + 1.4, y + 1.4, z + 1.4), berry, noise=3)
+    return m
+
+
+def hedge():
+    m, b, pr = hg("hedge", 717)
+    lf = hg_leaves((52, 116, 56), 717)
+
+    def trim(p):
+        return mul(lf(p), 0.84) if p.side() and (p.j == 0 or p.i in (0, p.w - 1)) else lf(p)
+
+    pr("stem", (-5.5, 0, -1), (-3.5, 2, 1), HG_BARK)
+    b("box", (-8, 2, -5), (8, 14, 5), trim)
+    b("cap", (-7, 14, -4), (7, 15, 4), lf)
+    b("shoot-a", (-3, 15, -1), (-2, 16.5, 0), HG_LIME)
+    b("shoot-b", (4, 15, 1), (5, 16, 2), HG_LIME)
+    return m
+
+
+def topiary():
+    m, b, pr = hg("topiary", 719)
+    lf = hg_leaves((60, 128, 58), 719)
+    b("pot", (-3, 0, -3), (3, 4, 3), hg_pot(HG_TERRA))
+    b("rim", (-3.5, 4, -3.5), (3.5, 5, 3.5), hg_top(mul(HG_TERRA, 1.1), HG_SOIL))
+    b("trunk", (-1, 5, -1), (1, 15, 1), hg_log(HG_BARK, HG_PINE, 719, "y"))
+    b("ball", (-5, 14, -5), (5, 24, 5), lf)
+    b("ball-y", (-4, 13, -4), (4, 25, 4), lf)
+    b("ball-x", (-6, 16, -3.5), (6, 22, 3.5), lf)
+    b("ball-z", (-3.5, 16, -6), (3.5, 22, 6), lf)
+    return m
+
+
+def fern():
+    m, b, pr = hg("fern", 721, noise=5)
+    b("clump", (-2, 0, -2), (2, 3, 2), hg_leaves((48, 110, 52), 721))
+    b("crozier", (-0.5, 3, -0.5), (0.5, 7, 0.5), HG_LIME)
+    b("curl", (-0.5, 6, -1.5), (0.5, 7, -0.5), HG_LIME)
+    for k in range(8):
+        col = (66, 142, 62) if k % 2 == 0 else (52, 118, 56)
+        b("frond-%d" % k, (-1.5, 2, -9 if k % 2 == 0 else -7), (1.5, 2.5, 0), hg_frond(col, 721 + k),
+          rot=(28 if k % 2 == 0 else 52, k * 45, 0), origin=(0, 2, 0), skip=("north", "south", "east", "west"))
+    return m
+
+
+def cattail():
+    m, b, pr = hg("cattail", 723, noise=5)
+    GR, HD = (86, 140, 70), (112, 70, 44)
+    b("tuft", (-3, 0, -3), (3, 2, 3), hg_leaves((70, 124, 66), 723))
+    for k, (x, z, h) in enumerate(((-1.5, -1, 20), (1.5, 0.5, 25), (0, 2, 16), (-2.5, 1.5, 12))):
+        b("reed-%d" % k, (x - 0.4, 2, z - 0.4), (x + 0.4, h, z + 0.4), GR)
+        if k < 3:
+            b("spike-%d" % k, (x - 0.9, h - 6, z - 0.9), (x + 0.9, h - 1, z + 0.9),
+              lambda p: mul(HD, 0.84) if (p.i + p.j) % 3 == 0 else HD)
+    for k, (ry, rz, h) in enumerate(((0, 12, 15), (120, -14, 18), (240, 16, 11))):
+        b("blade-%d" % k, (-0.8, 1, -0.2), (0.8, h, 0.2), lambda p: mul(GR, 0.8) if p.i == p.w // 2 else mul(GR, 1.1),
+          rot=(0, ry, rz), origin=(0, 1, 0), skip=("east", "west", "up", "down"))
+    return m
+
+
+def sunflower():
+    m, b, pr = hg("sunflower", 725, noise=5)
+    GR, YL, BR = (74, 136, 60), (248, 204, 52), (104, 70, 40)
+
+    def petals(p):
+        d = math.hypot(p.i - (p.w - 1) / 2.0, p.j - (p.h - 1) / 2.0)
+        if d > 5.3 or (d > 3.4 and (p.i + p.j) % 2 == 1):
+            return CLEAR
+        return mix(YL, (240, 150, 40), (d - 2.5) / 5.0)
+
+    def seeds(p):
+        return mul(BR, 0.76) if (p.i + p.j) % 2 else BR
+
+    b("mound", (-2, 0, -2), (2, 1, 2), HG_SOIL)
+    b("stalk", (-0.7, 1, -0.7), (0.7, 23, 0.7), lambda p: mul(GR, 0.84) if p.j % 5 == 0 else GR)
+    b("leaf-a", (-5, 9, -1.5), (-0.7, 9.6, 1.5), GR, rot=(0, 0, 18), origin=(-0.7, 9, 0))
+    b("leaf-b", (0.7, 13, -1.5), (5, 13.6, 1.5), GR, rot=(0, 0, -18), origin=(0.7, 13, 0))
+    b("petals", (-5, 19, -2), (5, 29, -1.4), petals, skip=("up", "down", "east", "west"))
+    b("disc", (-2.5, 21.5, -2.8), (2.5, 26.5, -1.4), seeds)
+    b("calyx", (-2, 22, -1.4), (2, 26, -0.4), mul(GR, 0.84))
+    return m
+
+
+def flower_bed():
+    m, b, pr = hg("flower_bed", 727)
+    wd = hg_wood(HG_OAK, 727, "v")
+    b("planter", (-8, 0, -5), (8, 5, 5), hg_edge(wd, HG_DARK, faces=("up",)))
+    b("soil", (-7, 5, -4), (7, 5.6, 4), HG_SOIL, skip=("down",))
+    cols = [(232, 70, 84), (250, 208, 70), (150, 110, 220), (250, 246, 240), (242, 138, 60), (232, 120, 180)]
+    for k, (x, z, h) in enumerate(((-5.5, -2, 10), (-2.5, 1.5, 12.5), (0.5, -2, 9), (3, 1.5, 11.5), (5.8, -1.5, 13), (-5, 2.5, 8.5))):
+        hg_bloom(b, "bloom-%d" % k, x, z, 5.6, h, cols[k], eye=HG_GOLD if k != 1 else (120, 76, 40))
+    lf = hg_leaves((70, 140, 62), 728)
+    b("greens-a", (-4, 5.6, -3.5), (-1, 7.6, -1), lf)
+    b("greens-b", (1.5, 5.6, 0), (4.5, 8, 3), lf)
+    b("greens-c", (5, 5.6, 1.5), (7, 7, 3.5), lf)
+    return m
+
+
+def flowerpot():
+    m, b, pr = hg("flowerpot", 729)
+    GR = (72, 138, 62)
+    b("pot", (-3, 0, -3), (3, 5, 3), hg_pot(HG_TERRA, band=(232, 214, 180)))
+    b("rim", (-3.5, 5, -3.5), (3.5, 6.5, 3.5), hg_top(mul(HG_TERRA, 1.1), HG_SOIL))
+    b("stalk", (-0.5, 6.5, -0.5), (0.5, 11, 0.5), GR)
+    b("leaf-a", (-3.5, 7.5, -1), (-0.5, 8.1, 1), GR, rot=(0, 0, 20), origin=(-0.5, 7.5, 0))
+    b("leaf-b", (0.5, 8.5, -1), (3.5, 9.1, 1), GR, rot=(0, 0, -20), origin=(0.5, 8.5, 0))
+    b("petals-x", (-2.5, 11, -1), (2.5, 13, 1), (226, 62, 84))
+    b("petals-z", (-1, 11, -2.5), (1, 13, 2.5), (226, 62, 84))
+    b("eye", (-1, 12.5, -1), (1, 13.6, 1), HG_GOLD)
+    return m
+
+
+def potted_palm():
+    m, b, pr = hg("potted_palm", 731, noise=5)
+    BL = (70, 110, 160)
+    b("pot", (-4, 0, -4), (4, 6, 4), hg_pot(BL, band=(226, 232, 240)))
+    b("rim", (-4.5, 6, -4.5), (4.5, 7, 4.5), hg_top(mul(BL, 1.15), HG_SOIL))
+    tr = lambda p: mul((150, 112, 70), 0.74) if p.j % 3 == 0 else (150, 112, 70)
+    b("trunk-a", (-1.5, 7, -1.5), (1.5, 13, 1.5), tr)
+    b("trunk-b", (-1.2, 13, -1), (1.3, 19, 1.5), tr)
+    b("trunk-c", (-0.8, 19, -0.6), (1.2, 24, 1.4), tr)
+    b("crown", (-1.3, 23.5, -1), (1.7, 25.5, 2), (60, 120, 56))
+    for k in range(7):
+        col = (64, 146, 66) if k % 2 == 0 else (48, 122, 58)
+        b("frond-%d" % k, (-2.3, 25, -11 if k % 2 == 0 else -9), (2.7, 25.5, 0.4), hg_frond(col, 731 + k),
+          rot=(18 if k % 2 == 0 else -16, k * 51.4 + 10, 0), origin=(0.2, 25, 0.4), skip=("north", "south", "east", "west"))
+    return m
+
+
+def ornamental_tree():
+    m, b, pr = hg("ornamental_tree", 735)
+    lf = hg_leaves((62, 132, 66), 735, dots=((244, 176, 200), (250, 214, 226)), thr=0.9)
+    bark = hg_log(HG_BARK, HG_PINE, 735, "y")
+    b("roots", (-2.5, 0, -2.5), (2.5, 2, 2.5), bark)
+    b("trunk", (-1.5, 2, -1.5), (1.5, 20, 1.5), bark)
+    b("bough-w", (-5, 15, -0.7), (-1.5, 16.4, 0.7), HG_BARK, rot=(0, 0, -28), origin=(-1.5, 15.5, 0))
+    b("bough-e", (1.5, 13, -0.7), (5, 14.4, 0.7), HG_BARK, rot=(0, 0, 28), origin=(1.5, 13.5, 0))
+    b("canopy", (-7, 18, -7), (7, 30, 7), lf)
+    b("canopy-x", (-8, 21, -5), (8, 27, 5), lf)
+    b("canopy-z", (-5, 21, -8), (5, 27, 8), lf)
+    b("canopy-up", (-5, 30, -5), (5, 37, 5), lf)
+    b("tip", (-3, 37, -3), (3, 41.5, 3), lf)
+    return m
+
+
+def stump():
+    m, b, pr = hg("stump", 737)
+    lg = hg_log((98, 72, 50), (206, 172, 116), 737, "y")
+    b("bole", (-5, 0, -5), (5, 7, 5), lg)
+    b("root-w", (-7.5, 0, -1.5), (-5, 3, 1.5), lg)
+    b("root-e", (5, 0, -2), (7, 2.5, 1), lg)
+    b("root-n", (-1, 0, -7.5), (2, 3, -5), lg)
+    b("root-s", (-2, 0, 5), (1, 2, 7), lg)
+    b("splinter", (2, 7, 2), (4, 9, 4), (188, 152, 100))
+    b("shelf-fungus", (-6.5, 4, 1.5), (-5, 5, 4), (232, 206, 160))
+    b("sprout", (-3, 7, -3), (-2.2, 9.5, -2.2), HG_LIME)
+    b("sprout-leaf", (-3.6, 9.5, -3.2), (-1.6, 10.1, -2), HG_LIME)
+    return m
+
+
+def log_pile():
+    m, b, pr = hg("log_pile", 739)
+    barks = [(104, 76, 52), (120, 90, 62), (92, 70, 50), (132, 104, 78), (110, 84, 60), (98, 78, 58)]
+    spots = [(-7.5, 0), (-2.5, 0), (2.5, 0), (-5, 5), (0, 5), (-2.5, 10)]
+    for k, (x, y) in enumerate(spots):
+        dz = (0, 1, -0.5, 0.5, -1, 0)[k]
+        b("log-%d" % k, (x, y, -7 + dz), (x + 5, y + 5, 7 + dz), hg_log(barks[k], (212, 178, 122), 739 + k, "z"))
+    pr("stake", (-8.6, 0, -0.75), (-7.5, 9, 0.75), HG_DARK)
+    return m
+
+
+def mushroom_ring():
+    m, b, pr = hg("mushroom_ring", 745, noise=5)
+    ST = (236, 226, 204)
+    caps = [(196, 60, 50), (212, 122, 60), (176, 52, 60)]
+    for k in range(7):
+        a = math.radians(k * 360 / 7.0 + 12)
+        x, z = round(math.sin(a) * 5.6 * 2) / 2.0, round(math.cos(a) * 5.6 * 2) / 2.0
+        h, r = (3, 4.5, 2.5, 4, 3, 5, 2)[k], (1.5, 2, 1, 2, 1.5, 2, 1)[k]
+        cap = caps[k % 3]
+        b("stalk-%d" % k, (x - 0.5, 0, z - 0.5), (x + 0.5, h, z + 0.5), ST)
+        b("cap-%d" % k, (x - r, h, z - r), (x + r, h + 1.5, z + r),
+          lambda p, cap=cap, k=k: (250, 244, 230) if (p.face != "down" and hsh(745 + k, p.i, p.j, FACES.index(p.face)) > 0.8) else (ST if p.face == "down" else cap))
+    b("moss", (-1.5, 0, -1.5), (1.5, 0.8, 1.5), hg_leaves((70, 128, 64), 745))
+    return m
+
+
+def pumpkin():
+    m, b, pr = hg("pumpkin", 747)
+    OR = (232, 132, 40)
+
+    def rind(p):
+        if p.side() and p.i % 3 == 0:
+            return mul(OR, 0.78)
+        if p.face == "up" and (p.i % 3 == 0 or p.j % 3 == 0):
+            return mul(OR, 0.84)
+        return OR
+
+    b("flesh", (-6, 0, -6), (6, 9, 6), rind)
+    b("bulge-x", (-7, 1, -4), (7, 8, 4), rind)
+    b("bulge-z", (-4, 1, -7), (4, 8, 7), rind)
+    b("shoulder", (-4, 9, -4), (4, 10, 4), rind)
+    b("stalk", (-1, 10, -1), (1, 12.5, 1), (104, 128, 60))
+    b("stalk-bend", (-1, 11.5, -2.5), (1, 12.5, -1), (104, 128, 60))
+    b("leaf", (1, 10, 0), (5, 10.6, 3.5), (78, 140, 62))
+    b("tendril", (-4, 10, 1), (-1, 10.5, 1.6), (120, 170, 80))
+    return m
+
+
+def hay_bale():
+    m, b, pr = hg("hay_bale", 749)
+    hay = hg_thatch(HG_STRAW, 749, "h")
+    b("bale", (-8, 0, -6), (8, 10, 6), lambda p: hg_thatch(HG_STRAW, 749, "v")(p) if p.face in ("east", "west") else hay(p))
+    pr("twine", (-5, 0, -6.2), (-4, 10.2, 6.2), (150, 104, 60))
+    b("wisp-a", (-2, 10, -3), (3, 10.6, -2.4), HG_STRAW, rot=(0, 20, 0))
+    b("wisp-b", (1, 10, 2), (6, 10.6, 2.6), mul(HG_STRAW, 0.9), rot=(0, -14, 0))
+    b("wisp-c", (-7, 0, -7.4), (-2, 0.6, -6.6), HG_STRAW, rot=(0, 10, 0))
+    return m
+
+
+def lily_pad():
+    m, b, pr = hg("lily_pad", 751, noise=5)
+    GR = (64, 136, 74)
+
+    def pad(p):
+        cx, cy = (p.w - 1) / 2.0, (p.h - 1) / 2.0
+        dx, dy = p.i - cx, p.j - cy
+        d = math.hypot(dx, dy)
+        if d > min(p.w, p.h) / 2.0 or (dx > 0 and abs(dy) < dx * 0.45):
+            return CLEAR
+        if p.face == "down":
+            return mul(GR, 0.7)
+        return mul(GR, 0.84) if (abs(dx) < 0.6 or abs(dy) < 0.6 or d > min(p.w, p.h) / 2.0 - 1) else GR
+
+    side = ("north", "south", "east", "west")
+    b("pad-a", (-7.5, 0, -7), (0.5, 0.5, 1), pad, skip=side)
+    b("pad-b", (0, 0, -2), (7, 0.5, 5), pad, skip=side, rot=(0, 120, 0))
+    b("pad-c", (-5, 0, 2), (0, 0.5, 7), pad, skip=side, rot=(0, -100, 0))
+    PK = (246, 190, 214)
+    b("petals-x", (-5.5, 0.5, -4), (-1.5, 1.4, -2), PK)
+    b("petals-z", (-4.5, 0.5, -5), (-2.5, 1.4, -1), PK)
+    b("petals-in", (-4.5, 1.4, -4), (-2.5, 2.6, -2), WHITE)
+    b("eye", (-4, 2.6, -3.5), (-3, 3.2, -2.5), HG_GOLD)
+    b("bud", (3, 0.5, 1), (4.2, 2.4, 2.2), lambda p: PK if p.ly > 0.5 else GR)
+    return m
+
+
+def bird_bath():
+    m, b, pr = hg("bird_bath", 753)
+    st = hg_stone((176, 174, 168), 753, moss=(110, 146, 96))
+    b("foot", (-4, 0, -4), (4, 2, 4), st)
+    b("plinth", (-2.5, 2, -2.5), (2.5, 3.5, 2.5), st)
+    b("column", (-1.5, 3.5, -1.5), (1.5, 10, 1.5), st)
+    b("collar", (-2.5, 10, -2.5), (2.5, 11, 2.5), st)
+    b("bowl", (-6, 11, -6), (6, 12.5, 6), st)
+    hg_walls(b, "lip", 7, 5.5, 12.5, 14.5, st)
+    b("water", (-5.5, 12.5, -5.5), (5.5, 13.6, 5.5),
+      lambda p: (190, 224, 246) if hsh(753, p.i, p.j) > 0.86 else HG_WATER, skip=("down", "north", "south", "east", "west"), noise=3)
+    b("leaf-afloat", (1, 13.6, -3), (3, 13.9, -1.5), (196, 150, 60), skip=("down",))
+    return m
+
+
+def fountain():
+    m, b, pr = hg("fountain", 755)
+    st = hg_stone((168, 168, 172), 755)
+    wt = lambda p: (196, 228, 248) if hsh(755, p.i, p.j, FACES.index(p.face)) > 0.84 else HG_WATER
+    side = ("down", "north", "south", "east", "west")
+    b("floor", (-8, 0, -8), (8, 2, 8), st)
+    hg_walls(b, "basin", 8, 6.5, 2, 6, st)
+    b("pool", (-6.5, 2, -6.5), (6.5, 5, 6.5), wt, skip=side, noise=3)
+    b("pillar", (-2, 2, -2), (2, 12, 2), st)
+    b("dish", (-5, 12, -5), (5, 13.5, 5), st)
+    hg_walls(b, "dish-lip", 5, 4, 13.5, 15.5, st)
+    b("dish-pool", (-4, 13.5, -4), (4, 14.8, 4), wt, skip=side, noise=3)
+    b("spout", (-1, 13.5, -1), (1, 19, 1), st)
+    b("jet", (-1.5, 19, -1.5), (1.5, 20.5, 1.5), wt, noise=3)
+    for k, (x, z) in enumerate(((0, -5.3), (0, 5.3), (-5.3, 0), (5.3, 0))):
+        w, d = (1, 0.3) if x == 0 else (0.3, 1)
+        b("fall-%d" % k, (x - w, 5, z - d), (x + w, 15, z + d), lambda p: (214, 236, 250) if p.j % 3 == 0 else HG_WATER, noise=3)
+    return m
+
+
+def well():
+    m, b, pr = hg("well", 757)
+    st = hg_bricks((146, 144, 150), (100, 100, 108), 757, 4, 3)
+    wd = hg_wood(HG_WALNUT, 757, "v")
+
+    def tiles(p):
+        k = p.j if p.face == "up" else p.i
+        c = (168, 76, 58)
+        return mul(c, 0.78) if (k % 3 == 0) else mul(c, 0.9 + 0.2 * hsh(757, p.i // 2, p.j // 2))
+
+    hg_walls(b, "ring", 7, 5, 0, 8, st)
+    b("water", (-5, 0.5, -5), (5, 4, 5), (40, 70, 110), skip=("down", "north", "south", "east", "west"), noise=3)
+    pr("upright", (-7, 8, -1), (-5.5, 22, 1), wd)
+    b("roof-a", (-8, 22, -6), (8, 23.5, 6), tiles)
+    b("roof-b", (-8, 23.5, -4), (8, 25, 4), tiles)
+    b("roof-c", (-8, 25, -2), (8, 26.5, 2), tiles)
+    b("windlass", (-5.5, 17.5, -0.8), (5.5, 19.1, 0.8), hg_log(HG_OAK, HG_PINE, 758, "x"))
+    b("crank", (7, 16, -0.4), (7.8, 19, 0.4), HG_IRON)
+    b("crank-grip", (7.8, 16, -0.4), (9, 16.8, 0.4), HG_IRON)
+    b("rope", (-0.3, 12, -0.3), (0.3, 17.5, 0.3), (206, 186, 130))
+    b("bucket", (-1.5, 9, -1.5), (1.5, 12, 1.5), hg_edge(hg_wood(HG_OAK, 759, "v", 2), HG_IRON, faces=("up",)))
+    return m
+
+
+def beehive():
+    m, b, pr = hg("beehive", 761)
+    WH, BL = (236, 228, 200), (150, 190, 204)
+
+    def super_(col):
+        def sh(p):
+            if p.side() and p.j == p.h - 1:
+                return mul(col, 0.7)
+            return mul(col, 0.92) if p.i % 4 == 0 and p.side() else col
+        return sh
+
+    def door(c):
+        if c.face == "north":
+            c.rect(c.w // 2 - 3, c.h - 2, 6, 1, (40, 30, 24))
+            c.px(c.w // 2 - 1, c.h - 2, (240, 190, 50))
+
+    hg_quad(b, "foot", (-6, 0, -5), (-4.5, 3, -3.5), HG_DARK)
+    b("board", (-7, 3, -6.5), (7, 4, 6), hg_wood(HG_OAK, 761, "v"))
+    b("brood", (-6, 4, -5), (6, 9, 5), super_(WH), door)
+    b("honey", (-6, 9, -5), (6, 13, 5), super_(BL))
+    b("lid", (-7, 13, -6), (7, 14.5, 6), hg_metal((150, 152, 160)))
+    b("ridge", (-5, 14.5, -4), (5, 15.5, 4), hg_metal((150, 152, 160)))
+    for k, (x, y, z) in enumerate(((-3, 6, -7.5), (2.5, 10, -6.8), (7.2, 12, 1))):
+        b("bee-%d" % k, (x, y, z), (x + 1, y + 1, z + 1.4), lambda p: (40, 34, 30) if (p.j if p.face in ("up", "down") else p.i) % 2 else (246, 196, 50), noise=0)
+    return m
+
+
+def birdhouse():
+    m, b, pr = hg("birdhouse", 763)
+    wd = hg_wood((214, 184, 132), 763, "v")
+    RF = (150, 62, 56)
+
+    def hole(c):
+        if c.face == "north":
+            c.rect(c.w // 2 - 1, 1, 2, 2, (36, 26, 22))
+
+    b("mound", (-2.5, 0, -2.5), (2.5, 1, 2.5), hg_leaves((84, 136, 68), 763))
+    b("pole", (-1, 1, -1), (1, 18, 1), hg_wood(HG_DARK, 764, "v", 2))
+    b("bracket", (-2, 16.5, -2), (2, 18, 2), HG_DARK)
+    b("deck", (-4, 18, -4.5), (4, 19, 4), wd)
+    b("house", (-3, 19, -3), (3, 25, 3), wd, hole)
+    b("peg", (-0.4, 20, -4.6), (0.4, 20.8, -3), HG_DARK)
+    b("roof-a", (-4.5, 25, -4.5), (4.5, 26.5, 4.5), hg_cloth(RF, mul(RF, 0.8), "band", 1))
+    b("roof-b", (-3, 26.5, -4.5), (3, 28, 4.5), hg_cloth(RF, mul(RF, 0.8), "band", 1))
+    b("roof-c", (-1.2, 28, -4.5), (1.2, 29.2, 4.5), mul(RF, 0.9))
+    return m
+
+
+def garden_statue():
+    m, b, pr = hg("garden_statue", 765)
+    mb = hg_stone(HG_MARBLE, 765)
+    veined = lambda p: mul(mb(p), 0.82) if abs(vnoise(766, p.x / 2.0, p.y / 5.0, p.z / 2.0) - 0.5) < 0.04 else mb(p)
+    st = hg_stone((150, 150, 154), 767, moss=(96, 140, 86))
+    b("plinth", (-5, 0, -5), (5, 3, 5), st)
+    b("block", (-4, 3, -4), (4, 8, 4), hg_edge(st, mul((150, 150, 154), 0.8), faces=("north", "south", "east", "west")))
+    b("form-a", (-2.5, 8, -2), (2.5, 15, 2), veined, rot=(0, 18, 0))
+    b("form-b", (-1.5, 15, -3), (1.5, 20, 3), veined, rot=(0, -20, 0))
+    b("form-c", (-3.5, 20, -1.5), (3.5, 23, 1.5), veined, rot=(0, 30, 0))
+    b("orb", (-2, 23.5, -2), (2, 27.5, 2), veined, rot=(0, 45, 0))
+    b("spur", (-0.6, 27.5, -0.6), (0.6, 30, 0.6), veined)
+    return m
+
+
+def sundial():
+    m, b, pr = hg("sundial", 769)
+    st = hg_stone((172, 168, 158), 769)
+
+    def dial(p):
+        if p.face != "up":
+            return hg_metal(HG_BRASS)(p)
+        dx, dy = p.i - (p.w - 1) / 2.0, p.j - (p.h - 1) / 2.0
+        d = math.hypot(dx, dy)
+        if d > 5.2:
+            return mul(HG_BRASS, 0.7)
+        if d > 3.6 and int((math.degrees(math.atan2(dy, dx)) + 360) / 30) % 2 == 0:
+            return (70, 56, 36)
+        return HG_BRASS if d > 1 else mul(HG_BRASS, 1.2)
+
+    def gnomon(p):
+        return hg_metal(HG_BRASS)(p) if p.lz > 1 - p.ly * 1.02 - 0.05 else CLEAR
+
+    b("foot", (-4, 0, -4), (4, 2, 4), st)
+    b("step", (-3, 2, -3), (3, 3, 3), st)
+    b("shaft", (-2, 3, -2), (2, 10, 2), hg_edge(st, mul((172, 168, 158), 0.84), faces=("north", "south", "east", "west")))
+    b("capital", (-3.5, 10, -3.5), (3.5, 11, 3.5), st)
+    b("dial", (-5, 11, -5), (5, 12, 5), dial)
+    b("gnomon", (-0.4, 12, -3.5), (0.4, 16, 3.5), gnomon, skip=("up", "down", "north", "south"), noise=0)
+    return m
+
+
+def lamp_post():
+    m, b, pr = hg("lamp_post", 771)
+    ir = hg_metal(HG_IRON)
+    b("foot", (-3, 0, -3), (3, 2, 3), ir)
+    b("socle", (-2, 2, -2), (2, 5, 2), ir)
+    b("pole", (-1, 5, -1), (1, 34, 1), lambda p: mul(HG_IRON, 1.25) if p.i == 0 else HG_IRON)
+    b("band-a", (-1.5, 12, -1.5), (1.5, 13.5, 1.5), ir)
+    b("band-b", (-1.5, 30, -1.5), (1.5, 31.5, 1.5), ir)
+    b("rung", (-4, 28, -0.5), (4, 29, 0.5), ir)
+    b("tray", (-3, 34, -3), (3, 35, 3), ir)
+    b("pane", (-2.5, 35, -2.5), (2.5, 41, 2.5), hg_glass(HG_IRON), noise=0)
+    b("hood", (-3.5, 41, -3.5), (3.5, 42, 3.5), ir)
+    b("hood-top", (-2, 42, -2), (2, 43.5, 2), ir)
+    b("finial", (-0.5, 43.5, -0.5), (0.5, 45.5, 0.5), ir)
+    return m
+
+
+def garden_lantern():
+    m, b, pr = hg("garden_lantern", 773)
+    st = hg_stone((150, 152, 150), 773, moss=(98, 140, 90))
+
+    def lamp(p):
+        if p.side() and 1 <= p.i < p.w - 1 and 1 <= p.j < p.h - 1 and p.i != p.w // 2:
+            return mix((255, 240, 180), (250, 190, 90), abs(p.j - 1.5) / 2.0)
+        return hg_stone((150, 152, 150), 774)(p)
+
+    b("foot", (-5, 0, -5), (5, 2, 5), st)
+    b("stem", (-2.5, 2, -2.5), (2.5, 5, 2.5), st)
+    b("shelf", (-4.5, 5, -4.5), (4.5, 6.5, 4.5), st)
+    b("firebox", (-3, 6.5, -3), (3, 10.5, 3), lamp, noise=3)
+    b("roof", (-6, 10.5, -6), (6, 12, 6), st)
+    b("roof-top", (-4, 12, -4), (4, 13.5, 4), st)
+    b("knob", (-1, 13.5, -1), (1, 15.5, 1), st)
+    return m
+
+
+def mailbox():
+    m, b, pr = hg("mailbox", 775)
+    TL = (60, 130, 140)
+
+    def tin(p):
+        if p.face == "north":
+            if min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) == 0:
+                return mul(TL, 0.7)
+            return HG_BRASS if (p.j == 1 and p.i == p.w // 2) else mul(TL, 1.12)
+        return mul(TL, 0.86) if (p.face in ("east", "west", "up") and p.i % 4 == 0) else TL
+
+    b("mound", (-2.5, 0, -2.5), (2.5, 1, 2.5), hg_leaves((84, 136, 68), 775))
+    b("post", (-1, 1, -1), (1, 13, 1), hg_wood(HG_OAK, 775, "v", 2))
+    b("strut", (-0.6, 8, -4.5), (0.6, 9.2, 0), HG_OAK, rot=(40, 0, 0), origin=(0, 8.6, 0))
+    b("shelf", (-2.5, 12.4, -5), (2.5, 13, 5), HG_DARK)
+    b("box", (-3, 13, -6), (3, 17, 6), tin)
+    b("arch", (-2, 17, -6), (2, 18.5, 6), tin)
+    b("flag-staff", (3, 14, -3), (3.5, 20, -2.2), HG_RED)
+    b("flag", (3, 18, -2.2), (3.5, 20, 0.5), HG_RED)
+    b("letter", (-1.5, 15, -6.8), (1.5, 15.6, -6), HG_CREAM)
+    return m
+
+
+def wheelbarrow():
+    m, b, pr = hg("wheelbarrow", 777)
+    GN = (74, 120, 84)
+    tin = hg_metal(GN)
+    wd = hg_wood(HG_OAK, 777, "h", 2)
+    wheel(m, "wheel", "Body", -1, 1, 3, -6.5, 3, hub=(170, 60, 50), cut=1)
+    pr("fork", (-1.8, 2.5, -7), (-1, 3.5, -3), HG_IRON)
+    b("floor", (-4.5, 5, -4.5), (4.5, 6, 5), mul(GN, 0.8))
+    b("wall-n", (-4, 5.5, -6.5), (4, 9, -4.5), tin, rot=(-20, 0, 0), origin=(0, 5.5, -4.5))
+    b("wall-s", (-5, 6, 4.5), (5, 11, 5.5), tin)
+    pr("wall", (-5.5, 6, -4.5), (-4.5, 11, 5.5), tin)
+    b("load", (-4.5, 6, -4), (4.5, 9.5, 4.5), hg_top(HG_SOIL, lambda p: (120, 150, 80) if hsh(777, p.i, p.j) > 0.84 else HG_SOIL))
+    pr("shaft", (-5, 4, -4), (-4, 5, 10.5), wd)
+    pr("stand", (-5, 0, 3), (-4, 4, 4), HG_IRON)
+    pr("grip", (-5.2, 3.8, 9), (-3.8, 5.2, 11), (60, 50, 46))
+    return m
+
+
+def picnic_table():
+    m, b, pr = hg("picnic_table", 779)
+    wd = hg_wood((186, 138, 84), 779, "h", 3)
+    dk = hg_wood((150, 106, 62), 780, "v", 2)
+    b("top", (-8, 11, -4.5), (8, 12.5, 4.5), wd)
+    b("bench-n", (-8, 6, -9.5), (8, 7.2, -6.5), wd)
+    b("bench-s", (-8, 6, 6.5), (8, 7.2, 9.5), wd)
+    for k, x in enumerate((-6.5, 5.5)):
+        b("sill-%d" % k, (x, 4.8, -9), (x + 1, 6, 9), dk)
+        b("cleat-%d" % k, (x, 9.8, -4), (x + 1, 11, 4), dk)
+        b("strut-n-%d" % k, (x + 0.1, 0, -5.5), (x + 0.9, 11, -4.3), dk, rot=(12, 0, 0), origin=(x + 0.5, 5.5, -4.9))
+        b("strut-s-%d" % k, (x + 0.1, 0, 4.3), (x + 0.9, 11, 5.5), dk, rot=(-12, 0, 0), origin=(x + 0.5, 5.5, 4.9))
+    b("brace", (-5.5, 7.5, -0.5), (5.5, 8.5, 0.5), dk)
+    return m
+
+
+def garden_bench():
+    m, b, pr = hg("garden_bench", 781)
+    wd = hg_wood((170, 118, 70), 781, "h", 2)
+    ir = hg_metal(HG_IRON)
+    for k, z in enumerate((-4, -1.5, 1)):
+        b("slat-%d" % k, (-7.5, 6, z), (7.5, 7, z + 2), wd)
+    for k, y in enumerate((9, 12, 15)):
+        b("backslat-%d" % k, (-7.5, y, 3.2), (7.5, y + 2, 4), wd)
+    pr("foot-n", (-8, 0, -4), (-7, 6, -3), ir)
+    pr("upright", (-8, 0, 3), (-7, 17.5, 4.2), ir)
+    pr("rest", (-8.2, 10, -4.5), (-6.8, 11, 3), ir)
+    pr("rest-prop", (-8, 6, -4), (-7, 10, -3), ir)
+    pr("rail", (-8, 4.5, -3), (-7, 5.5, 3), ir)
+    b("stretcher", (-7, 2.5, -0.5), (7, 3.5, 0.5), ir)
+    return m
+
+
+def swing():
+    m, b, pr = hg("swing", 783)
+    wd = hg_wood((178, 130, 78), 783, "v", 2)
+    RP = (212, 192, 138)
+    pr("post", (-8, 0, -1), (-6.5, 30, 1), wd)
+    pr("sole", (-8.2, 0, -7), (-6.3, 1.5, 7), hg_wood((150, 106, 62), 784, "h", 2))
+    for sx in (-1, 1):
+        x = sx * 7.25
+        b("prop-n-%d" % sx, (x - 0.5, 1, -1), (x + 0.5, 12, 0), wd, rot=(-28, 0, 0), origin=(x, 12, -0.5))
+        b("prop-s-%d" % sx, (x - 0.5, 1, 0), (x + 0.5, 12, 1), wd, rot=(28, 0, 0), origin=(x, 12, 0.5))
+    b("beam", (-8, 30, -1), (8, 32, 1), hg_wood((178, 130, 78), 785, "h", 2))
+    pr("rope", (-3.6, 10, -0.3), (-3, 30, 0.3), lambda p: mul(RP, 0.78) if p.j % 2 else RP)
+    pr("eye", (-3.9, 29.4, -0.6), (-2.7, 30, 0.6), HG_IRON)
+    b("seat", (-4.6, 9, -2), (4.6, 10, 2), hg_wood((206, 150, 84), 786, "v", 3))
+    return m
+
+
+def trellis():
+    m, b, pr = hg("trellis", 787, noise=5)
+    PN = (220, 208, 180)
+
+    def lattice(p):
+        if (p.i + p.j) % 4 == 0 or (p.i - p.j) % 4 == 0:
+            return mul(PN, 0.86) if (p.i - p.j) % 4 == 0 else PN
+        return CLEAR
+
+    def vine(p):
+        n = vnoise(787, p.x / 2.6, p.y / 2.6, 0)
+        if n < 0.5 - 0.22 * (1 - p.ly) or hsh(788, p.i, p.j) > 0.8:
+            return CLEAR
+        h = hsh(789, p.i, p.j)
+        if h > 0.9:
+            return (236, 120, 170)
+        return mix((48, 110, 54), (96, 160, 74), h)
+
+    flat = ("up", "down", "east", "west")
+    b("trough", (-8, 0, -3), (8, 4, 3), hg_edge(hg_wood(HG_OAK, 787, "v"), HG_DARK, faces=("up",)))
+    b("soil", (-7, 4, -2), (7, 4.5, 2), HG_SOIL, skip=("down",))
+    pr("stile", (-7, 4, -0.5), (-6, 28, 0.5), PN)
+    b("lintel", (-7.5, 28, -0.7), (7.5, 29.2, 0.7), PN)
+    b("lattice", (-6, 4.5, -0.2), (6, 28, 0.2), lattice, skip=flat)
+    b("vine-n", (-6.5, 4.5, -0.8), (6.5, 25.5, -0.4), vine, skip=flat)
+    b("vine-s", (-6.5, 4.5, 0.4), (6.5, 22.5, 0.8), vine, skip=flat)
+    lf = hg_leaves((62, 130, 60), 790, dots=((236, 120, 170),), thr=0.85)
+    b("spray-a", (-5, 4.5, -2), (-1, 8, 1.5), lf)
+    b("spray-b", (2, 4.5, -1.5), (6, 7, 2), lf)
+    b("spray-c", (-7.8, 17, -1.2), (-5.5, 20, 1.2), lf)
+    b("spray-d", (4, 24, -1.2), (7, 27, 1.2), lf)
+    return m
+
+
+def scarecrow_post():
+    m, b, pr = hg("scarecrow_post", 791)
+    SK, SH = (206, 180, 128), (86, 112, 150)
+    straw = hg_thatch(HG_STRAW, 791, "v")
+    shirt = hg_cloth(SH, (190, 96, 70), "check", 2)
+
+    def face(c):
+        if c.face == "north":
+            for x in (1, c.w - 2):
+                c.px(x, 1, (50, 36, 30))
+                c.px(x, 2, (50, 36, 30))
+            c.rect(1, c.h - 2, c.w - 2, 1, (120, 60, 50))
+            c.px(2, c.h - 2, SK)
+            c.px(c.w // 2, 3, (220, 120, 50))
+
+    b("mound", (-2, 0, -2), (2, 1, 2), HG_SOIL)
+    b("pole", (-0.8, 1, -0.8), (0.8, 18, 0.8), hg_wood(HG_DARK, 791, "v", 2))
+    b("crossbar", (-7, 16, -0.6), (7, 17.2, 0.6), HG_DARK)
+    b("smock", (-3, 10, -2), (3, 18, 2), shirt)
+    b("skirt", (-3.3, 7.5, -2.3), (3.3, 10, 2.3), straw)
+    pr("sleeve", (-6.5, 15.3, -1.1), (-3, 17.9, 1.1), shirt)
+    pr("cuff", (-8, 15.6, -0.9), (-6.5, 17.6, 0.9), straw)
+    b("ruff", (-2, 18, -1.6), (2, 18.8, 1.6), straw)
+    b("sack", (-2.5, 18.8, -2.5), (2.5, 23.6, 2.5), hg_cloth(SK, mul(SK, 0.9), "weave"), face)
+    b("brim", (-4, 23.6, -4), (4, 24.4, 4), straw)
+    b("crown", (-2.5, 24.4, -2.5), (2.5, 27, 2.5), hg_top(lambda p: HG_RED if p.j == p.h - 1 else straw(p), straw))
+    return m
+
+
+def campfire_ring():
+    m, b, pr = hg("campfire_ring", 795)
+    tones = [(128, 128, 134), (150, 146, 140), (112, 114, 122)]
+    for k in range(8):
+        a = math.radians(k * 45)
+        x, z = round(math.sin(a) * 6 * 2) / 2.0, round(math.cos(a) * 6 * 2) / 2.0
+        r, h = (1.5, 2)[k % 2], (2.5, 3, 2, 3.5)[k % 4]
+        b("stone-%d" % k, (x - r, 0, z - r), (x + r, h, z + r), hg_stone(tones[k % 3], 795 + k), rot=(0, k * 45, 0))
+    b("ash", (-4, 0, -4), (4, 0.6, 4), lambda p: (60, 56, 56) if hsh(795, p.i, p.j) > 0.4 else (232, 110, 40))
+    lg = hg_log((70, 52, 40), (190, 150, 100), 796, "z")
+    b("log-a", (-1, 0.6, -4.5), (1, 2.6, 4.5), lg, rot=(0, 25, 0))
+    b("log-b", (-1, 0.6, -4.5), (1, 2.6, 4.5), lg, rot=(0, -40, 0))
+    b("log-c", (-0.9, 2.2, -4), (0.9, 4, 4), lg, rot=(14, 80, 0))
+    b("flame-a", (-1.5, 2.6, -1.5), (1.5, 6.5, 1.5), hg_fire, noise=0)
+    b("flame-b", (-0.8, 6.5, -0.8), (0.8, 9, 0.8), hg_fire, noise=0)
+    b("flame-c", (1, 2.6, 0.5), (2.2, 5, 1.7), hg_fire, noise=0)
+    b("flame-d", (-2.4, 2.6, -1.6), (-1.2, 4.4, -0.4), hg_fire, noise=0)
+    return m
+
+
+GARDEN = [boulder, rock_cairn, bush, berry_bush, hedge, topiary, fern, cattail, sunflower, flower_bed, flowerpot, potted_palm,
+          ornamental_tree, stump, log_pile, mushroom_ring, pumpkin, hay_bale, lily_pad, bird_bath, fountain, well, beehive, birdhouse,
+          garden_statue, sundial, lamp_post, garden_lantern, mailbox, wheelbarrow, picnic_table, garden_bench, swing, trellis,
+          scarecrow_post, campfire_ring]
+
+
+# ---- house
+
+def grandfather_clock():
+    m, b, pr = hg("grandfather_clock", 801)
+    wd = hg_wood(HG_WALNUT, 801, "v", 4)
+    DK = mul(HG_WALNUT, 0.7)
+
+    def dial(c):
+        if c.face == "north":
+            c.rect(1, 1, c.w - 2, c.w - 2, HG_BRASS)
+            c.rect(2, 2, c.w - 4, c.w - 4, HG_CREAM)
+            cx, cy = c.w // 2, 1 + (c.w - 2) // 2
+            for dx, dy in ((0, -2), (2, 0), (0, 2), (-3, 0)):
+                c.px(cx + dx - (1 if dx > 0 else 0), cy + dy - (1 if dy > 0 else 0), (60, 50, 44))
+            c.px(cx, cy, BLACK), c.px(cx, cy - 1, BLACK), c.px(cx - 1, cy, BLACK), c.px(cx - 2, cy, BLACK)
+
+    def door(c):
+        if c.face == "north":
+            c.rect(1, 1, c.w - 2, c.h - 2, DK)
+            c.rect(2, 2, c.w - 4, c.h - 4, (58, 44, 40))
+            c.rect(c.w // 2, 2, 1, c.h - 8, HG_BRASS)
+            c.rect(c.w // 2 - 1, c.h - 7, 3, 3, HG_GOLD)
+            c.px(c.w // 2 - 1, c.h - 7, (255, 240, 170))
+            c.rect(2, 3, 1, 5, HG_STEEL)
+
+    b("plinth", (-4, 0, -3), (4, 5, 3), hg_edge(wd, DK, faces=("north",)))
+    b("trunk", (-3, 5, -2.5), (3, 22, 2.5), wd, door)
+    b("hood", (-4, 22, -3), (4, 31, 3), wd, dial)
+    b("cornice", (-4.5, 31, -3.5), (4.5, 32.5, 3.5), DK)
+    b("pediment", (-2.5, 32.5, -3), (2.5, 34.5, 3), wd)
+    pr("finial", (-4, 32.5, -0.5), (-3, 34, 0.5), HG_BRASS)
+    b("waist", (-3.5, 21, -3), (3.5, 22, 3), DK)
+    return m
+
+
+def piano():
+    m, b, pr = hg("piano", 803)
+    BK = (44, 38, 42)
+    lac = lambda p: mul(BK, 1.5) if (p.side() and p.i == p.w // 4) or p.face == "up" else BK
+
+    def keys(p):
+        if p.face == "up":
+            if p.j >= 2:
+                return BK if (p.i % 2 == 1 and (p.i // 2) % 7 not in (2, 6)) else HG_CREAM
+            return mul(HG_CREAM, 0.8) if p.i % 2 == 1 and p.j == 0 else HG_CREAM
+        if p.face == "north":
+            return HG_CREAM if p.j == 0 else BK
+        return BK
+
+    def panel(c):
+        if c.face == "north":
+            c.rect(1, 1, c.w - 2, 6, (60, 50, 54))
+            c.rect(2, 2, c.w - 4, 4, (52, 44, 48))
+            c.rect(1, c.h - 6, c.w - 2, 5, (60, 50, 54))
+            c.px(c.w // 2 - 1, c.h - 1, HG_BRASS), c.px(c.w // 2 + 1, c.h - 1, HG_BRASS)
+
+    b("case", (-8, 0, 0), (8, 19, 5), lac, panel)
+    b("lid", (-8, 19, -0.5), (8, 20, 5.5), lac)
+    b("keybed", (-7, 9, -4), (7, 10.5, 0), keys, noise=3)
+    pr("cheek", (-8, 8, -4.2), (-7, 12, 0), lac)
+    pr("post", (-8, 0, -4), (-6.8, 8, -2.8), lac)
+    b("desk", (-4, 12.5, -0.8), (4, 16.5, 0), lambda p: HG_CREAM if (p.face == "north" and 1 <= p.i < p.w - 1 and p.j < p.h - 1) else BK,
+      lambda c: [c.rect(2, y, c.w - 4, 1, (120, 110, 104)) for y in (1, 2)] if c.face == "north" else None, rot=(8, 0, 0), origin=(0, 12.5, 0))
+    b("pedal-a", (-1.5, 0, -1.2), (-0.7, 0.6, 0), HG_BRASS)
+    b("pedal-b", (0.7, 0, -1.2), (1.5, 0.6, 0), HG_BRASS)
+    return m
+
+
+def harp():
+    m, b, pr = hg("harp", 805)
+    wd = hg_wood((190, 140, 70), 805, "v", 3)
+    gilt = hg_metal(HG_GOLD)
+
+    def strings(p):
+        if p.i % 2 == 1:
+            return CLEAR
+        return (236, 226, 190) if p.i % 6 else (210, 70, 60)
+
+    b("foot", (-2.5, 0, -6.5), (2.5, 2, 7), wd)
+    b("pillar", (-1, 2, -6), (1, 28, -4), lambda p: mul((190, 140, 70), 0.8) if p.j % 6 == 0 else (190, 140, 70))
+    b("crown", (-1.5, 28, -6.5), (1.5, 31, -3.5), gilt)
+    b("arch", (-1, 27, -3.5), (1, 29, 4), wd)
+    b("shoulder", (-1, 26, 3), (1, 28.5, 7), wd)
+    b("sound-a", (-1.5, 2, 1.5), (1.5, 10, 4.5), wd)
+    b("sound-b", (-1.5, 10, 3), (1.5, 19, 5.8), wd)
+    b("sound-c", (-1.5, 19, 4.5), (1.5, 26, 7), wd)
+    b("strings", (-0.2, 2, -4), (0.2, 27, 5), strings, skip=("up", "down", "north", "south"), noise=0)
+    b("scroll", (-1.3, 3, -6.6), (1.3, 5, -3.4), gilt)
+    return m
+
+
+def globe():
+    m, b, pr = hg("globe", 807)
+    br = hg_metal(HG_BRASS)
+
+    def earth(p):
+        if p.y > 17.2 or p.y < 6.8:
+            return (236, 240, 244)
+        n = vnoise(807, p.x / 3.2, p.y / 3.2, p.z / 3.2)
+        if n > 0.56:
+            return mix((96, 150, 80), (196, 170, 110), (n - 0.56) * 6)
+        return mix((52, 104, 176), (80, 140, 206), n * 1.6)
+
+    b("foot", (-4, 0, -4), (4, 1.5, 4), hg_wood(HG_WALNUT, 807, "v"))
+    b("stem", (-1, 1.5, -1), (1, 5, 1), br)
+    b("sphere", (-5, 7, -5), (5, 17, 5), earth)
+    b("sphere-y", (-3.5, 6, -3.5), (3.5, 18, 3.5), earth)
+    b("sphere-x", (-6, 9, -3.5), (6, 15, 3.5), earth)
+    b("sphere-z", (-3.5, 9, -6), (3.5, 15, 6), earth)
+    b("arc-low", (-7, 4.5, -0.6), (7, 5.5, 0.6), br)
+    pr("arc-side", (-7.5, 4.5, -0.6), (-6.5, 19.5, 0.6), br)
+    b("arc-top", (-7, 18.5, -0.6), (7, 19.5, 0.6), br)
+    b("pin", (-0.5, 5.5, -0.5), (0.5, 6, 0.5), br)
+    return m
+
+
+def telescope():
+    m, b, pr = hg("telescope", 809)
+    wd = hg_wood(HG_WALNUT, 809, "v", 2)
+    R, O = (26, 0, 0), (0, 20.5, 0)
+
+    def tube(p):
+        if p.face in ("north", "south"):
+            return (150, 200, 230) if min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) > 0 else HG_BRASS
+        k = int(p.lz * 15)
+        return mul(HG_BRASS, 0.74) if k in (4, 10) else (HG_BRASS if p.face != "up" else mul(HG_BRASS, 1.2))
+
+    for k in range(3):
+        a = math.radians(k * 120)
+        b("strut-%d" % k, (-0.6, 0, -0.6), (0.6, 17, 0.6), wd, rot=(18, k * 120, 0), origin=(0, 17, 0))
+        x, z = round(-math.sin(a) * 5.3, 1), round(-math.cos(a) * 5.3, 1)
+        b("shoe-%d" % k, (x - 0.9, 0, z - 0.9), (x + 0.9, 1, z + 0.9), HG_BRASS)
+    b("hub", (-1.5, 16, -1.5), (1.5, 18, 1.5), hg_metal(HG_BRASS))
+    b("yoke", (-0.7, 18, -0.7), (0.7, 19.5, 0.7), hg_metal(HG_IRON))
+    b("tube", (-1.5, 19, -8), (1.5, 22, 5), tube, rot=R, origin=O)
+    b("hood", (-2, 18.5, -10), (2, 22.5, -8), tube, rot=R, origin=O)
+    b("draw", (-1, 19.5, 5), (1, 21.5, 8), hg_metal(mul(HG_BRASS, 0.86)), rot=R, origin=O)
+    b("eyepiece", (-0.7, 19.8, 8), (0.7, 21.2, 9.5), (40, 38, 42), rot=R, origin=O)
+    return m
+
+
+def easel():
+    m, b, pr = hg("easel", 811)
+    wd = hg_wood(HG_PINE, 811, "v", 2)
+    R, O = (9, 0, 0), (0, 0, -1)
+
+    def picture(c):
+        if c.face == "north":
+            c.rect(0, 0, c.w, c.h, (236, 230, 214))
+            c.rect(1, 1, c.w - 2, 6, (150, 200, 236))
+            c.rect(c.w - 4, 2, 2, 2, (250, 214, 90))
+            c.rect(1, 7, c.w - 2, c.h - 8, (104, 160, 86))
+            for x in range(1, c.w - 1):
+                hgt = int(2 + 2 * math.sin(x * 0.9))
+                c.rect(x, 7 - hgt, 1, hgt, (86, 116, 150) if x < c.w // 2 else (72, 132, 78))
+            c.rect(2, c.h - 4, 4, 1, (70, 120, 190))
+            c.px(c.w - 3, c.h - 3, (226, 70, 80)), c.px(c.w - 5, c.h - 4, (250, 230, 110))
+
+    pr("stile", (-5, 0, -1.5), (-4, 28, -0.5), wd, rot=R, origin=O)
+    b("prop", (-0.5, 0, 3), (0.5, 26, 4), wd, rot=(-13, 0, 0), origin=(0, 26, 3.5))
+    b("ledge", (-6, 9, -3), (6, 10, -0.5), wd, rot=R, origin=O)
+    b("yoke", (-5, 24.5, -1.7), (5, 25.5, -0.3), wd, rot=R, origin=O)
+    b("canvas", (-5.5, 10, -2.3), (5.5, 24, -1.5), (236, 230, 214), picture, rot=R, origin=O)
+    b("clamp", (-1, 24, -2.6), (1, 25, -1.4), HG_DARK, rot=R, origin=O)
+    b("jar", (3, 10, -2.9), (4.4, 11.8, -1.5), (120, 160, 190), rot=R, origin=O)
+    return m
+
+
+def vase():
+    m, b, pr = hg("vase", 813)
+    BL, WH = (48, 84, 150), (236, 238, 240)
+
+    def glaze(p):
+        if p.face in ("up", "down"):
+            return WH
+        if p.j in (0, p.h - 1):
+            return BL
+        if p.h > 5 and (abs(p.i - p.w // 2) + abs(p.j - p.h // 2)) % 4 == 3:
+            return BL
+        return WH
+
+    b("foot", (-2.5, 0, -2.5), (2.5, 1, 2.5), BL)
+    b("belly", (-4, 1, -4), (4, 8, 4), glaze)
+    b("shoulder", (-3, 8, -3), (3, 10, 3), glaze)
+    b("throat", (-1.5, 10, -1.5), (1.5, 13, 1.5), WH)
+    b("lip", (-2.5, 13, -2.5), (2.5, 14, 2.5), hg_top(BL, (40, 40, 60)))
+    pr("handle", (-3.5, 9.5, -0.5), (-1.5, 10.5, 0.5), BL)
+    hg_bloom(b, "bloom-a", -0.8, 0, 14, 19, (236, 110, 150))
+    hg_bloom(b, "bloom-b", 1, 0.8, 14, 17, (250, 220, 110), eye=(190, 110, 40))
+    hg_bloom(b, "bloom-c", 0.6, -1, 14, 21.5, (190, 150, 236))
+    return m
+
+
+def candelabra():
+    m, b, pr = hg("candelabra", 815)
+    sv = hg_metal((186, 190, 204))
+    wax = lambda p: (255, 250, 232) if p.i == 0 else (236, 226, 200)
+    b("foot", (-3, 0, -3), (3, 1, 3), sv)
+    b("step", (-2, 1, -2), (2, 2, 2), sv)
+    b("stem", (-0.7, 2, -0.7), (0.7, 12, 0.7), sv)
+    b("knop", (-1.3, 5.5, -1.3), (1.3, 7.5, 1.3), sv)
+    b("branch", (-6, 9, -0.6), (6, 10, 0.6), sv)
+    pr("riser", (-6, 10, -0.6), (-5, 11.5, 0.6), sv)
+    for k, (x, y) in enumerate(((-5.5, 11.5), (0, 12), (5.5, 11.5))):
+        b("cup-%d" % k, (x - 1.2, y, -1.2), (x + 1.2, y + 0.8, 1.2), sv)
+        b("candle-%d" % k, (x - 0.7, y + 0.8, -0.7), (x + 0.7, y + 5 + (k == 1), 0.7), wax, noise=3)
+        b("flame-%d" % k, (x - 0.4, y + 5.2 + (k == 1), -0.4), (x + 0.4, y + 6.8 + (k == 1), 0.4), hg_fire, noise=0)
+    return m
+
+
+def chandelier():
+    m, b, pr = hg("chandelier", 817)
+    br = hg_metal(HG_BRASS)
+    wax = lambda p: (255, 250, 232) if p.i == 0 else (236, 226, 200)
+    b("rose", (-2, 15.4, -2), (2, 16, 2), br)
+    b("chain", (-0.4, 13, -0.4), (0.4, 15.4, 0.4), lambda p: HG_IRON if p.j % 2 else HG_STEEL)
+    b("hub", (-1.5, 10.5, -1.5), (1.5, 13, 1.5), br)
+    b("spoke-x", (-7, 9.6, -0.5), (7, 10.5, 0.5), br)
+    b("spoke-z", (-0.5, 9.6, -7), (0.5, 10.5, 7), br)
+    b("hoop-n", (-4.5, 9.8, -4.5), (4.5, 10.4, -3.9), br)
+    b("hoop-s", (-4.5, 9.8, 3.9), (4.5, 10.4, 4.5), br)
+    b("hoop-w", (-4.5, 9.8, -3.9), (-3.9, 10.4, 3.9), br)
+    b("hoop-e", (3.9, 9.8, -3.9), (4.5, 10.4, 3.9), br)
+    for k, (x, z) in enumerate(((-6.3, 0), (6.3, 0), (0, -6.3), (0, 6.3))):
+        b("cup-%d" % k, (x - 1.1, 10.5, z - 1.1), (x + 1.1, 11.1, z + 1.1), br)
+        b("candle-%d" % k, (x - 0.6, 11.1, z - 0.6), (x + 0.6, 14, z + 0.6), wax, noise=3)
+        b("flame-%d" % k, (x - 0.4, 14.2, z - 0.4), (x + 0.4, 15.4, z + 0.4), hg_fire, noise=0)
+    b("drop", (-0.8, 8, -0.8), (0.8, 10.5, 0.8), br)
+    b("crystal", (-0.5, 6, -0.5), (0.5, 8, 0.5), (190, 230, 246), noise=3)
+    return m
+
+
+def hanging_lantern():
+    m, b, pr = hg("hanging_lantern", 819)
+    CU = (150, 96, 66)
+    cu = hg_metal(CU)
+    b("hook", (-1, 15.5, -1), (1, 16, 1), cu)
+    b("chain", (-0.4, 13.5, -0.4), (0.4, 15.5, 0.4), lambda p: HG_IRON if p.j % 2 else HG_STEEL)
+    b("knob", (-1.5, 12.6, -1.5), (1.5, 13.5, 1.5), cu)
+    b("hood", (-3.5, 11.6, -3.5), (3.5, 12.6, 3.5), cu)
+    b("pane", (-3, 7, -3), (3, 11.6, 3), hg_glass(mul(CU, 0.8), (255, 190, 90)), noise=0)
+    b("tray", (-3.5, 6, -3.5), (3.5, 7, 3.5), cu)
+    return m
+
+
+def fireplace():
+    m, b, pr = hg("fireplace", 821)
+    bk = hg_bricks((166, 84, 66), (196, 186, 170), 821, 4, 3)
+    soot = lambda p: mul(bk(p), 0.34)
+    b("hearth", (-8, 0, -6), (8, 2, 5), hg_stone(HG_SLATE, 821))
+    pr("jamb", (-8, 2, -3), (-4, 13, 5), bk)
+    b("fireback", (-4, 2, 3), (4, 13, 5), soot)
+    b("lintel", (-8, 13, -3), (8, 16, 5), bk)
+    b("mantel", (-8, 16, -5), (8, 17.5, 5), hg_wood(HG_WALNUT, 822, "h", 3))
+    b("breast", (-6, 17.5, -1), (6, 28, 5), bk)
+    lg = hg_log((74, 54, 42), (186, 146, 98), 823, "x")
+    b("log-a", (-3.5, 2, -1.5), (3.5, 4, 0.5), lg)
+    b("log-b", (-3, 2, 0.8), (3, 3.8, 2.6), lg)
+    b("log-c", (-2.5, 3.8, -0.5), (2.5, 5.4, 1.2), lg)
+    b("flame-a", (-1.5, 5.4, -0.4), (1.5, 9.5, 1), hg_fire, noise=0)
+    b("flame-b", (-3, 4, -0.8), (-1.8, 7, 0.4), hg_fire, noise=0)
+    b("flame-c", (1.6, 4, 0.2), (2.8, 7.8, 1.4), hg_fire, noise=0)
+    b("keepsake", (3.5, 17.5, -3.5), (5.5, 20.5, -1.5), hg_metal(HG_BRASS))
+    return m
+
+
+def bust():
+    m, b, pr = hg("bust", 825)
+    mb = hg_stone(HG_MARBLE, 825)
+    gr = hg_stone((120, 124, 132), 826)
+
+    def visage(c):
+        if c.face == "north":
+            c.rect(1, 2, c.w - 2, 1, mul(HG_MARBLE, 0.76))
+            c.rect(1, c.h - 2, c.w - 2, 1, mul(HG_MARBLE, 0.86))
+
+    b("foot", (-4, 0, -4), (4, 2, 4), gr)
+    b("shaft", (-3, 2, -3), (3, 12, 3), hg_edge(gr, mul((120, 124, 132), 0.8), faces=("north", "south", "east", "west")))
+    b("cap", (-4, 12, -4), (4, 13.5, 4), gr)
+    b("chest", (-4, 13.5, -2), (4, 17, 2), mb)
+    b("drape", (-4.3, 14.5, -2.3), (0, 17.3, 2.3), lambda p: mul(mb(p), 0.9 if (p.i + p.j) % 3 else 0.78))
+    b("column", (-1.2, 17, -1.2), (1.2, 18.5, 1.2), mb)
+    b("dome", (-2.5, 18.5, -2.5), (2.5, 23.5, 2.5), mb, visage)
+    b("ridge", (-0.5, 20, -3.2), (0.5, 21.8, -2.5), mb)
+    b("wreath", (-2.8, 22, -2.8), (2.8, 23, 2.8), lambda p: (120, 150, 96) if (p.i + p.j) % 2 else (150, 176, 120))
+    return m
+
+
+def knight_statue():
+    m, b, pr = hg("knight_statue", 827)
+    pl = hg_metal(HG_STEEL)
+    DKS = mul(HG_STEEL, 0.62)
+
+    def plate(p):
+        c = pl(p)
+        if p.side() and p.j % 4 == 3:
+            return mul(HG_STEEL, 0.74)
+        return c
+
+    def helm(c):
+        if c.face == "north":
+            c.rect(1, 2, c.w - 2, 1, BLACK)
+            c.rect(c.w // 2, 1, 1, c.h - 1, DKS)
+            c.sym(1, 4, DKS)
+
+    def breast(c):
+        if c.face == "north":
+            c.rect(c.w // 2, 1, 1, c.h - 2, mul(HG_STEEL, 1.2))
+            c.sym(1, 1, HG_BRASS)
+
+    b("base", (-5, 0, -5), (5, 2, 5), hg_stone(HG_SLATE, 827))
+    pr("greave", (-3.5, 2, -1.5), (-0.8, 11, 1.5), plate)
+    pr("sabaton", (-3.5, 2, -3), (-0.8, 3.5, -1.5), pl)
+    b("tasset", (-4.3, 10.5, -2.4), (4.3, 13, 2.4), lambda p: HG_BRASS if p.j == 0 and p.side() else DKS)
+    b("cuirass", (-4, 13, -2.2), (4, 22, 2.2), plate, breast)
+    pr("pauldron", (-6.2, 19, -2.6), (-4, 22.5, 2.6), pl)
+    pr("vambrace", (-5.8, 11.5, -1.4), (-4, 19, 1.4), plate)
+    b("gorget", (-1.5, 22, -1.5), (1.5, 23, 1.5), DKS)
+    b("helm", (-2.5, 23, -2.5), (2.5, 28.5, 2.5), pl, helm)
+    b("plume", (-0.6, 28.5, -1), (0.6, 31, 3), lambda p: mul(HG_RED, 0.8) if p.i % 2 else HG_RED)
+    b("blade", (-0.6, 2, -4.2), (0.6, 14, -3.6), lambda p: WHITE if p.i == 0 else HG_STEEL)
+    b("guard", (-2.5, 14, -4.5), (2.5, 15, -3.3), HG_BRASS)
+    b("grip", (-0.5, 15, -4.3), (0.5, 18, -3.5), (70, 48, 36))
+    b("pommel", (-0.8, 18, -4.6), (0.8, 19.2, -3.2), HG_BRASS)
+    return m
+
+
+def hg_books(seed):
+    pal = [(150, 50, 54), (48, 86, 140), (60, 116, 78), (190, 150, 70), (104, 66, 120), (176, 96, 52), (70, 70, 84), (206, 196, 170)]
+
+    def sh(p):
+        if p.face == "north":
+            air = int(hsh(seed, p.i) * 2.3)
+            if p.j < air or hsh(seed + 5, p.i) > 0.93:
+                return (46, 32, 26)
+            c = pal[int(hsh(seed + 1, p.i) * len(pal))]
+            if p.j == air + 1 + int(hsh(seed + 2, p.i) * 2):
+                return mix(c, HG_GOLD, 0.7)
+            return c
+        if p.face == "up":
+            return (214, 204, 180)
+        return (60, 44, 34)
+    return sh
+
+
+def tall_bookcase():
+    m, b, pr = hg("tall_bookcase", 829)
+    wd = hg_wood(HG_WALNUT, 829, "v", 4)
+    sh = hg_wood(mul(HG_WALNUT, 1.12), 830, "h", 3)
+    b("back", (-8, 0, 3), (8, 32, 4), lambda p: mul(wd(p), 0.6) if p.face == "north" else wd(p))
+    pr("cheek", (-8, 0, -3), (-7, 32, 3), wd)
+    b("kick", (-7, 0, -2.5), (7, 1.5, 3), mul(HG_WALNUT, 0.7))
+    for k, y in enumerate((7.5, 13.5, 19.5, 25.5)):
+        b("shelf-%d" % k, (-7, y, -3), (7, y + 1, 3), sh)
+    b("cornice", (-8, 31, -3.5), (8, 32, -3), mul(HG_WALNUT, 0.76))
+    b("roof", (-7, 31, -3), (7, 32, 3), sh)
+    for k, y in enumerate((1.5, 8.5, 14.5, 20.5, 26.5)):
+        b("books-%d" % k, (-7, y, -2.2), (7 - (3 if k in (1, 3) else 0), y + (4.5 if k else 5), 2.5), hg_books(829 + k), noise=4)
+    b("urn", (4.6, 8.5, -1.5), (6.4, 11.5, 0.5), hg_metal(HG_BRASS))
+    b("box", (4.4, 20.5, -1.5), (6.6, 22.5, 1), hg_wood(HG_PINE, 831, "h", 2))
+    return m
+
+
+def wing_chair():
+    m, b, pr = hg("wing_chair", 833)
+    RD = (140, 50, 62)
+    vel = hg_cloth(RD, mul(RD, 0.88), "weave")
+
+    def tufted(c):
+        if c.face == "north":
+            for y in range(2, c.h - 1, 4):
+                for x in range(2 + (y // 4 % 2) * 2, c.w - 1, 4):
+                    c.px(x, y, HG_GOLD)
+
+    hg_quad(b, "foot", (-6, 0, -5), (-4.5, 2, -3.5), HG_DARK)
+    b("seat", (-6, 2, -5.5), (6, 7, 5), vel)
+    b("cushion", (-4.5, 7, -5.8), (4.5, 8.6, 3), hg_cloth(mul(RD, 1.14), RD, "weave"))
+    b("back", (-6, 7, 3), (6, 23, 5.5), vel, tufted)
+    pr("cheek", (-7, 13, -0.5), (-5.2, 22, 3.5), vel)
+    pr("rest", (-7.5, 7, -5), (-4.8, 11.5, 3.5), vel)
+    pr("scroll", (-7.8, 10.8, -5.6), (-4.6, 12.4, -3.6), hg_cloth(mul(RD, 1.14), RD, "weave"))
+    b("crest", (-5, 23, 3.4), (5, 24, 5.2), mul(HG_WALNUT, 0.8))
+    return m
+
+
+def rocking_chair():
+    m, b, pr = hg("rocking_chair", 835)
+    wd = hg_wood((176, 124, 70), 835, "v", 2)
+    DK = (136, 92, 52)
+    pr("rocker", (-5.5, 0, -6), (-4.5, 1, 6), DK)
+    pr("rocker-n", (-5.5, 1, -8.5), (-4.5, 2, -5.5), DK)
+    pr("rocker-s", (-5.5, 1, 5.5), (-4.5, 2.5, 9), DK)
+    pr("post-n", (-5.5, 1, -4), (-4.5, 10, -3), wd)
+    pr("post-s", (-5.5, 1, 3), (-4.5, 21, 4), wd)
+    b("seat", (-5.5, 6, -4.5), (5.5, 7, 4), hg_cloth((206, 176, 120), (176, 142, 90), "weave"))
+    pr("rest", (-6, 10, -4.6), (-4.2, 10.9, 3), DK)
+    for k, x in enumerate((-3, -0.5, 2)):
+        b("spindle-%d" % k, (x, 7, 3.2), (x + 1, 19, 3.8), wd)
+    b("rail", (-5.5, 19, 2.9), (5.5, 21.5, 4.1), DK)
+    b("rung", (-4.5, 3, -3.8), (4.5, 3.8, -3.2), DK)
+    b("pillow", (-3.5, 7, -1), (3.5, 8.4, 3), hg_cloth((110, 150, 170), (226, 226, 214), "check", 2))
+    return m
+
+
+def cradle():
+    m, b, pr = hg("cradle", 837)
+    wd = hg_wood((214, 176, 116), 837, "h", 2)
+    DK = (160, 116, 68)
+
+    def heart(c):
+        if c.face in ("north", "south"):
+            x, y = c.w // 2 - 1, 2
+            c.rect(x - 1, y, 4, 1, DK), c.rect(x, y + 1, 2, 1, DK)
+
+    for k, z in enumerate((-5.5, 4.5)):
+        b("rocker-%d" % k, (-5, 0, z), (5, 1, z + 1), DK)
+        b("rocker-w-%d" % k, (-7, 1, z), (-4.5, 2, z + 1), DK)
+        b("rocker-e-%d" % k, (4.5, 1, z), (7, 2, z + 1), DK)
+    b("floor", (-5, 2, -7), (5, 3, 7), wd)
+    pr("side", (-5.5, 2, -7), (-4.5, 8, 7), hg_wood((214, 176, 116), 838, "v", 2))
+    b("footboard", (-5.5, 2, -7.8), (5.5, 9, -7), wd, heart)
+    b("headboard", (-5.5, 2, 7), (5.5, 12, 7.8), wd, heart)
+    b("canopy", (-5.5, 11.2, 3.5), (5.5, 12, 7), wd)
+    b("mattress", (-4.5, 3, -6.8), (4.5, 4.5, 6.8), (240, 238, 230))
+    b("quilt", (-4.5, 4.5, -6.8), (4.5, 5.4, 2), hg_cloth((150, 190, 214), (244, 214, 150), "check", 2), skip=("down",))
+    b("pillow", (-3, 4.5, 3), (3, 5.8, 6.2), WHITE)
+    return m
+
+
+def dining_table():
+    m, b, pr = hg("dining_table", 839)
+    wd = hg_wood((150, 98, 56), 839, "h", 3)
+    DK = (112, 72, 42)
+    b("top", (-8, 10.5, -6), (8, 12, 6), wd)
+    b("apron", (-7, 9, -5), (7, 10.5, 5), DK)
+    hg_quad(b, "post", (-7, 1, -5), (-5.5, 9, -3.5), lambda p: mul(DK, 1.2) if p.j % 4 == 1 else DK)
+    hg_quad(b, "shoe", (-7.3, 0, -5.3), (-5.2, 1, -3.2), DK)
+    b("runner", (-2, 12, -6.2), (2, 12.3, 6.2), hg_cloth((166, 60, 60), HG_CREAM, "band", 2), skip=("down",))
+    plate = lambda p: (190, 200, 214) if (p.face == "up" and min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) == 0) else WHITE
+    b("plate-w", (-6.5, 12, -1.5), (-3.5, 12.5, 1.5), plate, noise=3)
+    b("plate-e", (3.5, 12, -1.5), (6.5, 12.5, 1.5), plate, noise=3)
+    b("bowl", (-1.5, 12.3, -1.5), (1.5, 13.6, 1.5), hg_pot((90, 130, 150)))
+    b("apple", (-1, 13.6, -1), (0.2, 14.8, 0.2), (200, 50, 50))
+    b("pear", (0, 13.6, -0.2), (1.2, 15, 1), (190, 200, 80))
+    b("goblet", (4.5, 12, -4.5), (5.5, 14, -3.5), hg_metal(HG_STEEL))
+    return m
+
+
+def tea_set():
+    m, b, pr = hg("tea_set", 841, noise=4)
+    CH, BL = (242, 240, 232), (70, 110, 170)
+
+    def china(p):
+        if p.side() and p.j == 1:
+            return BL if p.i % 2 else mul(BL, 1.3)
+        if p.face == "up":
+            return mul(CH, 0.94)
+        return CH
+
+    def cup(p):
+        if p.face == "up":
+            return CH if min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) == 0 else (150, 90, 50)
+        return china(p)
+
+    b("tray", (-7, 0, -4.5), (7, 0.8, 4.5), hg_edge(hg_wood(HG_WALNUT, 841, "h", 3), mul(HG_WALNUT, 0.7), faces=("up",)))
+    pr("tray-grip", (-8, 0.4, -1.5), (-7, 1.4, 1.5), HG_BRASS)
+    b("pot", (-4, 0.8, -2), (0, 4.8, 2), china)
+    b("pot-lid", (-3.5, 4.8, -1.5), (-0.5, 5.5, 1.5), CH)
+    b("pot-knob", (-2.5, 5.5, -0.5), (-1.5, 6.3, 0.5), BL)
+    b("spout", (-5.5, 2.4, -0.5), (-4, 3.4, 0.5), CH)
+    b("spout-tip", (-6.2, 3.2, -0.5), (-5.2, 4.4, 0.5), CH)
+    b("pot-handle", (0, 1.6, -0.4), (1.2, 4.2, 0.4), lambda p: CLEAR if (p.face in ("north", "south") and p.i == (0 if p.face == "south" else p.w - 1) and 0 < p.j < p.h - 1) else CH)
+    for k, (x, z) in enumerate(((3, -2.8), (4.5, 1.6))):
+        b("saucer-%d" % k, (x - 0.5, 0.8, z - 0.5), (x + 2.5, 1.2, z + 2.5), china)
+        b("cup-%d" % k, (x, 1.2, z), (x + 2, 3, z + 2), cup)
+        b("cup-loop-%d" % k, (x + 2, 1.7, z + 0.7), (x + 2.7, 2.7, z + 1.3), BL)
+    b("sugar", (0.8, 0.8, 2), (2.6, 2.4, 3.8), cup)
+    return m
+
+
+def coat_rack():
+    m, b, pr = hg("coat_rack", 843)
+    wd = hg_wood(HG_WALNUT, 843, "v", 2)
+    b("sole-x", (-5, 0, -0.8), (5, 1.2, 0.8), wd)
+    b("sole-z", (-0.8, 0, -5), (0.8, 1.2, 5), wd)
+    b("pole", (-0.8, 1.2, -0.8), (0.8, 29, 0.8), lambda p: mul(HG_WALNUT, 0.76) if p.j % 7 == 3 else HG_WALNUT)
+    b("knob", (-1.3, 29, -1.3), (1.3, 30.8, 1.3), hg_metal(HG_BRASS))
+    for k, (dx, dz) in enumerate(((-1, 0), (1, 0), (0, -1), (0, 1))):
+        lo = (min(dx * 0.8, dx * 4) - (0.4 if dz else 0), 25, min(dz * 0.8, dz * 4) - (0.4 if dx else 0))
+        hi = (max(dx * 0.8, dx * 4) + (0.4 if dz else 0), 25.9, max(dz * 0.8, dz * 4) + (0.4 if dx else 0))
+        b("peg-%d" % k, lo, hi, HG_BRASS)
+        b("peg-tip-%d" % k, (dx * 3.6 - 0.45, 25.9, dz * 3.6 - 0.45), (dx * 3.6 + 0.45, 27.2, dz * 3.6 + 0.45), HG_BRASS)
+    b("coat", (1.6, 12, -2.5), (4.2, 25.5, 2.5), hg_cloth((70, 90, 120), (58, 76, 104), "weave"),
+      lambda c: [c.px(c.w // 2, y, HG_BRASS) for y in (3, 6, 9)] if c.face == "east" else None)
+    b("coat-collar", (1.4, 24.5, -2.8), (4.4, 26.2, 2.8), (52, 68, 94))
+    b("scarf", (-4.2, 15, -1), (-3.4, 25.2, 1), hg_cloth((196, 70, 60), HG_CREAM, "band", 2))
+    b("hat-brim", (-2.6, 30.8, -2.6), (2.6, 31.3, 2.6), (84, 66, 52))
+    b("hat", (-1.6, 31.3, -1.6), (1.6, 33, 1.6), lambda p: (40, 34, 30) if (p.side() and p.j == p.h - 1) else (84, 66, 52))
+    return m
+
+
+def crate():
+    m, b, pr = hg("crate", 845)
+    wd = hg_wood(HG_PINE, 845, "h", 3)
+    DK = mul(HG_PINE, 0.72)
+
+    def braced(c):
+        if c.face in ("north", "south", "east", "west"):
+            for k in range(c.w):
+                c.px(k, int(k * (c.h - 1) / max(1, c.w - 1)), DK)
+            c.rect(0, 0, c.w, 1, DK), c.rect(0, c.h - 1, c.w, 1, DK)
+        if c.face == "north":
+            c.rect(c.w // 2 - 2, c.h // 2 - 1, 4, 3, (236, 226, 200))
+            c.rect(c.w // 2 - 1, c.h // 2, 2, 1, (120, 60, 50))
+
+    pr("skid", (-6.5, 0, -7), (-4.5, 1, 7), DK)
+    b("box", (-6.5, 1, -6.5), (6.5, 14, 6.5), wd, braced)
+    hg_quad(b, "batten", (-7, 1, -7), (-5.5, 14, -5.5), hg_wood(mul(HG_PINE, 0.86), 846, "v", 2))
+    pr("lid-slat", (-6.5, 14, -6.5), (-2.5, 14.8, 6.5), hg_wood(mul(HG_PINE, 1.06), 847, "h", 3))
+    b("lid-slat-m", (-2, 14, -6.5), (2, 14.8, 6.5), hg_wood(HG_PINE, 848, "h", 3))
+    return m
+
+
+def barrel():
+    m, b, pr = hg("barrel", 847)
+    WD = (160, 112, 62)
+
+    def stave(p):
+        if p.face in ("up", "down"):
+            if min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) == 0:
+                return mul(WD, 0.7)
+            return mul(WD, 0.8) if p.i % 3 == 0 else mul(WD, 1.05)
+        return hg_wood(WD, 847, "v", 2)(p)
+
+    hoop = hg_metal((92, 94, 104))
+    b("foot", (-5, 0, -5), (5, 3, 5), stave)
+    b("belly", (-6, 3, -6), (6, 13, 6), stave)
+    b("head", (-5, 13, -5), (5, 16, 5), stave)
+    b("hoop-a", (-6.3, 3.5, -6.3), (6.3, 4.8, 6.3), hoop, skip=("up", "down"))
+    b("hoop-b", (-6.3, 11.2, -6.3), (6.3, 12.5, 6.3), hoop, skip=("up", "down"))
+    b("hoop-c", (-5.3, 14.4, -5.3), (5.3, 15.4, 5.3), hoop, skip=("up", "down"))
+    b("tap", (-0.6, 5.5, -7.8), (0.6, 6.7, -6), HG_BRASS)
+    b("tap-key", (-0.3, 6.7, -7.4), (0.3, 8, -6.8), HG_BRASS)
+    return m
+
+
+def anvil():
+    m, b, pr = hg("anvil", 849)
+    IR = (72, 74, 84)
+    ir = hg_metal(IR)
+    face = hg_top(ir, lambda p: mul(IR, 1.5) if (p.i + p.j) % 5 else mul(IR, 1.8))
+    b("block", (-5, 0, -5), (5, 5, 5), hg_log((98, 72, 50), (200, 164, 110), 849, "y"))
+    b("foot", (-4.5, 5, -3.5), (4.5, 7, 3.5), ir)
+    b("waist", (-2.5, 7, -2.5), (2.5, 10, 2.5), ir)
+    b("table", (-4, 10, -3), (6, 13.5, 3), face)
+    b("horn", (-7, 11, -2), (-4, 13.5, 2), face)
+    b("horn-tip", (-8.5, 12, -1), (-7, 13.5, 1), face)
+    b("heel", (6, 12, -2.5), (7.5, 13.5, 2.5), face)
+    b("hammer-haft", (-1, 13.5, -0.5), (5.5, 14.3, 0.3), HG_OAK, rot=(0, 24, 0))
+    b("hammer", (-2.5, 13.5, -1.6), (-0.5, 15.3, 1.2), hg_metal((120, 122, 132)), rot=(0, 24, 0), origin=(2.25, 13.9, -0.1))
+    return m
+
+
+def spinning_wheel():
+    m, b, pr = hg("spinning_wheel", 851)
+    wd = hg_wood((170, 120, 68), 851, "v", 2)
+    DK = (128, 86, 48)
+
+    def rim(p):
+        cx, cy = (p.w - 1) / 2.0, (p.h - 1) / 2.0
+        dx, dy = p.i - cx, p.j - cy
+        d = math.hypot(dx, dy)
+        if d > 6.6:
+            return CLEAR
+        if d > 5.2:
+            return DK
+        if d < 1.3:
+            return HG_BRASS
+        if abs(dx) < 0.6 or abs(dy) < 0.6 or abs(abs(dx) - abs(dy)) < 0.7:
+            return (170, 120, 68)
+        return CLEAR
+
+    b("bench", (-2, 6, -8), (2, 7.5, 4), hg_wood((170, 120, 68), 852, "h", 2), rot=(-6, 0, 0), origin=(0, 6.75, -2))
+    pr("foot-n", (-2, 0, -7.5), (-1, 6.5, -6.5), wd)
+    b("foot-s", (-0.5, 0, 2.5), (0.5, 6, 3.5), wd)
+    b("wheel", (-0.4, 4, -4.5), (0.4, 17, 8.5), rim, skip=("up", "down", "north", "south"), noise=3)
+    pr("upright", (-1.8, 6.5, 1.5), (-0.9, 12, 2.5), wd)
+    b("axle", (-2.2, 10, 1.5), (2.2, 11, 2.5), DK)
+    b("crank", (2.2, 8, 1.7), (2.8, 11, 2.3), HG_IRON)
+    pr("maiden", (-1.6, 7, -7.5), (-0.8, 13, -6.7), wd)
+    b("flyer", (-0.8, 11, -7.6), (0.8, 12.4, -6.6), (240, 236, 224))
+    b("treadle", (-1.5, 0.6, -5), (1.5, 1.3, 1.5), DK, rot=(-8, 0, 0), origin=(0, 0.6, 1.5))
+    b("footman", (2.3, 1, -0.2), (2.8, 9, 0.3), DK, rot=(-14, 0, 0), origin=(2.5, 9, 2))
+    b("distaff", (1.2, 7, -6), (1.9, 20, -5.3), wd)
+    b("wool", (0.3, 17, -6.9), (2.8, 22, -4.4), lambda p: (250, 248, 240) if hsh(851, p.i, p.j) > 0.4 else (222, 216, 204))
+    return m
+
+
+def aquarium():
+    m, b, pr = hg("aquarium", 853)
+    FR = (50, 54, 62)
+    WT = (70, 150, 200)
+
+    def water(p):
+        if p.face == "up":
+            return mix(WT, WHITE, 0.4) if (p.i + p.j * 2) % 5 == 0 else mix(WT, WHITE, 0.2)
+        c = mix((48, 110, 176), (110, 190, 226), p.ly)
+        if p.j >= p.h - 2:
+            return (214, 196, 150) if hsh(853, p.i, p.j, FACES.index(p.face)) > 0.3 else (170, 150, 120)
+        return c
+
+    def life(c):
+        if c.face in ("up", "down"):
+            return
+        s = FACES.index(c.face)
+        for x in range(1, c.w - 1, 3):      # water weeds
+            hgt = 2 + int(hsh(854, s, x) * 4)
+            for y in range(hgt):
+                c.px(x + (y % 2 if hsh(855, s, x) > 0.5 else 0), c.h - 3 - y, (60, 150, 80) if y % 2 else (44, 120, 70))
+        if c.w < 10:
+            fish = [(1, 2, (250, 150, 50), 1)]
+        else:
+            fish = [(2, 2, (250, 150, 50), 1), (8, 4, (240, 230, 90), -1), (4, 5, (236, 90, 110), 1)]
+        for x, y, col, d in fish:
+            c.rect(x, y, 3, 2, col)
+            tx = x - 1 if d > 0 else x + 3
+            c.px(tx, y, mul(col, 0.8)), c.px(tx, y + 1, mul(col, 0.8))
+            c.px(x + (2 if d > 0 else 0), y, BLACK)
+            c.px(x + 1, y + 1, WHITE)
+        for x, y in ((c.w - 3, 1), (c.w - 2, 3), (c.w - 3, 5)):
+            c.px(x, y, (220, 240, 250))
+
+    b("cabinet", (-8, 0, -4), (8, 5, 4), hg_edge(hg_wood(HG_WALNUT, 853, "v", 4), mul(HG_WALNUT, 0.7), faces=("north",)),
+      lambda c: [c.px(x, 2, HG_BRASS) for x in (c.w // 2 - 1, c.w // 2)] if c.face == "north" else None)
+    b("sill", (-8, 5, -4), (8, 6, 4), FR)
+    b("tank", (-7.5, 6, -3.5), (7.5, 15, 3.5), water, life, noise=3)
+    hg_quad(b, "mullion", (-8, 6, -4), (-7.2, 15, -3.2), FR)
+    b("hood", (-8, 15, -4), (8, 16, 4), FR)
+    b("lamp", (-4, 16, -1), (4, 16.8, 1), hg_metal(HG_STEEL))
+    return m
+
+
+def bird_cage():
+    m, b, pr = hg("bird_cage", 857)
+    br = hg_metal(HG_BRASS)
+
+    def bars(p):
+        if p.j in (0, p.h - 1) or p.j == p.h // 2 or p.i % 2 == 0:
+            return HG_BRASS if p.i % 4 else mul(HG_BRASS, 1.2)
+        return CLEAR
+
+    b("foot", (-4, 0, -4), (4, 1, 4), br)
+    b("step", (-2, 1, -2), (2, 2, 2), br)
+    b("pole", (-0.7, 2, -0.7), (0.7, 14, 0.7), br)
+    b("tray", (-4.5, 14, -4.5), (4.5, 15, 4.5), hg_top(br, (206, 196, 160)))
+    b("bars", (-4, 15, -4), (4, 24, 4), bars, skip=("up", "down"), noise=0)
+    b("roof", (-4.5, 24, -4.5), (4.5, 25, 4.5), br)
+    b("dome", (-2.5, 25, -2.5), (2.5, 26.5, 2.5), br)
+    b("ring", (-0.5, 26.5, -0.5), (0.5, 28, 0.5), br)
+    b("perch", (-4, 18, -0.3), (4, 18.6, 0.3), HG_OAK)
+    b("songbird", (-1, 18.6, -1.2), (1, 20.8, 1), lambda p: (250, 214, 70) if p.ly > 0.3 else (240, 180, 60),
+      lambda c: (c.px(0, 0, BLACK), c.px(c.w - 1, 0, BLACK)) if c.face == "north" else None, noise=3)
+    b("bill", (-0.3, 19.6, -1.8), (0.3, 20.1, -1.2), (236, 130, 50))
+    b("seed-cup", (2.5, 15, -3.5), (3.5, 16, -2.5), (236, 236, 240))
+    return m
+
+
+def ladder_shelf():
+    m, b, pr = hg("ladder_shelf", 859)
+    wd = hg_wood((196, 156, 100), 859, "v", 2)
+    sh = hg_wood((214, 176, 120), 860, "h", 3)
+    pr("stringer", (-7.5, 0, -4), (-6.5, 31, -3), wd, rot=(14, 0, 0), origin=(0, 0, -3.5))
+    pr("upright", (-7.5, 0, 4), (-6.5, 30, 5), wd)
+    for k, (y, z) in enumerate(((5, -3.5), (12, -1.8), (19, 0), (26, 1.8))):
+        b("shelf-%d" % k, (-7.5, y, z), (7.5, y + 1, 5), sh)
+    b("books", (-6, 6, 0), (-1, 10, 3.5), hg_books(861), noise=4)
+    b("pot", (2.5, 6, -1.5), (5.5, 9, 1.5), hg_pot(HG_TERRA))
+    b("pot-plant", (2, 9, -2), (6, 12, 2), hg_leaves(HG_LEAF, 862))
+    b("basket", (-5.5, 13, 0.5), (-1.5, 16, 4), hg_cloth((190, 150, 90), (150, 110, 60), "weave"))
+    b("jug", (2, 13, 1), (4.5, 17, 3.5), hg_pot((90, 130, 150), band=HG_CREAM))
+    b("books-b", (-3, 20, 1.5), (3, 24, 4.5), hg_books(863), noise=4)
+    b("candle", (-1, 27, 2.5), (0.2, 29.5, 3.7), HG_CREAM)
+    b("frame", (2, 27, 3.6), (6, 30.5, 4.2), hg_edge((150, 190, 214), HG_GOLD))
+    return m
+
+
+def rug_stand():
+    m, b, pr = hg("rug_stand", 865)
+    wd = hg_wood((186, 142, 88), 865, "v", 2)
+    DK = (140, 100, 58)
+    pat = [(170, 56, 60), (236, 214, 150), (50, 96, 130), (236, 214, 150), (196, 120, 50)]
+
+    def rug(p):
+        k = p.j if p.face in ("north", "south", "up", "down") else p.i
+        c = pat[(k // 2) % len(pat)]
+        if k % 2 == 0 and p.i % 3 == 1:
+            return mul(c, 0.76)
+        return c
+
+    def warp(p):
+        k = int(p.lz * p.h)     # 0 at the weaver's end
+        if k < 4:
+            return rug(p)
+        return (236, 228, 204) if p.i % 2 == 0 else CLEAR
+
+    def heddle(p):
+        if p.j in (0, p.h - 1):
+            return DK
+        return (226, 216, 190) if p.i % 2 == 0 else CLEAR
+
+    flat = ("north", "south", "east", "west")
+    pr("post-n", (-7.5, 0, -6), (-6.5, 14, -5), wd)
+    pr("post-s", (-7.5, 0, 5), (-6.5, 24, 6), wd)
+    pr("sill", (-7.5, 1, -5), (-6.5, 2.2, 5), DK)
+    pr("rail", (-7.5, 12.5, -5), (-6.5, 13.7, 5), DK)
+    b("cloth-beam", (-6.5, 11, -6.3), (6.5, 13.4, -4), rug)
+    b("warp-beam", (-6.5, 17.5, 4.5), (6.5, 19.5, 6.5), lambda p: (236, 228, 204) if p.i % 2 == 0 else (206, 196, 170))
+    b("warp", (-5.5, 13.4, -4.5), (5.5, 13.8, 6), warp, skip=flat, rot=(-27, 0, 0), origin=(0, 13.4, -4.5), noise=3)
+    b("heddle", (-6, 14, 0.2), (6, 23, 0.7), heddle, skip=("up", "down", "east", "west"), noise=3)
+    b("lintel", (-7.5, 23, 4.8), (7.5, 24.2, 6.2), DK)
+    pr("hanger", (-6.4, 22, 0), (-5.8, 23.2, 5), DK)
+    b("treadle-a", (-3, 0, -5.5), (-1, 0.8, 4), DK)
+    b("treadle-b", (1, 0, -5.5), (3, 0.8, 4), DK)
+    b("stretcher", (-6.5, 4, 5), (6.5, 5.2, 6), DK)
+    b("rug", (-5, 2.5, -6.7), (5, 11.5, -6.3), rug, skip=("up", "down", "east", "west"))
+    b("shuttle", (-1.5, 13.4, -6.2), (2, 14.1, -5.4), (110, 70, 44))
+    return m
+
+
+HOUSE = [grandfather_clock, piano, harp, globe, telescope, easel, vase, candelabra, chandelier, hanging_lantern, fireplace, bust,
+         knight_statue, tall_bookcase, wing_chair, rocking_chair, cradle, dining_table, tea_set, coat_rack, crate, barrel, anvil,
+         spinning_wheel, aquarium, bird_cage, ladder_shelf, rug_stand]
+HEARTH_GARDEN = GARDEN + HOUSE
+RIGID.update(fn.__name__ for fn in HEARTH_GARDEN)
+# <<< hearthgarden pack
+
+
 ANIMALS = [cow, pig, chicken, cat, dog, tiger, elephant, bear, gator, snake, fish, squid, worm, ant, sheep, horse, frog, duck]
-VEHICLES = [boat, cargo_boat, cart, chest_cart, plane, car]
+VEHICLES = [boat, cargo_boat, cart, chest_cart, plane]
+LAND_VEHICLES = [car]   # the car belongs to the landvehicles mod
+LAND_DIR = os.path.join(ROOT, "mods", "landvehicles", "models")
 
 # Where each set of models is written: (output directory, model functions). A
 # plain run writes them all; add a pack by adding a folder and its list here.
@@ -6821,6 +8449,8 @@ OUTPUTS = [
     (OUT_DIR, ANIMALS + MORE_ANIMALS + VEHICLES + FARM + MONSTERS),
     (PACK_DIR, SPELLS_N_MAGIC),
     (TITAN_DIR, TITANLANDS),
+    (LAND_DIR, LAND_VEHICLES),
+    (HG_DIR, HEARTH_GARDEN),
 ]
 
 # ---------------------------------------------------------------- creatures.txt
@@ -6945,7 +8575,10 @@ def validate(path):
         walk(n, 0)
     assert sorted(seen) == sorted(ids), "every cube must sit in exactly one bone"
     assert len(names) == len(set(names)), "duplicate bone name"
-    assert min(e["from"][1] for e in d["elements"]) == 0, "the lowest box must stand on y = 0"
+    if d["name"] in HG_HANGING:   # these hang from the top of their block instead
+        assert max(e["to"][1] for e in d["elements"]) == 16, "a hanging prop must reach y = 16"
+    else:
+        assert min(e["from"][1] for e in d["elements"]) == 0, "the lowest box must stand on y = 0"
     return len(d["elements"]), img.size, names
 
 

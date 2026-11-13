@@ -6,13 +6,15 @@ which includes [data/creatures.txt](../data/creatures.txt) (models) and
 [data/wildlife.txt](../data/wildlife.txt) (every creature); all three are
 built into the program. Packs are read after it:
 
-1. The three mods that come inside the program (`data/packs/disasters`,
-   `data/packs/earth`, `data/packs/landvehicles`), unless switched off.
-2. `pack.txt` in the game's data folder, if it exists (the folder is printed
+1. `pack.txt` in the game's data folder, if it exists (the folder is printed
    at start-up; `--data DIR` chooses another).
-3. Every mod in the data folder's `mods` folder, then every mod in a `mods`
-   folder beside where the game was started, unless switched off.
-4. Every file given with `--pack FILE`.
+2. Every mod, unless switched off, in a `mods` folder beside the program,
+   in `../Resources/mods` (inside a Mac app), in the data folder's `mods`
+   folder, and in a `mods` folder where the game was started. The three mods
+   that come with the game (`mods/disasters`, `mods/earth`,
+   `mods/landvehicles`) are found this way; they are folders, not part of
+   the program. A mod found twice is loaded once.
+3. Every file given with `--pack FILE`.
 
 Mods are switched on and off in SETTINGS > MODS (see
 [MODDING.md](MODDING.md#switching-mods-on-and-off)).
@@ -104,6 +106,7 @@ block <id>
   skyloss <0..15>                sunlight lost passing down through it
   solid yes|no                   whether the player collides with it
   box x0 y0 z0 x1 y1 z1          a custom shape (see below)
+  prop <model> [<height>]        draw it as this model instead of its boxes (see Props)
   rotate                         four facings
   flip                           also upside-down
   hardness <seconds>             time to break by hand in survival, 0..600
@@ -256,6 +259,43 @@ a block or at the upper half of a wall.
 Each facing is stored as its own block state, so rotated blocks cost nothing
 extra in memory or in saves. There can be 4096 states in total (air is one;
 a plain block uses one, a `slab` two, a `rotate` block four, `stairs` eight).
+
+### Props
+
+```
+  prop <model> [<height>]
+```
+
+A block with `prop` is drawn as a model (see [Models](#models)) instead of
+as its boxes: furniture, statues, plants. `<model>` is the id of a model
+declared before the block; with an unknown id the line is reported and
+skipped. `<height>` is how tall the model is drawn, in blocks: 0.1 to 8,
+and 1 if left out. The model stands on the bottom of the block, in the
+middle.
+
+```
+model hg_garden_bench file models/garden_bench.bbmodel
+
+block garden_bench
+  name Garden Bench
+  tex planks
+  prop hg_garden_bench 1.0
+  rotate
+  box 0 0 4 16 8 12
+  seat 7
+```
+
+- `prop` applies to a block with a custom shape, so give it at least one
+  `box` line. The boxes are not drawn; they still give the solid shape, for
+  collision and aiming. Add `solid no` for a prop one can walk through.
+- `rotate` turns the model a quarter turn for each facing, so it faces the
+  way it was placed.
+- Its item is shown as the model in the inventory. `tex` is still needed as
+  for any block.
+- The model is drawn in its rest pose, lit by the light where it stands.
+- Props are drawn out to about 44 blocks from the player, in the chunks
+  within three of the one the player is in; a chunk draws 4096 of them at
+  most.
 
 ## Items
 
@@ -581,8 +621,8 @@ How they are driven is in [PLAYING.md](PLAYING.md#vehicles).
 
 The base data declares the boats, the rail carts, the locomotive and the
 plane. The `land` vehicles (`buggy`, `truck`, `kart`) are declared in the
-Land Vehicles mod, `data/packs/landvehicles/pack.txt`, which is a short
-complete example of textures, vehicles and recipes.
+Land Vehicles mod, `mods/landvehicles/pack.txt`, which is a short
+complete example of a model, textures, vehicles and recipes.
 
 ## Sounds
 

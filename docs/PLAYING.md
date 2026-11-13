@@ -13,13 +13,20 @@ The title screen has four buttons:
 - **SETTINGS**: see [Settings](#settings).
 - **QUIT**.
 
+The bottom of the title screen shows the version, the build name and the
+commit, and above that what the look for a newer version found (see
+[Updating](#updating)). The menus stand in front of a backdrop made of the
+game's own blocks.
+
 A new world needs a name (letters, digits, `-` and `_`), optionally a seed (a
 number or any word; empty means random), a game mode, and a terrain. The
 TERRAIN button steps through:
 
 - **NORMAL**: terrain invented from the seed.
 - **FLAT**: level grassland as far as you go (grass at height 51 over dirt
-  and stone; no hills, water, trees, caves or ores). A place to build.
+  and stone; no hills, water, trees, caves or ores). A place to build. The
+  distant terrain of a flat world has no trees either (earlier versions drew
+  far-off trees there, which showed as pink blobs).
 - **EARTH**: the real planet (see [EARTH.md](EARTH.md)). Offered only while
   the Earth mod is on (see [Mods](#mods)).
 
@@ -92,7 +99,9 @@ Blocks are drawn as little cubes in a true isometric view, other items as
 flat pictures. Blocks break at once, nothing hurts you, and pressing jump
 twice quickly starts or stops flying. You reach 6 blocks. Area tools such as the Builder's Wand (which works on a ball
 of blocks at a time) only work in creative. The Eggs tab holds a spawn egg
-for every creature (see [CREATURES.md](CREATURES.md#spawn-eggs)).
+for every creature (see [CREATURES.md](CREATURES.md#spawn-eggs)). The mouse
+wheel scrolls the list, and a scroll bar at its right edge can be dragged
+(or its track clicked) to move through it.
 
 The mode is chosen when the world is made and can be switched at any time in
 SETTINGS > GAME while the world is open.
@@ -147,7 +156,8 @@ recipes need (see [Furnaces](#furnaces)).
 
 Press E. In survival the upper part of the inventory lists what you can make;
 recipes you have the ingredients for come first, and pointing at one shows
-what it needs. Click a recipe to make it.
+what it needs. Click a recipe to make it. A long list scrolls with the mouse
+wheel or by dragging the scroll bar at its right edge.
 
 - **By hand** only a few things can be made: planks from logs, sticks, a
   wooden pickaxe, the crafting table (4 planks), flour and dough.
@@ -466,6 +476,9 @@ pets come with you. Your inventory, the chests' contents and the explored
 map belong to the world as a whole. Packs can add dimensions and portals to
 them (see [MODDING.md](MODDING.md#scripts-and-commands)).
 
+Far-off trees are drawn in the distant terrain only where the land is
+ordinary terrain. Flat land, the sky islands and the void have none.
+
 Dimensions are not available on a server.
 
 ## Weather and disasters
@@ -572,14 +585,15 @@ Settings are kept in `settings.txt` in the data folder.
   PACKS NOW.
 - **SKIN**: pick one of the built-in looks or use your own 64 x 64 PNG. See
   [MODDING.md](MODDING.md#player-skins).
-- **MODS**: a switch for every mod. See [Mods](#mods).
+- **MODS**: a switch for every mod, and UPDATE THE GAME AUTOMATICALLY. See
+  [Mods](#mods) and [Updating](#updating).
 
 ### Mods
 
-SETTINGS > MODS lists every mod with an on/off switch: first the three that
-come inside the program, then those found in the mods folders (see
-[MODDING.md](MODDING.md#the-mods-folder)). Eight are shown at a time; the
-mouse wheel scrolls. A change takes effect at once: the content is read
+SETTINGS > MODS lists every mod the game has found, with an on/off switch:
+the three that come with the game and any you have added (see
+[MODDING.md](MODDING.md#where-packs-are-read-from)). Eight are shown at a
+time; the mouse wheel scrolls. A change takes effect at once: the content is read
 again, as with `/reload`. The mods switched off are remembered in
 `settings.txt` (`mods_off`).
 
@@ -589,7 +603,40 @@ again, as with `/reload`. The mods switched off are remembered in
 | EARTH | real-world terrain, the world map and place notices | the EARTH terrain choice is not offered and `--earth` is refused. Earth worlds already made stay playable |
 | LANDVEHICLES | the buggy, the truck and the kart, with their recipes | those vehicles are gone from the item list, recipes and the world |
 
-All three are on to begin with.
+All three are on to begin with. They are folders, not part of the program:
+`mods/disasters`, `mods/earth` and `mods/landvehicles`, in a `mods` folder
+beside the program (inside the app on a Mac, in `Contents/Resources/mods`).
+If that folder is missing they are not listed and their content is not in
+the game.
+
+### Updating
+
+When it starts, the game looks at the project's nightly release for a newer
+version. If there is one, it downloads the program for its own kind of
+machine, checks it, and puts it in place of the one you have; the new
+version is used the next time you start the game. The title screen says
+which of these happened:
+
+- CHECKING FOR A NEWER VERSION...
+- THIS IS THE NEWEST VERSION
+- A NEWER VERSION IS INSTALLED - START THE GAME AGAIN TO USE IT
+- A NEWER VERSION IS OUT (AUTOMATIC UPDATES ARE OFF)
+- COULD NOT CHECK FOR UPDATES
+
+UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS (on by default) decides
+whether a newer version is installed or only announced. `--no-update` skips
+the check for one run.
+
+Things to know:
+
+- While the project's repository is private the download is refused, and
+  the game says COULD NOT CHECK FOR UPDATES.
+- On Mac OS X 10.6 the system's `curl` cannot make modern HTTPS
+  connections, so the old-Mac build cannot update itself.
+- Only the program is replaced, not the `mods` folder beside it.
+- Worlds and settings are not touched.
+
+More in [BUILDING.md](BUILDING.md#how-the-game-updates-itself).
 
 ### Full screen on a slow graphics card
 
@@ -602,10 +649,24 @@ under SETTINGS > VIDEO whenever you like.
 
 ## The data folder
 
-Worlds, settings, screenshots, `pack.txt` and the `mods` folder (see
-[MODDING.md](MODDING.md)) live in one folder, chosen by SDL for your system (for example `~/.local/share/VoxelRust/VoxelRust/` on
-Linux). The game prints `voxelrust: data in ...` when it starts; `--data DIR`
-uses another folder.
+Worlds, settings, screenshots, `pack.txt` and your own `mods` folder (see
+[MODDING.md](MODDING.md)) live in one folder:
+
+| System | Folder |
+| --- | --- |
+| Windows | `%APPDATA%\KYTTU\VoxelRust` |
+| macOS | `~/Library/Application Support/KYTTU/VoxelRust` |
+| Linux | `~/.local/share/KYTTU/VoxelRust` |
+
+The game prints `voxelrust: data in ...` when it starts. `--data DIR` uses
+another folder, and makes it if it does not exist.
+
+Earlier versions used `VoxelRust/VoxelRust` in the same place (for example
+`~/.local/share/VoxelRust/VoxelRust`). The first time a newer version
+starts and finds no settings or worlds in the new folder, it copies the
+files of the old one across, once, and prints `voxelrust: brought N files
+over from ...`. The old folder is left as it was. Only the files directly in
+it are copied, not folders inside it such as `mods`: move those yourself.
 
 ## Command-line options
 
@@ -631,7 +692,7 @@ uses another folder.
 | `--display N` | open on display N (0 is the main one) |
 | `--render-scale P` | draw the 3D view at P percent of full resolution (25..100); much faster on old graphics cards |
 | `--novsync` | do not wait for the display refresh |
-| `--data DIR` | where worlds and settings are kept |
+| `--data DIR` | where worlds and settings are kept; the folder is made if it is not there |
 | `--log FILE` | also write what the game prints to FILE |
 | `--pack FILE` | extra content file (blocks, items, textures); may be given several times |
 | `--screenshot FILE` | load the world, save one BMP frame, and exit |
@@ -641,6 +702,7 @@ uses another folder.
 | `--write-icon FILE` | save the game's emblem as a PNG and exit |
 | `--icon-size N` | with `--write-icon`: its size in pixels (default 256) |
 | `--version` | print the version and which build this is, and exit |
+| `--no-update` | do not look for a newer version this time |
 | `--export FILE` | with `--world NAME`: write that world as one file, and exit |
 | `--import FILE` | with `--world NAME`: add a world from such a file, and exit |
 | `--pos X Y Z` | start position |
@@ -650,8 +712,19 @@ uses another folder.
 | `--showcase` | with `--screenshot`: lay out every block in front of the camera first (handy for checking a pack) |
 | `--show LIST` | with `--screenshot`: also draw `hud`, `debug`, `pause`, `items`, `title`, `worlds`, `newworld`, `dead`, `map`, `settings:TAB`, `third` (camera behind the player) or `creatures` (one of each) |
 
-`--version` prints, for example, `voxelrust 0.1.0 (linux-x86_64)`; the word in
-brackets is the build name (see [BUILDING.md](BUILDING.md#build-names-and-updating)).
+`--show` takes several words joined by commas. Three more are read by the
+program though `--help` does not list them:
+
+- `items:<tab>` opens the creative item list at that tab, named as in the
+  list (`items:Eggs`); capitals do not matter.
+- `settings:TAB` opens SETTINGS at that tab: `VIDEO`, `AUDIO`, `CONTROLS`,
+  `GAME`, `SKIN` or `MODS`.
+- `walking`, with `creatures`, is for showing the line-up mid-stride.
+
+`--version` prints, for example, `voxelrust 0.1.0 (linux-x86_64, commit
+5f38cb02e2e3)`. The first word in brackets is the build name (see
+[BUILDING.md](BUILDING.md#build-names-and-updating)); the commit is the one
+the program was built from, or `dev` for a program built by hand.
 
 `--flypass`, `--bench`, `--run` and `--screenshot` are aids for developers
 and pack makers. So is `--exp N`, which `--help` does not list: it switches

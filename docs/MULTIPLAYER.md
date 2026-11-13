@@ -168,7 +168,7 @@ a server, `/reload` and RELOAD CONTENT PACKS NOW do nothing: the server
 decides the content. To change a server's packs, restart it.
 
 The mods that come with the game (Natural Disasters, Earth, Land Vehicles)
-count as packs here: the ones switched on where the server runs are sent
+are ordinary packs here: the ones found and switched on where the server runs are sent
 with the rest, so players on a server whose Land Vehicles mod is off have
 no buggy, truck or kart there, whatever their own settings say.
 

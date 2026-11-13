@@ -15,27 +15,49 @@ The format, keyword by keyword, is in [DATA.md](DATA.md).
 In this order, each able to override the ones before:
 
 1. The built-in data.
-2. The mods that come with the game (see below), unless switched off.
-3. `pack.txt` in the data folder, if it exists. (The game prints
+2. `pack.txt` in the data folder, if it exists. (The game prints
    `voxelrust: data in ...` at start-up; `--data DIR` chooses another folder.)
-4. Every mod in `<data folder>/mods/`, unless switched off.
-5. Every mod in `./mods/`, a `mods` folder beside where the game was started
-   (handy while making one), unless switched off.
-6. Every file given with `--pack FILE`, in the order given.
+3. Every mod in each of four `mods` folders, unless switched off:
+   1. `mods/` beside the program. This is where the mods that come with the
+      game are in the Linux and Windows archives.
+   2. `../Resources/mods/` as seen from the program: inside a Mac app, that
+      is `VoxelRust.app/Contents/Resources/mods`.
+   3. `<data folder>/mods/`: the place for mods you install.
+   4. `./mods/`, a `mods` folder where the game was started (handy while
+      making one; in the source tree it is where the three mods live).
+4. Every file given with `--pack FILE`, in the order given.
+
+A mod goes by the name of its folder (or of its file without `.txt`). **A
+mod found twice is loaded once**: the first one found, in the order above,
+is used and later ones of the same name are left out. So a mod in the data
+folder cannot replace one of the same name beside the program; give it
+another name, or switch the other off.
 
 For each file it reads from disk, the game prints `voxelrust: content from
 <path>`.
 
 ### Mods that come with the game
 
-Three mods are embedded in the program, like the base data. Their text is in
-the source tree under `data/packs/`:
+Three mods come with the game. They are not inside the program: each is an
+ordinary folder with a `pack.txt`, and can be read, changed, switched off or
+deleted like any other mod.
 
-| Mod | File | What it holds |
+| Mod | Folder | What it holds |
 | --- | --- | --- |
-| Natural Disasters | `data/packs/disasters/pack.txt` | `feature disasters`, which lets earthquakes, tsunamis and tornadoes happen, and the sounds `quake` and `twister` |
-| Earth | `data/packs/earth/pack.txt` | `feature earth`, which offers real-world terrain (see [EARTH.md](EARTH.md)) |
-| Land Vehicles | `data/packs/landvehicles/pack.txt` | the buggy, the truck and the kart, their icons and their recipes |
+| Natural Disasters | `mods/disasters` | `feature disasters`, which lets earthquakes, tsunamis and tornadoes happen, and the sounds `quake` and `twister` |
+| Earth | `mods/earth` | `feature earth`, which offers real-world terrain (see [EARTH.md](EARTH.md)) |
+| Land Vehicles | `mods/landvehicles` | the buggy, the truck and the kart, their icons and their recipes, and their model, `models/car.bbmodel` |
+
+Where they are:
+
+- in the source tree, `mods/` at the top (the only three folders under
+  `mods/` that git tracks);
+- in the Linux and Windows archives, a `mods/` folder beside the program;
+- in the Mac apps, `Contents/Resources/mods`.
+
+If the game cannot find them (a program copied somewhere without its `mods`
+folder, say) it still runs, without Earth worlds, disasters or land
+vehicles. The browser version has no folders and so has none of the three.
 
 Boats, rail carts, the locomotive and the plane are in the base data, not in
 a mod.
@@ -50,8 +72,8 @@ names; a pack cannot add new program behaviour by inventing another. See
 
 ### Switching mods on and off
 
-SETTINGS > MODS lists every mod, the three above first and then those found
-in the mods folders, each with a switch. A change takes effect at once (the
+SETTINGS > MODS lists every mod found in the mods folders, the three above
+included, each with a switch. A change takes effect at once (the
 content is reloaded). The names switched off are kept in `settings.txt` as
 `mods_off`, a list separated by commas, for example
 `mods_off=disasters,landvehicles`. A mod goes by the name of its folder, or
@@ -76,8 +98,9 @@ appears after `/reload`, and one taken out disappears. A mod can be switched
 off without removing it: see
 [Switching mods on and off](#switching-mods-on-and-off).
 
-In the source tree, `mods/` is ignored by git, so a mod under development
-there is not committed by accident.
+In the source tree, everything under `mods/` except `disasters`, `earth`
+and `landvehicles` is ignored by git, so a mod under development there is
+not committed by accident.
 
 A pack can pull in more files with `include`, and refers to textures (`.tga`)
 and models (`.bbmodel`) by paths relative to the pack file itself.
@@ -297,8 +320,8 @@ the world).
 
 Compiled Rust mods are not supported: the game has no plug-in interface,
 and a pack is only ever data. (The mods that come with the game are no
-exception; their `feature` lines switch on code that is already in the
-program.)
+exception; they are plain packs, and their `feature` lines switch on code
+that is already in the program.)
 
 On a server the scripts of the server's packs run in each player's own
 game, and the commands that are refused on a server (`/time`, `/set`,
@@ -367,6 +390,37 @@ To look at every creature and vehicle model at once:
 ```sh
 voxelrust --pack my-pack.txt --show creatures --screenshot out.bmp
 ```
+
+### Props: blocks drawn as models
+
+A model can also stand in for a block. Give a block `prop <model> [height]`
+and it is drawn as that model, scaled to that many blocks high (1 if left
+out), instead of as boxes:
+
+```
+model stone_lantern file models/lantern.bbmodel
+
+block stone_lantern
+  name Stone Lantern
+  tex stone
+  prop stone_lantern 1.1
+  rotate
+  box 4 0 4 12 16 12
+  light 12
+craft stone_lantern 1 stone 3 lamp 1
+```
+
+- The block needs at least one `box` line. The boxes are not drawn; they are
+  the solid shape, used for collision and for aiming. For something to walk
+  through (a bush, a hanging lamp), give a small box and `solid no`.
+- With `rotate`, the model turns to face the way the block was placed.
+- The item shows as the model in the inventory and the creative list.
+- Everything else is an ordinary block: `seat`, `use chest`, `light`,
+  `sound`, `eat`, recipes, and `plant` lines to scatter it in the world.
+- The model stands still (bones are not animated), and props are drawn only
+  near the player, out to about 44 blocks.
+
+The keyword is described in [DATA.md](DATA.md#props).
 
 ## Player skins
 
@@ -440,17 +494,33 @@ Blockbench models.
 
 ### A larger example still: Titanlands
 
-"Titanlands", in `mods/titanlands/`, is an original big-adventure pack and
-is likewise **not in the repository**. Its `pack.txt` is written by a
-script, `mods/titanlands/gen.py`, from tables, which is a practical way to
-make a pack of this size. It has nine ores, each with an ingot, tools, a
-sword, a block and bricks; special gear driven by `useitem` scripts; and
-four dimensions reached through gate blocks (`when use gate_... do /dim
-...; /title ...`). The script also describes giant creatures and dragons to
-tame and ride (`tamable`, `rideable`), and writes each one into the pack
-only when its model file is present in `mods/titanlands/models/`. It uses
-the newer scripting too: `/title`, `/blast`, `/if chance`, and the `ride`
-and `night` events.
+"Titanlands", in `mods/titanlands/`, is likewise **not in the
+repository**. It is an original pack in the big-adventure style: its names,
+content and models were made for VoxelRust, and it is **not a port of any
+existing mod**. Its `pack.txt` is written by a script,
+`mods/titanlands/gen.py`, from tables, which is a practical way to make a
+pack of this size. It has nine ores, each with an ingot, tools, a sword, a
+block and bricks; special gear driven by `useitem` scripts; and four
+dimensions reached through gate blocks (`when use gate_... do /dim ...;
+/title ...`). It has 24 creatures, giants and dragons among them, some to
+tame and ride (`tamable`, `rideable`), each with its own model in
+`mods/titanlands/models/`; the script writes a creature into the pack only
+when its model file is there. It uses the newer scripting too: `/title`,
+`/blast`, `/if chance`, and the `ride` and `night` events.
+
+### A pack of props: Hearth & Garden
+
+"Hearth & Garden", in `mods/hearthgarden/`, is a decoration pack and is
+also **not in the repository**. Its `pack.txt` is written by
+`mods/hearthgarden/gen.py` from one table of about sixty furniture and
+garden pieces (64 at the time of writing), every one a prop: a block drawn
+as a model (see [Props](#props-blocks-drawn-as-models)). Some can be sat on
+(`seat`: the garden bench, the wing chair, the hay bale), some store things
+(`use chest`: the crate, the barrel, the mailbox), some give light or make a
+sound, and each has a recipe. `plant` lines scatter boulders, bushes, ferns
+and a few others in the world. Like Titanlands' script, it writes a piece
+into the pack only when its model file is present in
+`mods/hearthgarden/models/`, so without the models the pack is empty.
 
 ## Checking a pack
 

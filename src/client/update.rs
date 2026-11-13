@@ -76,8 +76,8 @@ pub fn listed_commit(list: &str) -> Option<&str> {
     list.lines().find_map(|l| l.strip_prefix("commit ")).map(|c| c.trim()).filter(|c| !c.is_empty() && c.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
-fn fetch(url: &str, to: &str) -> Option<Vec<u8>> {
-    let cmd = alloc::format!("curl -fsSL --max-time 120 -A \"VoxelRust/{}\" -o \"{}\" \"{}\"", env!("CARGO_PKG_VERSION"), to, url);
+fn fetch(url: &str, to: &str, seconds: u32) -> Option<Vec<u8>> {
+    let cmd = alloc::format!("curl -fsSL --connect-timeout 8 --max-time {} -A \"VoxelRust/{}\" -o \"{}\" \"{}\"", seconds, env!("CARGO_PKG_VERSION"), to, url);
     if sys::run_command(&cmd) != 0 {
         return None;
     }
@@ -88,11 +88,19 @@ fn fetch(url: &str, to: &str) -> Option<Vec<u8>> {
 /// this one. `scratch` is a folder to download into (the data folder).
 /// Blocks while it downloads: call it from a thread of its own.
 pub fn run(build: &str, scratch: &str, install: bool) {
+    // The old-Mac build cannot do this: the `curl` of Mac OS X 10.6 has no
+    // way to make the secure connection the release needs. It is updated
+    // by hand (the release page says which file).
+    if build.starts_with("macos-legacy") {
+        return;
+    }
+    // Let the game get its window up first.
+    sys::sleep_ms(4000);
     STATE.store(CHECKING, Ordering::Release);
     let done = |s: u8| STATE.store(s, Ordering::Release);
     let exe = sys::exe_path();
     let list_path = alloc::format!("{}nightly.txt", scratch);
-    let list = match fetch(&alloc::format!("{}nightly.txt", RELEASE), &list_path) {
+    let list = match fetch(&alloc::format!("{}nightly.txt", RELEASE), &list_path, 15) {
         Some(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         None => return done(FAILED),
     };
@@ -113,7 +121,7 @@ pub fn run(build: &str, scratch: &str, install: bool) {
         return done(AVAILABLE);
     }
     let fresh = alloc::format!("{}.new", exe);
-    let ok = match fetch(&alloc::format!("{}{}", RELEASE, file), &fresh) {
+    let ok = match fetch(&alloc::format!("{}{}", RELEASE, file), &fresh, 180) {
         Some(bytes) => bytes.len() == size && crate::sha256::hex(&bytes) == sum.to_ascii_lowercase(),
         None => false,
     };

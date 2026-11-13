@@ -1,8 +1,8 @@
 # VoxelRust
 
 A voxel sandbox written in Rust that runs on old machines as well as new
-ones. It has been run on a 2008 Mac Pro under Mac OS X 10.6.8, on Linux, and
-(under Wine) as a Windows program.
+ones. It has been run on a 2008 Mac Pro under Mac OS X 10.6.8, on a 2015
+MacBook Air under macOS 12, on Linux, and (under Wine) as a Windows program.
 
 It is an original game, not a clone of an existing one: its own blocks, its
 own procedurally painted textures and its own terrain generator.
@@ -35,7 +35,7 @@ own procedurally painted textures and its own terrain generator.
   trapdoors and gates that open; furniture to sit on, store things in and
   cook at; food set out on plates; stone kinds; stairs, slabs, walls and
   fences that join up; lamps; chests; sand and gravel that fall; animated
-  water; custom shapes.
+  water; custom shapes, and props (blocks drawn as models).
 - **Creatures.** 75 kinds: farm animals that give milk, wool and eggs and
   have young, animals you can tame, hunters and prey, birds and fish, night
   monsters (skeleton archers among them), cave dwellers, and villagers who
@@ -62,9 +62,9 @@ own procedurally painted textures and its own terrain generator.
   models, creatures, vehicles, sounds, dimensions, chat commands and small
   scripts (`when <event> do <commands>`, with variables and conditions) are
   declared in text files. Drop a mod into the `mods` folder and it loads;
-  `/reload` picks up changes without restarting. Three mods come inside the
-  program (Natural Disasters, Earth, Land Vehicles); SETTINGS > MODS switches
-  any mod on or off. Blockbench `.bbmodel` files are read directly. Player skins
+  `/reload` picks up changes without restarting. Three mods come with the
+  game, each a folder of its own in `mods/` (Natural Disasters, Earth, Land
+  Vehicles); SETTINGS > MODS switches any mod on or off. Blockbench `.bbmodel` files are read directly. Player skins
   are 64 x 64 PNGs. The default player model is the LastRoute mannequin.
 - **Long views.** Detailed chunks near you, simplified terrain beyond (tested
   out to 2 km).
@@ -75,6 +75,8 @@ own procedurally painted textures and its own terrain generator.
   mods.
 - **Worlds as files.** Export a world to one `.vxworld` file and import it on
   another machine.
+- **Updates.** The game looks for a newer nightly build when it starts and
+  can replace its own program (see [Builds and updating](#builds-and-updating)).
 
 ## Documentation
 
@@ -86,7 +88,7 @@ own procedurally painted textures and its own terrain generator.
 | [docs/EARTH.md](docs/EARTH.md) | real-world terrain, the map, data sources |
 | [docs/MODDING.md](docs/MODDING.md) | packs, the mods folder, the mods that come with the game, scripts and commands, models, skins |
 | [docs/DATA.md](docs/DATA.md) | the content file format |
-| [docs/BUILDING.md](docs/BUILDING.md) | building for each platform, build names and updating, tests, CI, icons |
+| [docs/BUILDING.md](docs/BUILDING.md) | building for each platform, packaging a release, build names and updating, tests, CI, icons |
 | [docs/PORTING.md](docs/PORTING.md) | how it stays portable, old Macs, PowerPC, measurements |
 | [docs/WEB.md](docs/WEB.md) | the browser build |
 
@@ -122,31 +124,65 @@ scripts/build-macos-legacy.sh
 scripts/build-windows.sh
 ```
 
+Everything at once, laid out as a release in `dist/nightly/`:
+
+```sh
+scripts/package-release.sh
+```
+
 Details: [docs/BUILDING.md](docs/BUILDING.md). `voxelrust --help` lists the
 command-line options.
+
+The game reads the three mods that come with it from a `mods` folder beside
+the program (inside the app on a Mac) or from `./mods`, so start a program
+built by hand from the top of the source tree, as `cargo run` does.
 
 ## Builds and updating
 
 Each build has a name that says what machine it is for: `linux-x86_64`,
 `windows-x86_64`, `macos-x86_64` (macOS 10.12 and later) or
 `macos-legacy-x86_64` (Mac OS X 10.6 and later). `voxelrust --version` prints
-it, and so does the F3 screen. The nightly files are named after it and
-listed in `BUILDS.txt`. The two Mac apps declare their minimum system, so
-macOS refuses to start the 10.12 one on an older system.
+it with the commit the program was built from, and the F3 screen shows it.
+The two Mac apps declare their minimum system, so macOS refuses to start the
+10.12 one on an older system.
 
-The game does not update itself. To update, replace the program with a newer
-file of the same build name; worlds and settings live in the data folder and
-are not touched.
+The files are on the `nightly` release:
+<https://github.com/KyttuXD/VoxelRust/releases/tag/nightly>. Each archive
+holds the program (an app on the Mac), the three mods that come with the
+game, and the docs; `BUILDS.txt` says which file is for which machine. They
+are built by `scripts/package-release.sh` and uploaded by hand.
+
+**The game updates itself.** When it starts it reads `nightly.txt` from that
+release; if the release was built from a newer commit, it downloads the
+program listed for its own build name, checks its SHA-256, and puts it in
+place of the running program. The new version is in use from the next start,
+and the title screen says what happened. `--no-update` skips the check for
+one run; UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS turns the
+replacing off (the game then only says a newer version is out). Limits:
+
+- **While the repository is private, the download fails** (it is made
+  without signing in), and the game says COULD NOT CHECK FOR UPDATES.
+- The download is done by the system's `curl`. Mac OS X 10.6's own `curl`
+  cannot make modern HTTPS connections, so **the old-Mac build cannot update
+  itself**: replace the app by hand.
+- Only the program is replaced. The `mods` folder that came with it, the
+  docs and SDL2 are not.
+- A program built by hand without a commit stamp is never replaced, and
+  there is no check in scripted runs (`--screenshot`, `--bench`), for
+  `--server`, or in the browser.
+
+Worlds and settings live in the data folder and are not touched. Details:
+[docs/BUILDING.md](docs/BUILDING.md#build-names-and-updating).
 
 ## What has actually been run
 
 | Platform | State |
 | --- | --- |
 | Linux x86-64 | Built, unit tests pass, run and benchmarked |
-| Mac OS X 10.6.8 (2008 Mac Pro, Radeon HD 2600) | **Run on the real machine**: the game, a benchmark, and hosting a server that a Linux client joined |
+| Mac OS X 10.6.8 (2008 Mac Pro, Radeon HD 2600) | **Run on the real machine** (the legacy build): the game, a benchmark (about 256 FPS in a window), and hosting a server that a Linux client joined |
+| macOS 12.7.6 (2015 MacBook Air, Intel HD 6000) | **Run on the real machine**: the 10.12+ build as an app with the SDL2 2.0.4 framework inside it. 246 FPS in a 1280 x 720 window at default settings; an Earth world rendered; started plainly, it stays open |
 | Windows x64 | Run under Wine 10 with the official `SDL2.dll`: the game, and hosting a server. Not run on real Windows |
-| macOS 10.12+ (Intel) | Cross-built (`dist/macos/`); **not run on any modern Mac**. The 10.6 build is expected to work there too |
-| Apple Silicon | Not built |
+| Apple silicon | No build of its own, and no such Mac could be reached for testing: untested |
 | PowerPC (Linux) | Compiles (`cargo check`); never run |
 | Mac OS X 10.5 and older | Not supported (see docs/PORTING.md) |
 
@@ -180,14 +216,20 @@ are not touched.
   animals simply turn up.
 - Servers have no accounts, passwords or encryption, and **the project hosts
   no public server**. You play with people you give an address to.
-- There is no in-game updater.
+- The updater cannot work while the repository is private, and never on
+  Mac OS X 10.6 (see [Builds and updating](#builds-and-updating)). It
+  replaces the program only, not the mods that came with it.
 - The Windows build has only been tested under Wine, not on real Windows.
-- Modern macOS is untested: the 10.12 build has never been run.
+- Modern macOS has been run on one Intel Mac (macOS 12.7.6). Apple silicon
+  is untested.
 - PowerPC is only compile-checked (`cargo check`); it has never been run.
-- The repository is on GitHub (private, `KyttuXD/VoxelRust`), but its
-  workflows (CI and nightly builds) have not been able to run: the account's
-  Actions budget blocks them on private repositories. So there are no
-  nightly files yet.
+- The repository is on GitHub (private, `KyttuXD/VoxelRust`), and its
+  workflows (CI and nightly builds) cannot run: the account's Actions budget
+  blocks them on private repositories. The nightly files are built on the
+  author's machine and uploaded by hand.
+- The browser build has no folders to read mods from, so the three mods that
+  come with the game (Earth, Natural Disasters, Land Vehicles) are not in
+  it.
 - The browser build ([docs/WEB.md](docs/WEB.md)) has been built and run
   locally in Chromium, but the website is not deployed: the server meant for
   it (`voxelrust.games.kyttuslab.org`) could not be reached over SSH without
