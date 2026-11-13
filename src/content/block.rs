@@ -136,10 +136,11 @@ pub struct Script {
     pub actions: Vec<String>,
 }
 
-/// A pack's disaster: when it may come, how long it lasts, and the chat
+/// A pack's episode (a storm of frogs, a quake, a festival): something
+/// that comes over the world for a while. When it may come, how long it lasts, and the chat
 /// commands carried out a few times a second while it does.
 #[derive(Clone, Debug)]
-pub struct DisasterDef {
+pub struct EpisodeDef {
     pub id: String,
     /// It starts about once in this many seconds (0 = never by itself).
     pub every: u32,
@@ -150,7 +151,7 @@ pub struct DisasterDef {
     pub moves: f32,
     /// Drawn as a funnel where it is.
     pub funnel: bool,
-    /// The disaster that follows it, if that one's conditions hold.
+    /// The episode that follows it, if that one's conditions hold.
     pub then: String,
     pub actions: Vec<String>,
 }
@@ -203,10 +204,9 @@ pub struct BlockExtra {
     pub seat: u8,
     /// Food: right click eats it where it stands, for this many points.
     pub eat: u8,
-    /// Rail carts run on it, at this percentage of their speed (0 = not track).
-    pub track: u16,
-    /// Track where carts pull up and wait this many seconds before going on.
-    pub station: u8,
+    /// Marks for the mods' own code to look for (`tag <name> [number]`):
+    /// what a mark means is up to whichever code reads it.
+    pub tags: Vec<(String, f32)>,
     /// Drawn as a model (a prop) instead of as boxes: the model, and how
     /// tall to draw it in blocks. Its `box` lines still say where it is solid.
     /// The third number lifts it off the floor (a lamp hung from above).
@@ -216,6 +216,14 @@ pub struct BlockExtra {
     pub fills: (u8, u8),
     /// The hidden filler itself: solid, never drawn, part of a big prop.
     pub part: bool,
+}
+
+impl BlockExtra {
+    /// The number after `tag <name>` (1 if none was given), if the block
+    /// has that mark.
+    pub fn tag(&self, name: &str) -> Option<f32> {
+        self.tags.iter().find(|t| t.0 == name).map(|t| t.1)
+    }
 }
 
 /// What an item does besides being placed or eaten.
@@ -249,8 +257,9 @@ pub struct ItemDef {
     pub speed: f32,
     /// Health and hunger restored by eating it (0 = not food).
     pub food: i32,
-    /// The vehicle this item sets down, if it is one.
-    pub vehicle: Option<usize>,
+    /// The pack section (see [`Section`]) this item stands for, if it is
+    /// one: what it does in the hand is up to the mod's code.
+    pub section: Option<usize>,
     /// Tab in the creative item list.
     pub category: String,
     pub x: ItemExtra,
@@ -356,33 +365,37 @@ pub struct EntityExtra {
     pub hunts: Vec<String>,
 }
 
-/// What a vehicle travels on.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Medium {
-    Water,
-    Rail,
-    Land,
-    Air,
+/// A part of a pack kept as written, for a mod's own code to read: a
+/// top-level word that code has claimed (`native::Native::sections`), the
+/// id after it, and the indented lines under it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Section {
+    pub kind: String,
+    pub id: String,
+    /// Where it was written, for messages.
+    pub at: String,
+    pub props: Vec<(String, Vec<String>)>,
 }
 
-/// A kind of vehicle. Each one also gets an item that sets it down.
-#[derive(Clone, Debug)]
-pub struct VehicleDef {
-    pub id: String,
-    pub name: String,
-    pub model: usize,
-    pub medium: Medium,
-    /// Top speed, blocks per second.
-    pub speed: f32,
-    /// Size in blocks; the model is scaled to `height`.
-    pub height: f32,
-    pub width: f32,
-    /// Whether it carries a chest's worth of storage.
-    pub storage: bool,
-    /// Where the rider's eyes are, above the vehicle's base.
-    pub seat: f32,
-    /// Keeps going by itself once set moving (a locomotive).
-    pub powered: bool,
+impl Section {
+    /// The words after the first line called `key`.
+    pub fn get(&self, key: &str) -> Option<&[String]> {
+        self.props.iter().rev().find(|p| p.0 == key).map(|p| p.1.as_slice())
+    }
+    pub fn word(&self, key: &str) -> &str {
+        self.get(key).and_then(|w| w.first()).map_or("", |w| w.as_str())
+    }
+    pub fn text(&self, key: &str) -> String {
+        self.get(key).map(|w| w.join(" ")).unwrap_or_default()
+    }
+    /// A number, kept within `lo..=hi`; `default` if missing or not one.
+    pub fn num(&self, key: &str, default: f32, lo: f32, hi: f32) -> f32 {
+        self.word(key).parse::<f32>().ok().filter(|v| *v >= lo && *v <= hi).unwrap_or(default)
+    }
+    /// A line that is there and not followed by `no`.
+    pub fn flag(&self, key: &str) -> bool {
+        self.get(key).map_or(false, |w| !matches!(w.first().map(|x| x.as_str()), Some("no" | "false" | "0")))
+    }
 }
 
 /// A kind of creature.
@@ -517,7 +530,6 @@ pub struct WellKnown {
     pub blossom_leaves: Block,
     pub ruby_ore: Block,
     pub snow_layer: Block,
-    pub rail: Block,
     /// What grows and glows underground; any may be AIR if the content
     /// leaves it out.
     pub moss: Block,
@@ -531,7 +543,7 @@ pub struct WellKnown {
     pub stalagmite: Block,
     pub web: Block,
     pub farmland: Block,
-    /// Ripe crops, for the fields of Earth worlds (AIR where missing).
+    /// Ripe crops, for the fields of terrain made from a map (AIR where missing).
     pub crops: [Block; 4],
     /// Road surface, its yellow and white paint, and what towns are
     /// furnished with: floor, stairs, table, chest, workbench, bed, lamp.
@@ -540,7 +552,7 @@ pub struct WellKnown {
     pub floor: Block,
     pub stairs: Block,
     pub furniture: [Block; 5],
-    /// Building materials for Earth worlds, and their window glass.
+    /// Building materials for terrain made from a map, and their window glass.
     pub walls: [Block; 4],
     pub window: Block,
     /// Banded clay for badlands: four colours, bottom to top.
@@ -555,7 +567,9 @@ pub struct Registry {
     pub recipes: Vec<Recipe>,
     pub models: Vec<ModelSpec>,
     pub entities: Vec<EntityDef>,
-    pub vehicles: Vec<VehicleDef>,
+    /// Sections and lines of the packs kept for the mods' own code.
+    pub sections: Vec<Section>,
+    pub lines: Vec<(String, String, Vec<String>)>,
     /// Item tabs, in the order they first appear.
     pub categories: Vec<String>,
     /// Things packs ask the terrain generator to add.
@@ -568,13 +582,14 @@ pub struct Registry {
     /// Other worlds inside a world: a name and the lie of its land
     /// (an index into `worldgen::SHAPES`).
     pub dimensions: Vec<(String, u8)>,
-    /// Parts of the game that packs switch on (`feature earth`): things
+    /// Parts of the game that packs switch on (`feature <name>`): things
     /// built into the program that only run when a pack asks for them.
     pub features: Vec<String>,
-    /// The disasters packs define.
-    pub disasters: Vec<DisasterDef>,
-    /// The real planet's map, if a pack describes one (the Earth mod).
-    pub map: Option<crate::earth::MapDef>,
+    /// Things that come over the world for a while, as packs define them.
+    pub episodes: Vec<EpisodeDef>,
+    /// Switches packs add to Settings > GAME: id, whether on to begin
+    /// with, and the label.
+    pub toggles: Vec<(String, bool, String)>,
     pub plants: Vec<PlantRule>,
     /// Per-state lookup tables for the hot loops.
     pub opaque: Vec<u8>,
@@ -606,28 +621,15 @@ pub fn reg() -> &'static Registry {
     #[allow(unused_mut)]
     let mut sources: Vec<(&str, &str)> = alloc::vec![("base.txt", BASE_DATA)];
     #[cfg(test)]
-    {
-        sources.push(("mods/disasters/pack.txt", include_str!("../../mods/disasters/pack.txt")));
-        sources.push(("mods/earth/pack.txt", include_str!("../../mods/earth/pack.txt")));
-        sources.push(("mods/boats/pack.txt", include_str!("../../mods/boats/pack.txt")));
-        sources.push(("mods/trains/pack.txt", include_str!("../../mods/trains/pack.txt")));
-        sources.push(("mods/planes/pack.txt", include_str!("../../mods/planes/pack.txt")));
-        sources.push(("mods/landvehicles/pack.txt", include_str!("../../mods/landvehicles/pack.txt")));
+    for (path, bytes) in crate::mods::SHIPPED {
+        if path.ends_with("/pack.txt") {
+            sources.push((path, core::str::from_utf8(bytes).unwrap()));
+        }
     }
     install(Registry::from_sources(&sources, &mut |_path| {
         #[cfg(test)]
-        {
-            let files: [(&str, &[u8]); 6] = [
-                ("mods/landvehicles/models/car.bbmodel", include_bytes!("../../mods/landvehicles/models/car.bbmodel")),
-                ("mods/boats/models/boat.bbmodel", include_bytes!("../../mods/boats/models/boat.bbmodel")),
-                ("mods/boats/models/cargo_boat.bbmodel", include_bytes!("../../mods/boats/models/cargo_boat.bbmodel")),
-                ("mods/trains/models/cart.bbmodel", include_bytes!("../../mods/trains/models/cart.bbmodel")),
-                ("mods/trains/models/chest_cart.bbmodel", include_bytes!("../../mods/trains/models/chest_cart.bbmodel")),
-                ("mods/planes/models/plane.bbmodel", include_bytes!("../../mods/planes/models/plane.bbmodel")),
-            ];
-            if let Some(f) = files.iter().find(|f| f.0 == _path) {
-                return Some(f.1.to_vec());
-            }
+        if let Some(f) = crate::mods::SHIPPED.iter().find(|f| f.0 == _path) {
+            return Some(f.1.to_vec());
         }
         None
     }));
@@ -770,22 +772,7 @@ enum Cur {
     Block(usize),
     Item(usize),
     Entity(usize),
-    Vehicle(usize),
-}
-
-#[derive(Clone)]
-struct RawVehicle {
-    id: String,
-    name: String,
-    model: String,
-    icon: String,
-    medium: Medium,
-    speed: f32,
-    height: f32,
-    width: f32,
-    storage: bool,
-    powered: bool,
-    seat: f32,
+    Section(usize),
 }
 
 struct Parser<'a> {
@@ -794,7 +781,8 @@ struct Parser<'a> {
     items: Vec<RawItem>,
     models: Vec<ModelSpec>,
     entities: Vec<RawEntity>,
-    vehicles: Vec<RawVehicle>,
+    sections: Vec<Section>,
+    lines: Vec<(String, String, Vec<String>)>,
     /// `(file:line, words)` for each `recipe` line, resolved once items exist.
     recipes: Vec<(String, Vec<String>)>,
     /// `ore` and `plant` lines, kept the same way.
@@ -831,6 +819,7 @@ impl Parser<'_> {
             };
             let args: Vec<&str> = words.collect();
             let rest = args.join(" ");
+            let indent = raw.len() - raw.trim_start().len();
             match key {
                 "texture" => {
                     cur = Cur::None;
@@ -908,7 +897,7 @@ impl Parser<'_> {
                     }
                 }
                 // Inside an entity, `model <id>` names the model it uses.
-                "model" if !(matches!(cur, Cur::Entity(_) | Cur::Vehicle(_)) && args.len() == 1) => {
+                "model" if !(matches!(cur, Cur::Entity(_) | Cur::Section(_)) && args.len() == 1) => {
                     cur = Cur::None;
                     let text = match (args.first(), args.get(1), args.get(2)) {
                         (Some(_), Some(&"builtin"), Some(name)) => {
@@ -969,7 +958,8 @@ impl Parser<'_> {
                     };
                     cur = Cur::Entity(i);
                 }
-                "vehicle" => {
+                // A section some mod's code has claimed: kept as written.
+                k if indent == 0 && crate::native::reads_section(k) => {
                     let id = match args.first() {
                         Some(id) => id.to_string(),
                         None => {
@@ -978,33 +968,26 @@ impl Parser<'_> {
                             continue;
                         }
                     };
-                    let fresh = RawVehicle {
-                        id: id.clone(),
-                        name: id.clone(),
-                        model: String::new(),
-                        icon: String::new(),
-                        medium: Medium::Land,
-                        speed: 6.0,
-                        height: 1.0,
-                        width: 1.2,
-                        storage: false,
-                        powered: false,
-                        seat: 0.9,
-                    };
-                    let i = match self.vehicles.iter().position(|v| v.id == id) {
+                    let fresh = Section { kind: String::from(k), id: id.clone(), at: alloc::format!("{}:{}", file, line_no), props: Vec::new() };
+                    let i = match self.sections.iter().position(|v| v.id == id && v.kind == k) {
                         Some(i) => {
-                            self.vehicles[i] = fresh;
+                            self.sections[i] = fresh;
                             i
                         }
                         None => {
-                            self.vehicles.push(fresh);
-                            self.vehicles.len() - 1
+                            self.sections.push(fresh);
+                            self.sections.len() - 1
                         }
                     };
-                    cur = Cur::Vehicle(i);
+                    cur = Cur::Section(i);
+                }
+                // A line some mod's code has claimed: kept as written.
+                k if indent == 0 && crate::native::reads_line(k) => {
+                    cur = Cur::None;
+                    self.lines.push((String::from(k), alloc::format!("{}:{}", file, line_no), args.iter().map(|a| a.to_string()).collect()));
                 }
                 // (Inside a block or creature, `sound <id>` names the sound it makes.)
-                "ore" | "plant" | "sound" | "command" | "when" | "dimension" | "feature" | "disaster" | "map" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
+                "ore" | "plant" | "sound" | "command" | "when" | "dimension" | "feature" | "episode" | "setting" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
                     cur = Cur::None;
                     let mut words: Vec<String> = args.iter().map(|a| a.to_string()).collect();
                     words.insert(0, key.to_string());
@@ -1039,45 +1022,7 @@ impl Parser<'_> {
                     Cur::Block(i) => self.block_prop(file, line_no, i, key, &args, &rest),
                     Cur::Item(i) => self.item_prop(file, line_no, i, key, &args, &rest),
                     Cur::Entity(i) => self.entity_prop(file, line_no, i, key, &args, &rest),
-                    Cur::Vehicle(i) => {
-                        let v = &mut self.vehicles[i];
-                        let f = |lo: f32, hi: f32| args.first().and_then(|s| s.parse::<f32>().ok()).filter(|x| (lo..=hi).contains(x));
-                        let mut bad = None;
-                        match key {
-                            "name" => v.name = rest.clone(),
-                            "model" => v.model = args.first().unwrap_or(&"").to_string(),
-                            "icon" => v.icon = args.first().unwrap_or(&"").to_string(),
-                            "medium" => match args.first() {
-                                Some(&"water") => v.medium = Medium::Water,
-                                Some(&"rail") => v.medium = Medium::Rail,
-                                Some(&"land") => v.medium = Medium::Land,
-                                Some(&"air") => v.medium = Medium::Air,
-                                _ => bad = Some("medium must be water, rail, land or air"),
-                            },
-                            "speed" => match f(0.5, 60.0) {
-                                Some(x) => v.speed = x,
-                                None => bad = Some("speed must be 0.5..60"),
-                            },
-                            "height" => match f(0.2, 6.0) {
-                                Some(x) => v.height = x,
-                                None => bad = Some("height must be 0.2..6"),
-                            },
-                            "width" => match f(0.2, 3.0) {
-                                Some(x) => v.width = x,
-                                None => bad = Some("width must be 0.2..3"),
-                            },
-                            "seat" => match f(0.0, 5.0) {
-                                Some(x) => v.seat = x,
-                                None => bad = Some("seat must be 0..5"),
-                            },
-                            "storage" => v.storage = !matches!(args.first(), Some(&"no") | Some(&"false") | Some(&"0")),
-                            "powered" => v.powered = !matches!(args.first(), Some(&"no") | Some(&"false") | Some(&"0")),
-                            _ => bad = Some("unknown vehicle property"),
-                        }
-                        if let Some(msg) = bad {
-                            self.warn(file, line_no, &alloc::format!("{} (`{}`)", msg, key));
-                        }
-                    }
+                    Cur::Section(i) => self.sections[i].props.push((String::from(key), args.iter().map(|a| a.to_string()).collect())),
                     Cur::None => self.warn(file, line_no, &alloc::format!("unexpected `{}`", key)),
                 },
             }
@@ -1177,8 +1122,10 @@ impl Parser<'_> {
                     Some(t) => b.tool = t as u8,
                     None => bad = Some("tool must be none, pick, axe, shovel or hoe"),
                 },
-                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" | "sound" | "seat" | "eat" | "track" | "station" | "prop" | "fills" | "part" => {
-                    b.extra.retain(|e| e.0 != key);
+                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
+                    // Said twice, the later line wins; except marks, of
+                    // which a block may carry several.
+                    b.extra.retain(|e| e.0 != key || (key == "tag" && e.1.first().map(|x| x.as_str()) != a.first().copied()));
                     b.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "use" => match a.first() {
@@ -1333,7 +1280,8 @@ impl Registry {
             items: Vec::new(),
             models: Vec::new(),
             entities: Vec::new(),
-            vehicles: Vec::new(),
+            sections: Vec::new(),
+            lines: Vec::new(),
             recipes: Vec::new(),
             rules: Vec::new(),
             warnings: Vec::new(),
@@ -1343,7 +1291,7 @@ impl Registry {
         for (path, text) in sources {
             p.parse(path, text);
         }
-        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, rules: raw_rules, models, entities: raw_entities, vehicles: raw_vehicles, mut warnings, .. } = p;
+        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, rules: raw_rules, models, entities: raw_entities, sections, lines, mut warnings, .. } = p;
 
         let tile_of = |id: &str, warnings: &mut Vec<String>, what: &str| -> u16 {
             match tiles.iter().position(|t| t.id == id) {
@@ -1501,7 +1449,7 @@ impl Registry {
                     tool: 0,
                     speed: 1.0,
                     food: 0,
-                    vehicle: None,
+                    section: None,
                     category: if rb.category.is_empty() { String::from("Blocks") } else { rb.category.clone() },
                     x: ItemExtra::default(),
                 });
@@ -1542,27 +1490,21 @@ impl Registry {
                 tool: ri.tool,
                 speed: ri.speed,
                 food: ri.food,
-                vehicle: None,
+                section: None,
                 category: if ri.category.is_empty() { String::from("Tools") } else { ri.category.clone() },
                 x: ItemExtra::default(),
             });
         }
 
-        // Vehicles, and the item that sets each one down.
-        let mut vehicles = Vec::new();
-        for rv in &raw_vehicles {
-            let model = match models.iter().position(|m| m.id == rv.model) {
-                Some(m) => m,
-                None => {
-                    warnings.push(alloc::format!("vehicle {}: unknown model `{}`", rv.id, rv.model));
-                    continue;
-                }
-            };
-            let what = alloc::format!("vehicle {}", rv.id);
+        // Every section is also something to hold: an item with the
+        // section's id, its `name`, `icon` and `category` lines.
+        for (k, sec) in sections.iter().enumerate() {
+            let what = alloc::format!("{} {}", sec.kind, sec.id);
+            let name = sec.text("name");
             items.push(ItemDef {
-                id: rv.id.clone(),
-                name: rv.name.clone(),
-                icon: tile_of(&rv.icon, &mut warnings, &what),
+                id: sec.id.clone(),
+                name: if name.is_empty() { sec.id.clone() } else { name },
+                icon: tile_of(sec.word("icon"), &mut warnings, &what),
                 place: None,
                 brush: 0,
                 reach: 0.0,
@@ -1570,21 +1512,9 @@ impl Registry {
                 tool: 0,
                 speed: 1.0,
                 food: 0,
-                vehicle: Some(vehicles.len()),
-                category: String::from("Travel"),
+                section: Some(k),
+                category: if sec.word("category").is_empty() { String::from("Things") } else { sec.text("category") },
                 x: ItemExtra::default(),
-            });
-            vehicles.push(VehicleDef {
-                id: rv.id.clone(),
-                name: rv.name.clone(),
-                model,
-                medium: rv.medium,
-                speed: rv.speed,
-                height: rv.height,
-                width: rv.width,
-                storage: rv.storage,
-                powered: rv.powered,
-                seat: rv.seat,
             });
         }
 
@@ -1650,11 +1580,12 @@ impl Registry {
                     // fills <blocks wide> <blocks tall>
                     "fills" => x.fills = (word(0).parse::<u8>().unwrap_or(1).clamp(1, 7), word(1).parse::<u8>().unwrap_or(1).clamp(1, 24)),
                     "part" => x.part = true,
-                    "track" => x.track = word(0).parse::<u16>().unwrap_or(100).clamp(10, 400),
-                    "station" => {
-                        x.station = word(0).parse::<u8>().unwrap_or(5).clamp(1, 120);
-                        if x.track == 0 {
-                            x.track = 100;
+                    "tag" => {
+                        if word(0).is_empty() || x.tags.len() >= 16 {
+                            ok = false;
+                        } else {
+                            x.tags.retain(|t| t.0 != word(0));
+                            x.tags.push((word(0).to_string(), word(1).parse::<f32>().ok().filter(|v| v.is_finite()).unwrap_or(1.0)));
                         }
                     }
                     _ => {}
@@ -1820,8 +1751,8 @@ impl Registry {
         let mut scripts: Vec<Script> = Vec::new();
         let mut dimensions: Vec<(String, u8)> = Vec::new();
         let mut features: Vec<String> = Vec::new();
-        let mut disasters: Vec<DisasterDef> = Vec::new();
-        let mut map: Option<crate::earth::MapDef> = None;
+        let mut episodes: Vec<EpisodeDef> = Vec::new();
+        let mut toggles: Vec<(String, bool, String)> = Vec::new();
         for (at, w) in &raw_rules {
             let f = |k: usize| w.get(k).and_then(|v| v.parse::<f32>().ok());
             match w[0].as_str() {
@@ -1865,19 +1796,20 @@ impl Registry {
                     }),
                     _ => warnings.push(alloc::format!("{}: when needs <event> [what] do <commands>", at)),
                 },
-                // map ...: where the planet's tiles are and how to read
-                // them (see `earth::MapDef`).
-                "map" => {
-                    let words: Vec<&str> = w[1..].iter().map(|x| x.as_str()).collect();
-                    if let Err(e) = map.get_or_insert_with(crate::earth::MapDef::default).apply(&words) {
-                        warnings.push(alloc::format!("{}: {}", at, e));
+                // setting <id> <on|off> <LABEL...>: a switch of the pack's own
+                // in Settings > GAME, read by scripts as `setting <id>`.
+                "setting" => match (w.get(1), w.get(2).map(|x| x.as_str())) {
+                    (Some(id), Some(def @ ("on" | "off"))) if w.len() > 3 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => {
+                        toggles.retain(|t: &(String, bool, String)| &t.0 != id);
+                        toggles.push((id.to_ascii_lowercase(), def == "on", w[3..].join(" ").to_ascii_uppercase()));
                     }
-                }
-                // disaster <id> [every S] [lasts S] [moves SPEED] [funnel]
+                    _ => warnings.push(alloc::format!("{}: setting needs <id> <on|off> <label>", at)),
+                },
+                // episode <id> [every S] [lasts S] [moves SPEED] [funnel]
                 //   [then ID] [if COND [and COND]...] do <commands>
-                "disaster" => match w.iter().position(|x| x == "do") {
+                "episode" => match w.iter().position(|x| x == "do") {
                     Some(d) if d >= 2 && d + 1 < w.len() => {
-                        let mut def = DisasterDef { id: w[1].to_ascii_lowercase(), every: 0, lasts: 10.0, needs: Vec::new(), moves: 0.0, funnel: false, then: String::new(), actions: split_actions(&w[d + 1..].join(" ")) };
+                        let mut def = EpisodeDef { id: w[1].to_ascii_lowercase(), every: 0, lasts: 10.0, needs: Vec::new(), moves: 0.0, funnel: false, then: String::new(), actions: split_actions(&w[d + 1..].join(" ")) };
                         let mut k = 2;
                         let mut bad = false;
                         while k < d {
@@ -1901,13 +1833,13 @@ impl Registry {
                             k += 2;
                         }
                         if bad {
-                            warnings.push(alloc::format!("{}: disaster options are every, lasts, moves, funnel, then, if", at));
+                            warnings.push(alloc::format!("{}: episode options are every, lasts, moves, funnel, then, if", at));
                         } else {
-                            disasters.retain(|x: &DisasterDef| x.id != def.id);
-                            disasters.push(def);
+                            episodes.retain(|x: &EpisodeDef| x.id != def.id);
+                            episodes.push(def);
                         }
                     }
-                    _ => warnings.push(alloc::format!("{}: disaster needs <name> [options] do <commands>", at)),
+                    _ => warnings.push(alloc::format!("{}: episode needs <name> [options] do <commands>", at)),
                 },
                 "command" => warnings.push(alloc::format!("{}: command needs <name> <what it does>", at)),
                 "feature" => {
@@ -1951,7 +1883,7 @@ impl Registry {
                 tool: 0,
                 speed: 1.0,
                 food: 0,
-                vehicle: None,
+                section: None,
                 category: String::from("Eggs"),
                 x: ItemExtra { egg: Some(k), ..ItemExtra::default() },
             });
@@ -2027,7 +1959,6 @@ impl Registry {
             blossom_leaves: AIR,
             ruby_ore: AIR,
             snow_layer: AIR,
-            rail: AIR,
             moss: AIR,
             glow_mushroom: AIR,
             mushroom: AIR,
@@ -2061,7 +1992,6 @@ impl Registry {
         wk.blossom_leaves = or("blossom_leaves", wk.leaves);
         wk.ruby_ore = or("ruby_ore", wk.stone);
         wk.snow_layer = or("snow_layer", AIR);
-        wk.rail = or("rail", AIR);
         wk.moss = or("moss", AIR);
         wk.glow_mushroom = or("glow_mushroom", AIR);
         wk.mushroom = or("brown_mushroom", AIR);
@@ -2089,7 +2019,7 @@ impl Registry {
         ];
         let find_tile = |id: &str| tiles.iter().position(|t| t.id == id).unwrap_or(0) as u16;
 
-        Registry {
+        let mut registry = Registry {
             opaque: blocks.iter().map(|b| (b.kind == Kind::Cube) as u8).collect(),
             emit: blocks.iter().map(|b| b.emit).collect(),
             sky_loss: blocks.iter().map(|b| b.sky_loss).collect(),
@@ -2104,20 +2034,33 @@ impl Registry {
             recipes,
             models,
             entities,
-            vehicles,
+            sections,
+            lines,
             categories,
             ores,
             sounds,
             commands,
             scripts,
-            disasters,
-            map,
+            episodes,
+            toggles,
             dimensions,
             features,
             plants,
             by_id,
             warnings,
+        };
+        // The mods' own code looks over what was kept for it.
+        for n in crate::native::all() {
+            if registry.has(n.name) {
+                if let Some(check) = n.check {
+                    let found = check(&registry);
+                    registry.warnings.extend(found);
+                }
+            } else if let Some(sec) = registry.sections.iter().find(|x| n.sections.contains(&x.kind.as_str())) {
+                registry.warnings.push(alloc::format!("{}: `{}` needs the mod `{}`, which is switched off or missing", sec.at, sec.kind, n.name));
+            }
         }
+        registry
     }
 
     /// First state of the block with this data-file id.
@@ -2176,26 +2119,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn packs_define_disasters_and_the_map() {
-        let r = reg();
-        // The test registry has the game's own mods in it.
-        let ids: Vec<&str> = r.disasters.iter().map(|d| d.id.as_str()).collect();
-        assert_eq!(ids, ["earthquake", "tsunami", "tornado"]);
-        let quake = &r.disasters[0];
-        assert_eq!((quake.every, quake.lasts, quake.then.as_str()), (1200, 7.0, "tsunami"));
-        assert_eq!(quake.actions, ["/shake 0.35", "/sound quake"]);
-        let tornado = &r.disasters[2];
-        assert!(tornado.funnel && tornado.moves == 3.5);
-        assert_eq!(tornado.needs, ["storm", "lowland", "biome plains savanna"]);
-        assert_eq!(r.disasters[1].every, 0, "a wave never comes by itself");
-        assert!(r.map.as_ref().map_or(false, |m| m.places.len() == 10 && m.cover.starts_with("https://tile.")));
-        // A pack's own, and a mistake in one.
-        let pack = "disaster hail every 300 lasts 20 if storm do /hurt 1; /sound pop\ndisaster bad sometimes do /say hi\nmap cover http://insecure.example/{z}.png\n";
+    fn packs_define_episodes_and_settings() {
+        let pack = "setting storms off Wild weather\n\
+                    episode hail every 300 lasts 20 then thaw if setting storms and storm do /hurt 1; /sound pop\n\
+                    episode thaw lasts 5 moves 2 funnel do /say thaw\n\
+                    episode bad sometimes do /say hi\n\
+                    setting nolabel on\n";
         let p = Registry::from_sources(&[("base.txt", BASE_DATA), ("p", pack)], &mut |_| None);
-        assert_eq!(p.disasters.len(), 1);
-        assert_eq!((p.disasters[0].id.as_str(), p.disasters[0].every, p.disasters[0].needs.len()), ("hail", 300, 1));
+        assert_eq!(p.episodes.len(), 2);
+        let hail = &p.episodes[0];
+        assert_eq!((hail.id.as_str(), hail.every, hail.lasts, hail.then.as_str()), ("hail", 300, 20.0, "thaw"));
+        assert_eq!(hail.needs, ["setting storms", "storm"]);
+        assert_eq!(hail.actions, ["/hurt 1", "/sound pop"]);
+        let thaw = &p.episodes[1];
+        assert!(thaw.funnel && thaw.moves == 2.0 && thaw.every == 0, "one with no `every` never comes by itself");
+        assert_eq!(p.toggles, [(String::from("storms"), false, String::from("WILD WEATHER"))]);
         assert_eq!(p.warnings.len(), 2, "{:?}", p.warnings);
-        assert!(p.map.map_or(true, |m| m.cover.is_empty()));
     }
 
     #[test]

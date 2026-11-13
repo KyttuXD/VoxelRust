@@ -1,10 +1,13 @@
 # Trains - a mod that comes with the game, in its own folder.
 #
 # Rail track, carts that run on it, a locomotive that pulls them, and
-# station furniture. `track <percent>` on a block is how fast carts run on
-# it; `station <seconds>` makes carts running by themselves stop and wait.
-# Nothing here is part of the program: a vehicle is a `vehicle` block naming
-# a model, what it travels on (water, rail, land or air) and its numbers.
+# station furniture. `tag track <percent>` on a block makes it track and says how
+# fast carts run on it; `tag station <seconds>` makes carts running by
+# themselves stop and wait.
+# Nothing here is part of the program. How vehicles move is the Vehicles
+# mod's own code (mods/vehicles), which this needs switched on; a vehicle
+# is a `vehicle` section naming a model, what it travels on (water, rail,
+# land or air) and its numbers.
 # Change them or add your own (docs/DATA.md). Switch the mod off in
 # Settings > MODS, or delete its folder, and these are gone from the game.
 model cart file models/cart.bbmodel
@@ -15,11 +18,11 @@ texture slow_rail paint rail 200 80 70
 texture station_rail paint rail 80 150 230
 texture depot_rail paint rail 90 200 120
 texture chain paint web 150 154 164
-texture icon_cart paint vehicle 132 134 142
-texture icon_chest_cart paint vehicle 160 120 70
-texture icon_locomotive paint vehicle 60 60 70
-texture icon_passenger_cart paint vehicle 90 130 200
-texture icon_hopper_cart paint vehicle 150 110 70
+texture icon_cart paint machine 132 134 142
+texture icon_chest_cart paint machine 160 120 70
+texture icon_locomotive paint machine 60 60 70
+texture icon_passenger_cart paint machine 90 130 200
+texture icon_hopper_cart paint machine 150 110 70
 
 # ---- Track ----
 block rail
@@ -29,6 +32,7 @@ block rail
   hardness 0.4
   solid no
   box 0 0 0 16 2 16
+  tag track 100
 block speed_rail
   name Speed Rail
   tex speed_rail
@@ -36,7 +40,7 @@ block speed_rail
   hardness 0.4
   solid no
   box 0 0 0 16 2 16
-  track 220
+  tag track 220
 block slow_rail
   name Slow Rail
   tex slow_rail
@@ -44,7 +48,7 @@ block slow_rail
   hardness 0.4
   solid no
   box 0 0 0 16 2 16
-  track 40
+  tag track 40
 block station_rail
   name Station Rail (6 s stop)
   tex station_rail
@@ -52,8 +56,8 @@ block station_rail
   hardness 0.4
   solid no
   box 0 0 0 16 2 16
-  track 100
-  station 6
+  tag track 100
+  tag station 6
 block depot_rail
   name Depot Rail (30 s stop)
   tex depot_rail
@@ -61,8 +65,8 @@ block depot_rail
   hardness 0.4
   solid no
   box 0 0 0 16 2 16
-  track 100
-  station 30
+  tag track 100
+  tag station 30
 block platform
   name Station Platform
   tex stone_bricks
@@ -98,6 +102,7 @@ item chain
 # ---- Rolling stock ----
 vehicle cart
   name Rail Cart
+  category Travel
   model cart
   icon icon_cart
   medium rail
@@ -107,6 +112,7 @@ vehicle cart
   seat 0.9
 vehicle chest_cart
   name Chest Cart
+  category Travel
   model chest_cart
   icon icon_chest_cart
   medium rail
@@ -117,6 +123,7 @@ vehicle chest_cart
   storage
 vehicle locomotive
   name Locomotive
+  category Travel
   model chest_cart
   icon icon_locomotive
   medium rail
@@ -127,6 +134,7 @@ vehicle locomotive
   powered
 vehicle passenger_cart
   name Passenger Cart
+  category Travel
   model cart
   icon icon_passenger_cart
   medium rail
@@ -136,6 +144,7 @@ vehicle passenger_cart
   seat 0.9
 vehicle hopper_cart
   name Freight Cart
+  category Travel
   model chest_cart
   icon icon_hopper_cart
   medium rail

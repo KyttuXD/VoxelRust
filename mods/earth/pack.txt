@@ -10,8 +10,13 @@
 # option go away (worlds already made stay, but load no new ground).
 # Needs the internet; see docs/EARTH.md.
 #
+# The line below switches on this mod's own code (mods/earth/code), which
+# is built into the program but does nothing without it.
+#
 # Map data (c) OpenStreetMap contributors. Elevation: Mapzen / AWS Terrain
 # Tiles.
+
+feature earth
 
 # Elevation tiles ({z} zoom, {x} and {y} tile numbers), their encoding and
 # the deepest zoom they go to.

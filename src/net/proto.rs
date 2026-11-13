@@ -23,10 +23,9 @@ pub mod channel {
     pub const HIT: u8 = 2;
     /// What is in the chest at `key` ("x y z"); kept.
     pub const CHEST: u8 = 3;
-    /// Every vehicle, from the player who runs them.
-    pub const VEHICLES: u8 = 4;
-    /// "place ..." / "remove N" / "ride N x y z yaw", to that player.
-    pub const VEHICLE_ASK: u8 = 5;
+    /// From here up: the mods' own code, one channel each (see
+    /// `Session::send_ext`).
+    pub const NATIVE: u8 = 32;
 }
 /// Longest message body accepted.
 pub const MAX_BODY: usize = 60_000;
@@ -57,7 +56,7 @@ pub enum Msg {
     /// player gets this on joining, so all use the same blocks and items.
     Pack { last: bool, data: Vec<u8> },
     /// Shared state of the game, passed between players through the
-    /// server (sent by a client, relayed with its id): creatures, vehicles,
+    /// server (sent by a client, relayed with its id): creatures, chests,
     /// what is in a chest. `channel` says which; `key` names the thing;
     /// with `keep` the server remembers the latest for players who join later.
     State { id: u16, channel: u8, keep: bool, key: String, data: Vec<u8> },
@@ -353,7 +352,7 @@ mod tests {
             Msg::Chat { id: 2, text: String::from("hello there") },
             Msg::Skin { id: 4, png: alloc::vec![1, 2, 3, 250] },
             Msg::State { id: 4, channel: 3, keep: true, key: String::from("1 2 3"), data: b"chest".to_vec() },
-            Msg::Welcome { id: 3, seed: 42, time: 0.25, kind: String::from("earth 46.8 -121.7 30 75") },
+            Msg::Welcome { id: 3, seed: 42, time: 0.25, kind: String::from("somewhere 46.8 -121.7 30 75") },
             Msg::Refuse { reason: String::from("server full") },
             Msg::Join { id: 9, name: String::from("Bob") },
             Msg::Leave { id: 9 },

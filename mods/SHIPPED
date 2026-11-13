@@ -1,0 +1,10 @@
+# The mods that come with the game, one folder name a line. The release
+# scripts copy these beside the program, and the tests load them.
+disasters
+earth
+vehicles
+boats
+trains
+planes
+landvehicles
+holidays

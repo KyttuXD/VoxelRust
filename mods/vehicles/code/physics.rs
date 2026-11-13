@@ -1,8 +1,8 @@
-//! Vehicles: boats, rail carts, a buggy and a plane. Which vehicles exist,
-//! what they look like and how fast they go comes from the data files; this
-//! module moves them.
+//! How vehicles move. Which vehicles exist, what they look like and how
+//! fast they go comes from the packs (`vehicle` sections); this moves them.
 
-use crate::block::{reg, Medium};
+use super::{defs, Medium};
+use crate::block::reg;
 use crate::inventory::Inventory;
 use crate::math::{cosf, floord, sinf, Vec3, PI};
 use crate::player::{Input, Player};
@@ -11,7 +11,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 pub struct Vehicle {
-    /// Index into the registry's vehicles.
+    /// Index into [`defs`].
     pub kind: usize,
     pub body: Player,
     /// -1 (reverse) ..= 1 (full ahead).
@@ -42,7 +42,7 @@ fn heading(yaw: f32) -> (f32, f32) {
 
 impl Vehicles {
     pub fn place(&mut self, kind: usize, pos: [f64; 3], yaw: f32) -> usize {
-        let d = &reg().vehicles[kind];
+        let d = &defs()[kind];
         let mut body = Player::with_size(pos, d.width as f64, d.height as f64);
         body.yaw = yaw;
         self.list.push(Vehicle { kind, body, throttle: 0.0, storage: Inventory::new(), phase: 0.0, leader: None, cruise: 0.0, wait: 0.0, last_station: (i32::MIN, 0) });
@@ -109,12 +109,13 @@ impl Vehicles {
     /// being ridden. Returns where the rider's eyes are, if riding.
     pub fn update(&mut self, dt: f32, world: &World, input: &Input, look: (f32, f32)) -> Option<[f64; 3]> {
         let r = reg();
-        let (water, rail) = (r.wk.water, r.wk.rail);
+        let water = r.wk.water;
+        let all = defs();
         let riding = self.riding;
         // Where everything is, so chained carts can follow their leaders.
-        let places: Vec<([f64; 3], f32, f32)> = self.list.iter().map(|v| (v.body.pos, v.throttle, r.vehicles[v.kind].speed)).collect();
+        let places: Vec<([f64; 3], f32, f32)> = self.list.iter().map(|v| (v.body.pos, v.throttle, all[v.kind].speed)).collect();
         for (i, v) in self.list.iter_mut().enumerate() {
-            let d = &r.vehicles[v.kind];
+            let d = &all[v.kind];
             let driven = riding == Some(i);
             let (px, pz) = (floord(v.body.pos[0]), floord(v.body.pos[2]));
             if !world.is_loaded(px, pz) {
@@ -187,18 +188,18 @@ impl Vehicles {
                     // otherwise round whichever corner the track takes.
                     v.body.flying = true;
                     let cell_y = floord(v.body.pos[1] + 0.3);
-                    // Track is the plain rail, or any block the data calls track.
-                    let is_track = |b: crate::block::Block| b == rail || crate::block::def(b).x.track > 0;
+                    // Track is any block the packs mark `tag track`.
+                    let is_track = |b: crate::block::Block| crate::block::def(b).x.tag("track").is_some();
                     let on_track = |x: i32, z: i32| -> Option<i32> { [0, 1, -1].into_iter().map(|dy| cell_y + dy).find(|&y| is_track(world.get(x, y, z))) };
                     let here = on_track(px, pz);
                     // Fast track, slow track, and stations.
                     let under = here.map(|y| &crate::block::def(world.get(px, y, pz)).x);
-                    let pace = under.map_or(100, |x| if x.track > 0 { x.track } else { 100 }) as f32 / 100.0;
+                    let pace = under.and_then(|x| x.tag("track")).filter(|t| *t > 1.0).unwrap_or(100.0).clamp(10.0, 400.0) / 100.0;
                     v.body.speed_scale = towed_speed.unwrap_or(d.speed) / 11.0 * pace;
-                    if let Some(x) = under.filter(|x| x.station > 0) {
+                    if let Some(stop) = under.and_then(|x| x.tag("station")) {
                         if v.last_station != (px, pz) && !driven && v.leader.is_none() {
                             v.last_station = (px, pz);
-                            v.wait = x.station as f32;
+                            v.wait = stop.clamp(1.0, 120.0);
                             // Brakes on.
                             v.throttle = 0.0;
                             drive.forward = 0.0;
@@ -280,7 +281,7 @@ impl Vehicles {
         }
         let _ = heading;
         riding.and_then(|i| self.list.get(i)).map(|v| {
-            let seat = reg().vehicles[v.kind].seat as f64;
+            let seat = defs()[v.kind].seat as f64;
             [v.body.pos[0], v.body.pos[1] + seat, v.body.pos[2]]
         })
     }
@@ -313,13 +314,12 @@ impl Vehicles {
 
     /// One line per vehicle: `id x y z yaw <storage>`.
     pub fn save_text(&self) -> String {
-        let r = reg();
         let mut s = String::new();
         for v in &self.list {
             let p = v.body.pos;
             // The id may carry "@n" (chained behind vehicle n) and "~speed"
             // (a locomotive's cruising speed).
-            let mut id = r.vehicles[v.kind].id.clone();
+            let mut id = defs()[v.kind].id.clone();
             if let Some(l) = v.leader {
                 id.push_str(&alloc::format!("@{}", l));
             }
@@ -332,7 +332,6 @@ impl Vehicles {
     }
 
     pub fn load_text(&mut self, text: &str) {
-        let r = reg();
         for line in text.lines() {
             let mut w = line.splitn(6, ' ');
             let tag = w.next().unwrap_or("");
@@ -344,7 +343,7 @@ impl Vehicles {
                 Some((t, l)) => (t, l.parse::<usize>().ok()),
                 None => (tag, None),
             };
-            let kind = r.vehicles.iter().position(|v| v.id == id);
+            let kind = defs().iter().position(|v| v.id == id);
             let mut n = || w.next().and_then(|v| v.parse::<f64>().ok());
             if let (Some(kind), Some(x), Some(y), Some(z), Some(yaw)) = (kind, n(), n(), n(), n()) {
                 let i = self.place(kind, [x, y, z], yaw as f32);
@@ -411,7 +410,7 @@ mod tests {
     }
 
     fn kind(id: &str) -> usize {
-        reg().vehicles.iter().position(|v| v.id == id).unwrap_or_else(|| panic!("no vehicle {id}"))
+        defs().iter().position(|v| v.id == id).unwrap_or_else(|| panic!("no vehicle {id}"))
     }
 
     fn drive(v: &mut Vehicles, w: &World, forward: f32, strafe: f32, pitch: f32, seconds: f32) {
@@ -446,7 +445,7 @@ mod tests {
     #[test]
     fn a_boat_floats_on_water_and_a_cart_follows_the_track_round_a_bend() {
         let mut w = arena();
-        let (water, rail) = (reg().wk.water, reg().wk.rail);
+        let (water, rail) = (reg().wk.water, reg().block("rail").unwrap());
         // A pool: water two deep in a basin dug into the platform.
         for x in 0..10 {
             for z in 0..10 {
@@ -485,7 +484,7 @@ mod tests {
     fn a_locomotive_runs_itself_pulls_a_cart_stops_at_stations_and_turns_back() {
         let mut w = arena();
         let r = reg();
-        let (rail, station) = (r.wk.rail, r.block("station_rail").unwrap());
+        let (rail, station) = (r.block("rail").unwrap(), r.block("station_rail").unwrap());
         for z in 0..=38 {
             w.set_block(20, 121, z, if z == 20 { station } else { rail });
         }
@@ -535,7 +534,7 @@ mod tests {
     fn vehicles_survive_a_save_with_their_cargo() {
         let mut v = Vehicles::default();
         let i = v.place(kind("cargo_boat"), [1.5, 60.0, -2.5], 1.25);
-        assert!(reg().vehicles[v.list[i].kind].storage);
+        assert!(defs()[v.list[i].kind].storage);
         v.list[i].storage.add(0, 12);
         v.place(kind("plane"), [9.0, 70.0, 9.0], 0.0);
         let text = v.save_text();

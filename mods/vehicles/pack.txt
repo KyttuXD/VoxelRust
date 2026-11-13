@@ -1,0 +1,12 @@
+# Vehicles - a mod that comes with the game, in its own folder.
+#
+# The machinery for things you ride in: how boats float, carts follow
+# track, cars drive and planes fly, getting in and out, cargo holds, and
+# keeping them in step between players. It adds no vehicle of its own:
+# Boats, Trains, Planes and Land Vehicles do that, each with `vehicle`
+# sections in its pack, and each needs this mod switched on.
+#
+# Unlike a pack's text, this is Rust (mods/vehicles/code), built into the
+# program when the game is made. The line below is what switches it on;
+# switch the mod off in Settings > MODS and the game has no vehicles at all.
+feature vehicles

@@ -90,10 +90,9 @@ pub struct World {
     pub log_edits: bool,
     /// Cells that changed lately, for whoever makes sand fall and crops pop.
     pub changed: Vec<[i32; 3]>,
-    /// Answers to "what is this place called?" (Earth worlds).
-    pub place_results: Vec<Option<alloc::string::String>>,
-    /// Map pictures fetched by the workers, for whoever shows the map.
-    pub map_results: Vec<((u32, u32, u32), Option<Vec<u8>>)>,
+    /// Finished `Job::Task`s: tag, what was asked, and the answer. Whoever
+    /// asked takes its own out.
+    pub task_results: Vec<(u32, Vec<u8>, Vec<u8>)>,
     offsets: Vec<(i32, i32)>,
     offsets_radius: i32,
     urgent: Vec<(i32, i32)>,
@@ -115,8 +114,7 @@ impl World {
             edit_log: Vec::new(),
             changed: Vec::new(),
             log_edits: false,
-            place_results: Vec::new(),
-            map_results: Vec::new(),
+            task_results: Vec::new(),
             offsets: Vec::new(),
             offsets_radius: -1,
             urgent: Vec::new(),
@@ -266,8 +264,7 @@ impl World {
                         }
                     }
                 }
-                JobResult::MapTile { z, x, y, rgba } => self.map_results.push(((z, x, y), rgba)),
-                JobResult::Place { name } => self.place_results.push(name),
+                JobResult::Task { tag, arg, out } => self.task_results.push((tag, arg, out)),
                 JobResult::Far { tx, tz, mesh } => {
                     self.far_in_flight = self.far_in_flight.saturating_sub(1);
                     if let Some(t) = self.far.get_mut(&(tx, tz)) {

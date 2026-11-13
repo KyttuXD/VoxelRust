@@ -118,16 +118,16 @@ mod glue {
         0
     }
 
-    /// There is no shell to run commands in. The game runs one command,
-    /// `curl`, to download map data for Earth worlds; rather than leave the
-    /// player in an empty sea wondering why, say so (once).
+    /// There is no shell to run commands in. Where the desktop game would
+    /// run `curl` to download something, say (once) that a page cannot,
+    /// rather than leave the player wondering what is missing.
     #[no_mangle]
     pub extern "C" fn system(_command: *const c_char) -> c_int {
         static mut TOLD: bool = false;
         unsafe {
             if !TOLD {
                 TOLD = true;
-                let text = "Earth worlds need the desktop version of VoxelRust: a web page cannot download the map data, so this world has no land.";
+                let text = "This needs the desktop version of VoxelRust: a web page cannot download the data it asked for.";
                 js_notice(text.as_ptr(), text.len());
             }
         }

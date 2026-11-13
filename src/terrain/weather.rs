@@ -1,11 +1,9 @@
-//! Weather and (optional) natural disasters.
+//! Weather.
 //!
 //! Weather is regional: it is a function of where you are and of the
 //! world's clock, so walking far enough takes you out of a storm, and
 //! everyone on a server sees the same sky. Cold places get snow instead of
-//! rain. Disasters are off unless the player turns them on, and each needs
-//! its own conditions: tornadoes come only out of storms over open country,
-//! tsunamis only follow an earthquake near the sea.
+//! rain.
 
 use crate::noise::noise2;
 use crate::worldgen::{self, Biome, SEA};
@@ -45,23 +43,7 @@ pub fn sky_at(seed: u32, x: i32, z: i32, seconds: f32) -> Sky {
     Sky { rain, snow, storm: rain > 0.75 && !snow }
 }
 
-/// A disaster in progress. What kinds there are, when they come and what
-/// they do is all in the packs (`disaster` lines; see docs/MODDING.md):
-/// this is only the one running now.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct Running {
-    /// Which of the registry's disasters.
-    pub kind: usize,
-    /// Seconds to go.
-    pub left: f32,
-    /// Where it is (one that does not move stays on the player's start).
-    pub x: f32,
-    pub z: f32,
-    pub dx: f32,
-    pub dz: f32,
-}
-
-/// Whether the sea is close enough for a tsunami to reach (x, z).
+/// Whether (x, z) is low ground with the sea close by.
 pub fn near_sea(seed: u32, x: i32, z: i32) -> bool {
     let here = worldgen::column(seed, x, z);
     if here.height > SEA + 6 || here.height < SEA {
@@ -72,7 +54,7 @@ pub fn near_sea(seed: u32, x: i32, z: i32) -> bool {
         .any(|&(dx, dz)| worldgen::column(seed, x + dx, z + dz).height < SEA - 2)
 }
 
-/// How high a wave of `peak` blocks stands when the disaster that raises
+/// How high a wave of `peak` blocks stands when the episode that raises
 /// it is `progress` (0..1) of the way through: it climbs for the first
 /// quarter, holds, then drains over the last third.
 pub fn wave_height(progress: f32, peak: f32) -> f32 {

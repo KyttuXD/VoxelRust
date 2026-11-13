@@ -1,4 +1,4 @@
-//! Real-world terrain.
+//! Real-world terrain: the tiles, the projection and the columns.
 //!
 //! Heights come from the public "terrarium" elevation tiles, and land cover
 //! (water, forest, sand, ice...) from the colours of OpenStreetMap's standard
@@ -13,7 +13,7 @@
 use crate::chunk::CH;
 use crate::png;
 use crate::sys;
-use crate::worldgen::{Biome, Column, WorldKind, SEA};
+use crate::worldgen::{Biome, Column, SEA};
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::sync::Arc;
@@ -89,29 +89,40 @@ impl MapDef {
     }
 }
 
-/// The map a pack has described, if any.
-#[cfg(not(test))]
+/// The map the packs have described (their `map` lines), if any. Worked
+/// out once for each loading of the content.
 pub fn def() -> Option<&'static MapDef> {
-    crate::block::reg().map.as_ref()
-}
-
-/// In tests: what the Earth mod itself says.
-#[cfg(test)]
-pub fn def() -> Option<&'static MapDef> {
-    static DEF: AtomicPtr<MapDef> = AtomicPtr::new(core::ptr::null_mut());
-    let p = DEF.load(Ordering::Acquire);
-    if !p.is_null() {
-        return unsafe { p.as_ref() };
-    }
-    let mut d = MapDef::default();
-    for line in include_str!("../../mods/earth/pack.txt").lines() {
-        let w: Vec<&str> = line.split_whitespace().collect();
-        if w.first() == Some(&"map") {
-            d.apply(&w[1..]).unwrap();
+    static CACHE: AtomicPtr<(usize, Option<MapDef>)> = AtomicPtr::new(core::ptr::null_mut());
+    let r = crate::block::reg();
+    let key = r as *const crate::block::Registry as usize;
+    if let Some(c) = unsafe { CACHE.load(Ordering::Acquire).as_ref() } {
+        if c.0 == key {
+            return c.1.as_ref();
         }
     }
-    DEF.store(alloc::boxed::Box::into_raw(alloc::boxed::Box::new(d)), Ordering::Release);
+    let mut d = MapDef::default();
+    let mut any = false;
+    for (_, _, words) in r.lines.iter().filter(|l| l.0 == "map") {
+        any = true;
+        let w: Vec<&str> = words.iter().map(|x| x.as_str()).collect();
+        let _ = d.apply(&w);
+    }
+    // (The old value is leaked on purpose: other threads may be reading it.)
+    CACHE.store(alloc::boxed::Box::into_raw(alloc::boxed::Box::new((key, if any { Some(d) } else { None }))), Ordering::Release);
     def()
+}
+
+/// What is wrong with the packs' `map` lines, for the content report.
+pub fn check(r: &crate::block::Registry) -> Vec<String> {
+    let mut d = MapDef::default();
+    let mut out = Vec::new();
+    for (_, at, words) in r.lines.iter().filter(|l| l.0 == "map") {
+        let w: Vec<&str> = words.iter().map(|x| x.as_str()).collect();
+        if let Err(e) = d.apply(&w) {
+            out.push(alloc::format!("{}: {}", at, e));
+        }
+    }
+    out
 }
 
 /// Whether Earth worlds can be made: a pack says where the tiles are.
@@ -122,12 +133,6 @@ pub fn available() -> bool {
 /// Starting places offered when creating an Earth world.
 pub fn places() -> &'static [(String, f64, f64)] {
     def().map_or(&[], |d| &d.places)
-}
-
-/// Where a new Earth world starts unless the player picks somewhere else.
-pub fn default_kind() -> WorldKind {
-    let (lat, lon) = places().first().map_or((0.0, 0.0), |p| (p.1, p.2));
-    WorldKind::Earth { lat, lon, scale: 30, vscale: 75, features: true }
 }
 
 // ------------------------------------------------------------ small maths
@@ -741,8 +746,8 @@ pub fn column(p: &Proj, x: i32, z: i32) -> Column {
 mod tests {
     use super::*;
 
-    const ELEV: &[u8] = include_bytes!("../../tests/fixtures/terrarium_8_40_97.png");
-    const MAP: &[u8] = include_bytes!("../../tests/fixtures/osm_8_40_97.png");
+    const ELEV: &[u8] = include_bytes!("../../../tests/fixtures/terrarium_8_40_97.png");
+    const MAP: &[u8] = include_bytes!("../../../tests/fixtures/map_8_40_97.png");
 
     #[test]
     fn maths_matches_std() {

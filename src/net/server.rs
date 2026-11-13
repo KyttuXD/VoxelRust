@@ -20,7 +20,7 @@ use alloc::vec::Vec;
 pub struct Config {
     pub port: u16,
     pub seed: u32,
-    /// World kind as text (`normal`, or `earth <lat> <lon> <scale> <vscale>`).
+    /// World kind as text (`normal`, `flat`, or what a mod's terrain calls itself).
     pub kind: String,
     pub max_players: usize,
     /// Checksum of block state names that clients must match.

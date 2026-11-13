@@ -613,7 +613,7 @@ mod tests {
     use super::*;
 
     const TERRARIUM: &[u8] = include_bytes!("../../tests/fixtures/terrarium_8_40_97.png");
-    const OSM: &[u8] = include_bytes!("../../tests/fixtures/osm_8_40_97.png");
+    const MAP_TILE: &[u8] = include_bytes!("../../tests/fixtures/map_8_40_97.png");
     const ATLAS: &[u8] = include_bytes!("../../tests/fixtures/player_atlas.png");
 
     fn px(img: &Image, x: usize, y: usize) -> [u8; 4] {
@@ -719,7 +719,7 @@ mod tests {
 
     #[test]
     fn osm_palette() {
-        let img = decode(OSM).unwrap();
+        let img = decode(MAP_TILE).unwrap();
         assert_eq!((img.w, img.h), (256, 256));
         assert_eq!(px(&img, 0, 0), [232, 201, 185, 255]);
         assert_eq!(px(&img, 255, 255), [242, 239, 233, 255]);
@@ -793,7 +793,7 @@ mod tests {
         assert!(decode(&with_ihdr(|h| h[..4].copy_from_slice(&[0; 4]))).is_none());
 
         // Single-byte corruption anywhere must never panic.
-        for src in [ATLAS, &OSM[..2000]] {
+        for src in [ATLAS, &MAP_TILE[..2000]] {
             for i in 0..src.len() {
                 let mut m = src.to_vec();
                 m[i] = m[i].wrapping_add(0x55);

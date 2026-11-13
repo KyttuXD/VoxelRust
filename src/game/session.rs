@@ -36,10 +36,25 @@ pub struct Controls {
     pub place_held: bool,
     pub pick: bool,
     pub toggle_fly: bool,
-    /// Get out of the vehicle being ridden.
+    /// Get off, or out of, whatever is being ridden.
     pub leave: bool,
     /// Drop one of what is held.
     pub drop: bool,
+}
+
+/// An episode in progress. What kinds there are, when they come and what
+/// they do is all in the packs (`episode` lines; see docs/MODDING.md).
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Episode {
+    /// Which of the registry's episodes.
+    pub kind: usize,
+    /// Seconds to go.
+    pub left: f32,
+    /// Where it is (one that does not move stays on the player's start).
+    pub x: f32,
+    pub z: f32,
+    pub dx: f32,
+    pub dz: f32,
 }
 
 /// How a new world should be made.
@@ -57,39 +72,43 @@ pub struct Session {
     pub store: RegionStore<DiskIo>,
     pub player: Player,
     pub mobs: Mobs,
-    pub vehicles: crate::vehicle::Vehicles,
-    vehicles_path: String,
+    /// What the mods' own code keeps for this world, by its name.
+    pub ext: Vec<(&'static str, alloc::boxed::Box<dyn core::any::Any>)>,
+    /// Where the player's eyes are while something a mod runs carries
+    /// them (set afresh every frame by its `update`).
+    pub seat: Option<[f64; 3]>,
+    /// Whether that was so last frame: hands and feet are not free.
+    pub carried: bool,
+    /// The start of the names of this world's files, dimension included.
+    pub prefix: String,
     /// Where the player has been, in squares of [`EXPLORE`] blocks: what the
     /// minimap shows.
     pub explored: alloc::collections::BTreeSet<(i32, i32)>,
     explored_path: String,
     pets_path: String,
     explore_timer: f32,
-    /// A vehicle whose storage the player just asked to open.
-    pub opened_vehicle: Option<usize>,
+    /// Storage kept by a mod's code that the player just asked to open:
+    /// whose, and which.
+    pub opened_ext: Option<(&'static str, usize)>,
     /// The server connection, in multiplayer.
     pub net: Option<crate::netplay::Client>,
     /// Recent chat and notices, with seconds left on screen.
     pub chat: Vec<(String, f32)>,
     /// The server went away.
     pub lost: bool,
-    /// The weather overhead, and any disaster in progress.
+    /// The weather overhead, and any episode in progress.
     pub sky: crate::weather::Sky,
-    pub disaster: Option<crate::weather::Running>,
+    pub episode: Option<Episode>,
+    /// The switches packs add to the settings, as the player has them.
+    pub flags: Vec<(String, bool)>,
     /// A `/pull` in force: how far it reaches, how hard, seconds left.
     pull: (f32, f32, f32),
-    /// Camera shake strength (earthquakes).
+    /// Camera shake strength.
     pub shake: f32,
     /// Lightning: counts down from a flash.
     pub flash: f32,
     weather_tick: f32,
-    /// Place notices in Earth worlds: the detail level wanted (0 = off),
-    /// the last name shown, and a timer between questions.
-    pub place_level: i32,
-    last_place: String,
-    place_timer: f32,
-    place_asked: bool,
-    /// Water put down by a tsunami, to be taken back when it drains.
+    /// Water put down by `/flood`, to be taken back when it drains.
     flood: Vec<[i32; 3]>,
     /// Content sent by the server, complete and waiting to be applied.
     pub server_pack: Option<Vec<u8>>,
@@ -112,8 +131,6 @@ pub struct Session {
     call_timer: f32,
     /// The seat the player is sitting on.
     pub sitting: Option<[i32; 3]>,
-    /// The cart a chain has been hooked to, waiting for the second one.
-    coupling: Option<usize>,
     /// The creature being ridden (its id).
     pub riding_mob: Option<u32>,
     /// Numbers that pack scripts keep (`/var`), saved with the world.
@@ -167,7 +184,7 @@ pub struct Session {
     /// The block being mined and how far along, 0..1.
     pub mining: Option<([i32; 3], f32)>,
     pub note: (String, f32),
-    cooldown: [f32; 2],
+    pub cooldown: [f32; 2],
     peak_y: f64,
     was_airborne: bool,
     step_distance: f32,
@@ -289,7 +306,7 @@ impl Session {
                 }
             }
         }
-        Session {
+        let mut session = Session {
             name: String::from(name),
             world: World::new(seed),
             pool: Pool::new(threads, seed),
@@ -303,14 +320,10 @@ impl Session {
                 }
                 m
             },
-            vehicles: {
-                let mut v = crate::vehicle::Vehicles::default();
-                if let Some(text) = sys::read_file(&alloc::format!("{}{}.vehicles.txt", base, name)) {
-                    v.load_text(&String::from_utf8_lossy(&text));
-                }
-                v
-            },
-            vehicles_path: alloc::format!("{}{}.vehicles.txt", base, name),
+            ext: Vec::new(),
+            seat: None,
+            carried: false,
+            prefix: alloc::format!("{}{}.", base, name),
             explored: sys::read_file(&alloc::format!("{}{}.explored.txt", base, name))
                 .map(|b| {
                     String::from_utf8_lossy(&b)
@@ -325,20 +338,17 @@ impl Session {
             explored_path: alloc::format!("{}{}.explored.txt", base, name),
             pets_path: alloc::format!("{}{}.pets.txt", base, name),
             explore_timer: 0.0,
-            opened_vehicle: None,
+            opened: None,
             net: None,
             chat: Vec::new(),
             lost: false,
             sky: crate::weather::CLEAR,
-            disaster: None,
+            episode: None,
+            flags: Vec::new(),
             pull: (0.0, 0.0, 0.0),
             shake: 0.0,
             flash: 0.0,
             weather_tick: 0.0,
-            place_level: 0,
-            last_place: String::new(),
-            place_timer: 4.0,
-            place_asked: false,
             flood: Vec::new(),
             server_pack: None,
             pack_buffer: Vec::new(),
@@ -353,7 +363,6 @@ impl Session {
             started: false,
             call_timer: 3.0,
             sitting: None,
-            coupling: None,
             riding_mob: None,
             vars: sys::read_file(&alloc::format!("{}{}.vars.txt", base, name))
                 .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.split_once('=').and_then(|(k, v)| Some((String::from(k), v.parse::<i64>().ok()?)))).collect())
@@ -381,7 +390,7 @@ impl Session {
             hunger: kv(&meta, "hunger").and_then(|v| v.parse::<i32>().ok()).unwrap_or(MAX_HUNGER).clamp(0, MAX_HUNGER),
             hunger_clock: 0.0,
             chests,
-            opened: None,
+            opened_ext: None,
             chests_path,
             rng: seed ^ 0x9E37_79B9,
             air: MAX_AIR,
@@ -402,7 +411,13 @@ impl Session {
             autosave: 0.0,
             meta_path: path,
             is_new,
-        }
+        };
+        session.natives(|n, g| {
+            if let Some(open) = n.open {
+                open(g)
+            }
+        });
+        session
     }
 
     /// Join a multiplayer server. Nothing of such a world is saved here:
@@ -440,6 +455,45 @@ impl Session {
         let hue = name.bytes().fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
         let code = [b'9', b'A', b'B', b'C', b'D', b'E', b'6', b'3'][(hue % 8) as usize] as char;
         self.push_chat(alloc::format!("&{}<{}>&F {}", code, name, text).to_ascii_uppercase());
+    }
+
+    /// Call into every mod's own code that is switched on.
+    pub fn natives(&mut self, mut f: impl FnMut(&'static crate::native::Native, &mut Session)) {
+        for (_, n) in crate::native::active() {
+            f(n, self);
+        }
+    }
+
+    /// What a mod's code keeps for this world, taken out so that it can be
+    /// worked on alongside everything else here; hand it back with
+    /// [`Session::put_ext`]. A fresh one if there was none.
+    pub fn take_ext<T: Default + 'static>(&mut self, name: &'static str) -> alloc::boxed::Box<T> {
+        match self.ext.iter().position(|e| e.0 == name) {
+            Some(i) => self.ext.swap_remove(i).1.downcast::<T>().unwrap_or_default(),
+            None => alloc::boxed::Box::default(),
+        }
+    }
+
+    pub fn put_ext<T: 'static>(&mut self, name: &'static str, value: alloc::boxed::Box<T>) {
+        self.ext.retain(|e| e.0 != name);
+        self.ext.push((name, value));
+    }
+
+    pub fn ext_ref<T: 'static>(&self, name: &str) -> Option<&T> {
+        self.ext.iter().find(|e| e.0 == name).and_then(|e| e.1.downcast_ref::<T>())
+    }
+
+    pub fn ext_mut<T: 'static>(&mut self, name: &str) -> Option<&mut T> {
+        self.ext.iter_mut().find(|e| e.0 == name).and_then(|e| e.1.downcast_mut::<T>())
+    }
+
+    /// In a shared game: send `data` to the same mod's code on the other
+    /// players' machines (their `message` hook gets it with `key`).
+    pub fn send_ext(&mut self, name: &str, keep: bool, key: &str, data: &[u8]) {
+        let channel = crate::native::all().iter().position(|n| n.name == name);
+        if let (Some(k), Some(net)) = (channel, self.net.as_mut()) {
+            net.send_state(crate::proto::channel::NATIVE + k as u8, keep, key, data);
+        }
     }
 
     /// A typed command (`/give`, `/time`...), for testing and for making
@@ -484,9 +538,11 @@ impl Session {
             "day" => crate::math::sinf(self.time * crate::math::TAU) >= -0.05,
             "creative" => self.mode == GameMode::Creative,
             "survival" => self.mode == GameMode::Survival,
-            "riding" => self.riding_mob.is_some() || self.vehicles.riding.is_some(),
+            "riding" => self.riding_mob.is_some() || self.carried,
             "hurt" => self.health < MAX_HEALTH,
             "hungry" => self.hunger < MAX_HUNGER,
+            // A switch a pack put in the settings (`setting <id> ...`).
+            "setting" => self.flags.iter().find(|f| f.0 == w(1)).map_or_else(|| r.toggles.iter().any(|t| t.0 == w(1) && t.1), |f| f.1),
             "storm" => self.sky.storm,
             "rain" => self.sky.rain > 0.2 && !self.sky.snow,
             "snow" => self.sky.rain > 0.2 && self.sky.snow,
@@ -497,6 +553,10 @@ impl Session {
                 cond[1.min(cond.len())..].iter().any(|n| alloc::format!("{:?}", b).eq_ignore_ascii_case(n))
             }
             name => {
+                // A condition of some mod's own code, perhaps.
+                if let Some(holds) = crate::native::active().filter_map(|(_, n)| n.condition).find_map(|condition| condition(self, cond)) {
+                    return holds;
+                }
                 let have = match name {
                     "health" => self.health as i64,
                     "hunger" => self.hunger as i64,
@@ -674,29 +734,29 @@ impl Session {
                 self.shake = arg(1).parse::<f32>().unwrap_or(0.35).clamp(0.0, 1.0);
                 String::new()
             }
-            // /disaster ID | stop: begin one a pack defines, or end the one running.
-            "/disaster" if !online => match reg().disasters.iter().position(|d| d.id == arg(1)) {
+            // /episode ID | stop: begin one a pack defines, or end the one running.
+            "/episode" if !online => match reg().episodes.iter().position(|d| d.id == arg(1)) {
                 Some(k) => {
                     self.drain_flood(0);
-                    self.start_disaster(k);
+                    self.start_episode(k);
                     String::from("it begins")
                 }
                 None => {
-                    self.disaster = None;
+                    self.episode = None;
                     self.drain_flood(0);
-                    String::from(if arg(1) == "stop" { "stopped" } else { "NO SUCH DISASTER" })
+                    String::from(if arg(1) == "stop" { "stopped" } else { "NO SUCH EPISODE" })
                 }
             },
             // /pull REACH STRENGTH: for the next moment, drag the player
-            // towards the disaster and lift them when close.
+            // towards the episode and lift them when close.
             "/pull" => {
                 self.pull = (arg(1).parse::<f32>().unwrap_or(14.0).clamp(1.0, 64.0), arg(2).parse::<f32>().unwrap_or(2.2).clamp(0.0, 10.0), 0.6);
                 String::new()
             }
             // /strip R N: tear up to N plants and leaves within R blocks of
-            // the disaster (of the player, when none is running).
+            // the episode (of the player, when none is running).
             "/strip" if !online => {
-                let (cx, cz) = match self.disaster {
+                let (cx, cz) = match self.episode {
                     Some(d) => (floord(d.x as f64), floord(d.z as f64)),
                     None => (floord(self.player.pos[0]), floord(self.player.pos[2])),
                 };
@@ -713,12 +773,12 @@ impl Session {
                 }
                 String::new()
             }
-            // /flood PEAK: while a disaster runs, the sea stands up to PEAK
+            // /flood PEAK: while an episode runs, the sea stands up to PEAK
             // blocks over its level near the player: rising through the
-            // first quarter of the disaster and draining over the last third.
+            // first quarter of the episode and draining over the last third.
             "/flood" if !online => {
-                if let Some(d) = self.disaster {
-                    let lasts = reg().disasters[d.kind].lasts.max(0.1);
+                if let Some(d) = self.episode {
+                    let lasts = reg().episodes[d.kind].lasts.max(0.1);
                     let peak = arg(1).parse::<f32>().unwrap_or(3.0).clamp(0.0, 24.0);
                     let level = worldgen::SEA + crate::weather::wave_height(1.0 - d.left / lasts, peak) as i32;
                     let (px, pz) = (floord(self.player.pos[0]), floord(self.player.pos[2]));
@@ -892,8 +952,9 @@ impl Session {
                 }
             }
             "/seed" => alloc::format!("SEED {}", self.base_seed),
-            "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" | "/blast" | "/disaster" | "/strip" | "/flood" => String::from("NOT ON A SERVER"),
-            _ => return None,
+            "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" | "/blast" | "/episode" | "/strip" | "/flood" => String::from("NOT ON A SERVER"),
+            // A command of some mod's own code, perhaps.
+            _ => return crate::native::active().filter_map(|(_, n)| n.command).find_map(|command| command(self, &words)),
         })
     }
 
@@ -912,7 +973,11 @@ impl Session {
         // Put away where we are.
         self.world.save_all(&mut self.store);
         self.store.flush();
-        sys::write_file(&self.vehicles_path, self.vehicles.save_text().as_bytes());
+        self.natives(|n, g| {
+            if let Some(save) = n.save {
+                save(g)
+            }
+        });
         self.world.free_meshes(sink);
         let seed = if id.is_empty() { self.base_seed } else { self.base_seed ^ id.bytes().fold(0x9E37_79B9u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32)) };
         let threads = self.pool.thread_count();
@@ -925,11 +990,12 @@ impl Session {
         self.world.far_radius = far;
         let prefix = if id.is_empty() { self.file_prefix.clone() } else { alloc::format!("{}{}.", self.file_prefix, id) };
         self.store = crate::save::RegionStore::new(crate::save::DiskIo, prefix.clone());
-        self.vehicles_path = alloc::format!("{}vehicles.txt", prefix);
-        self.vehicles = crate::vehicle::Vehicles::default();
-        if let Some(text) = sys::read_file(&self.vehicles_path) {
-            self.vehicles.load_text(&String::from_utf8_lossy(&text));
-        }
+        self.prefix = prefix;
+        self.natives(|n, g| {
+            if let Some(open) = n.open {
+                open(g)
+            }
+        });
         // Wild things stay behind; pets come along.
         self.mobs.list.retain(|m| m.tamed);
         self.shots.clear();
@@ -961,7 +1027,7 @@ impl Session {
         self.fire("dimension", id);
     }
 
-    /// Whether this program runs the creatures and vehicles: always when
+    /// Whether this program runs the creatures and the like: always when
     /// playing alone; in a shared game, for one player only.
     pub fn runs_the_world(&self) -> bool {
         self.net.as_ref().map_or(true, |n| n.runs_the_world())
@@ -1075,14 +1141,17 @@ impl Session {
     }
 
     /// Switch to new content while playing. Everything that refers to
-    /// content by number (blocks in the world, items in slots, vehicles) is
+    /// content by number (blocks in the world, items in slots) is
     /// carried across by name; creatures are simply let go.
     pub fn reload_content(&mut self, new: crate::block::Registry, sink: &mut dyn MeshSink) {
         let old_names = crate::save::current_palette();
         let inv = self.inv.save();
         let chests: Vec<([i32; 3], String)> = self.chests.iter().map(|(k, v)| (*k, v.save())).collect();
-        let vehicles = self.vehicles.save_text();
-        let riding = self.vehicles.riding;
+        self.natives(|n, g| {
+            if let Some(reload) = n.reload {
+                reload(g, true)
+            }
+        });
         // Chunks waiting to be written are in the old numbers: write them
         // now, under the old names, and hold nothing over.
         self.world.save_all(&mut self.store);
@@ -1096,9 +1165,11 @@ impl Session {
         self.inv = Inventory::load(&inv);
         self.cursor = None;
         self.chests = chests.into_iter().map(|(k, v)| (k, Inventory::load(&v))).collect();
-        self.vehicles = crate::vehicle::Vehicles::default();
-        self.vehicles.load_text(&vehicles);
-        self.vehicles.riding = riding.filter(|&i| i < self.vehicles.list.len());
+        self.natives(|n, g| {
+            if let Some(reload) = n.reload {
+                reload(g, false)
+            }
+        });
         self.mobs.list.clear();
         self.target = None;
         self.mining = None;
@@ -1174,9 +1245,9 @@ impl Session {
         }
     }
 
-    /// Weather, lightning, snow settling, and disasters. `weather` and
-    /// `disasters` are the player's settings.
-    pub fn weather_update(&mut self, dt: f32, weather: bool, disasters: bool, audio: &mut Audio) {
+    /// Weather, lightning, snow settling, and the packs' episodes.
+    /// `weather` is the player's setting.
+    pub fn weather_update(&mut self, dt: f32, weather: bool, audio: &mut Audio) {
         use crate::weather;
         let (px, pz) = (floord(self.player.pos[0]), floord(self.player.pos[2]));
         let seed = self.world.seed;
@@ -1229,24 +1300,24 @@ impl Session {
                 }
             }
         }
-        // Disasters are a single-player affair: the server does not run them.
-        if !disasters || self.net.is_some() || reg().disasters.is_empty() {
-            if self.disaster.is_some() {
-                self.disaster = None;
+        // Episodes are a single-player affair: the server does not run them.
+        if self.net.is_some() || reg().episodes.is_empty() {
+            if self.episode.is_some() {
+                self.episode = None;
                 self.drain_flood(0);
             }
             return;
         }
-        let run = match self.disaster {
+        let run = match self.episode {
             Some(run) => run,
             None => {
                 // About once a second, each kind a pack defines gets its
                 // chance, if its conditions hold here and now.
                 if tick && self.roll() % 3 == 0 {
                     let roll = self.roll();
-                    for (k, d) in reg().disasters.iter().enumerate() {
-                        if d.every > 0 && roll % d.every == k as u32 % d.every && self.disaster_fits(k) {
-                            self.start_disaster(k);
+                    for (k, d) in reg().episodes.iter().enumerate() {
+                        if d.every > 0 && roll % d.every == k as u32 % d.every && self.episode_fits(k) {
+                            self.start_episode(k);
                             break;
                         }
                     }
@@ -1254,11 +1325,11 @@ impl Session {
                 return;
             }
         };
-        let def = &reg().disasters[run.kind];
+        let def = &reg().episodes[run.kind];
         let (x, z) = (run.x + run.dx * dt, run.z + run.dz * dt);
         // A `/pull` in force drags the player in and throws them upward.
         self.pull.2 -= dt;
-        if self.pull.2 > 0.0 && !self.player.flying && self.vehicles.riding.is_none() {
+        if self.pull.2 > 0.0 && !self.player.flying && !self.carried {
             let (reach, strength) = (self.pull.0, self.pull.1);
             let (tx, tz) = (x - self.player.pos[0] as f32, z - self.player.pos[2] as f32);
             let d2 = tx * tx + tz * tz;
@@ -1273,20 +1344,20 @@ impl Session {
             }
         }
         let left = run.left - dt;
-        self.disaster = Some(crate::weather::Running { x, z, left, ..run });
+        self.episode = Some(Episode { x, z, left, ..run });
         if tick {
             for a in &def.actions {
                 self.run(&a.to_ascii_lowercase(), 1);
             }
         }
         // (A command may have stopped it, or started another.)
-        if left <= 0.0 && self.disaster.map_or(false, |d| d.kind == run.kind) {
-            self.disaster = None;
+        if left <= 0.0 && self.episode.map_or(false, |d| d.kind == run.kind) {
+            self.episode = None;
             self.drain_flood(0);
-            self.fire("disaster_end", &def.id);
-            if let Some(next) = reg().disasters.iter().position(|d| !def.then.is_empty() && d.id == def.then) {
-                if self.disaster.is_none() && self.disaster_fits(next) {
-                    self.start_disaster(next);
+            self.fire("episode_end", &def.id);
+            if let Some(next) = reg().episodes.iter().position(|d| !def.then.is_empty() && d.id == def.then) {
+                if self.episode.is_none() && self.episode_fits(next) {
+                    self.start_episode(next);
                 }
             }
         }
@@ -1297,26 +1368,26 @@ impl Session {
         self.rng >> 8
     }
 
-    /// Whether the conditions a pack gave disaster `k` hold where the
+    /// Whether the conditions a pack gave episode `k` hold where the
     /// player is.
-    fn disaster_fits(&mut self, k: usize) -> bool {
-        let needs = reg().disasters[k].needs.clone();
+    fn episode_fits(&mut self, k: usize) -> bool {
+        let needs = reg().episodes[k].needs.clone();
         needs.iter().all(|c| {
             let words: Vec<&str> = c.split_whitespace().collect();
             self.holds(&words)
         })
     }
 
-    /// Begin disaster `k`. One that moves starts thirty blocks off and
+    /// Begin episode `k`. One that moves starts thirty blocks off and
     /// passes close by.
-    pub fn start_disaster(&mut self, k: usize) {
-        let def = &reg().disasters[k];
+    pub fn start_episode(&mut self, k: usize) {
+        let def = &reg().episodes[k];
         let (px, pz) = (self.player.pos[0] as f32, self.player.pos[2] as f32);
         let a = (self.roll() % 628) as f32 / 100.0;
         let (dx, dz) = (crate::math::sinf(a), crate::math::cosf(a));
         let far = if def.moves > 0.0 { 30.0 } else { 0.0 };
-        self.disaster = Some(crate::weather::Running { kind: k, left: def.lasts, x: px - dx * far, z: pz - dz * far, dx: dx * def.moves, dz: dz * def.moves });
-        self.fire("disaster", &def.id);
+        self.episode = Some(Episode { kind: k, left: def.lasts, x: px - dx * far, z: pz - dz * far, dx: dx * def.moves, dz: dz * def.moves });
+        self.fire("episode", &def.id);
     }
 
     /// Take back flood water standing above `level`.
@@ -1333,35 +1404,6 @@ impl Session {
             }
         }
         self.flood = kept;
-    }
-
-    /// In Earth worlds, say where the player is whenever that changes:
-    /// crossing a border brings up the new country, region or town.
-    fn place_update(&mut self, dt: f32) {
-        for name in core::mem::take(&mut self.world.place_results) {
-            self.place_asked = false;
-            if let Some(name) = name {
-                if name != self.last_place {
-                    let verb = if self.last_place.is_empty() { "YOU ARE IN" } else { "ENTERING" };
-                    self.note = (alloc::format!("{} {}", verb, name.to_ascii_uppercase()), 5.0);
-                    self.push_chat(alloc::format!("{} {}", verb, name.to_ascii_uppercase()));
-                    self.last_place = name;
-                }
-            }
-        }
-        let proj = match worldgen::earth_proj() {
-            Some(p) if self.place_level > 0 => p,
-            _ => return,
-        };
-        self.place_timer -= dt;
-        if self.place_timer <= 0.0 && !self.place_asked {
-            // One question every twelve seconds at most: the service is a
-            // shared, free one.
-            self.place_timer = 12.0;
-            self.place_asked = true;
-            let (lat, lon) = proj.block_to_latlon(self.player.pos[0], self.player.pos[2]);
-            self.pool.submit(crate::jobs::Job::Place { lat, lon, level: self.place_level }, false);
-        }
     }
 
     fn net_update(&mut self, dt: f32) {
@@ -1399,7 +1441,6 @@ impl Session {
                     let host = self.runs_the_world();
                     match channel {
                         ch::MOBS if !host => self.mobs.apply_snapshot(&text),
-                        ch::VEHICLES if !host => self.vehicles.apply_snapshot(&text),
                         ch::HIT if host => {
                             let mut w = text.split(' ');
                             if let (Some(id), Some(n)) = (w.next().and_then(|v| v.parse::<u32>().ok()), w.next().and_then(|v| v.parse::<i32>().ok())) {
@@ -1420,30 +1461,13 @@ impl Session {
                                 self.chest_sent = Some(([x, y, z], text));
                             }
                         }
-                        ch::VEHICLE_ASK if host => {
-                            let w: Vec<&str> = text.split(' ').collect();
-                            let num = |k: usize| w.get(k).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
-                            match (w.first().copied(), num(2), num(3), num(4), num(5)) {
-                                (Some("place"), Some(x), Some(y), Some(z), Some(yaw)) => {
-                                    if let Some(kind) = reg().vehicles.iter().position(|v| Some(&v.id.as_str()) == w.get(1)) {
-                                        if self.vehicles.list.len() < 200 {
-                                            self.vehicles.place(kind, [x, y, z], yaw as f32);
-                                        }
-                                    }
+                        // A mod's own code talking to itself on another
+                        // player's machine.
+                        c if c >= ch::NATIVE => {
+                            if let Some(n) = crate::native::all().get((c - ch::NATIVE) as usize).filter(|n| reg().has(n.name)) {
+                                if let Some(message) = n.message {
+                                    message(self, &key, &text);
                                 }
-                                (Some("ride"), Some(x), Some(y), Some(z), Some(yaw)) => {
-                                    if let Some(v) = num(1).and_then(|i| self.vehicles.list.get_mut(i as usize)) {
-                                        v.body.pos = [x, y, z];
-                                        v.body.yaw = yaw as f32;
-                                        v.body.vel = [0.0; 3];
-                                    }
-                                }
-                                (Some("remove"), ..) => {
-                                    if let Some(i) = num(1) {
-                                        self.vehicles.remove(i as usize);
-                                    }
-                                }
-                                _ => {}
                             }
                         }
                         _ => {}
@@ -1534,7 +1558,6 @@ impl Session {
         self.clock += dt;
         self.note.1 -= dt;
         self.net_update(dt);
-        self.place_update(dt);
         self.hurt_flash = (self.hurt_flash - dt).max(0.0);
         // A full day lasts twenty minutes. (No `%` on floats: that would
         // need the C math library.)
@@ -1542,7 +1565,7 @@ impl Session {
         if self.time >= 1.0 {
             self.time -= 1.0;
         }
-        if c.toggle_fly && self.vehicles.riding.is_none() {
+        if c.toggle_fly && !self.carried {
             if self.mode == GameMode::Creative {
                 self.player.flying = !self.player.flying;
             }
@@ -1660,13 +1683,16 @@ impl Session {
         // Movement. Until the ground under the player exists, hold still:
         // unloaded space counts as solid and must never be "stood on".
         let (px, pz) = (floord(self.player.pos[0]), floord(self.player.pos[2]));
-        // In a vehicle the player goes where it goes; F gets out.
-        if self.vehicles.riding.is_some() && (c.leave || self.dead) {
-            self.vehicles.riding = None;
-            self.player.pos[1] += 0.6;
-            self.player.vel = [0.0; 3];
-        }
-        let seat = self.vehicles.update(dt, &self.world, &c.input, (self.player.yaw, self.player.pitch));
+        // Whatever the mods' own code runs moves now; it may carry the
+        // player along (`seat`).
+        self.seat = None;
+        self.natives(|n, g| {
+            if let Some(update) = n.update {
+                update(g, dt, c, audio)
+            }
+        });
+        let seat = self.seat;
+        self.carried = seat.is_some();
         // On a creature's back: carried along until getting off (the
         // leave key), or until it is gone.
         if let Some(id) = self.riding_mob {
@@ -1690,7 +1716,7 @@ impl Session {
         // the leave key), or until the chair is gone.
         if let Some(at) = self.sitting {
             let seat_height = block::def(self.world.get(at[0], at[1], at[2])).x.seat;
-            if seat_height == 0 || c.input.jump || c.leave || self.dead || self.vehicles.riding.is_some() {
+            if seat_height == 0 || c.input.jump || c.leave || self.dead || self.carried {
                 self.sitting = None;
                 self.player.pos[1] = at[1] as f64 + 1.05;
             }
@@ -1734,7 +1760,7 @@ impl Session {
         let hunted = self.mode == GameMode::Survival && !self.dead;
         let held_item = self.held().map(|h| h.0);
         // In a shared game one player's program runs the creatures and
-        // the empty vehicles; the others are told where everything is.
+        // whatever else moves by itself; the others are told where it all is.
         let host = self.runs_the_world();
         self.mobs.rider = self.riding_mob.map(|id| (id, c.input.clone(), self.player.yaw));
         let bitten = if host {
@@ -1760,20 +1786,13 @@ impl Session {
         if self.share_timer <= 0.0 && self.net.is_some() {
             self.share_timer = 0.2;
             use crate::proto::channel as ch;
-            let riding = self.vehicles.riding.and_then(|i| self.vehicles.list.get(i).map(|v| (i, v.body.pos, v.body.yaw)));
             // The chest in front of the player, when what is in it changed.
             let chest = self.open_chest.filter(|c| self.chests.contains_key(c)).map(|c| (c, self.chests[&c].save()));
             let chest = chest.filter(|c| self.chest_sent.as_ref() != Some(c));
-            let (mobs, vehicles) = if host { (Some(self.mobs.snapshot()), Some(self.vehicles.save_text())) } else { (None, None) };
+            let mobs = if host { Some(self.mobs.snapshot()) } else { None };
             if let Some(n) = self.net.as_mut() {
                 if let Some(text) = mobs {
                     n.send_state(ch::MOBS, false, "", text.as_bytes());
-                }
-                if let Some(text) = vehicles {
-                    n.send_state(ch::VEHICLES, false, "", text.as_bytes());
-                }
-                if let (false, Some((i, p, yaw))) = (host, riding) {
-                    n.send_state(ch::VEHICLE_ASK, false, "", alloc::format!("ride {} {} {} {} {}", i, p[0], p[1], p[2], yaw).as_bytes());
                 }
                 if let Some((c, text)) = &chest {
                     n.send_state(ch::CHEST, true, &alloc::format!("{} {} {}", c[0], c[1], c[2]), text.as_bytes());
@@ -1782,6 +1801,11 @@ impl Session {
             if chest.is_some() {
                 self.chest_sent = chest;
             }
+            self.natives(|n, g| {
+                if let Some(share) = n.share {
+                    share(g)
+                }
+            });
         }
         // Now and then a creature nearby makes its call.
         self.call_timer -= dt;
@@ -1918,116 +1942,24 @@ impl Session {
             tool: 0,
             speed: 1.0,
             food: 0,
-            vehicle: None,
+            section: None,
             category: String::new(),
             x: Default::default(),
         };
         let held = self.held();
         let item: &ItemDef = held.map_or(&none, |h| h.1);
 
-        // Vehicles: left click picks one up, right click gets in, and a
-        // vehicle item in hand sets a new one down.
+        // The mods' own code gets the click first (things to ride in, say).
         let eye = self.player.eye();
         let dir = forward(self.player.yaw, self.player.pitch);
         let near_block = self.target.as_ref().map_or(f32::MAX, |h| h.dist);
-        if self.vehicles.riding.is_none() {
-            if let Some((i, t)) = self.vehicles.hit_test(eye, dir, 5.0).filter(|v| v.1 < near_block) {
-                let _ = t;
-                if c.place_held && self.cooldown[1] <= 0.0 && item.id == "chain" {
-                    // A chain joins rail carts into a train: click the one
-                    // in front, then the one to pull behind it.
-                    self.cooldown[1] = 0.4;
-                    let on_rails = |k: usize| reg().vehicles[self.vehicles.list[k].kind].medium == crate::block::Medium::Rail;
-                    if !on_rails(i) {
-                        self.say("CHAINS ARE FOR RAIL CARTS");
-                    } else if self.vehicles.list[i].leader.is_some() {
-                        self.vehicles.list[i].leader = None;
-                        self.say("UNCHAINED");
-                    } else {
-                        match self.coupling.take().filter(|&f| f != i && f < self.vehicles.list.len()) {
-                            Some(front) => {
-                                self.vehicles.list[i].leader = Some(front);
-                                if !creative {
-                                    self.inv.take_one(self.selected);
-                                }
-                                audio.play_named("rail", 1.0);
-                                self.say("CHAINED");
-                            }
-                            None => {
-                                self.coupling = Some(i);
-                                self.say("NOW CLICK THE CART TO PULL BEHIND IT");
-                            }
-                        }
-                    }
-                    return;
-                }
-                if c.place_held && self.cooldown[1] <= 0.0 {
-                    self.cooldown[1] = 0.4;
-                    if c.input.descend && reg().vehicles[self.vehicles.list[i].kind].storage {
-                        self.opened_vehicle = Some(i);
-                    } else {
-                        self.vehicles.riding = Some(i);
-                    }
-                    return;
-                }
-                if c.break_held && self.cooldown[0] <= 0.0 {
-                    self.cooldown[0] = 0.4;
-                    if !self.runs_the_world() {
-                        if let Some(n) = self.net.as_mut() {
-                            n.send_state(crate::proto::channel::VEHICLE_ASK, false, "", alloc::format!("remove {}", i).as_bytes());
-                        }
-                    }
-                    if let Some(v) = self.vehicles.remove(i) {
-                        let id = &reg().vehicles[v.kind].id;
-                        if let Some(item) = reg().items.iter().position(|it| it.id == *id) {
-                            if !creative || self.inv.count(item as u16) == 0 {
-                                self.inv.add(item as u16, 1);
-                            }
-                        }
-                        for s in v.storage.slots.iter().flatten() {
-                            self.inv.add(s.item, s.count);
-                        }
-                        audio.play(Sound::Pop, 0.8);
-                    }
-                    return;
-                }
-            } else if let (Some(kind), true) = (item.vehicle, c.place_held && self.cooldown[1] <= 0.0) {
-                // On the block aimed at, or on water if that comes first.
-                let water = reg().wk.water;
-                let mut spot = self.target.as_ref().map(|h| ([h.prev[0] as f64 + 0.5, h.prev[1] as f64 + 0.05, h.prev[2] as f64 + 0.5], h.dist));
-                let mut t = 0.5f32;
-                while t < 6.0 && spot.map_or(true, |s| t < s.1) {
-                    let p = [eye[0] + (dir.x * t) as f64, eye[1] + (dir.y * t) as f64, eye[2] + (dir.z * t) as f64];
-                    if self.world.get(floord(p[0]), floord(p[1]), floord(p[2])) == water {
-                        spot = Some(([p[0], floord(p[1]) as f64 + 0.9, p[2]], t));
-                        break;
-                    }
-                    t += 0.2;
-                }
-                if let Some((pos, _)) = spot {
-                    self.cooldown[1] = 0.5;
-                    if self.runs_the_world() {
-                        self.vehicles.place(kind, pos, self.player.yaw);
-                    } else if let Some(n) = self.net.as_mut() {
-                        // The player who runs the vehicles sets it down for all.
-                        let id = &reg().vehicles[kind].id;
-                        n.send_state(crate::proto::channel::VEHICLE_ASK, false, "", alloc::format!("place {} {} {} {} {}", id, pos[0], pos[1], pos[2], self.player.yaw).as_bytes());
-                    }
-                    audio.play(Sound::Place, 1.0);
-                    if !creative {
-                        self.inv.take_one(self.selected);
-                    }
-                    return;
-                }
+        let mut used = false;
+        self.natives(|n, g| {
+            if let (false, Some(interact)) = (used, n.interact) {
+                used = interact(g, c, near_block, audio);
             }
-        } else {
-            // Riding: hands are busy steering. Sneak + right click opens the hold.
-            if c.place_held && self.cooldown[1] <= 0.0 && c.input.descend {
-                if let Some(i) = self.vehicles.riding.filter(|&i| reg().vehicles[self.vehicles.list[i].kind].storage) {
-                    self.cooldown[1] = 0.4;
-                    self.opened_vehicle = Some(i);
-                }
-            }
+        });
+        if used || self.carried {
             return;
         }
 
@@ -2192,7 +2124,7 @@ impl Session {
                     return;
                 }
                 // Chairs and couches: sit down.
-                if aimed.x.seat > 0 && self.vehicles.riding.is_none() {
+                if aimed.x.seat > 0 && !self.carried {
                     self.cooldown[1] = 0.4;
                     self.sitting = Some(hit.cell);
                     return;
@@ -2331,7 +2263,6 @@ impl Session {
         }
         self.world.save_all(&mut self.store);
         self.store.flush();
-        let p = &self.player;
         let mut chest_text = String::new();
         for (pos, inv) in &self.chests {
             if inv.slots.iter().any(|s| s.is_some()) {
@@ -2339,7 +2270,12 @@ impl Session {
             }
         }
         sys::write_file(&self.chests_path, chest_text.as_bytes());
-        sys::write_file(&self.vehicles_path, self.vehicles.save_text().as_bytes());
+        self.natives(|n, g| {
+            if let Some(save) = n.save {
+                save(g)
+            }
+        });
+        let p = &self.player;
         if self.net.is_none() {
             let mut text = String::new();
             for (x, z) in &self.explored {

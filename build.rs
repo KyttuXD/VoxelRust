@@ -36,8 +36,63 @@ fn embed_data() {
     std::fs::write(dest, out).unwrap();
 }
 
+/// Find the code mods bring with them (`mods/<name>/code/mod.rs`) and
+/// write the list the game compiles in. Also, for the tests, the files of
+/// the mods that come with the game (those named in `mods/SHIPPED`).
+fn embed_mods() {
+    use std::fmt::Write as _;
+    let root = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("mods");
+    println!("cargo:rerun-if-changed={}", root.display());
+    let mut names: Vec<String> = std::fs::read_dir(&root).map(|r| r.flatten().filter(|e| e.path().join("code").join("mod.rs").is_file()).map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
+    names.retain(|n| n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && n.chars().next().map_or(false, |c| c.is_ascii_alphabetic()));
+    names.sort();
+    let mut out = String::new();
+    for n in &names {
+        let file = root.join(n).join("code").join("mod.rs");
+        println!("cargo:rerun-if-changed={}", root.join(n).join("code").display());
+        writeln!(out, "#[path = {:?}]\npub mod {};", file.display().to_string(), n.to_lowercase()).unwrap();
+    }
+    writeln!(out, "pub static NATIVES: &[&crate::native::Native] = &[{}];", names.iter().map(|n| format!("&{}::NATIVE", n.to_lowercase())).collect::<Vec<_>>().join(", ")).unwrap();
+    // The shipped mods' own files, so the tests see the game as it ships.
+    let shipped = std::fs::read_to_string(root.join("SHIPPED")).unwrap_or_default();
+    println!("cargo:rerun-if-changed={}", root.join("SHIPPED").display());
+    writeln!(out, "#[cfg(test)]\npub static SHIPPED: &[(&str, &[u8])] = &[").unwrap();
+    for m in shipped.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        let mut stack = vec![root.join(m)];
+        let mut files = Vec::new();
+        while let Some(dir) = stack.pop() {
+            println!("cargo:rerun-if-changed={}", dir.display());
+            for e in std::fs::read_dir(&dir).map(|r| r.flatten().collect::<Vec<_>>()).unwrap_or_default() {
+                let p = e.path();
+                if p.is_dir() {
+                    if p.file_name().map_or(true, |n| n != "code") {
+                        stack.push(p);
+                    }
+                } else {
+                    files.push(p);
+                }
+            }
+        }
+        files.sort();
+        for f in files {
+            let rel = f.strip_prefix(root.parent().unwrap()).unwrap().to_string_lossy().replace('\\', "/");
+            writeln!(out, "    ({:?}, include_bytes!({:?})),", rel, f.display().to_string()).unwrap();
+            println!("cargo:rerun-if-changed={}", f.display());
+        }
+    }
+    out.push_str("];\n");
+    // Tests that belong to the mods rather than to the game.
+    let tests = root.join("tests.rs");
+    println!("cargo:rerun-if-changed={}", tests.display());
+    if tests.is_file() {
+        writeln!(out, "#[cfg(test)]\n#[path = {:?}]\nmod shipped_tests;", tests.display().to_string()).unwrap();
+    }
+    std::fs::write(std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("native_mods.rs"), out).unwrap();
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    embed_mods();
     // Which commit this is, for the updater to compare with the release.
     // (VOXELRUST_COMMIT wins when set, as the release build does.)
     println!("cargo:rerun-if-env-changed=VOXELRUST_COMMIT");

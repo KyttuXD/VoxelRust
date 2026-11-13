@@ -19,28 +19,25 @@ pub enum Job {
     Mesh { cx: i32, cz: i32, n: [Arc<ChunkData>; 9] },
     /// A distant-terrain tile, sampled every `step` blocks.
     Far { tx: i32, tz: i32, step: i32 },
-    /// A picture of the world map (Earth worlds).
-    MapTile { z: u32, x: u32, y: u32 },
-    /// What a place on Earth is called.
-    Place { lat: f64, lon: f64, level: i32 },
+    /// Slow work for a mod's own code (fetching something, say): `run`
+    /// is called with `arg` on a worker, and what it returns turns up in
+    /// `World::task_results` under the same `tag`.
+    Task { tag: u32, arg: Vec<u8>, run: fn(&[u8]) -> Vec<u8> },
 }
 
 pub enum JobResult {
     Gen { cx: i32, cz: i32, data: ChunkData },
     Mesh { cx: i32, cz: i32, mesh: MeshData },
     Far { tx: i32, tz: i32, mesh: MeshData },
-    /// 256 x 256 RGBA, or `None` if the tile could not be fetched.
-    MapTile { z: u32, x: u32, y: u32, rgba: Option<Vec<u8>> },
-    Place { name: Option<alloc::string::String> },
+    Task { tag: u32, arg: Vec<u8>, out: Vec<u8> },
 }
 
 pub fn run_job(seed: u32, job: Job) -> JobResult {
     match job {
         Job::Gen { cx, cz } => JobResult::Gen { cx, cz, data: worldgen::generate(seed, cx, cz) },
-        Job::Place { lat, lon, level } => JobResult::Place { name: crate::earth::place_name(lat, lon, level) },
-        Job::MapTile { z, x, y } => {
-            let rgba = crate::earth::tile((crate::earth::Layer::Map, z, x, y)).map(|t| t.rgba.clone());
-            JobResult::MapTile { z, x, y, rgba }
+        Job::Task { tag, arg, run } => {
+            let out = run(&arg);
+            JobResult::Task { tag, arg, out }
         }
         Job::Far { tx, tz, step } => JobResult::Far { tx, tz, mesh: crate::lod::build(seed, tx, tz, step) },
         Job::Mesh { cx, cz, n } => {

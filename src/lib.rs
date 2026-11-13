@@ -19,9 +19,15 @@ pub mod terrain;
 pub mod game;
 pub mod net;
 pub mod client;
+pub mod native;
+/// The code of the mods found in `mods/` when the game was built (see
+/// [`native`]).
+pub mod mods {
+    include!(concat!(env!("OUT_DIR"), "/native_mods.rs"));
+}
 pub use util::{math, noise, json, png, settings, sha256};
 pub use content::{block, textures, font, icon, bbmodel, model};
-pub use terrain::{chunk, world, worldgen, mesh, lod, save, jobs, earth, weather};
-pub use game::{player, inventory, interact, entity, path, vehicle, session};
+pub use terrain::{chunk, world, worldgen, mesh, lod, save, jobs, weather};
+pub use game::{player, inventory, interact, entity, path, session};
 pub use net::{proto, server, netplay};
 pub use client::{app, render, ui, audio, update};

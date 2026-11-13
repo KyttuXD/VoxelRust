@@ -4,12 +4,13 @@
 # game; cars live here so that they can be left out (delete the folder, or
 # switch the mod off in Settings > MODS).
 model car file models/car.bbmodel
-texture icon_buggy paint vehicle 54 130 76
-texture icon_truck paint vehicle 190 70 60
-texture icon_kart paint vehicle 240 200 60
+texture icon_buggy paint machine 54 130 76
+texture icon_truck paint machine 190 70 60
+texture icon_kart paint machine 240 200 60
 
 vehicle buggy
   name Buggy
+  category Travel
   model car
   icon icon_buggy
   medium land
@@ -20,6 +21,7 @@ vehicle buggy
   storage
 vehicle truck
   name Truck
+  category Travel
   model car
   icon icon_truck
   medium land
@@ -30,6 +32,7 @@ vehicle truck
   storage
 vehicle kart
   name Kart
+  category Travel
   model car
   icon icon_kart
   medium land

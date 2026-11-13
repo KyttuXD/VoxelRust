@@ -195,12 +195,19 @@ fn unbundle_with(d: &[u8], file_names: bool) -> Option<Vec<(String, Vec<u8>)>> {
 }
 
 /// The suffixes of the small files every world has besides its regions.
-pub const WORLD_FILES: [&str; 7] = ["meta.txt", "chests.txt", "vehicles.txt", "regions.txt", "explored.txt", "pets.txt", "vars.txt"];
+pub const WORLD_FILES: [&str; 6] = ["meta.txt", "chests.txt", "regions.txt", "explored.txt", "pets.txt", "vars.txt"];
+
+/// Those, and the ones the mods' own code keeps for a world.
+fn world_files() -> Vec<&'static str> {
+    let mut all: Vec<&str> = WORLD_FILES.to_vec();
+    all.extend(crate::native::all().iter().flat_map(|n| n.files.iter().copied()));
+    all
+}
 
 /// Gather a world's files into one bundle. `None` if there is no such world.
 pub fn export_world(io: &mut dyn FileIo, base: &str, name: &str) -> Option<Vec<u8>> {
     let mut files = Vec::new();
-    for suffix in WORLD_FILES {
+    for suffix in world_files() {
         if let Some(data) = io.read(&alloc::format!("{}{}.{}", base, name, suffix)) {
             files.push((String::from(suffix), data));
         }
@@ -219,9 +226,11 @@ pub fn export_world(io: &mut dyn FileIo, base: &str, name: &str) -> Option<Vec<u
             }
         }
     }
-    // Each dimension keeps its own index, vehicles and regions.
+    // Each dimension keeps its own index and regions, and its own copy
+    // of what the mods' code keeps.
+    let per_dimension: Vec<&str> = core::iter::once("regions.txt").chain(crate::native::all().iter().flat_map(|n| n.files.iter().copied())).collect();
     for (dim, _) in &reg().dimensions {
-        for suffix in ["regions.txt", "vehicles.txt"] {
+        for &suffix in &per_dimension {
             let name_in = alloc::format!("{}.{}", dim, suffix);
             if let Some(data) = io.read(&alloc::format!("{}{}.{}", base, name, name_in)) {
                 if suffix == "regions.txt" {

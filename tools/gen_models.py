@@ -9290,7 +9290,11 @@ LAND_DIR = os.path.join(ROOT, "mods", "landvehicles", "models")
 # Where each set of models is written: (output directory, model functions). A
 # plain run writes them all; add a pack by adding a folder and its list here.
 OUTPUTS = [
-    (OUT_DIR, ANIMALS + MORE_ANIMALS + VEHICLES + FARM + MONSTERS),
+    (OUT_DIR, ANIMALS + MORE_ANIMALS + FARM + MONSTERS),
+    # Vehicles belong to their mods.
+    (os.path.join(ROOT, "mods", "boats", "models"), [boat, cargo_boat]),
+    (os.path.join(ROOT, "mods", "trains", "models"), [cart, chest_cart]),
+    (os.path.join(ROOT, "mods", "planes", "models"), [plane]),
     (PACK_DIR, SPELLS_N_MAGIC),
     (TITAN_DIR, TITANLANDS),
     (LAND_DIR, LAND_VEHICLES),
@@ -9349,9 +9353,6 @@ def creatures_text(models):
            "# entity <id> ... see base.txt for the properties.",
            "", "# --- animal models"]
     for fn in ANIMALS:
-        out.append("model %s file models/%s.bbmodel" % (fn.__name__, fn.__name__))
-    out += ["", "# --- vehicle models (the vehicles themselves are declared elsewhere)"]
-    for fn in VEHICLES:
         out.append("model %s file models/%s.bbmodel" % (fn.__name__, fn.__name__))
     out.append("")
     for eid, name, model, tint, height, width, speed, health, damage, beh, biomes, night, weight in ENTITIES:

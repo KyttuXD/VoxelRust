@@ -2,6 +2,7 @@
 //! small `key=value` text file.
 
 use alloc::string::String;
+use alloc::vec::Vec;
 
 /// Things a key can be bound to.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -28,7 +29,7 @@ pub const ACTIONS: [(Action, &str, &str, i32); 12] = [
     (Action::Jump, "jump", "JUMP / FLY UP", 44),
     (Action::Descend, "descend", "FLY DOWN", 225),
     (Action::Sprint, "sprint", "SPRINT", 224),
-    (Action::Fly, "leave", "GET OUT OF A VEHICLE", 9),
+    (Action::Fly, "leave", "GET OFF / GET OUT", 9),
     (Action::Inventory, "inventory", "INVENTORY", 8),
     (Action::Map, "map", "WORLD MAP", 16),
     (Action::Chat, "chat", "CHAT", 23),
@@ -97,14 +98,11 @@ pub struct Settings {
     pub weather: bool,
     /// The small map in the corner of the screen.
     pub minimap: bool,
-    /// Earthquakes, tornadoes and tsunamis (off unless asked for).
-    pub disasters: bool,
-    /// How much detail place-name notices give in Earth worlds:
-    /// 0 off, 1 countries, 2 regions, 3 towns.
-    pub place_notices: i32,
-    /// `host:port` of a VoxelRust server used to fetch map data on machines
-    /// that cannot make HTTPS requests themselves. Empty = fetch directly.
-    pub relay: String,
+    /// The switches packs add (`setting <id> ...`), as last set here.
+    pub flags: Vec<(String, bool)>,
+    /// Settings the game itself has no name for: what the mods' own code
+    /// keeps here (see [`Settings::extra`]). Kept as written.
+    pub extras: Vec<(String, String)>,
     /// Names of mods that are switched off, separated by commas.
     pub mods_off: String,
     /// Install newer versions from the nightly release by itself.
@@ -145,9 +143,8 @@ impl Default for Settings {
             auto_tuned: false,
             weather: true,
             minimap: true,
-            disasters: false,
-            place_notices: 1,
-            relay: String::new(),
+            flags: Vec::new(),
+            extras: Vec::new(),
             mods_off: String::new(),
             auto_update: true,
         }
@@ -175,6 +172,18 @@ pub fn clean_name(s: &str, max: usize) -> String {
 impl Settings {
     pub fn key(&self, a: Action) -> i32 {
         self.keys[ACTIONS.iter().position(|x| x.0 == a).unwrap_or(0)]
+    }
+
+    /// A setting kept for a mod's own code (`""` if never set).
+    pub fn extra(&self, key: &str) -> &str {
+        self.extras.iter().find(|e| e.0 == key).map_or("", |e| e.1.as_str())
+    }
+
+    pub fn set_extra(&mut self, key: &str, value: &str) {
+        self.extras.retain(|e| e.0 != key);
+        if !value.is_empty() {
+            self.extras.push((String::from(key), String::from(value)));
+        }
     }
 
     pub fn parse(text: &str) -> Settings {
@@ -214,9 +223,18 @@ impl Settings {
             auto_tuned: flag("auto_tuned", false),
             weather: flag("weather", true),
             minimap: flag("minimap", true),
-            disasters: flag("disasters", false),
-            place_notices: int("place_notices", 1, 0, 3),
-            relay: kv(text, "relay").unwrap_or("").chars().filter(|c| c.is_ascii_graphic()).take(80).collect(),
+            flags: text.lines().filter_map(|l| l.strip_prefix("flag_")).filter_map(|l| l.split_once('=')).map(|(k, v)| (String::from(k.trim()), v.trim() == "1")).take(64).collect(),
+            extras: {
+                // Whatever is not one of the game's own settings.
+                let own = Settings::default().to_text();
+                text.lines()
+                    .filter_map(|l| l.trim().split_once('='))
+                    .filter(|(k, _)| !k.is_empty() && k.len() <= 32 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                    .filter(|(k, _)| !k.starts_with("key_") && !k.starts_with("flag_") && kv(&own, k).is_none())
+                    .map(|(k, v)| (String::from(k), v.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').take(120).collect::<String>()))
+                    .take(32)
+                    .collect()
+            },
             auto_update: flag("auto_update", true),
             mods_off: kv(text, "mods_off").unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, ',' | '_' | '-')).take(400).collect(),
         }
@@ -225,7 +243,7 @@ impl Settings {
     pub fn to_text(&self) -> String {
         let mut s = alloc::format!(
             "distance={}\nfar_distance={}\nfov={}\nclouds={}\nvsync={}\nfullscreen={}\ngui_scale={}\ntarget_fps={}\nmax_fps={}\nshow_fps={}\n\
-             master_volume={}\neffects_volume={}\nsteps_volume={}\nui_volume={}\nsens={}\ninvert_y={}\nplayer_name={}\nautosave_seconds={}\nview_bobbing={}\nrelay={}\n",
+             master_volume={}\neffects_volume={}\nsteps_volume={}\nui_volume={}\nsens={}\ninvert_y={}\nplayer_name={}\nautosave_seconds={}\nview_bobbing={}\n",
             self.distance,
             self.far_distance,
             self.fov,
@@ -245,12 +263,17 @@ impl Settings {
             self.player_name,
             self.autosave_seconds,
             self.view_bobbing as i32,
-            self.relay,
         );
-        s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\ndisasters={}\nplace_notices={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.disasters as i32, self.place_notices));
+        s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32));
         s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.auto_update as i32));
         for (i, a) in ACTIONS.iter().enumerate() {
             s.push_str(&alloc::format!("key_{}={}\n", a.1, self.keys[i]));
+        }
+        for (k, v) in &self.extras {
+            s.push_str(&alloc::format!("{}={}\n", k, v));
+        }
+        for (id, on) in &self.flags {
+            s.push_str(&alloc::format!("flag_{}={}\n", id, *on as i32));
         }
         s
     }
@@ -267,7 +290,8 @@ mod tests {
         s.invert_y = true;
         s.keys[0] = 82;
         s.player_name = String::from("Kyttu_1");
-        s.relay = String::from("10.0.0.5:25590");
+        s.set_extra("relay", "10.0.0.5:25590");
+        s.flags.push((String::from("storms"), true));
         assert_eq!(Settings::parse(&s.to_text()), s);
         let odd = Settings::parse("distance=9999\nfov=abc\nplayer_name=<b>x y</b>\nkey_jump=0\n");
         assert_eq!(odd.distance, 48);

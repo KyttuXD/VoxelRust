@@ -505,8 +505,8 @@ pub fn painted(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 CLEAR_PX
             }
         }
-        "vehicle" => {
-            // A generic "thing with wheels" picture for vehicle items.
+        "machine" => {
+            // A generic "thing with wheels" picture.
             let body = (5..11).contains(&y) && (1..15).contains(&x);
             let cabin = (2..5).contains(&y) && (5..11).contains(&x);
             let wheel = |cx: i32| (2 * x - cx).pow(2) + (2 * y - 23).pow(2) <= 14;

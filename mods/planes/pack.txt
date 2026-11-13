@@ -2,8 +2,10 @@
 #
 # A small plane. Set it down on flat ground, board it, and hold forward to
 # take off; it glides down when you let go.
-# Nothing here is part of the program: a vehicle is a `vehicle` block naming
-# a model, what it travels on (water, rail, land or air) and its numbers.
+# Nothing here is part of the program. How vehicles move is the Vehicles
+# mod's own code (mods/vehicles), which this needs switched on; a vehicle
+# is a `vehicle` section naming a model, what it travels on (water, rail,
+# land or air) and its numbers.
 # Change them or add your own (docs/DATA.md). Switch the mod off in
 # Settings > MODS, or delete its folder, and these are gone from the game.
 model plane file models/plane.bbmodel
@@ -11,6 +13,7 @@ texture icon_plane paint wings 206 52 48
 
 vehicle plane
   name Plane
+  category Travel
   model plane
   icon icon_plane
   medium air

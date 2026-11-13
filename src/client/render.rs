@@ -716,7 +716,7 @@ impl Renderer {
         self.flush(gl::LINES);
     }
 
-    /// A tornado's funnel, `at` relative to the camera (its foot).
+    /// A whirling funnel, `at` relative to the camera (its foot).
     /// Small bright things in flight (arrows, spells): each a little
     /// three-way cross, so it shows from any side. Positions are relative
     /// to the camera.

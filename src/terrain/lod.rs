@@ -17,7 +17,7 @@ pub fn colour(height: i32, biome: Biome) -> [u8; 3] {
     if height < SEA {
         return [44, 104, 198];
     }
-    if worldgen::earth_proj().is_none() && height <= SEA + 1 && biome != Biome::Tundra && biome != Biome::Taiga {
+    if worldgen::source().is_none() && height <= SEA + 1 && biome != Biome::Tundra && biome != Biome::Taiga {
         return [220, 204, 152];
     }
     match biome {

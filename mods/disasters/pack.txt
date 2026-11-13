@@ -1,25 +1,27 @@
 # Natural Disasters - a mod that comes with the game, in its own folder.
 #
-# Earthquakes, tornadoes and tsunamis, written here rather than in the
-# program: each `disaster` line says how often one may come, how long it
+# Earthquakes, tornadoes and tsunamis. Nothing about them is in the
+# program: each `episode` line says how often one may come, how long it
 # lasts, what must be true for it to start, and the chat commands carried
 # out a few times a second while it lasts. Change them, or add your own
 # (see docs/MODDING.md). Switch the mod off in Settings > MODS (or delete
 # its folder) and none can happen; with it on they still only happen when
-# NATURAL DISASTERS is on in Settings > GAME.
+# NATURAL DISASTERS (the `setting` line below) is on in Settings > GAME.
+
+setting disasters off Natural disasters
 
 sound quake effects 1.20 0.95 40 30 0.03 1.00 An earthquake
 sound twister effects 1.60 1.00 100 100 0.10 0.70 A tornado howls
 
 # About every twenty minutes the ground shakes for seven seconds...
-disaster earthquake every 1200 lasts 7 then tsunami do /shake 0.35; /sound quake
+episode earthquake every 1200 lasts 7 then tsunami if setting disasters do /shake 0.35; /sound quake
 # ...and by the sea, a wave follows: the water climbs three blocks, holds
 # and drains away. (No `every`: it never comes on its own.)
-disaster tsunami lasts 24 if coast do /flood 3
+episode tsunami lasts 24 if coast do /flood 3
 # Within a couple of minutes of a storm over open, low country, a funnel
 # crosses close by, dragging you in and tearing up plants and leaves.
-disaster tornado every 120 lasts 26 moves 3.5 funnel if storm and lowland and biome plains savanna do /pull 14 2.2; /strip 3 40; /sound twister
+episode tornado every 120 lasts 26 moves 3.5 funnel if setting disasters and storm and lowland and biome plains savanna do /pull 14 2.2; /strip 3 40; /sound twister
 
-when disaster earthquake do /title EARTHQUAKE
-when disaster tsunami do /title TSUNAMI - GET TO HIGH GROUND
-when disaster tornado do /title TORNADO
+when episode earthquake do /title EARTHQUAKE
+when episode tsunami do /title TSUNAMI - GET TO HIGH GROUND
+when episode tornado do /title TORNADO

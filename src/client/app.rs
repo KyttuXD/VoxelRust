@@ -29,11 +29,9 @@ Run it with no options for the title screen. Options:
   --host NAME         host the shared world NAME from inside the game, and play
                       in it; others join with this machine's address
   --server            run a multiplayer server instead of the game (no window);
-                      uses --world, --seed, --earth, --port and --players
+                      uses --world, --seed, --port and --players
   --port N            server port (default 25590)
   --players N         most players at once on the server (default 16)
-  --earth LAT LON     make the new world real-world terrain starting there
-  --scale M V         with --earth: metres per block across and up (30 75)
   --distance N        view distance in chunks, 2..48
   --far N             distant terrain out to N chunks, 0 = off (up to 256)
   --threads N         worker threads, 0 = none (default: one per spare core)
@@ -95,13 +93,11 @@ struct Opts {
     world: Option<String>,
     seed: Option<u32>,
     mode: Option<GameMode>,
-    earth: Option<(f64, f64)>,
     join: Option<String>,
     host: Option<String>,
     server: bool,
     port: Option<u16>,
     players: Option<usize>,
-    scale: Option<(u32, u32)>,
     distance: Option<i32>,
     far: Option<i32>,
     threads: Option<usize>,
@@ -174,19 +170,6 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--server" => o.server = true,
             "--port" => o.port = Some(num::<u16>(&next(&mut i, a)?, a)?),
             "--players" => o.players = Some(num::<usize>(&next(&mut i, a)?, a)?.clamp(1, 200)),
-            "--earth" => {
-                let lat = num::<f64>(&next(&mut i, a)?, a)?;
-                let lon = num::<f64>(&next(&mut i, a)?, a)?;
-                if !(-85.0..=85.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
-                    return Err(String::from("--earth: latitude must be -85..85 and longitude -180..180"));
-                }
-                o.earth = Some((lat, lon));
-            }
-            "--scale" => {
-                let m = num::<u32>(&next(&mut i, a)?, a)?;
-                let v = num::<u32>(&next(&mut i, a)?, a)?;
-                o.scale = Some((m.clamp(1, 100_000), v.clamp(1, 10_000)));
-            }
             "--distance" => o.distance = Some(num::<i32>(&next(&mut i, a)?, a)?.clamp(2, 48)),
             "--far" => o.far = Some(num::<i32>(&next(&mut i, a)?, a)?.clamp(0, 256)),
             "--threads" => o.threads = Some(num::<usize>(&next(&mut i, a)?, a)?.min(32)),
@@ -234,19 +217,20 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             // Finder on old Mac OS X adds a process serial number when an
             // app is double-clicked; it is not for us.
             _ if a.starts_with("-psn_") => {}
-            _ => return Err(alloc::format!("unknown option `{}` (try --help)", a)),
+            _ => {
+                // An option of some mod's own code, perhaps.
+                let mut rest = args[i + 1..].iter().cloned();
+                let before = rest.len();
+                match crate::native::all().iter().filter_map(|n| n.option).find_map(|option| option(a, &mut rest)) {
+                    Some(Ok(())) => i += before - rest.len(),
+                    Some(Err(e)) => return Err(e),
+                    None => return Err(alloc::format!("unknown option `{}` (try --help)", a)),
+                }
+            }
         }
         i += 1;
     }
     Ok(o)
-}
-
-/// A map tile on its way to the screen.
-enum MapTile {
-    /// Asked for; a worker is fetching it.
-    Loading,
-    Ready(u32),
-    Missing,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -353,9 +337,9 @@ struct App {
     form_name: String,
     form_seed: String,
     form_mode: GameMode,
-    form_earth: bool,
+    /// The terrain chosen is one a mod's code supplies: which.
+    form_native: Option<usize>,
     form_flat: bool,
-    form_place: usize,
     form_address: String,
     /// World name typed for hosting, and the server thread while hosting.
     form_host: String,
@@ -408,13 +392,9 @@ struct App {
     form_skin_path: String,
     /// Name tags to draw this frame: screen position and text.
     tags: Vec<(f32, f32, String)>,
-    form_scale: i32,
-    form_features: bool,
-    form_vscale: i32,
     /// The map screen: centre in "unit" map coordinates (0..1) and zoom.
-    map_center: (f64, f64),
-    map_zoom: i32,
-    map_tiles: BTreeMap<(u32, u32, u32), MapTile>,
+    /// Whose screen the map key has opened (a mod's code).
+    map_native: Option<usize>,
     status: String,
     tab: usize,
     /// Index into ACTIONS of the key being rebound.
@@ -422,8 +402,9 @@ struct App {
     inv_tab: usize,
     inv_scroll: i32,
     chest_at: [i32; 3],
-    /// When the chest screen shows a vehicle's hold instead of a chest.
-    chest_vehicle: Option<usize>,
+    /// When the chest screen shows storage a mod's code keeps instead
+    /// of a chest: whose, and which.
+    chest_ext: Option<(&'static str, usize)>,
     // Scripted runs (--screenshot / --bench).
     scripted: bool,
     show_hud: bool,
@@ -872,8 +853,10 @@ impl App {
         if let Some(g) = self.session.as_mut() {
             if playing {
                 g.update(dt, &controls, distance, self.settings.far_distance, r, &mut self.audio);
-                g.weather_update(dt, self.settings.weather, self.settings.disasters, &mut self.audio);
-                g.place_level = self.settings.place_notices;
+                if g.flags != self.settings.flags {
+                    g.flags = self.settings.flags.clone();
+                }
+                g.weather_update(dt, self.settings.weather, &mut self.audio);
                 died = g.dead;
             } else {
                 // Paused: keep loading terrain, but nothing moves.
@@ -919,12 +902,12 @@ impl App {
         if died && self.screen != Screen::Dead {
             self.set_screen(Screen::Dead);
         }
-        if let Some(i) = self.session.as_mut().and_then(|g| g.opened_vehicle.take()) {
-            self.chest_vehicle = Some(i);
+        if let Some(which) = self.session.as_mut().and_then(|g| g.opened_ext.take()) {
+            self.chest_ext = Some(which);
             self.set_screen(Screen::Chest);
         }
         if let Some((what, at)) = self.session.as_mut().and_then(|g| g.opened.take()) {
-            self.chest_vehicle = None;
+            self.chest_ext = None;
             self.chest_at = at;
             self.inv_scroll = 0;
             self.at_oven = what == block::Usable::Oven;
@@ -980,7 +963,7 @@ impl App {
                 }
             }
             if g.shake > 0.0 {
-                // An earthquake rattles the view.
+                // A `/shake` rattles the view.
                 eye[0] += (sinf(g.clock * 47.0) * g.shake * 0.25) as f64;
                 eye[1] += (sinf(g.clock * 61.0) * g.shake * 0.18) as f64;
             }
@@ -1021,7 +1004,7 @@ impl App {
             if !underwater {
                 r.draw_precipitation(&cam, g.sky.rain, g.sky.snow, g.clock);
             }
-            if let Some(crate::weather::Running { x, z, .. }) = g.disaster.filter(|d| reg().disasters.get(d.kind).map_or(false, |k| k.funnel)) {
+            if let Some(crate::session::Episode { x, z, .. }) = g.episode.filter(|d| reg().episodes.get(d.kind).map_or(false, |k| k.funnel)) {
                 let ground = crate::worldgen::column(g.world.seed, x as i32, z as i32).height as f64;
                 r.draw_funnel([(x as f64 - cam.pos[0]) as f32, (ground - cam.pos[1]) as f32, (z as f64 - cam.pos[2]) as f32], g.clock);
             }
@@ -1035,7 +1018,7 @@ impl App {
         let (w, h) = (r.w as f32, r.h as f32);
         if self.session.is_none() {
             // Menus stand on a wall of the game's own blocks: stone below,
-            // earth and turf above, dimmed so the buttons stand out, and
+            // soil and turf above, dimmed so the buttons stand out, and
             // drifting slowly sideways.
             let tile = (h / 11.0).max(32.0);
             let wk = &reg().wk;
@@ -1171,19 +1154,14 @@ impl App {
         // Things lying on the ground glint.
         sparks.extend(g.drops.iter().map(|d| (rel([d.pos[0], d.pos[1] + 0.25, d.pos[2]]), [255, 236, 150])));
         r.draw_sparks(&sparks);
-        for (i, v) in g.vehicles.list.iter().enumerate() {
-            let p = rel(v.body.pos);
-            if p[0] * p[0] + p[2] * p[2] > 96.0 * 96.0 || behind(p, 4.0) {
-                continue;
+        // Whatever the mods' own code has to show.
+        {
+            let view = crate::native::View { eye: cam.pos, yaw: cam.yaw, pitch: cam.pitch, third_person: self.third_person, light: &light_at };
+            for (_, n) in crate::native::active() {
+                if let Some(draw) = n.draw {
+                    draw(g, r, &view);
+                }
             }
-            // From inside, your own vehicle is only drawn in third person.
-            if g.vehicles.riding == Some(i) && !self.third_person {
-                continue;
-            }
-            let d = &reg.vehicles[v.kind];
-            let l = (light_at(v.body.pos) * 255.0) as u8;
-            let pose = crate::model::Pose { phase: v.phase, stride: 0.0, ..Default::default() };
-            r.draw_model(d.model, &pose, p, v.body.yaw, d.height, [l, l, l]);
         }
         // Other players, with their names over their heads.
         if let (Some(net), Some(model)) = (&g.net, reg.models.iter().position(|m| m.id == "player")) {
@@ -1497,31 +1475,24 @@ impl App {
         if ui.button_lr(x, y + step * 2.7, bw, bh, &mode, true) != 0 {
             self.form_mode = if self.form_mode == GameMode::Survival { GameMode::Creative } else { GameMode::Survival };
         }
-        let kind = alloc::format!("TERRAIN  {}", if self.form_earth { "EARTH" } else if self.form_flat { "FLAT" } else { "NORMAL" });
+        // Normal, flat, and whatever terrain the mods' own code offers.
+        let offered: Vec<(usize, &'static str)> = crate::native::active().filter_map(|(k, n)| n.terrain_label.and_then(|label| label()).map(|l| (k, l))).collect();
+        let chosen = self.form_native.and_then(|k| offered.iter().position(|o| o.0 == k));
+        if chosen.is_none() {
+            self.form_native = None;
+        }
+        let kind = alloc::format!("TERRAIN  {}", chosen.map_or(if self.form_flat { "FLAT" } else { "NORMAL" }, |c| offered[c].1));
         let turn = ui.button_lr(x, y + step * 3.7, bw, bh, &kind, true);
         if turn != 0 {
-            // Normal, flat, and (when the Earth mod is on) the real Earth.
-            let kinds = if crate::earth::available() { 3 } else { 2 };
-            let now = if self.form_earth { 2 } else { self.form_flat as i32 };
-            let next = (now + turn).rem_euclid(kinds);
+            let now = chosen.map_or(self.form_flat as i32, |c| 2 + c as i32);
+            let next = (now + turn).rem_euclid(2 + offered.len() as i32);
             self.form_flat = next == 1;
-            self.form_earth = next == 2;
+            self.form_native = if next >= 2 { Some(offered[next as usize - 2].0) } else { None };
         }
-        if self.form_earth {
-            let half = (bw - 4.0 * s) * 0.5;
-            let place = alloc::format!("START AT  < {} >", crate::earth::places()[self.form_place.min(crate::earth::places().len() - 1)].0);
-            let mut i = self.form_place as i32;
-            ui.stepper_text(x, y + step * 4.7, bw, bh, &place, &mut i, 0, crate::earth::places().len() as i32 - 1, 1);
-            self.form_place = i as usize;
-            // Scale is "1:N": one block stands for N metres. 1:1 is life size.
-            let sc = alloc::format!("SCALE  < 1:{} >", self.form_scale);
-            step_list(ui, x, y + step * 5.7, half, bh, &sc, &mut self.form_scale, &[1, 2, 5, 10, 30, 100, 300, 1000]);
-            let vs = alloc::format!("HEIGHT  < 1:{} >", self.form_vscale);
-            step_list(ui, x + half + 4.0 * s, y + step * 5.7, half, bh, &vs, &mut self.form_vscale, &[1, 2, 5, 10, 25, 50, 75, 150, 300]);
-            ui.toggle(x, y + step * 6.7, bw, bh, "ROADS AND BUILDINGS", &mut self.form_features);
-            ui.centered(ui.w() * 0.5, y + step * 7.8, 1.0, "NEEDS THE INTERNET. PRESS M IN THE WORLD FOR THE MAP.", ui::DIM);
-        }
-        let y = if self.form_earth { y + step * 3.9 } else { y };
+        // That code's own options for it, under the button.
+        let form = self.form_native.and_then(|k| crate::native::all()[k].terrain_form);
+        let rows = form.map_or(0.0, |form| form(ui, x, y + step * 4.7, bw, bh, step));
+        let y = y + step * rows;
         if ui.button(x, y + step * 5.0, bw, bh, "CREATE") {
             let name = crate::settings::clean_name(&self.form_name, 24);
             if name.is_empty() {
@@ -1534,9 +1505,9 @@ impl App {
                 } else {
                     seed_from(self.form_seed.trim())
                 };
-                let kind = if self.form_earth {
-                    let p = crate::earth::places()[self.form_place.min(crate::earth::places().len() - 1)].clone();
-                    WorldKind::Earth { lat: p.1, lon: p.2, scale: self.form_scale as u32, vscale: self.form_vscale as u32, features: self.form_features }
+                let custom = self.form_native.and_then(|k| crate::native::all()[k].terrain_chosen).map(|chosen| chosen());
+                let kind = if let Some(kind) = custom.and_then(|text| WorldKind::parse(&text)) {
+                    kind
                 } else if self.form_flat {
                     WorldKind::Flat
                 } else {
@@ -1737,23 +1708,36 @@ impl App {
                     let half = (bw - 4.0 * s) * 0.5;
                     changed |= ui.toggle(x, row(2), half, bh, "VIEW BOBBING", &mut st.view_bobbing);
                     changed |= ui.toggle(x + half + 4.0 * s, row(2), half, bh, "WEATHER", &mut st.weather);
-                    if !reg().disasters.is_empty() {
-                        changed |= ui.toggle(x, row(6), half, bh, "NATURAL DISASTERS", &mut st.disasters);
-                    }
-                    let pn = alloc::format!("PLACE NOTICES  < {} >", ["OFF", "COUNTRIES", "REGIONS", "TOWNS"][st.place_notices as usize]);
-                    changed |= ui.stepper_text(x + half + 4.0 * s, row(6), half, bh, &pn, &mut st.place_notices, 0, 3, 1);
                     if let Some(g) = self.session.as_mut() {
                         let label = alloc::format!("GAME MODE  {}", if g.mode == GameMode::Survival { "SURVIVAL" } else { "CREATIVE" });
                         if ui.button_lr(x, row(3), bw, bh, &label, true) != 0 {
                             g.set_mode(if g.mode == GameMode::Survival { GameMode::Creative } else { GameMode::Survival });
                         }
                     }
-                    changed |= ui.toggle(x, row(8), bw, bh, "MINIMAP (M ENLARGES IT)", &mut st.minimap);
-                    if ui.button(x, row(7), bw, bh, "RELOAD CONTENT PACKS NOW") {
+                    changed |= ui.toggle(x, row(4), half, bh, "MINIMAP", &mut st.minimap);
+                    if ui.button(x + half + 4.0 * s, row(4), half, bh, "RELOAD MODS NOW") {
                         self.want_reload = true;
                     }
-                    ui.text(x, row(4) + 6.0 * s, "MAP DATA RELAY (HOST:PORT), FOR OLD MACHINES", ui::DIM);
-                    ui.text_field(11, x, row(5), bw, bh, &mut st.relay, 80, ui::any_char);
+                    // Switches the mods add (`setting` lines in their packs)...
+                    let toggles = &reg().toggles;
+                    for (k, (id, default, label)) in toggles.iter().take(4).enumerate() {
+                        let mut on = st.flags.iter().find(|f| &f.0 == id).map_or(*default, |f| f.1);
+                        let wide = if toggles.len() == 1 { bw } else { half };
+                        if ui.toggle(x + (k % 2) as f32 * (half + 4.0 * s), row(5 + k / 2), wide, bh, label, &mut on) {
+                            st.flags.retain(|f| &f.0 != id);
+                            st.flags.push((id.clone(), on));
+                            changed = true;
+                        }
+                    }
+                    // ...and the rows their own code adds.
+                    let mut at = row(5 + (toggles.len().min(4) + 1) / 2);
+                    for (_, n) in crate::native::active() {
+                        if let Some(rows) = n.settings {
+                            let (used, touched) = rows(ui, st, x, at, bw, bh, step);
+                            at += used * step;
+                            changed |= touched;
+                        }
+                    }
                 }
             }
         }
@@ -1971,9 +1955,9 @@ impl App {
             let (px, pz) = ((i % MINIMAP) as i32, (i / MINIMAP) as i32);
             let (x, z) = (self.minimap_origin.0 + (px - half) * scale, self.minimap_origin.1 + (pz - half) * scale);
             let seen = g.explored.contains(&(x.div_euclid(crate::session::EXPLORE), z.div_euclid(crate::session::EXPLORE)));
-            // An Earth world has a map to begin with: ground not yet
+            // Some terrain is mapped before anyone walks it: ground not yet
             // visited shows too, only dimmer.
-            let charted = crate::worldgen::earth_proj().is_some() && crate::worldgen::shape() == 0;
+            let charted = crate::worldgen::source().map_or(false, |s| s.charted) && crate::worldgen::shape() == 0;
             let c = if seen || charted {
                 let col = crate::worldgen::column(seed, x, z);
                 let base = if col.river {
@@ -2089,130 +2073,34 @@ impl App {
         }
     }
 
+    /// The map key: a mod's own map for this world if it has one, else
+    /// the minimap grows.
     fn open_map(&mut self) {
-        let unit = match (self.session.as_ref(), crate::worldgen::earth_proj()) {
-            (Some(g), Some(p)) => {
-                let size = (256u64 << p.zoom) as f64;
-                let (px, py) = p.block_to_px(g.player.pos[0], g.player.pos[2]);
-                Some((px / size, py / size, p.zoom as i32))
-            }
-            _ => None,
-        };
-        match unit {
-            Some((x, y, zoom)) => {
-                self.map_center = (x, y);
-                self.map_zoom = (zoom - 2).clamp(2, 16);
-                crate::earth::retry_failed();
-                self.set_screen(Screen::Map);
-            }
-            None => {
-                // No atlas for an invented world: the minimap grows instead.
-                self.minimap_big = !self.minimap_big;
-                self.minimap_cursor = 0;
-            }
-        }
-    }
-
-    /// The world map: drag to move, wheel to zoom, click to travel there.
-    fn screen_map(&mut self, ui: &mut Ui) {
-        let s = ui.s;
-        let (w, h) = (ui.w(), ui.h());
-        ui.r.rect(0.0, 0.0, w, h, [14, 18, 26, 255]);
-        let p = match crate::worldgen::earth_proj() {
-            Some(p) => *p,
-            None => return,
-        };
-        // Zoom toward the middle of the screen.
-        if ui.inp.wheel != 0 {
-            self.map_zoom = (self.map_zoom + ui.inp.wheel).clamp(2, 16);
-        }
-        let zoom = self.map_zoom as u32;
-        let size = (256u64 << zoom) as f64;
-        // Tiles are drawn at whole-number scale so they stay crisp.
-        let scale = if h > 900.0 { 2.0 } else { 1.0 };
-        let top = 27.0 * s;
-        if ui.inp.down[1] && ui.inp.mouse.1 > top {
-            self.map_center.0 -= ui.inp.moved.0 as f64 / scale as f64 / size;
-            self.map_center.1 -= ui.inp.moved.1 as f64 / scale as f64 / size;
-        }
-        self.map_center.1 = self.map_center.1.clamp(0.0, 1.0);
-        self.map_center.0 -= crate::math::floord(self.map_center.0) as f64;
-        let (cx, cy) = (self.map_center.0 * size, self.map_center.1 * size);
-        // Screen position of a map pixel.
-        let to_screen = |px: f64, py: f64| (w * 0.5 + ((px - cx) * scale as f64) as f32, h * 0.5 + ((py - cy) * scale as f64) as f32);
-        let n = 1i64 << zoom;
-        let (tx0, tx1) = (crate::math::floord((cx - (w / scale) as f64 * 0.5) / 256.0) as i64, crate::math::floord((cx + (w / scale) as f64 * 0.5) / 256.0) as i64);
-        let (ty0, ty1) = (crate::math::floord((cy - (h / scale) as f64 * 0.5) / 256.0) as i64, crate::math::floord((cy + (h / scale) as f64 * 0.5) / 256.0) as i64);
-        let mut loading = 0;
-        for ty in ty0.max(0)..=ty1.min(n - 1) {
-            for tx in tx0..=tx1 {
-                let key = (zoom, tx.rem_euclid(n) as u32, ty as u32);
-                let (sx, sy) = to_screen(tx as f64 * 256.0, ty as f64 * 256.0);
-                match self.map_tiles.get(&key) {
-                    Some(MapTile::Ready(tex)) => ui.r.image(*tex, sx, sy, 256.0 * scale, 256.0 * scale),
-                    Some(MapTile::Loading) => loading += 1,
-                    Some(MapTile::Missing) => ui.r.rect(sx + 1.0, sy + 1.0, 256.0 * scale - 2.0, 256.0 * scale - 2.0, [40, 30, 34, 255]),
-                    None => {
-                        // Ask a worker to fetch it; at most a few at a time.
-                        if loading < 4 {
-                            if let Some(g) = self.session.as_mut() {
-                                g.pool.submit(crate::jobs::Job::MapTile { z: key.0, x: key.1, y: key.2 }, true);
-                                self.map_tiles.insert(key, MapTile::Loading);
-                                loading += 1;
-                            }
-                        }
-                    }
+        self.map_native = None;
+        if let Some(g) = self.session.as_mut() {
+            for (k, n) in crate::native::active() {
+                if n.map_open.map_or(false, |open| open(g)) {
+                    self.map_native = Some(k);
+                    break;
                 }
             }
         }
-        // Finished tiles become textures.
-        if let Some(g) = self.session.as_mut() {
-            for (key, img) in g.world.map_results.drain(..) {
-                let entry = match img {
-                    Some(rgba) => MapTile::Ready(ui.r.add_texture(256, 256, &rgba)),
-                    None => MapTile::Missing,
-                };
-                self.map_tiles.insert(key, entry);
-            }
+        if self.map_native.is_some() {
+            self.set_screen(Screen::Map);
+        } else {
+            self.minimap_big = !self.minimap_big;
+            self.minimap_cursor = 0;
         }
-        // The player, as a marker.
-        let mut travel = None;
-        if let Some(g) = self.session.as_ref() {
-            let k = size / (256u64 << p.zoom) as f64;
-            let (px, py) = p.block_to_px(g.player.pos[0], g.player.pos[2]);
-            let (sx, sy) = to_screen(px * k, py * k);
-            ui.r.rect(sx - 4.0 * s, sy - 4.0 * s, 8.0 * s, 8.0 * s, [0, 0, 0, 255]);
-            ui.r.rect(sx - 3.0 * s, sy - 3.0 * s, 6.0 * s, 6.0 * s, [255, 70, 60, 255]);
-            // Where the mouse points, in the world.
-            let (mx, my) = ui.inp.mouse;
-            let (wx, wy) = (cx + ((mx - w * 0.5) / scale) as f64, cy + ((my - h * 0.5) / scale) as f64);
-            let (bx, bz) = p.px_to_block(wx / k, wy / k);
-            let (lat, lon) = p.block_to_latlon(bx, bz);
-            ui.r.rect(0.0, 0.0, w, top, [10, 12, 18, 235]);
-            let info = alloc::format!(
-                "{:.3}{} {:.3}{}   BLOCK {:.0} {:.0}   ZOOM {}",
-                if lat < 0.0 { -lat } else { lat },
-                if lat < 0.0 { "S" } else { "N" },
-                if lon < 0.0 { -lon } else { lon },
-                if lon < 0.0 { "W" } else { "E" },
-                bx,
-                bz,
-                zoom
-            );
-            ui.text(4.0 * s, 4.0 * s, &info, WHITE);
-            ui.text(4.0 * s, 15.0 * s, "DRAG TO MOVE - WHEEL TO ZOOM - RIGHT CLICK TO TRAVEL THERE - M TO CLOSE", ui::DIM);
-            if ui.inp.clicked[3] && my > top {
-                travel = Some((bx, bz));
-            }
-        }
-        ui.r.rect(0.0, h - 11.0 * s, w, 11.0 * s, [10, 12, 18, 200]);
-        ui.text(4.0 * s, h - 9.0 * s, "MAP DATA (C) OPENSTREETMAP CONTRIBUTORS - ELEVATION: MAPZEN / AWS TERRAIN TILES", ui::DIM);
-        if let Some((bx, bz)) = travel {
-            if let Some(g) = self.session.as_mut() {
-                // Arrive in the air above the spot; survival players are set
-                // down gently once the ground has loaded.
-                g.travel_to(bx, bz);
-            }
+    }
+
+    /// The screen a mod's code put up for the map key.
+    fn screen_map(&mut self, ui: &mut Ui) {
+        let screen = self.map_native.and_then(|k| crate::native::all()[k].map_screen);
+        let stay = match (screen, self.session.as_mut()) {
+            (Some(screen), Some(g)) => screen(ui, g),
+            _ => false,
+        };
+        if !stay {
             self.set_screen(Screen::Game);
         }
     }
@@ -2241,9 +2129,17 @@ impl App {
         let at_table = self.screen == Screen::Craft;
         if self.screen == Screen::Chest {
             // The chest's own 27 slots.
-            ui.text(gx, py + 6.0 * s, if self.chest_vehicle.is_some() { "CARGO" } else { "CHEST" }, ui::DIM);
-            let chest = match self.chest_vehicle.filter(|&i| i < g.vehicles.list.len()) {
-                Some(i) => &mut g.vehicles.list[i].storage,
+            // A chest's 27 slots, or storage a mod's own code keeps.
+            let kept = self.chest_ext.and_then(|(name, which)| {
+                let storage = crate::native::active().find(|(_, n)| n.name == name).and_then(|(_, n)| n.storage)?;
+                storage(g, which)
+            });
+            ui.text(gx, py + 6.0 * s, if kept.is_some() { "CARGO" } else { "CHEST" }, ui::DIM);
+            let chest = match kept {
+                // SAFETY: the pointer is into `g`, which is borrowed for
+                // all of this function and not otherwise used for storage
+                // while `chest` lives.
+                Some(p) => unsafe { &mut *p },
                 None => g.chests.entry(self.chest_at).or_default(),
             };
             for i in 0..27 {
@@ -2434,7 +2330,7 @@ impl App {
         }
     }
 
-    /// Stand one of every creature and vehicle in rows in front of the
+    /// Stand one of every creature in rows in front of the
     /// player (for screenshots, and for checking a pack's models).
     fn line_up_creatures(&mut self) {
         let g = match self.session.as_mut() {
@@ -2456,7 +2352,7 @@ impl App {
             }
         }).collect();
         let per_row = 8;
-        let total = kinds.len() + reg().vehicles.len();
+        let total = kinds.len();
         for n in 0..total {
             let (row, col) = (n / per_row, n % per_row);
             let side = (col as f32 - (per_row as f32 - 1.0) * 0.5) * 2.6;
@@ -2481,8 +2377,6 @@ impl App {
                 g.mobs.list[i].body.yaw = g.player.yaw + PI - 0.6;
                 g.mobs.list[i].phase = 1.2;
                 g.mobs.list[i].stride = 0.6;
-            } else {
-                g.vehicles.place(n - kinds.len(), at, g.player.yaw + PI - 0.6);
             }
         }
     }
@@ -2659,6 +2553,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let opts = parse_args(&args)?;
     if opts.help {
         sys::log(USAGE);
+        for n in crate::native::all().iter().filter(|n| !n.help.is_empty()) {
+            sys::log(&alloc::format!("\nFrom the mod `{}`:\n{}", n.name, n.help));
+        }
         return Ok(());
     }
     if opts.version {
@@ -2795,8 +2692,15 @@ fn run(args: Vec<String>) -> Result<(), String> {
         return Err(String::from("the data files define no items"));
     }
 
-    if opts.earth.is_some() && registry.map.is_none() {
-        return Err(String::from("--earth needs the Earth mod, which is switched off (Settings > MODS)"));
+    // A kind of world asked for through some mod's own option.
+    let mut asked_kind: Option<String> = None;
+    for n in crate::native::all() {
+        if let Some(kind) = n.option_kind.and_then(|kind| kind()) {
+            if !registry.has(n.name) {
+                return Err(alloc::format!("that option needs the mod `{}`, which is switched off (Settings > MODS)", n.name));
+            }
+            asked_kind = Some(kind);
+        }
     }
     if opts.server {
         return run_server(&opts, &base, &pack_text);
@@ -2914,9 +2818,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         form_name: String::new(),
         form_seed: String::new(),
         form_mode: GameMode::Survival,
-        form_earth: false,
+        form_native: None,
         form_flat: false,
-        form_place: 0,
         form_address: String::new(),
         form_host: String::from("shared"),
         servers: Vec::new(),
@@ -2953,19 +2856,14 @@ fn run(args: Vec<String>) -> Result<(), String> {
         form_import: String::new(),
         form_skin_path: String::new(),
         tags: Vec::new(),
-        form_scale: 30,
-        form_features: true,
-        form_vscale: 75,
-        map_center: (0.5, 0.5),
-        map_zoom: 10,
-        map_tiles: BTreeMap::new(),
+        map_native: None,
         status: String::new(),
         tab: 0,
         rebinding: None,
         inv_tab: 0,
         inv_scroll: 0,
         chest_at: [0; 3],
-        chest_vehicle: None,
+        chest_ext: None,
         scripted,
         show_hud: opts.show.contains("hud"),
     };
@@ -2973,7 +2871,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
     app.load_skin(&mut r);
     app.status.clear();
     logf!("voxelrust: data in {}", if base.is_empty() { "." } else { &base });
-    crate::earth::configure(&base, &app.settings.relay);
+    for (_, n) in crate::native::active() {
+        if let Some(start) = n.start {
+            start(&base, &app.settings);
+        }
+    }
 
     // Going straight into a world: asked for by name, or a scripted run.
     let menu_only = ["title", "worlds", "newworld", "multiplayer"].iter().any(|s| opts.show.contains(s)) || (opts.show.contains("settings") && opts.world.is_none());
@@ -2994,13 +2896,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             return Err(String::from("--world: use only letters, digits, - and _ (24 at most)"));
         }
         let seed = opts.seed.unwrap_or_else(|| unsafe { (api.SDL_GetPerformanceCounter)() } as u32 ^ 0x5EED_1234);
-        let kind = match opts.earth {
-            Some((lat, lon)) => {
-                let (scale, vscale) = opts.scale.unwrap_or((30, 75));
-                WorldKind::Earth { lat, lon, scale, vscale, features: true }
-            }
-            None => WorldKind::Normal,
-        };
+        let kind = asked_kind.as_deref().and_then(WorldKind::parse).unwrap_or(WorldKind::Normal);
         app.start_world(&mut r, &name, &NewWorld { seed, mode: opts.mode.unwrap_or(GameMode::Creative), kind });
     }
     if let Some(g) = app.session.as_mut() {
@@ -3106,7 +3002,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     logf!("voxelrust: {} chunks ready in {:.2} s", ready, sys::now() - load_start);
                 }
                 if let Some(g) = app.session.as_ref().filter(|g| g.net.is_some()) {
-                    logf!("voxelrust: shared: {} creatures, {} vehicles, {} chests, {}", g.mobs.list.len(), g.vehicles.list.len(), g.chests.len(), if g.runs_the_world() { "run from here" } else { "run by another player" });
+                    let extra: String = crate::native::active().filter_map(|(_, n)| n.status).map(|status| alloc::format!("{}, ", status(g))).collect();
+                    logf!("voxelrust: shared: {} creatures, {} chests, {}{}", g.mobs.list.len(), g.chests.len(), extra, if g.runs_the_world() { "run from here" } else { "run by another player" });
                 }
                 if let Some(net) = app.session.as_ref().and_then(|g| g.net.as_ref()) {
                     for p in net.players.values() {
@@ -3426,14 +3323,9 @@ fn server_content(pack: &[u8]) -> Registry {
     }
     let refs: Vec<(&str, &str)> = sources.iter().map(|(p, t)| (*p, t.as_str())).collect();
     let mut registry = Registry::from_sources(&refs, &mut |p| files.iter().find(|f| f.0.strip_prefix("file:") == Some(p)).map(|f| f.1.clone()));
-    // A server may say what the map's colours mean, but never where this
-    // computer fetches from: those addresses stay the ones of our own mods.
-    if let Some(m) = registry.map.as_mut() {
-        let own = block::reg().map.clone().unwrap_or_default();
-        m.heights = own.heights;
-        m.cover = own.cover;
-        m.names = own.names;
-    }
+    // What a server sends may define things, but the lines kept for the
+    // mods' own code (addresses to fetch from, for one) stay our own.
+    registry.lines = block::reg().lines.clone();
     registry
 }
 
@@ -3442,7 +3334,7 @@ static HOST_STOP: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBoo
 
 /// Open the server for the world `name`: its small save (seed, kind and
 /// every edit) is read, or made on first use.
-fn open_server(name: &str, seed: Option<u32>, earth: Option<String>, port: u16, players: usize, base: &str, pack: &[u8]) -> Result<(crate::server::Server, String), String> {
+fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u16, players: usize, base: &str, pack: &[u8]) -> Result<(crate::server::Server, String), String> {
     use crate::server::{Config, Server};
     if name.is_empty() || name != crate::settings::clean_name(name, 24) {
         return Err(String::from("world names use only letters, digits, - and _ (24 at most)"));
@@ -3451,7 +3343,7 @@ fn open_server(name: &str, seed: Option<u32>, earth: Option<String>, port: u16, 
     let edits_path = alloc::format!("{}{}.server-edits.txt", base, name);
     let meta = sys::read_file(&meta_path).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
     let seed = crate::settings::kv(&meta, "seed").and_then(|v| v.parse().ok()).unwrap_or_else(|| seed.unwrap_or(sys::now().to_bits() as u32 ^ 0x5EED_1234));
-    let kind = crate::settings::kv(&meta, "kind").map(String::from).unwrap_or_else(|| earth.unwrap_or_else(|| WorldKind::Normal.to_text()));
+    let kind = crate::settings::kv(&meta, "kind").map(String::from).unwrap_or_else(|| new_kind.unwrap_or_else(|| WorldKind::Normal.to_text()));
     sys::write_file(&meta_path, alloc::format!("seed={}\nkind={}\n", seed, kind).as_bytes());
     let cfg = Config {
         port,
@@ -3476,7 +3368,11 @@ fn open_server(name: &str, seed: Option<u32>, earth: Option<String>, port: u16, 
     if let Some(text) = sys::read_file(&edits_path) {
         server.load_text(&String::from_utf8_lossy(&text));
     }
-    crate::earth::configure(base, "");
+    for (_, n) in crate::native::active() {
+        if let Some(start) = n.start {
+            start(base, &crate::settings::Settings::default());
+        }
+    }
     logf!("voxelrust: serving world `{}` (seed {}, {}) on port {}, {} saved edits", name, seed, kind, server.port(), server.edits.len());
     Ok((server, edits_path))
 }
@@ -3492,28 +3388,10 @@ fn server_loop(mut server: crate::server::Server, edits_path: String, quiet: boo
         let dt = ((now - last) as f32).clamp(0.0, 1.0);
         last = now;
         let lines = server.tick(dt, &mut |line| {
-            // "TILE <elev|map> <z> <x> <y>": fetch it the way the game would.
+            // Something for a mod's own code to answer (map data it can
+            // reach and the asker cannot, say).
             let w: Vec<&str> = line.split(' ').collect();
-            if w.first() == Some(&"GEO") {
-                // "GEO <lat> <lon> <level>": a place-name question.
-                let f = |i: usize| w.get(i).and_then(|v| v.parse::<f64>().ok());
-                return match (f(1), f(2), w.get(3).and_then(|v| v.parse::<i32>().ok())) {
-                    (Some(lat), Some(lon), Some(level)) if (-85.0..=85.0).contains(&lat) && (-180.0..=180.0).contains(&lon) => {
-                        crate::earth::fetch_place_json(lat, lon, level.clamp(1, 3))
-                    }
-                    _ => None,
-                };
-            }
-            let layer = match w.get(1) {
-                Some(&"elev") => crate::earth::Layer::Elevation,
-                Some(&"map") => crate::earth::Layer::Map,
-                _ => return None,
-            };
-            let n = |i: usize| w.get(i).and_then(|v| v.parse::<u32>().ok());
-            match (n(2), n(3), n(4)) {
-                (Some(z), Some(x), Some(y)) if z <= 16 && x < (1 << z) && y < (1 << z) => crate::earth::fetch_bytes((layer, z, x, y)),
-                _ => None,
-            }
+            crate::native::active().filter_map(|(_, n)| n.serve).find_map(|serve| serve(&w))
         });
         if !quiet {
             for l in lines {
@@ -3549,12 +3427,9 @@ fn server_loop(mut server: crate::server::Server, edits_path: String, quiet: boo
 /// `voxelrust --server`: host a world for others, with no window.
 fn run_server(opts: &Opts, base: &str, pack_text: &[u8]) -> Result<(), String> {
     let name = opts.world.clone().unwrap_or_else(|| String::from("server"));
-    let earth = opts.earth.map(|(lat, lon)| {
-        let (scale, vscale) = opts.scale.unwrap_or((30, 75));
-        WorldKind::Earth { lat, lon, scale, vscale, features: true }.to_text()
-    });
+    let new_kind = crate::native::active().filter_map(|(_, n)| n.option_kind).find_map(|kind| kind());
     let port = opts.port.unwrap_or(crate::proto::DEFAULT_PORT);
-    let (server, edits_path) = open_server(&name, opts.seed, earth, port, opts.players.unwrap_or(16), base, pack_text)?;
+    let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text)?;
     let address = sys::net::local_address().unwrap_or_else(|| String::from("<this machine's address>"));
     logf!("voxelrust: players join with:  voxelrust --join {}:{}", address, server.port());
     server_loop(server, edits_path, false);

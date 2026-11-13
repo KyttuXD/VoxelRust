@@ -208,7 +208,7 @@ impl Client {
         self.send(&Msg::State { id, channel, keep, key: String::from(key), data: data.to_vec() });
     }
 
-    /// Whether this player is the one who runs the creatures and vehicles
+    /// Whether this player is the one who runs the creatures and the like
     /// for everybody: the one with the lowest number of those present.
     pub fn runs_the_world(&self) -> bool {
         self.players.keys().all(|&other| self.id < other)

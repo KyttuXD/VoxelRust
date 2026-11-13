@@ -19,10 +19,9 @@ pub enum WorldKind {
     Normal,
     /// Level grassland as far as you go: a place to build.
     Flat,
-    /// The real Earth, from elevation data. Block (0, 0) is at `lat`/`lon`
-    /// (degrees); one block is `scale` metres across and `vscale` metres tall.
-    /// `features` adds roads and buildings from the map.
-    Earth { lat: f64, lon: f64, scale: u32, vscale: u32, features: bool },
+    /// Terrain that a mod's own code supplies (see `native::Native`):
+    /// the text names it and says what it needs, and is kept as written.
+    Custom(String),
 }
 
 impl WorldKind {
@@ -30,30 +29,34 @@ impl WorldKind {
         match self {
             WorldKind::Normal => String::from("normal"),
             WorldKind::Flat => String::from("flat"),
-            WorldKind::Earth { lat, lon, scale, vscale, features } => alloc::format!("earth {} {} {} {} {}", lat, lon, scale, vscale, *features as i32),
+            WorldKind::Custom(text) => text.clone(),
         }
     }
 
     pub fn parse(text: &str) -> Option<WorldKind> {
-        let mut w = text.split(' ');
-        match w.next()? {
+        match text.split(' ').next()? {
             "normal" => Some(WorldKind::Normal),
             "flat" => Some(WorldKind::Flat),
-            "earth" => {
-                let lat = w.next()?.parse::<f64>().ok()?;
-                let lon = w.next()?.parse::<f64>().ok()?;
-                let scale = w.next()?.parse::<u32>().ok()?;
-                let vscale = w.next()?.parse::<u32>().ok()?;
-                if !(-85.0..=85.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) || scale == 0 || vscale == 0 {
-                    return None;
-                }
-                // Older saves have no fifth word: roads and buildings on.
-                let features = w.next() != Some("0");
-                Some(WorldKind::Earth { lat, lon, scale: scale.min(100_000), vscale: vscale.min(10_000), features })
-            }
-            _ => None,
+            // Whichever mod's code knows the word decides. (Asked even of
+            // code that is switched off, so that a world keeps its kind.)
+            _ => crate::native::all().iter().filter_map(|n| n.terrain_parse).find_map(|parse| parse(text)).flatten().map(WorldKind::Custom),
         }
     }
+}
+
+/// Terrain from a mod's own code: what the game asks instead of inventing
+/// the land itself.
+#[derive(Clone, Copy)]
+pub struct Source {
+    pub column: fn(x: i32, z: i32) -> Column,
+    /// Whether a building stands at (x, z), and whether a road runs there
+    /// (asked of a column's neighbours, so they should be cheap).
+    pub built: fn(x: i32, z: i32) -> bool,
+    pub road: fn(x: i32, z: i32) -> bool,
+    /// Blocks are small enough for roads to have painted lines.
+    pub lanes: bool,
+    /// The land is known before anyone walks it, so maps may show it all.
+    pub charted: bool,
 }
 
 static KIND: AtomicPtr<WorldKind> = AtomicPtr::new(core::ptr::null_mut());
@@ -62,21 +65,19 @@ static KIND: AtomicPtr<WorldKind> = AtomicPtr::new(core::ptr::null_mut());
 /// is open at a time, so this is process-wide. (The previous value is
 /// leaked on purpose: worker threads may still be reading it.)
 pub fn set_kind(kind: WorldKind) {
-    let proj = match &kind {
-        WorldKind::Earth { lat, lon, scale, vscale, features } => {
-            crate::earth::reset_base();
-            let mut p = crate::earth::Proj::new(*lat, *lon, *scale, *vscale);
-            p.features = *features;
-            Box::into_raw(Box::new(p))
-        }
+    let source = match &kind {
+        WorldKind::Custom(text) => crate::native::active()
+            .filter_map(|(_, n)| n.terrain_open)
+            .find_map(|open| open(text))
+            .map_or(core::ptr::null_mut(), |s| Box::into_raw(Box::new(s))),
         WorldKind::Normal | WorldKind::Flat => core::ptr::null_mut(),
     };
     set_shape(home_shape(&kind));
-    PROJ.store(proj, Ordering::Release);
+    SOURCE.store(source, Ordering::Release);
     KIND.store(Box::into_raw(Box::new(kind)), Ordering::Release);
 }
 
-static PROJ: AtomicPtr<crate::earth::Proj> = AtomicPtr::new(core::ptr::null_mut());
+static SOURCE: AtomicPtr<Source> = AtomicPtr::new(core::ptr::null_mut());
 
 /// The lie of the land in the dimension being played: 0 the world's own
 /// terrain, 1 flat, 2 empty, 3 islands in the sky.
@@ -107,9 +108,9 @@ fn island(seed: u32, x: i32, z: i32) -> i32 {
     (((n - 0.56) * 90.0) as i32).clamp(0, 22)
 }
 
-/// The map projection of the open world, if it is an Earth world.
-pub fn earth_proj() -> Option<&'static crate::earth::Proj> {
-    unsafe { PROJ.load(Ordering::Acquire).as_ref() }
+/// The mod's code that supplies the open world's terrain, if one does.
+pub fn source() -> Option<&'static Source> {
+    unsafe { SOURCE.load(Ordering::Acquire).as_ref() }
 }
 
 pub fn kind() -> &'static WorldKind {
@@ -145,15 +146,15 @@ pub struct Column {
     /// Height of the topmost ground block.
     pub height: i32,
     pub biome: Biome,
-    /// A river or lake above sea level runs here (Earth worlds).
+    /// A river or lake above sea level runs here (terrain from a map).
     pub river: bool,
-    /// A road or built-up ground, from the map (Earth worlds).
+    /// A road or built-up ground (terrain from a map).
     pub paved: bool,
     /// Height in blocks of the building standing here (0 = none).
     pub building: u8,
-    /// A road, as opposed to other built-up ground (Earth worlds).
+    /// A road, as opposed to other built-up ground.
     pub road: bool,
-    /// Farmland (Earth worlds).
+    /// Farmland (terrain from a map).
     pub farm: bool,
 }
 
@@ -173,8 +174,8 @@ pub fn column(seed: u32, x: i32, z: i32) -> Column {
         }
         _ => {}
     }
-    match earth_proj() {
-        Some(p) => crate::earth::column(p, x, z),
+    match source() {
+        Some(s) => (s.column)(x, z),
         None => invented_column(seed, x, z),
     }
 }
@@ -293,7 +294,7 @@ pub fn is_cave(seed: u32, x: i32, y: i32, z: i32, surface: i32) -> bool {
 }
 
 /// The highest invented ground goes. (Worlds are taller than this: the
-/// room above is for building, and for the real mountains of Earth worlds.)
+/// room above is for building, and for the mountains of terrain a mod supplies.)
 const LAND_TOP: i32 = 114;
 
 /// What a stretch of cave is like. Caves change character from region to
@@ -678,7 +679,7 @@ pub fn generate(seed: u32, cx: i32, cz: i32) -> ChunkData {
             let under_water = h < SEA;
             // Invented shores are sandy; real ones say so themselves (the
             // map marks sand, and it arrives here as the Desert biome).
-            let beach = earth_proj().is_none() && h <= SEA + 1 && col.biome != Biome::Tundra && col.biome != Biome::Taiga;
+            let beach = source().is_none() && h <= SEA + 1 && col.biome != Biome::Tundra && col.biome != Biome::Taiga;
             let (top, fill) = if under_water {
                 let bed = match hash2(seed ^ 0xB1, x >> 2, z >> 2) % 8 {
                     0 => wk.clay,
@@ -723,12 +724,12 @@ pub fn generate(seed: u32, cx: i32, cz: i32) -> ChunkData {
                 };
                 data.set(lx, y, lz, b);
             }
-            let proj = earth_proj();
+            let from = source();
             if col.building > 0 && h > SEA && h + (col.building as i32) < CH - 2 {
                 // A building: outer walls in one of a few materials (the
                 // same for the whole building) with rows of windows, a flat
                 // roof, and inside it floors, stairs and some furniture.
-                let built = |dx: i32, dz: i32| proj.map_or(false, |p| crate::earth::cover_at(p, x + dx, z + dz) == crate::earth::class::BUILDING);
+                let built = |dx: i32, dz: i32| from.map_or(false, |f| (f.built)(x + dx, z + dz));
                 let inside = built(1, 0) && built(-1, 0) && built(0, 1) && built(0, -1);
                 let lot = hash2(seed ^ 0xB11D, x >> 5, z >> 5);
                 let wall = wk.walls[(lot % 4) as usize];
@@ -771,9 +772,9 @@ pub fn generate(seed: u32, cx: i32, cz: i32) -> ChunkData {
             } else if col.road && h > SEA && !col.river {
                 // A road. At scales fine enough to show them, paint a
                 // dashed centre line and solid edges.
-                let is_road = |dx: i32, dz: i32| proj.map_or(false, |p| crate::earth::cover_at(p, x + dx, z + dz) == crate::earth::class::ROAD);
+                let is_road = |dx: i32, dz: i32| from.map_or(false, |f| (f.road)(x + dx, z + dz));
                 let mut surface = wk.asphalt;
-                if proj.map_or(false, |p| p.scale <= 6.0) {
+                if from.map_or(false, |f| f.lanes) {
                     let run = |dx: i32, dz: i32| (1..=7).take_while(|&n| is_road(dx * n, dz * n)).count() as i32;
                     let (xl, xr, zl, zr) = (run(-1, 0), run(1, 0), run(0, -1), run(0, 1));
                     // The road runs along whichever way it goes on longer.
@@ -922,7 +923,7 @@ pub fn generate(seed: u32, cx: i32, cz: i32) -> ChunkData {
 /// A dry place to stand near the origin: the block coordinates of the
 /// ground there.
 pub fn find_spawn(seed: u32) -> (i32, i32, i32) {
-    if earth_proj().is_some() {
+    if source().is_some() {
         // The chosen place itself, or the nearest dry land to it.
         for i in 0..200 {
             let (x, z) = ((i % 20 - 10) * (i / 20) * 12, (i / 20) * (i % 7 - 3) * 12);
@@ -1004,11 +1005,8 @@ mod tests {
 
     #[test]
     fn world_kind_round_trips_as_text() {
-        let e = WorldKind::Earth { lat: 46.5, lon: -121.75, scale: 30, vscale: 40, features: false };
-        assert_eq!(WorldKind::parse(&e.to_text()), Some(e));
         assert_eq!(WorldKind::parse("normal"), Some(WorldKind::Normal));
-        assert_eq!(WorldKind::parse("earth 99 0 30 40"), None);
-        assert_eq!(WorldKind::parse("earth 1 2 0 40"), None);
+        assert_eq!(WorldKind::parse(&WorldKind::Flat.to_text()), Some(WorldKind::Flat));
         assert_eq!(WorldKind::parse("moon"), None);
     }
 

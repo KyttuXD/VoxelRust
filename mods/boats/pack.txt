@@ -3,8 +3,10 @@
 # A rowing boat and a cargo boat with a chest aboard. Right click on water
 # to launch one, right click it to board, F to get out, left click to pick
 # it up.
-# Nothing here is part of the program: a vehicle is a `vehicle` block naming
-# a model, what it travels on (water, rail, land or air) and its numbers.
+# Nothing here is part of the program. How vehicles move is the Vehicles
+# mod's own code (mods/vehicles), which this needs switched on; a vehicle
+# is a `vehicle` section naming a model, what it travels on (water, rail,
+# land or air) and its numbers.
 # Change them or add your own (docs/DATA.md). Switch the mod off in
 # Settings > MODS, or delete its folder, and these are gone from the game.
 model boat file models/boat.bbmodel
@@ -14,6 +16,7 @@ texture icon_cargo_boat paint hull 110 84 56
 
 vehicle boat
   name Boat
+  category Travel
   model boat
   icon icon_boat
   medium water
@@ -23,6 +26,7 @@ vehicle boat
   seat 0.9
 vehicle cargo_boat
   name Cargo Boat
+  category Travel
   model cargo_boat
   icon icon_cargo_boat
   medium water
