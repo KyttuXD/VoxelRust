@@ -60,6 +60,8 @@ Run it with no options for the title screen. Options:
   --add-mod PATH      copy a mod (a folder, a .zip or a pack file) into the
                       data folder's mods, and exit
   --export FILE       with --world NAME: write that world as one file, and exit
+  --export-textures DIR   write every texture as a PNG file (and an atlas) in DIR, and exit.
+                      Edit them and put them in the data folder's textures/ folder
   --import FILE       with --world NAME: add a world from such a file, and exit
   --pos X Y Z         start position      --look YAW PITCH   in degrees
   --time T            time of day, 0..1 (0.25 = noon)
@@ -127,6 +129,8 @@ struct Opts {
     #[cfg_attr(not(feature = "update-test"), allow(dead_code))]
     update_now: bool,
     export: Option<String>,
+    /// `--export-textures DIR`: write every texture as a PNG file, and exit.
+    export_textures: Option<String>,
     /// `--world-op delete|copy|rename NAME [TO]`: change a world's files, and exit.
     world_op: Option<(String, String, String)>,
     import: Option<String>,
@@ -208,6 +212,7 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--no-update" => o.no_update = true,
             "--add-mod" => o.import_mod = Some(next(&mut i, a)?),
             "--export" => o.export = Some(next(&mut i, a)?),
+            "--export-textures" => o.export_textures = Some(next(&mut i, a)?),
             "--world-op" => {
                 let op = next(&mut i, a)?;
                 let name = next(&mut i, a)?;
@@ -3057,6 +3062,14 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mods_off: String = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| crate::settings::Settings::parse(&String::from_utf8_lossy(&b)).mods_off).unwrap_or_default();
     let (first, pack_text) = load_content(&pack_paths, &mods_off);
     block::install(first);
+    // Pictures the player has edited replace the game's own: textures/<id>.png.
+    sys::make_dir(&alloc::format!("{}textures/", base));
+    crate::textures::set_override_dir(&alloc::format!("{}textures/", base));
+    if let Some(dir) = &opts.export_textures {
+        let n = export_textures(reg(), dir)?;
+        logf!("voxelrust: wrote {} textures to {}", n, dir);
+        return Ok(());
+    }
     let registry = reg();
     for w in &registry.warnings {
         logf!("voxelrust: data: {}", w);
@@ -3769,6 +3782,26 @@ fn server_content(pack: &[u8]) -> Registry {
     // mods' own code (addresses to fetch from, for one) stay our own.
     registry.lines = block::reg().lines.clone();
     registry
+}
+
+/// Write every texture as `<id>.png` (16 x 16, RGBA) in `dir`, with the
+/// whole atlas as `atlas.png`, a list of the ids, and a note on editing them.
+fn export_textures(r: &block::Registry, dir: &str) -> Result<usize, String> {
+    let dir = if dir.ends_with('/') || dir.ends_with('\\') { String::from(dir) } else { alloc::format!("{}/", dir) };
+    sys::run_command(&if cfg!(windows) { alloc::format!("mkdir \"{}\" 2>nul", dir.replace('/', "\\")) } else { alloc::format!("mkdir -p \"{}\"", dir) });
+    let mut list = String::new();
+    for (i, t) in r.tiles.iter().enumerate() {
+        // The picture the data describes, not one already in textures/.
+        let px = crate::textures::described_pixels(i, t);
+        if !sys::write_file(&alloc::format!("{}{}.png", dir, t.id), &crate::png::encode(16, 16, &px)) {
+            return Err(alloc::format!("cannot write {}{}.png", dir, t.id));
+        }
+        list.push_str(&alloc::format!("{} {}\n", i, t.id));
+    }
+    sys::write_file(&alloc::format!("{}atlas.png", dir), &crate::png::encode(crate::textures::ATLAS, crate::textures::ATLAS, &crate::textures::build_atlas_described(r)));
+    sys::write_file(&alloc::format!("{}textures.txt", dir), list.as_bytes());
+    sys::write_file(&alloc::format!("{}README.txt", dir), b"One PNG per texture, 16 x 16 pixels, RGBA (transparent pixels are holes).\nEdit any of them with an image editor and copy the ones you changed into the\n`textures` folder of the game's data folder (it is made when the game starts):\nthey replace the game's own the next time the game starts, or when packs are\nreloaded. A file of any other size is ignored. atlas.png is every texture in one\npicture, for looking at; textures.txt lists the number and id of each one.\n");
+    Ok(r.tiles.len())
 }
 
 /// Set to stop a server started from the multiplayer menu.

@@ -2,7 +2,7 @@
 //! painted by small procedures at start-up, and packs can add their own as
 //! flat colours or 16x16 TGA files.
 
-use crate::block::{Registry, TileSrc};
+use crate::block::{Registry, TileDef, TileSrc};
 use crate::noise::hash2;
 use alloc::vec::Vec;
 
@@ -932,36 +932,91 @@ pub fn decode_tga(d: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Where pictures the player has edited are looked for (`<id>.png`, 16 x 16),
+/// set once by the game when it starts.
+static OVERRIDE_DIR: core::sync::atomic::AtomicPtr<alloc::string::String> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+
+pub fn set_override_dir(dir: &str) {
+    let p = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(alloc::string::String::from(dir)));
+    OVERRIDE_DIR.store(p, core::sync::atomic::Ordering::Release);
+}
+
+fn override_dir() -> Option<&'static str> {
+    let p = OVERRIDE_DIR.load(core::sync::atomic::Ordering::Acquire);
+    // SAFETY: set once from a leaked box and never freed.
+    if p.is_null() { None } else { Some(unsafe { &*p }.as_str()) }
+}
+
+/// The 16 x 16 RGBA picture of texture number `i`, top row first: the file
+/// the player has put in the textures folder if there is one, else what the
+/// data describes.
+pub fn tile_pixels(i: usize, t: &TileDef) -> Vec<u8> {
+    if let Some(dir) = override_dir() {
+        let file = alloc::format!("{}{}.png", dir, t.id);
+        if let Some(img) = crate::sys::read_file(&file).and_then(|b| crate::png::decode(&b)) {
+            if img.w == TILE && img.h == TILE {
+                return img.rgba;
+            }
+        }
+    }
+    described_pixels(i, t)
+}
+
+/// The picture the data describes, whatever files there are.
+pub fn described_pixels(i: usize, t: &TileDef) -> Vec<u8> {
+    let mut out = alloc::vec![0u8; TILE * TILE * 4];
+    for y in 0..TILE {
+        for x in 0..TILE {
+            let (xi, yi) = (x as i32, y as i32);
+            let p: Px = match &t.src {
+                TileSrc::Builtin(name) => match builtin(name, xi, yi) {
+                    Some(p) => p,
+                    // Unknown painter: a loud checkerboard.
+                    None => {
+                        if (x / 4 + y / 4) % 2 == 0 {
+                            [230, 40, 220, 255]
+                        } else {
+                            [20, 20, 20, 255]
+                        }
+                    }
+                },
+                TileSrc::Flat { rgb, noise } => grain(*rgb, *noise as i32, xi, yi, 100 + i as u32),
+                TileSrc::Paint { style, rgb } => painted(style, *rgb, xi, yi).unwrap_or([230, 40, 220, 255]),
+                TileSrc::Pixels(px) => {
+                    let o = (y * TILE + x) * 4;
+                    [px[o], px[o + 1], px[o + 2], px[o + 3]]
+                }
+            };
+            let o = (y * TILE + x) * 4;
+            out[o..o + 4].copy_from_slice(&p);
+        }
+    }
+    out
+}
+
+/// The atlas of what the data describes, ignoring the player's own files (for exporting).
+pub fn build_atlas_described(r: &Registry) -> Vec<u8> {
+    let mut a = alloc::vec![0u8; ATLAS * ATLAS * 4];
+    for (i, t) in r.tiles.iter().enumerate() {
+        let (tx, ty) = (i % PER_ROW, i / PER_ROW);
+        let px = described_pixels(i, t);
+        for y in 0..TILE {
+            let o = ((ty * TILE + y) * ATLAS + tx * TILE) * 4;
+            a[o..o + TILE * 4].copy_from_slice(&px[y * TILE * 4..(y + 1) * TILE * 4]);
+        }
+    }
+    a
+}
+
 /// Paint every registered texture into one 512 x 512 RGBA atlas.
 pub fn build_atlas(r: &Registry) -> Vec<u8> {
     let mut a = alloc::vec![0u8; ATLAS * ATLAS * 4];
     for (i, t) in r.tiles.iter().enumerate() {
         let (tx, ty) = (i % PER_ROW, i / PER_ROW);
+        let px = tile_pixels(i, t);
         for y in 0..TILE {
-            for x in 0..TILE {
-                let (xi, yi) = (x as i32, y as i32);
-                let p: Px = match &t.src {
-                    TileSrc::Builtin(name) => match builtin(name, xi, yi) {
-                        Some(p) => p,
-                        // Unknown painter: a loud checkerboard.
-                        None => {
-                            if (x / 4 + y / 4) % 2 == 0 {
-                                [230, 40, 220, 255]
-                            } else {
-                                [20, 20, 20, 255]
-                            }
-                        }
-                    },
-                    TileSrc::Flat { rgb, noise } => grain(*rgb, *noise as i32, xi, yi, 100 + i as u32),
-                    TileSrc::Paint { style, rgb } => painted(style, *rgb, xi, yi).unwrap_or([230, 40, 220, 255]),
-                    TileSrc::Pixels(px) => {
-                        let o = (y * TILE + x) * 4;
-                        [px[o], px[o + 1], px[o + 2], px[o + 3]]
-                    }
-                };
-                let o = ((ty * TILE + y) * ATLAS + tx * TILE + x) * 4;
-                a[o..o + 4].copy_from_slice(&p);
-            }
+            let o = ((ty * TILE + y) * ATLAS + tx * TILE) * 4;
+            a[o..o + TILE * 4].copy_from_slice(&px[y * TILE * 4..(y + 1) * TILE * 4]);
         }
     }
     a
@@ -1035,5 +1090,16 @@ mod tests {
         assert_eq!(&px[0..4], &[3, 2, 0, 255]);
         assert_eq!(&px[4..8], &[3, 2, 1, 255]);
         assert!(decode_tga(&f[..100]).is_none());
+    }
+
+    #[test]
+    fn every_texture_survives_being_written_as_a_png_and_read_back() {
+        let r = crate::block::reg();
+        for (i, t) in r.tiles.iter().enumerate().step_by(37) {
+            let px = described_pixels(i, t);
+            let img = crate::png::decode(&crate::png::encode(TILE, TILE, &px)).expect("png");
+            assert_eq!((img.w, img.h), (TILE, TILE), "{}", t.id);
+            assert_eq!(img.rgba, px, "{}", t.id);
+        }
     }
 }

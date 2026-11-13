@@ -917,3 +917,14 @@ voxelrust --pack my-pack.txt --showcase --show hud --screenshot out.bmp
 
 lays one of every block out in front of the camera and writes a picture.
 `--show creatures` instead lines up one of every creature model.
+
+## Editing the game's textures
+
+`voxelrust --export-textures DIR` writes every texture (the game's and every
+mod's) as `<id>.png`, 16 x 16 pixels, RGBA, in `DIR`, with `atlas.png` (all of
+them in one picture), `textures.txt` (number and id of each) and a note on
+editing. Change any of them in an image editor and copy the ones you changed
+into the `textures/` folder of the data folder (the game makes it when it
+starts). They replace the data's picture of the same id the next time the
+game starts or packs are reloaded, in singleplayer and on servers alike. A
+file that is not 16 x 16 is ignored; delete a file to get the original back.
