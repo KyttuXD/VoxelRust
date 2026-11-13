@@ -168,11 +168,17 @@ pub fn on_body(held: Held, white: u16, swing: f32, feet: [f32; 3], yaw: f32, hei
     }
     let start = out.len();
     item_geometry(held, white, out);
+    // Seen from farther off, the item is drawn larger than in the hand: a
+    // stick's picture is mostly empty space.
+    map(&mut out[start..], |p| [p[0] * 1.8, p[1] * 1.8, p[2] * 1.8]);
     let s = swing_angle(swing);
     // Right hand: about the height of the chest, to the right, forward a bit.
-    // In front of the body's front face (which is at z = -0.15), so the
-    // item is not hidden inside the body.
-    let hand = [0.27_f32, height * 0.56, -0.26];
+    // At the right hand, at the side of the body and about hip height, where
+    // LastRoute's remote items sit (its R-Hand bone), so the torso does not hide it.
+    // The model's right hand is at x 0.22..0.45 blocks, at about 0.73 blocks up
+    // (its arm's lower end). The item is held just outside it, so it shows from
+    // the front and the back alike.
+    let hand = [0.50_f32, height * 0.42, 0.0];
     map(&mut out[start..], |p| {
         let p = rot_x(p, s * 0.6);
         let p = rot_y([p[0] + hand[0], p[1] + hand[1], p[2] + hand[2]], yaw);
@@ -221,6 +227,6 @@ mod tests {
         let mut out = Vec::new();
         on_body(Held::Card(1), 0, 0.0, [0.0, 0.0, 0.0], 0.0, 1.8, &mut out);
         let c = out[0].p.iter().fold([0.0f32; 3], |a, p| [a[0] + p[0], a[1] + p[1], a[2] + p[2]]);
-        assert!(c[0] / 4.0 > 0.2 && c[1] / 4.0 > 0.9, "held at the right hand: {:?}", c);
+        assert!(c[0] / 4.0 > 0.4 && c[1] / 4.0 > 0.6, "held at the right hand: {:?}", c);
     }
 }
