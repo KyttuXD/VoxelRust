@@ -297,6 +297,26 @@ impl ModelDef {
 mod tests {
     use super::*;
 
+    #[test]
+    fn knees_and_elbows_bend_with_the_stride() {
+        assert_eq!(classify("Shin-FL"), Swing::Shin(match classify("Leg-FL") {
+            Swing::Limb(s) => s,
+            _ => panic!("Leg-FL is a limb"),
+        }));
+        assert!(matches!(classify("Forearm-L"), Swing::Forearm(_)));
+        assert!(matches!(classify("tail-b"), Swing::Tail(k) if k == 1.0));
+        // A model with jointed legs: walking moves it, and nothing goes wild.
+        let text = String::from_utf8_lossy(crate::block::embedded::file("models/cow.bbmodel").expect("cow model")).into_owned();
+        let cow = ModelDef::from_bbmodel("cow", &text).unwrap();
+        assert!(cow.model.bones.iter().any(|b| b.name.to_ascii_lowercase().starts_with("shin")), "the cow has knees");
+        let (mut still, mut walking) = (Vec::new(), Vec::new());
+        cow.quads(&Pose::default(), [0.0; 3], 0.0, 1.4, false, &mut still);
+        cow.quads(&Pose { phase: 1.0, stride: 1.0, ..Default::default() }, [0.0; 3], 0.0, 1.4, false, &mut walking);
+        assert_eq!(still.len(), walking.len());
+        assert!(still.iter().zip(&walking).any(|(a, b)| a.pos != b.pos));
+        assert!(walking.iter().all(|v| v.pos.iter().all(|c| c.is_finite() && c.abs() < 4.0)));
+    }
+
     const PLAYER: &str = include_str!("../../data/models/player.bbmodel");
 
     fn bounds(v: &[ModelVert]) -> ([f32; 3], [f32; 3]) {

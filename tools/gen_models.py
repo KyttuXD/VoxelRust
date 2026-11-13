@@ -13,6 +13,10 @@ model's texture. The base colour of a texel comes from a "shader" evaluated at
 the texel's 3D position (so stripes, patches and belly shading run coherently
 across faces), then per-face "decals" paint the eyes, noses and so on.
 
+Limbs are built straight; articulate() adds the knees, elbows and tail/neck
+joints (`Shin-*`, `Forearm-*`, `tail-b`, `neck-b` child bones) to every model
+after painting, without changing how it looks at rest.
+
 Conventions: y is up, the front of a model faces -z, its left side is -x,
 feet stand on y = 0, one model unit is one texel. Output is deterministic.
 """
@@ -166,6 +170,7 @@ class Model:
         self.parts = []
         self.bones = {"Body": ((0, 0, 0), None)}
         self.jointed = False
+        self.rects = {}   # what pack() lays out: key -> texels
 
     def bone(self, name, pivot, parent="Body"):
         self.bones[name] = (tuple(pivot), parent)
@@ -205,32 +210,42 @@ class Model:
         n = max(1, int(round(part.hi[axis] - part.lo[axis])))
         assert 0 < k < n, (self.id, part.name, axis, k, n)
         at = round(part.lo[axis] + k * (part.hi[axis] - part.lo[axis]) / n, 6)
-        lo_t, hi_t, line = {}, {}, None
+        lo_t, hi_t, lo_s, hi_s, cap = {}, {}, {}, {}, None
         for f, px in part.tex.items():
             tl, tr, bl = face_frame(f, part.lo, part.hi)
-            if tr[axis] != tl[axis]:
+            key, dx, dy = part.src[f]
+            if tr[axis] != tl[axis]:     # the cut runs down this face
                 asc = tr[axis] > tl[axis]
-                lo_t[f] = [row[:k] if asc else row[n - k:] for row in px]
-                hi_t[f] = [row[k:] if asc else row[:n - k] for row in px]
-                line = line or [row[-1] if asc else row[0] for row in lo_t[f]]
-            elif bl[axis] != tl[axis]:
+                c = k if asc else n - k
+                (lo_t[f], hi_t[f]) = ([row[:c] for row in px], [row[c:] for row in px])[::1 if asc else -1]
+                (lo_s[f], hi_s[f]) = ((key, dx, dy), (key, dx + c, dy))[::1 if asc else -1]
+                spot = (px[len(px) // 2][c], (key, dx + c, dy + len(px) // 2))
+            elif bl[axis] != tl[axis]:   # ... or across it
                 asc = bl[axis] > tl[axis]
-                lo_t[f] = px[:k] if asc else px[n - k:]
-                hi_t[f] = px[k:] if asc else px[:n - k]
-                line = line or list(lo_t[f][-1] if asc else lo_t[f][0])
+                c = k if asc else n - k
+                (lo_t[f], hi_t[f]) = (px[:c], px[c:])[::1 if asc else -1]
+                (lo_s[f], hi_s[f]) = ((key, dx, dy), (key, dx, dy + c))[::1 if asc else -1]
+                spot = (px[c][len(px[c]) // 2], (key, dx + len(px[c]) // 2, dy + c))
             else:
-                (lo_t if tl[axis] == part.lo[axis] else hi_t)[f] = px
+                if tl[axis] == part.lo[axis]:
+                    lo_t[f], lo_s[f] = px, part.src[f]
+                else:
+                    hi_t[f], hi_s[f] = px, part.src[f]
+                continue
+            # The cut ends show only when the joint bends: they borrow a texel beside the cut.
+            if cap is None or (cap[0][3] < 255 and spot[0][3] == 255):
+                cap = spot
         pieces = []
-        for tex, cap, end in ((lo_t, ("east", "up", "south")[axis], "hi"), (hi_t, ("west", "down", "north")[axis], "lo")):
+        for tex, src, face, end in ((lo_t, lo_s, ("east", "up", "south")[axis], "hi"), (hi_t, hi_s, ("west", "down", "north")[axis], "lo")):
             q = Part()
             q.__dict__.update(part.__dict__)
             if end == "hi":
                 q.hi = tuple(at if a == axis else v for a, v in enumerate(part.hi))
             else:
                 q.lo = tuple(at if a == axis else v for a, v in enumerate(part.lo))
-            if line:  # the cut end, seen only when the joint bends: one texel of the colour there
-                tex[cap] = [[tuple(sum(c[i] for c in line) // len(line) for i in range(3)) + (255,)]]
-            q.tex = tex
+            if cap:
+                tex[face], src[face] = [[cap[0]]], cap[1]
+            q.tex, q.src = tex, src
             pieces.append(q)
         i = self.parts.index(part)
         self.parts[i:i + 1] = pieces
@@ -240,7 +255,9 @@ class Model:
 
     def paint(self):
         for pi, part in enumerate(self.parts):
-            part.tex = {}
+            # tex: the texels of each face. src: where they sit in the atlas, as
+            # (key of a packed rectangle, x and y offset in it) - see split().
+            part.tex, part.src = {}, {}
             lo, hi = part.lo, part.hi
             for fi, f in enumerate(FACES):
                 if f in part.skip:
@@ -274,15 +291,12 @@ class Model:
                 if part.decal:
                     part.decal(Canvas(f, w, h, px, part.name))
                 part.tex[f] = px
+                part.src[f] = ((pi, f), 0, 0)
+                self.rects[(pi, f)] = px
 
     def pack(self):
         """Shelf-packs every face (with a 1 px replicated gutter) into the smallest texture."""
-        rects = []
-        for pi, part in enumerate(self.parts):
-            for f in FACES:
-                if f in part.tex:
-                    px = part.tex[f]
-                    rects.append((len(px), len(px[0]), pi, f))
+        rects = [(len(px), len(px[0]), pi, f) for (pi, f), px in self.rects.items()]
         rects.sort(key=lambda r: (-r[0], -r[1], r[2], r[3]))
         for tw, th in ((32, 32), (64, 32), (64, 64), (128, 64), (128, 128)):
             pos, x, y, shelf = {}, 0, 0, 0
@@ -302,14 +316,17 @@ class Model:
             raise SystemExit("%s: texture does not fit in %dx%d" % (self.id, MAX_TEX, MAX_TEX))
         img = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
         out = img.load()
-        for (pi, f), (x0, y0) in pos.items():
-            px = self.parts[pi].tex[f]
+        for key, (x0, y0) in pos.items():
+            px = self.rects[key]
             h, w = len(px), len(px[0])
             for j in range(-1, h + 1):
                 for i in range(-1, w + 1):
                     out[x0 + i, y0 + j] = px[min(max(j, 0), h - 1)][min(max(i, 0), w - 1)]
-            self.parts[pi].uv = getattr(self.parts[pi], "uv", {})
-            self.parts[pi].uv[f] = [x0, y0, x0 + w, y0 + h]
+        for part in self.parts:
+            part.uv = {}
+            for f, (key, dx, dy) in part.src.items():
+                x0, y0 = pos[key][0] + dx, pos[key][1] + dy
+                part.uv[f] = [x0, y0, x0 + len(part.tex[f][0]), y0 + len(part.tex[f])]
         self.image = img
 
     # -- output
@@ -319,8 +336,6 @@ class Model:
         if not self.jointed and self.id not in RIGID:
             self.jointed = True
             articulate(self)
-        for p in self.parts:
-            p.uv = {}
         self.pack()
         ns = uuid.UUID("6f1d2c1e-8f0a-4a57-9c7e-2b1a7d3c9e10")
         elements, by_bone = [], {}
@@ -476,7 +491,7 @@ def joint(m, bone, child, explicit=None, axis=None, min_len=0.0, prefix="lower",
         k = min(range(1, n), key=lambda k: (abs(k * dim(main, a) / n - want), k))   # texels from the root end
         lo, hi = m.split(main, a, n - k if root_hi else k)
         near, farp = (hi, lo) if root_hi else (lo, hi)
-        farp.name = prefix + "-" + re.sub(r"^(leg|arm)-", "", main.name)
+        farp.name = prefix if prefix.startswith(main.name) else prefix + "-" + re.sub(r"^(leg|arm)-", "", main.name)
         j = near.lo[a] if root_hi else near.hi[a]
         lower = [farp]
         up = main = near
