@@ -89,6 +89,30 @@ impl Ui<'_> {
         mx >= x && mx < x + w && my >= y && my < y + h
     }
 
+    /// A scroll bar down the side of a list: `pos` is the first row shown
+    /// of `total`, `shown` at a time. Drag it, or click the track, to move;
+    /// the wheel is the list's own business. Draws nothing if all fits.
+    pub fn scrollbar(&mut self, x: f32, y: f32, w: f32, h: f32, pos: &mut i32, shown: usize, total: usize) {
+        if total <= shown || h <= 0.0 {
+            return;
+        }
+        let max = (total - shown) as i32;
+        self.r.rect(x, y, w, h, [18, 20, 28, 220]);
+        let thumb = (h * shown as f32 / total as f32).max(8.0 * self.s);
+        // Held anywhere on the track, the thumb goes to the pointer.
+        let (mx, my) = self.inp.mouse;
+        if self.inp.down[1] && mx >= x - 3.0 * self.s && mx < x + w + 3.0 * self.s && my >= y && my < y + h {
+            let t = ((my - y - thumb * 0.5) / (h - thumb).max(1.0)).clamp(0.0, 1.0);
+            *pos = (t * max as f32 + 0.5) as i32;
+            self.clicked_any = true;
+        }
+        *pos = (*pos).clamp(0, max);
+        let ty = y + (h - thumb) * (*pos as f32 / max as f32);
+        let hot = self.hot(x - 3.0 * self.s, y, w + 6.0 * self.s, h);
+        self.r.rect(x, ty, w, thumb, if hot { [150, 170, 230, 255] } else { [104, 112, 140, 255] });
+        self.r.rect(x, ty, w, self.s, [190, 200, 230, 255]);
+    }
+
     pub fn panel(&mut self, x: f32, y: f32, w: f32, h: f32) {
         self.r.rect(x, y, w, h, PANEL);
         self.r.frame(x, y, w, h, self.s, [90, 96, 116, 255]);

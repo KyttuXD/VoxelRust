@@ -2067,11 +2067,9 @@ impl App {
                     }
                 }
             }
-            if max_scroll > 0 {
-                let t = alloc::format!("PAGE {}/{} (WHEEL)", self.inv_scroll + 1, max_scroll + 1);
-                let tw = Renderer::text_width(&t, s);
-                ui.text(px + pw - tw - 6.0 * s, uy + upper_rows as f32 * cell + 4.0 * s, &t, ui::DIM);
-            }
+            // The wheel scrolls a row at a time; the bar at the side shows
+            // where in the list this is, and can be dragged.
+            ui.scrollbar(px + pw - 4.5 * s, uy, 3.0 * s, upper_rows as f32 * cell, &mut self.inv_scroll, upper_rows, total_rows);
         } else {
             let at_oven = at_table && self.at_oven;
             let at_furnace = at_table && self.at_furnace;
@@ -2130,6 +2128,7 @@ impl App {
                     }
                 }
             }
+            ui.scrollbar(px + pw - 4.5 * s, uy, 3.0 * s, upper_rows as f32 * cell, &mut self.inv_scroll, upper_rows, total_rows);
             if let Some(rc) = craft {
                 for &(i, n) in &rc.inputs {
                     g.inv.remove(i as u16, n);
