@@ -1,7 +1,7 @@
-# Natural Disasters - a mod that comes with the game.
+# Natural Disasters - a mod that comes with the game, in its own folder.
 #
 # Earthquakes, tornadoes and tsunamis. They are part of the program, and
-# this pack is what switches them on: turn the mod off in Settings > MODS
+# this pack is what switches them on: switch the mod off in Settings > MODS (or delete its folder)
 # and they cannot happen at all. With it on, they still only happen when
 # NATURAL DISASTERS is on in Settings > GAME.
 feature disasters

@@ -2492,7 +2492,17 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let auto_pack = alloc::format!("{}pack.txt", base);
     // Then every mod in the data folder's `mods`, and in a `mods` folder
     // beside where the game was started (handy while making one).
-    let mut pack_paths = alloc::vec![auto_pack.clone(), alloc::format!("{}mods/*", base), String::from("mods/*")];
+    // Mods are looked for beside the program (where the ones that come
+    // with the game are; inside the app on a Mac), in the data folder, and
+    // in a `mods` folder where the game was started (handy while making one).
+    let exe = sys::exe_dir();
+    let mut pack_paths = alloc::vec![auto_pack.clone()];
+    for folder in [alloc::format!("{}mods", exe), alloc::format!("{}../Resources/mods", exe), alloc::format!("{}mods", base), String::from("mods")] {
+        let pattern = alloc::format!("{}/*", folder);
+        if !pack_paths.contains(&pattern) && (folder == "mods" || !exe.is_empty() || folder.starts_with(base.as_str())) {
+            pack_paths.push(pattern);
+        }
+    }
     pack_paths.extend(opts.packs.iter().cloned());
     for p in &opts.packs {
         if sys::read_file(p).is_none() {
@@ -2987,6 +2997,15 @@ fn load_content(pack_paths: &[String], off: &str) -> (Registry, Vec<u8>) {
             None => all.push(p.clone()),
         }
     }
+    // The same mod found in two places (beside the program and in the
+    // folder the game was started from, say) is loaded once.
+    let mut named: Vec<String> = Vec::new();
+    all.retain(|p| {
+        let n = mod_name(p);
+        let fresh = !p.contains("/mods/") && !p.starts_with("mods/") || !named.contains(&n);
+        named.push(n);
+        fresh
+    });
     for p in &all {
         if let Some(bytes) = sys::read_file(p) {
             logf!("voxelrust: content from {}", p);

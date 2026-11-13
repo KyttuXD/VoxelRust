@@ -358,6 +358,86 @@ extern "system" {
     fn FindClose(handle: *mut c_void) -> c_int;
 }
 
+#[cfg(target_os = "linux")]
+extern "C" {
+    fn readlink(path: *const c_char, buf: *mut u8, size: usize) -> isize;
+}
+
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn _NSGetExecutablePath(buf: *mut u8, size: *mut u32) -> c_int;
+}
+
+#[cfg(all(unix, not(target_arch = "wasm32")))]
+extern "C" {
+    fn rename(from: *const c_char, to: *const c_char) -> c_int;
+    fn chmod(path: *const c_char, mode: u32) -> c_int;
+}
+
+#[cfg(windows)]
+#[link(name = "kernel32", kind = "raw-dylib")]
+extern "system" {
+    fn GetModuleFileNameA(module: *mut c_void, buf: *mut u8, size: u32) -> u32;
+    fn MoveFileExA(from: *const c_char, to: *const c_char, flags: u32) -> c_int;
+}
+
+/// The full path of the running program; empty if it cannot be told.
+pub fn exe_path() -> String {
+    #[allow(unused_mut)]
+    let mut buf = [0u8; 2048];
+    #[allow(unused_assignments, unused_mut)]
+    let mut n = 0usize;
+    #[cfg(target_os = "linux")]
+    unsafe {
+        n = readlink(b"/proc/self/exe\0".as_ptr() as *const c_char, buf.as_mut_ptr(), buf.len() - 1).max(0) as usize;
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        let mut size = buf.len() as u32 - 1;
+        if _NSGetExecutablePath(buf.as_mut_ptr(), &mut size) == 0 {
+            n = buf.iter().position(|&b| b == 0).unwrap_or(0);
+        }
+    }
+    #[cfg(windows)]
+    unsafe {
+        n = GetModuleFileNameA(core::ptr::null_mut(), buf.as_mut_ptr(), buf.len() as u32 - 1) as usize;
+    }
+    String::from_utf8_lossy(&buf[..n.min(buf.len())]).into_owned()
+}
+
+/// The folder the running program is in, with a trailing separator.
+pub fn exe_dir() -> String {
+    let p = exe_path();
+    match p.rfind(|c| c == '/' || c == '\\') {
+        Some(i) => String::from(&p[..=i]),
+        None => String::new(),
+    }
+}
+
+/// Put the file `from` in place of `to` (which may be the running
+/// program: on Windows that one is moved aside first, as `<to>.old`).
+/// Returns whether it worked.
+pub fn replace_file(from: &str, to: &str) -> bool {
+    #[cfg(all(unix, not(target_arch = "wasm32")))]
+    unsafe {
+        let (f, t) = (cstr(from), cstr(to));
+        chmod(f.as_ptr() as *const c_char, 0o755);
+        return rename(f.as_ptr() as *const c_char, t.as_ptr() as *const c_char) == 0;
+    }
+    #[cfg(windows)]
+    unsafe {
+        let (f, t, old) = (cstr(from), cstr(to), cstr(&alloc::format!("{}.old", to)));
+        // 1 = replace an existing file.
+        MoveFileExA(t.as_ptr() as *const c_char, old.as_ptr() as *const c_char, 1);
+        return MoveFileExA(f.as_ptr() as *const c_char, t.as_ptr() as *const c_char, 1) != 0;
+    }
+    #[allow(unreachable_code)]
+    {
+        let _ = (from, to);
+        false
+    }
+}
+
 /// The names in a folder (files and folders alike, without `.` and `..`),
 /// sorted. Empty when there is no such folder.
 pub fn list_dir(path: &str) -> Vec<String> {

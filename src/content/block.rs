@@ -564,16 +564,23 @@ pub fn reg() -> &'static Registry {
     if !p.is_null() {
         return unsafe { &*p };
     }
-    // Nothing installed yet (tests, tools): the base data and the mods
-    // that come with the game.
-    let packs: Vec<(&str, String)> = embedded::FILES
-        .iter()
-        .filter(|f| f.0.starts_with("packs/") && f.0.ends_with("/pack.txt"))
-        .map(|f| (f.0, String::from_utf8_lossy(f.1).into_owned()))
-        .collect();
+    // Nothing installed yet (tests, tools): the base data alone; the
+    // tests also get the mods that come with the game.
+    #[allow(unused_mut)]
     let mut sources: Vec<(&str, &str)> = alloc::vec![("base.txt", BASE_DATA)];
-    sources.extend(packs.iter().map(|p| (p.0, p.1.as_str())));
-    install(Registry::from_sources(&sources, &mut |_| None));
+    #[cfg(test)]
+    {
+        sources.push(("mods/disasters/pack.txt", include_str!("../../mods/disasters/pack.txt")));
+        sources.push(("mods/earth/pack.txt", include_str!("../../mods/earth/pack.txt")));
+        sources.push(("mods/landvehicles/pack.txt", include_str!("../../mods/landvehicles/pack.txt")));
+    }
+    install(Registry::from_sources(&sources, &mut |_path| {
+        #[cfg(test)]
+        if _path == "mods/landvehicles/models/car.bbmodel" {
+            return Some(include_bytes!("../../mods/landvehicles/models/car.bbmodel").to_vec());
+        }
+        None
+    }));
     unsafe { &*REG.load(Ordering::Acquire) }
 }
 

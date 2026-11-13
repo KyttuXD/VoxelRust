@@ -30,4 +30,3 @@ model cargo_boat file models/cargo_boat.bbmodel
 model cart file models/cart.bbmodel
 model chest_cart file models/chest_cart.bbmodel
 model plane file models/plane.bbmodel
-model car file models/car.bbmodel

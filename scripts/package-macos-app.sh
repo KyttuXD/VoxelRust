@@ -48,6 +48,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 printf 'APPL????' > "$APP/Contents/PkgInfo"
+# The mods that come with the game ride inside the app.
+mkdir -p "$APP/Contents/Resources/mods"
+for m in disasters earth landvehicles; do
+  [ -d "mods/$m" ] && cp -R "mods/$m" "$APP/Contents/Resources/mods/"
+done
 if [ -n "${1:-}" ]; then
   cp -R "$1" "$APP/Contents/Frameworks/"
 fi

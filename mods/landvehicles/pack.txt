@@ -1,7 +1,9 @@
-# Land Vehicles - a mod that comes with the game.
+# Land Vehicles - a mod that comes with the game, in its own folder.
 #
 # Things with wheels. Boats, rail carts and the plane are part of the base
-# game; cars live here so that they can be left out.
+# game; cars live here so that they can be left out (delete the folder, or
+# switch the mod off in Settings > MODS).
+model car file models/car.bbmodel
 texture icon_buggy paint vehicle 54 130 76
 texture icon_truck paint vehicle 190 70 60
 texture icon_kart paint vehicle 240 200 60
