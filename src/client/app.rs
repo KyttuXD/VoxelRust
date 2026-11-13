@@ -988,12 +988,45 @@ impl App {
             }
             r.finish_world(&cam, &env);
         } else {
-            r.clear([0.30, 0.52, 0.86]);
+            r.clear([0.36, 0.56, 0.86]);
         }
 
         self.tags = new_tags;
         r.begin_2d();
         let (w, h) = (r.w as f32, r.h as f32);
+        if self.session.is_none() {
+            // Menus stand on a wall of the game's own blocks: stone below,
+            // earth and turf above, dimmed so the buttons stand out, and
+            // drifting slowly sideways.
+            let tile = (h / 11.0).max(32.0);
+            let wk = &reg().wk;
+            let slid = self.ui_clock * 6.0;
+            let drift = slid - ((slid / tile) as i32) as f32 * tile;
+            let rows = (h / tile) as i32 + 1;
+            let cols = (w / tile) as i32 + 2;
+            for row in 0..rows {
+                let (b, face) = match row {
+                    0..=2 => (block::AIR, 0),
+                    3 => (wk.grass, 1),
+                    4 | 5 => (wk.dirt, 1),
+                    _ => (wk.stone, 1),
+                };
+                if b == block::AIR {
+                    continue;
+                }
+                let shade = (200 - row * 8).max(120) as u8;
+                for col in 0..cols {
+                    // A few ores in the rock, the same ones every time.
+                    let roll = crate::noise::hash2(77, col + (self.ui_clock * 6.0 / tile) as i32, row);
+                    let block = if row >= 6 && roll % 13 == 0 { [wk.coal_ore, wk.iron_ore, wk.copper_ore, wk.crystal_ore][(roll >> 8) as usize % 4] } else { b };
+                    r.icon(col as f32 * tile - drift, row as f32 * tile, tile + 0.5, block::def(block).tex[face], [shade, shade, shade, 255]);
+                }
+            }
+            // Evening light from above, and the corners drawn in.
+            r.rect(0.0, 0.0, w, tile * 3.0, [255, 190, 120, 26]);
+            r.rect(0.0, h * 0.55, w, h * 0.45, [0, 0, 10, 50]);
+            r.rect(0.0, 0.0, w, h, [8, 10, 24, 60]);
+        }
         let s = self.ui_scale(r);
         if underwater {
             r.rect(0.0, 0.0, w, h, [20, 70, 150, 90]);
@@ -2405,7 +2438,16 @@ fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Co
 }
 
 fn draw_slot(r: &mut Renderer, x: f32, y: f32, size: f32, s: f32, stack: Option<Stack>, hot: bool) {
-    r.rect(x + s, y + s, size - 2.0 * s, size - 2.0 * s, if hot { [96, 132, 208, 235] } else { [52, 56, 68, 215] });
+    // A slot is a shallow well: dark top and left, light bottom and right.
+    let (ix, iy, iw) = (x + s, y + s, size - 2.0 * s);
+    r.rect(ix, iy, iw, iw, if hot { [92, 126, 204, 240] } else { [44, 47, 58, 225] });
+    r.rect(ix, iy, iw, s, [18, 19, 26, 230]);
+    r.rect(ix, iy, s, iw, [18, 19, 26, 230]);
+    r.rect(ix, iy + iw - s, iw, s, [86, 92, 112, 230]);
+    r.rect(ix + iw - s, iy, s, iw, [86, 92, 112, 230]);
+    if hot {
+        r.frame(ix, iy, iw, iw, s, [255, 255, 255, 150]);
+    }
     if let Some(st) = stack {
         draw_item(r, x + 3.0 * s, y + 3.0 * s, size - 6.0 * s, st.item as usize, WHITE);
         if st.count > 1 {

@@ -114,8 +114,14 @@ impl Ui<'_> {
     }
 
     pub fn panel(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        let s = self.s;
+        // A soft shadow under it, a dark rim, a lighter inner line, and a
+        // slightly lit top: a panel that sits on the screen.
+        self.r.rect(x + 2.0 * s, y + 3.0 * s, w, h, [0, 0, 0, 70]);
         self.r.rect(x, y, w, h, PANEL);
-        self.r.frame(x, y, w, h, self.s, [90, 96, 116, 255]);
+        self.r.rect(x, y, w, 10.0 * s, [40, 44, 60, 90]);
+        self.r.frame(x, y, w, h, s, [10, 11, 16, 255]);
+        self.r.frame(x + s, y + s, w - 2.0 * s, h - 2.0 * s, s, [96, 104, 130, 255]);
     }
 
     pub fn text(&mut self, x: f32, y: f32, text: &str, col: Color) {
@@ -131,13 +137,30 @@ impl Ui<'_> {
     /// A button. Returns 1 for a left click, -1 for a right click, else 0.
     pub fn button_lr(&mut self, x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool) -> i32 {
         let hot = enabled && self.hot(x, y, w, h);
-        self.r.rect(x, y, w, h, if !enabled { BUTTON_OFF } else if hot { BUTTON_HOT } else { BUTTON });
+        let held = hot && (self.inp.down[1] || self.inp.down[3]);
+        let s = self.s;
+        // A raised plate: dark rim, lit top edge, shaded foot; it sinks a
+        // little when pressed and glows when the pointer is on it.
+        let face = if !enabled { BUTTON_OFF } else if held { [56, 90, 164, 250] } else if hot { BUTTON_HOT } else { BUTTON };
+        let lift = |c: Color, d: i32| [(c[0] as i32 + d).clamp(0, 255) as u8, (c[1] as i32 + d).clamp(0, 255) as u8, (c[2] as i32 + d).clamp(0, 255) as u8, c[3]];
+        self.r.rect(x, y, w, h, [12, 13, 18, 240]);
+        self.r.rect(x + s, y + s, w - 2.0 * s, h - 2.0 * s, face);
+        if enabled {
+            self.r.rect(x + s, y + s, w - 2.0 * s, s, lift(face, if held { -18 } else { 34 }));
+            self.r.rect(x + s, y + h - 2.0 * s, w - 2.0 * s, s, lift(face, if held { 20 } else { -22 }));
+            self.r.rect(x + s, y + s, s, h - 2.0 * s, lift(face, 14));
+            self.r.rect(x + w - 2.0 * s, y + s, s, h - 2.0 * s, lift(face, -14));
+        }
+        if hot {
+            self.r.rect(x + 2.0 * s, y + h - 2.0 * s, w - 4.0 * s, s, ACCENT);
+        }
         // Labels too long for the button scroll instead of spilling out.
         let room = ((w - 4.0 * self.s) / (crate::font::ADVANCE * self.s)) as usize;
         let label = marquee(label, room, self.clock);
         let tw = Renderer::text_width(label, self.s);
         let col = if enabled { WHITE } else { [130, 134, 146, 255] };
-        self.r.label(x + (w - tw) * 0.5, y + (h - 7.0 * self.s) * 0.5, self.s, label, col);
+        let nudge = if held { self.s * 0.5 } else { 0.0 };
+        self.r.label(x + (w - tw) * 0.5, y + (h - 7.0 * self.s) * 0.5 + nudge, self.s, label, col);
         if hot && (self.inp.clicked[1] || self.inp.clicked[3]) {
             self.clicked_any = true;
             return if self.inp.clicked[1] { 1 } else { -1 };
@@ -204,8 +227,11 @@ impl Ui<'_> {
                 }
             }
         }
-        self.r.rect(x, y, w, h, [10, 10, 14, 235]);
-        self.r.frame(x, y, w, h, self.s, if focused { ACCENT } else { [90, 96, 116, 255] });
+        // Sunk into the page: dark well, shaded top, a rim that lights
+        // up when it has the keyboard.
+        self.r.rect(x, y, w, h, [8, 8, 12, 240]);
+        self.r.rect(x, y, w, 2.0 * self.s, [0, 0, 0, 120]);
+        self.r.frame(x, y, w, h, self.s, if focused { ACCENT } else { [84, 90, 112, 255] });
         let mut shown = value.clone();
         if focused {
             shown.push('_');
