@@ -758,3 +758,16 @@ voxelrust --world copy --import myworld.vxworld
 
 `--import` refuses to overwrite an existing world. Both commands exit when
 done and open no window.
+
+## Dropping items
+
+Q (it can be rebound in Settings > CONTROLS) tosses one of the held item
+ahead of you. It lies on the ground, glinting, for five minutes; walk over it
+to pick it up again. In the inventory, items are moved by clicking: left
+click picks a stack up or puts it down, right click takes or places one.
+
+## SDL2
+
+The Windows archive has `SDL2.dll` beside the program and the Mac apps have
+the SDL2 framework inside them, so nothing else need be installed. On Linux
+the game uses the system's SDL2 package.

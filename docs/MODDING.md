@@ -540,3 +540,34 @@ commands out before a screenshot:
 ```sh
 voxelrust --pack my-pack.txt --run '/time night; /spawn crystal_fox 3' --screenshot out.bmp
 ```
+
+## Adding a mod from elsewhere
+
+Settings > MODS has a box for a path: a folder, a `.zip`, or a lone pack
+file. ADD copies it into the data folder's `mods` (unpacking a zip with the
+system's `unzip` or `tar`) and reloads. From a terminal:
+`voxelrust --add-mod PATH`. A mod that sits one folder down inside its
+archive is found too.
+
+## The food chain
+
+`hunts <ids...>` on a creature names what it preys on; it chases and kills
+those and nothing else (a `hunter` with no list goes for anything marked
+`prey`). In the base data wolves hunt sheep, rabbits, deer, goats and
+poultry; foxes hunt rabbits, poultry and mice; cats hunt mice; alligators
+hunt ducks, geese, frogs and turtles; snakes, spiders and frogs have their
+own small quarry.
+
+## Holidays
+
+`mods/holidays` comes with the game: trees, presents, lights and treats for
+winter, the spooky season, the harvest feast, spring and the new year. All
+of it is made by recipe, at a crafting table or in an oven.
+
+## What mods cannot yet replace
+
+Earth worlds, weather and natural disasters are parts of the program that a
+pack switches on with `feature earth` / `feature disasters`; a pack cannot
+yet define a new kind of disaster or a new source of terrain. Scripts
+(`when ... do ...`) can stage events of their own, but they are not a way
+to add code.

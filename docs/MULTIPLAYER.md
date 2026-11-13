@@ -205,3 +205,31 @@ Be clear about what the server does **not** have:
 
 Host for people you trust, keep backups of the two server files, and close
 the port when you are done.
+
+## Saved servers
+
+The MULTIPLAYER screen keeps a list of servers. Type an address, give it a
+name under SAVE IT AS and press SAVE; click a saved server to join it, EDIT
+to put it back in the boxes for changing (saving under the same name
+replaces it), X to forget it. The list is `servers.txt` in the data folder.
+
+## Operators and server commands
+
+A server has operators: players who may use its commands. The first player
+ever to join a world's server becomes one (the host, when hosting from the
+menu); operators make others. Commands are typed in chat like any other;
+what the game itself does not know is passed to the server.
+
+| Command | Who | What it does |
+|---|---|---|
+| `/list` | anyone | who is online (operators are starred) |
+| `/help` | anyone | the server's commands |
+| `/op NAME`, `/deop NAME` | operators | make or unmake an operator (the last one cannot be removed) |
+| `/kick NAME` | operators | remove a player |
+| `/ban NAME`, `/pardon NAME` | operators | keep a name out, or let it back |
+| `/say TEXT` | operators | a message from the server to everyone |
+| `/time 0..1` | operators | set the time of day (0.25 is noon) |
+
+Operators and bans are kept in `<world>.server-ops.txt` beside the world.
+Names are not protected by passwords: anyone can join under any free name,
+so treat this as housekeeping among friends, not security.
