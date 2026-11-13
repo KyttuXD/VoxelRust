@@ -26,6 +26,8 @@ pub enum Event {
     /// A line for the chat log.
     Chat(String),
     Time(f32),
+    /// What this player may do (see `proto::PERM_*`).
+    Perms(u8),
     /// A piece of the server's content pack; the flag marks the last one.
     Pack(bool, Vec<u8>),
     /// A player's skin image arrived, and whether their arms are slim.
@@ -163,6 +165,7 @@ impl Client {
                         }
                     }
                     Msg::Time { time } => events.push(Event::Time(time)),
+                    Msg::Perms { flags } => events.push(Event::Perms(flags)),
                     Msg::Skin { id, png, slim } => events.push(Event::Skin(id, png, slim)),
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
@@ -271,6 +274,42 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         all
+    }
+
+    #[test]
+    fn a_player_without_permission_cannot_change_the_world() {
+        use crate::proto::*;
+        let (port, stop, handle) = start_server(8);
+        let (mut ann, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
+        let ea = pump(&mut ann, 80);
+        // The first player is the operator and may do everything.
+        assert!(ea.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS)), "no such event");
+        let (mut bob, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
+        let eb = pump(&mut bob, 100);
+        // Everyone else may build, and nothing more, and starts in survival.
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD)), "no such event");
+        pump(&mut ann, 40);
+        ann.send_chat("/default -build");
+        pump(&mut ann, 60);
+        let eb = pump(&mut bob, 100);
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(0))), "no such event");
+        // Bob's edit goes nowhere...
+        let stone = crate::block::reg().wk.stone;
+        bob.send_block(2, 70, 2, stone);
+        pump(&mut bob, 60);
+        let ea = pump(&mut ann, 100);
+        assert!(!ea.iter().any(|e| matches!(e, Event::Block(2, 70, 2, _))), "no such event");
+        // ... until Ann says he may.
+        ann.send_chat("/perm Bob +build");
+        pump(&mut ann, 60);
+        let eb = pump(&mut bob, 100);
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD)), "no such event");
+        bob.send_block(2, 70, 2, stone);
+        pump(&mut bob, 60);
+        let ea = pump(&mut ann, 100);
+        assert!(ea.iter().any(|e| matches!(e, Event::Block(2, 70, 2, _))), "no such event");
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
     }
 
     #[test]

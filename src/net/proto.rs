@@ -7,7 +7,14 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub const VERSION: u16 = 6;
+pub const VERSION: u16 = 7;
+
+/// What a player may do on a server (the flags of [`Msg::Perms`]).
+pub const PERM_BUILD: u8 = 1;
+pub const PERM_GAMEMODE: u8 = 2;
+pub const PERM_COMMANDS: u8 = 4;
+/// Not a permission: the player is in creative mode (survival otherwise).
+pub const PERM_CREATIVE: u8 = 8;
 pub const DEFAULT_PORT: u16 = 25590;
 /// Most bytes of pack text in one message.
 pub const MAX_PACK_PART: usize = 40_000;
@@ -57,6 +64,8 @@ pub enum Msg {
     /// A piece of the server's content pack (text); `last` ends it. Every
     /// player gets this on joining, so all use the same blocks and items.
     Pack { last: bool, data: Vec<u8> },
+    /// What you may do here (`PERM_` flags), sent on joining and whenever it changes.
+    Perms { flags: u8 },
     /// Shared state of the game, passed between players through the
     /// server (sent by a client, relayed with its id): creatures, chests,
     /// what is in a chest. `channel` says which; `key` names the thing;
@@ -225,6 +234,10 @@ impl Msg {
                 w.u8(15);
                 w.f32(*time);
             }
+            Msg::Perms { flags } => {
+                w.u8(17);
+                w.u8(*flags);
+            }
             Msg::Pack { last, data } => {
                 w.u8(16);
                 w.u8(*last as u8);
@@ -275,6 +288,7 @@ impl Msg {
                 Msg::Edits { list }
             }
             15 => Msg::Time { time: r.f32()? },
+            17 => Msg::Perms { flags: r.u8()? },
             16 => {
                 let last = r.u8()? != 0;
                 let n = r.u16()? as usize;
@@ -363,6 +377,7 @@ mod tests {
             Msg::Leave { id: 9 },
             Msg::Edits { list: alloc::vec![(1, 2, 3, 4), (-5, 6, -7, 800)] },
             Msg::Time { time: 0.99 },
+            Msg::Perms { flags: PERM_BUILD | PERM_CREATIVE },
             Msg::Pack { last: true, data: b"block x\n tex stone\n".to_vec() },
         ];
         let mut inbox = Inbox::default();

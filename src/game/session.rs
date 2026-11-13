@@ -101,6 +101,9 @@ pub struct Session {
     pub chat: Vec<(String, f32)>,
     /// The server went away.
     pub lost: bool,
+    /// On a server: what the server lets this player do (`proto::PERM_*`).
+    /// `None` in a world of your own, where everything is allowed.
+    pub perms: Option<u8>,
     /// The weather overhead, and any episode in progress.
     pub sky: crate::weather::Sky,
     pub episode: Option<Episode>,
@@ -475,6 +478,7 @@ impl Session {
             net: None,
             chat: Vec::new(),
             lost: false,
+            perms: None,
             sky: crate::weather::CLEAR,
             episode: None,
             flags: Vec::new(),
@@ -562,7 +566,7 @@ impl Session {
         let (host, port) = crate::netplay::parse_address(address).ok_or_else(|| String::from("TYPE THE SERVER'S ADDRESS, LIKE HOST:25590"))?;
         let (client, welcome) = crate::netplay::Client::connect(&host, port, name)?;
         let kind = worldgen::WorldKind::parse(&welcome.kind).unwrap_or(worldgen::WorldKind::Normal);
-        let new = NewWorld { seed: welcome.seed, mode: GameMode::Creative, kind };
+        let new = NewWorld { seed: welcome.seed, mode: GameMode::Survival, kind };
         // A name no saved world can have, so nothing on disk is touched.
         let mut s = Session::open(base, "~multiplayer", &new, threads);
         s.world.log_edits = true;
@@ -723,6 +727,14 @@ impl Session {
         let r = reg();
         let arg = |k: usize| words.get(k).copied().unwrap_or("");
         let online = self.net.is_some();
+        // Cheating commands need the server's say-so.
+        if online && !self.may(crate::proto::PERM_COMMANDS) {
+            let cheat = ["/give", "/take", "/tp", "/heal", "/feed", "/hurt", "/launch", "/spawn", "/pull"].contains(&arg(0))
+                || r.commands.iter().any(|c| c.0 == arg(0));
+            if cheat {
+                return Some(String::from("YOU MAY NOT USE THAT COMMAND ON THIS SERVER"));
+            }
+        }
         // Commands that packs define: their own list of commands, with
         // $1, $2... standing for what was typed after the name.
         if let Some((_, actions)) = r.commands.iter().find(|c| c.0 == arg(0)) {
@@ -1135,9 +1147,18 @@ impl Session {
                 }
             }
             "/seed" => alloc::format!("SEED {}", self.base_seed),
+            "/mode" if online => String::from("USE  /GAMEMODE CREATIVE  OR  /GAMEMODE SURVIVAL  (IF THE SERVER ALLOWS IT)"),
             "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" | "/blast" | "/episode" | "/strip" | "/flood" => String::from("NOT ON A SERVER"),
             // A command of some mod's own code, perhaps.
-            _ => return crate::native::active().filter_map(|(_, n)| n.command).find_map(|command| command(self, &words)),
+            _ => {
+                // A mod's own commands are cheats too, but for the few that
+                // ride and lock vehicles and the server's own commands.
+                const FREE: [&str; 16] = ["/board", "/passenger", "/lock", "/unlock", "/op", "/deop", "/kick", "/ban", "/pardon", "/perm", "/default", "/gamemode", "/list", "/help", "/say", "/seed"];
+                if online && !self.may(crate::proto::PERM_COMMANDS) && !FREE.contains(&arg(0)) && arg(0).starts_with('/') {
+                    return Some(String::from("YOU MAY NOT USE THAT COMMAND ON THIS SERVER"));
+                }
+                return crate::native::active().filter_map(|(_, n)| n.command).find_map(|command| command(self, &words));
+            }
         })
     }
 
@@ -1621,6 +1642,15 @@ impl Session {
                 crate::netplay::Event::Block(x, y, z, b) => self.world.apply_remote(x, y, z, b),
                 crate::netplay::Event::Chat(line) => self.push_chat(line),
                 crate::netplay::Event::Time(t) => self.time = t,
+                crate::netplay::Event::Perms(flags) => {
+                    use crate::proto::PERM_CREATIVE;
+                    self.perms = Some(flags);
+                    let want = if flags & PERM_CREATIVE != 0 { GameMode::Creative } else { GameMode::Survival };
+                    if self.mode != want {
+                        self.set_mode(want);
+                        self.say(if want == GameMode::Creative { "CREATIVE MODE" } else { "SURVIVAL MODE" });
+                    }
+                }
                 crate::netplay::Event::Lost => self.lost = true,
                 crate::netplay::Event::Skin(id, png, slim) => self.skin_events.push((id, png, slim)),
                 crate::netplay::Event::State(_, channel, key, data) => {
@@ -1726,6 +1756,12 @@ impl Session {
         self.hunger = MAX_HUNGER;
         self.air = MAX_AIR;
         self.dead = false;
+    }
+
+    /// Whether the server lets this player do what `perm` (a `proto::PERM_*`
+    /// flag) is for. Always true in a world of your own.
+    pub fn may(&self, perm: u8) -> bool {
+        self.perms.map_or(true, |f| f & perm != 0)
     }
 
     pub fn set_mode(&mut self, mode: GameMode) {
@@ -2262,7 +2298,12 @@ impl Session {
 
         // Breaking.
         let mut mining = None;
-        if let (true, false, Some(hit)) = (c.break_held, struck, &self.target) {
+        let may_build = self.may(crate::proto::PERM_BUILD);
+        if c.break_held && !struck && self.target.is_some() && !may_build && self.cooldown[0] <= 0.0 {
+            self.cooldown[0] = 1.0;
+            self.say("YOU MAY NOT BUILD ON THIS SERVER");
+        }
+        if let (true, false, Some(hit), true) = (c.break_held, struck, &self.target, may_build) {
             let b = self.world.get(hit.cell[0], hit.cell[1], hit.cell[2]);
             let d = block::def(b);
             if !d.unbreakable && b != AIR {
@@ -2416,7 +2457,10 @@ impl Session {
         }
 
         // Placing.
-        if c.place_held && self.cooldown[1] <= 0.0 {
+        if c.place_held && self.cooldown[1] <= 0.0 && !self.may(crate::proto::PERM_BUILD) {
+            self.cooldown[1] = 1.0;
+            self.say("YOU MAY NOT BUILD ON THIS SERVER");
+        } else if c.place_held && self.cooldown[1] <= 0.0 {
             if let (Some(hit), Some((index, it))) = (&self.target, held) {
                 // Area tools are a creative-mode convenience.
                 if creative || it.brush == 0 {

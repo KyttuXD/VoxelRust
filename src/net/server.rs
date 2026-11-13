@@ -68,6 +68,12 @@ pub struct Server {
     pub banned: Vec<String>,
     /// `ops` or `banned` changed since they were last written out.
     pub ops_dirty: bool,
+    /// What players may do who have no entry of their own.
+    pub default_perms: u8,
+    /// Players with permissions of their own (lower-case name, `PERM_` flags).
+    pub perms: Vec<(String, u8)>,
+    /// Players in creative mode (lower-case names); everyone else is in survival.
+    pub creative: Vec<String>,
 }
 
 const SEND_TIMEOUT: u32 = 3000;
@@ -76,7 +82,8 @@ impl Server {
     pub fn bind(cfg: Config) -> Result<Server, NetError> {
         let listener = TcpListener::bind(cfg.port)?;
         Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
-            kept: BTreeMap::new(), ops: Vec::new(), banned: Vec::new(), ops_dirty: false })
+            kept: BTreeMap::new(), ops: Vec::new(), banned: Vec::new(), ops_dirty: false,
+            default_perms: crate::proto::PERM_BUILD, perms: Vec::new(), creative: Vec::new() })
     }
 
     pub fn port(&self) -> u16 {
@@ -85,6 +92,93 @@ impl Server {
 
     pub fn players(&self) -> usize {
         self.conns.iter().filter(|c| c.joined && !c.gone).count()
+    }
+
+    /// What `who` may do, and whether they are in creative mode: `PERM_` flags.
+    /// Operators may do everything.
+    pub fn flags_for(&self, who: &str) -> u8 {
+        use crate::proto::*;
+        let lower = who.to_ascii_lowercase();
+        let mut f = if self.ops.iter().any(|o| o.eq_ignore_ascii_case(who)) {
+            PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS
+        } else {
+            self.perms.iter().find(|p| p.0 == lower).map_or(self.default_perms, |p| p.1)
+        };
+        if self.creative.contains(&lower) {
+            f |= PERM_CREATIVE;
+        }
+        f
+    }
+
+    /// Tell every player (or just connection `only`) what they may do.
+    fn send_perms(&mut self, only: Option<usize>) {
+        for k in 0..self.conns.len() {
+            if only.map_or(false, |o| o != k) || !self.conns[k].joined || self.conns[k].gone {
+                continue;
+            }
+            let bytes = Msg::Perms { flags: self.flags_for(&self.conns[k].name) }.encode();
+            if self.conns[k].stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+                self.conns[k].gone = true;
+            }
+        }
+    }
+
+    /// The permission lines kept with the operators.
+    pub fn perm_text(&self) -> String {
+        let mut t = alloc::format!("default {}\n", self.default_perms);
+        for (n, f) in &self.perms {
+            t.push_str(&alloc::format!("perm {} {}\n", f, n));
+        }
+        for n in &self.creative {
+            t.push_str(&alloc::format!("creative {}\n", n));
+        }
+        t
+    }
+
+    /// Read one line written by `perm_text`; false if it is not one.
+    pub fn load_perm_line(&mut self, line: &str) -> bool {
+        match line.split_once(' ') {
+            Some(("default", f)) => self.default_perms = f.trim().parse().unwrap_or(crate::proto::PERM_BUILD) & 7,
+            Some(("perm", rest)) => {
+                if let Some((f, n)) = rest.split_once(' ') {
+                    self.perms.push((n.to_ascii_lowercase(), f.parse::<u8>().unwrap_or(0) & 7));
+                }
+            }
+            Some(("creative", n)) => self.creative.push(n.to_ascii_lowercase()),
+            _ => return false,
+        }
+        true
+    }
+
+    /// Apply `+build -commands`-style words to `flags`. None if a word is not one.
+    fn change_flags(mut flags: u8, words: &[&str]) -> Option<u8> {
+        use crate::proto::*;
+        for w in words {
+            let (on, name) = match (w.strip_prefix('+'), w.strip_prefix('-')) {
+                (Some(n), _) => (true, n),
+                (_, Some(n)) => (false, n),
+                _ => return None,
+            };
+            let bit = match name {
+                "build" => PERM_BUILD,
+                "gamemode" => PERM_GAMEMODE,
+                "commands" => PERM_COMMANDS,
+                _ => return None,
+            };
+            flags = if on { flags | bit } else { flags & !bit };
+        }
+        Some(flags)
+    }
+
+    fn describe(flags: u8) -> String {
+        use crate::proto::*;
+        let mut v: Vec<&str> = Vec::new();
+        for (bit, n) in [(PERM_BUILD, "build"), (PERM_GAMEMODE, "gamemode"), (PERM_COMMANDS, "commands")] {
+            if flags & bit != 0 {
+                v.push(n);
+            }
+        }
+        if v.is_empty() { String::from("nothing") } else { v.join(" ") }
     }
 
     /// A command typed by the player `who`. Anyone may ask /list and
@@ -99,8 +193,58 @@ impl Server {
                 let names: Vec<String> = self.conns.iter().filter(|c| c.joined && !c.gone).map(|c| if self.ops.iter().any(|o| o.eq_ignore_ascii_case(&c.name)) { alloc::format!("{}*", c.name) } else { c.name.clone() }).collect();
                 alloc::format!("online ({}): {}   (* = operator)", names.len(), names.join(", "))
             }
-            "/help" => String::from("server: /list   operators: /op NAME  /deop NAME  /kick NAME  /ban NAME  /pardon NAME  /say TEXT  /time 0..1"),
+            "/help" => String::from("server: /list /gamemode creative|survival (if allowed)   operators: /op /deop /kick /ban /pardon NAME  /say TEXT  /time 0..1  /perm NAME [+build -gamemode +commands]  /default [+build ...]  /gamemode NAME creative|survival"),
+            "/gamemode" if arg(2).is_empty() || !is_op => {
+                // Your own game mode, if you may choose it.
+                let mode = if arg(2).is_empty() { arg(1) } else { arg(2) };
+                if !is_op && self.flags_for(who) & crate::proto::PERM_GAMEMODE == 0 {
+                    return String::from("you may not change your game mode here");
+                }
+                if arg(2).is_empty() {
+                    self.set_creative(who, mode)
+                } else {
+                    String::from("only operators may change someone else's game mode")
+                }
+            }
             _ if !is_op => String::from("only operators may do that"),
+            "/gamemode" => match online(self, arg(1)) {
+                Some(k) => {
+                    let name = self.conns[k].name.clone();
+                    self.set_creative(&name, arg(2))
+                }
+                None => String::from("nobody of that name is here"),
+            },
+            "/perm" if !arg(1).is_empty() => {
+                let lower = arg(1).to_ascii_lowercase();
+                let now = self.perms.iter().find(|p| p.0 == lower).map_or(self.default_perms, |p| p.1);
+                if w.len() == 2 {
+                    return alloc::format!("{} may: {}", arg(1), Self::describe(now));
+                }
+                match Self::change_flags(now, &w[2..]) {
+                    Some(f) => {
+                        self.perms.retain(|p| p.0 != lower);
+                        self.perms.push((lower, f));
+                        self.ops_dirty = true;
+                        self.send_perms(None);
+                        alloc::format!("{} may now: {}", arg(1), Self::describe(f))
+                    }
+                    None => String::from("use /perm NAME +build -build +gamemode -gamemode +commands -commands"),
+                }
+            }
+            "/default" => {
+                if w.len() == 1 {
+                    return alloc::format!("players may by default: {}", Self::describe(self.default_perms));
+                }
+                match Self::change_flags(self.default_perms, &w[1..]) {
+                    Some(f) => {
+                        self.default_perms = f;
+                        self.ops_dirty = true;
+                        self.send_perms(None);
+                        alloc::format!("players may now by default: {}", Self::describe(f))
+                    }
+                    None => String::from("use /default +build -build +gamemode -gamemode +commands -commands"),
+                }
+            }
             "/op" if !arg(1).is_empty() => {
                 if !self.ops.iter().any(|o| o.eq_ignore_ascii_case(arg(1))) {
                     self.ops.push(String::from(arg(1)));
@@ -155,6 +299,22 @@ impl Server {
             },
             _ => String::from("no such server command; try /help"),
         }
+    }
+
+    fn set_creative(&mut self, name: &str, mode: &str) -> String {
+        let lower = name.to_ascii_lowercase();
+        match mode {
+            "creative" => {
+                if !self.creative.contains(&lower) {
+                    self.creative.push(lower);
+                }
+            }
+            "survival" => self.creative.retain(|c| *c != lower),
+            _ => return String::from("use /gamemode creative or /gamemode survival"),
+        }
+        self.ops_dirty = true;
+        self.send_perms(None);
+        alloc::format!("{} is now in {} mode", name, mode)
     }
 
     fn broadcast(&mut self, msg: &Msg, except: u16) {
@@ -310,6 +470,7 @@ impl Server {
                         self.conns[i].id = id;
                         self.conns[i].name = name.clone();
                         self.conns[i].joined = true;
+                        self.send_perms(Some(i));
                         log.push(alloc::format!("{} joined ({} online)", name, self.players()));
                         self.broadcast(&Msg::Join { id, name }, id);
                     }
@@ -318,7 +479,8 @@ impl Server {
                         self.broadcast(&Msg::Move { id, pos, yaw, pitch, held }, id);
                     }
                     Msg::SetBlock { x, y, z, block } if joined => {
-                        if (0..CH).contains(&y) && block < self.cfg.states {
+                        let may = self.flags_for(&self.conns[i].name) & crate::proto::PERM_BUILD != 0;
+                        if may && (0..CH).contains(&y) && block < self.cfg.states {
                             self.edits.insert((x, y, z), block);
                             self.dirty = true;
                             self.broadcast(&Msg::SetBlock { x, y, z, block }, id);
@@ -403,6 +565,37 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn permissions_gate_building_game_mode_and_commands() {
+        use crate::proto::*;
+        let mut s = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new() }).unwrap();
+        s.ops.push(String::from("Ann"));
+        // By default players build, and nothing else; operators do everything.
+        assert_eq!(s.flags_for("Bob"), PERM_BUILD);
+        assert_eq!(s.flags_for("ann"), PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS);
+        // Bob may not choose his game mode until he is allowed to.
+        assert_eq!(s.command("Bob", "/gamemode creative"), "you may not change your game mode here");
+        assert_eq!(s.command("Bob", "/perm Bob +gamemode"), "only operators may do that");
+        assert_eq!(s.command("Ann", "/perm Bob +gamemode -build"), "Bob may now: gamemode");
+        assert_eq!(s.flags_for("bob"), PERM_GAMEMODE);
+        assert_eq!(s.command("Bob", "/gamemode creative"), "Bob is now in creative mode");
+        assert_eq!(s.flags_for("Bob"), PERM_GAMEMODE | PERM_CREATIVE);
+        assert_eq!(s.command("Bob", "/gamemode Ann survival"), "only operators may change someone else's game mode");
+        // The default for everyone else.
+        assert_eq!(s.command("Ann", "/default -build"), "players may now by default: nothing");
+        assert_eq!(s.flags_for("Cy"), 0);
+        assert_eq!(s.command("Ann", "/default +build +commands"), "players may now by default: build commands");
+        assert_eq!(s.command("Ann", "/perm Bob +fly"), "use /perm NAME +build -build +gamemode -gamemode +commands -commands");
+        // It is all kept.
+        let text = s.perm_text();
+        let mut t = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new() }).unwrap();
+        for line in text.lines() {
+            assert!(t.load_perm_line(line), "{line}");
+        }
+        assert_eq!(t.default_perms, PERM_BUILD | PERM_COMMANDS);
+        assert_eq!(t.flags_for("bob"), PERM_GAMEMODE | PERM_CREATIVE);
+    }
 
     #[test]
     fn operators_and_their_commands() {

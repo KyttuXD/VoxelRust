@@ -3291,7 +3291,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         let seed = opts.seed.unwrap_or_else(|| unsafe { (api.SDL_GetPerformanceCounter)() } as u32 ^ 0x5EED_1234);
         let kind = asked_kind.as_deref().and_then(WorldKind::parse).unwrap_or(WorldKind::Normal);
-        app.start_world(&mut r, &name, &NewWorld { seed, mode: opts.mode.unwrap_or(GameMode::Creative), kind });
+        app.start_world(&mut r, &name, &NewWorld { seed, mode: opts.mode.unwrap_or(GameMode::Survival), kind });
     }
     if let Some(g) = app.session.as_mut() {
         if let Some(p) = opts.pos {
@@ -3812,7 +3812,9 @@ fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u1
             match line.split_once(' ') {
                 Some(("op", n)) => server.ops.push(String::from(n)),
                 Some(("ban", n)) => server.banned.push(String::from(n)),
-                _ => {}
+                _ => {
+                    server.load_perm_line(line);
+                }
             }
         }
     }
@@ -3862,6 +3864,7 @@ fn server_loop(mut server: crate::server::Server, edits_path: String, quiet: boo
             for b in &server.banned {
                 text.push_str(&alloc::format!("ban {}\n", b));
             }
+            text.push_str(&server.perm_text());
             sys::write_file(&edits_path.replace(".server-edits.txt", ".server-ops.txt"), text.as_bytes());
         }
         save_timer += dt;
