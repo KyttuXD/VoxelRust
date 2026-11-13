@@ -11,6 +11,7 @@
 //! are the registry: a test checks that each name is painted by some file.
 
 pub mod blocks;
+pub mod explosives;
 pub mod food;
 pub mod gear;
 pub mod glass;
@@ -48,12 +49,13 @@ pub const BUILTINS: &[&str] = &[
 pub const STYLES: &[&str] = &[
     "concrete", "wool", "terracotta", "glass", "rock", "polished", "bricks", "tiles", "planks", "bark", "rings", "leaves", "blossom", "stick", "pick", "axe", "shovel", "hoe", "sword", "gem", "meat", "fruit", "fishfood",
     "rail", "machine", "hull", "wings", "chest", "workbench", "mushroom", "cluster", "icicle", "magma", "vine", "web", "glassdoor", "bow", "crossbow", "arrow", "ingot", "door", "farmland", "crop1", "crop2", "crop3",
-    "crop4", "seeds", "sheaf", "loaf", "pizza", "wedge", "root", "tuber", "jar", "egg", "sack", "cookie", "pie", "bowl",
+    "crop4", "seeds", "sheaf", "loaf", "pizza", "wedge", "root", "tuber", "jar", "egg", "sack", "cookie", "pie", "bowl", "tnt_side", "tnt_top", "tnt_bottom", "powder",
+    "flint_steel",
 ];
 
 /// Styles whose picture is a block face: they have the one-pixel frame
 /// (checked by a test). The rest are items, plants and glass.
-pub const FRAMED_STYLES: &[&str] = &["concrete", "wool", "terracotta", "rock", "polished", "chest", "workbench", "magma", "farmland", "door"];
+pub const FRAMED_STYLES: &[&str] = &["concrete", "wool", "terracotta", "rock", "polished", "chest", "workbench", "magma", "farmland", "door", "tnt_side", "tnt_top", "tnt_bottom"];
 
 /// Fixed pictures with the frame, likewise.
 pub const FRAMED_BUILTINS: &[&str] = &[
@@ -84,6 +86,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
         .or_else(|| tools::paint(style, rgb, x, y))
         .or_else(|| food::paint(style, rgb, x, y))
         .or_else(|| gear::paint(style, rgb, x, y))
+        .or_else(|| explosives::paint(style, rgb, x, y))
 }
 
 // ---- Colour helpers.

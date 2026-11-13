@@ -1396,7 +1396,9 @@ impl App {
                 }
             }
         }
-        let sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
+        let mut sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
+        // The sparks of fuses and explosions.
+        sparks.extend(g.primed.sparks.iter().map(|s| (rel(s.pos), s.colour)));
         r.draw_sparks(&sparks);
         // Things lying on the ground are the things themselves, turning slowly.
         let white = crate::client::hand::white_tile();
@@ -1407,6 +1409,8 @@ impl App {
             let bob = (sinf(g.clock * 2.5 + d.pos[2] as f32) * 0.04) as f32;
             crate::client::hand::dropped(held, white, rel([d.pos[0], d.pos[1] + 0.3, d.pos[2]]), spin + bob, &mut lying);
         }
+        // Lit TNT, flashing white.
+        crate::client::hand::primed_blocks(&g.primed.list, white, &rel, &mut lying);
         r.draw_quads(&lying, None);
         // Whatever the mods' own code has to show.
         {

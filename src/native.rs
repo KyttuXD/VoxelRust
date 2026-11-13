@@ -11,6 +11,7 @@
 //! switching the mod off in Settings > MODS switches its code off too.
 
 use crate::audio::Audio;
+use crate::explosion::ExplosionInfo;
 use crate::render::Renderer;
 use crate::session::{Controls, Session};
 use crate::settings::Settings;
@@ -110,6 +111,13 @@ pub struct Native {
     /// apply (armour makes it smaller; 0 cancels it). Called in survival
     /// only, and only for damage above zero.
     pub hurt: Option<fn(g: &mut Session, amount: i32, attacker: Option<usize>) -> i32>,
+    /// An explosion is about to happen (TNT, an exploding creature, `/blast`,
+    /// another mod): change it (`at`, `power`) or return false to cancel it.
+    pub before_explode: Option<fn(g: &mut Session, info: &mut ExplosionInfo) -> bool>,
+    /// An explosion has happened; `destroyed` is how many blocks it took.
+    pub after_explode: Option<fn(g: &mut Session, info: &ExplosionInfo, destroyed: usize)>,
+    /// A block of TNT at that cell is about to be lit: return false to stop it.
+    pub on_prime: Option<fn(g: &mut Session, cell: [i32; 3]) -> bool>,
     /// A message another player's copy of this code sent with
     /// `Session::send_ext`.
     pub message: Option<fn(g: &mut Session, key: &str, text: &str)>,
@@ -168,6 +176,9 @@ impl Native {
         killed: None,
         hit: None,
         hurt: None,
+        before_explode: None,
+        after_explode: None,
+        on_prime: None,
         message: None,
         share: None,
         storage: None,
