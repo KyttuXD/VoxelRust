@@ -124,6 +124,8 @@ pub struct Session {
     touch_timer: f32,
     /// Sounds asked for by commands, played when the sound system is at hand.
     pub sound_queue: Vec<String>,
+    /// How many `/fire` events are being acted on at once (see the `/fire` command).
+    fire_depth: u8,
     /// Damage asked for by commands, dealt likewise.
     pending_hurt: i32,
     /// Things in flight: arrows, bolts, spells.
@@ -471,6 +473,7 @@ impl Session {
             tick_timer: 0.0,
             touch_timer: 0.0,
             sound_queue: Vec::new(),
+            fire_depth: 0,
             pending_hurt: 0,
             shots: Vec::new(),
             drops: Vec::new(),
@@ -933,6 +936,16 @@ impl Session {
             }
             "/feed" => {
                 self.hunger = (self.hunger + arg(1).parse::<i32>().unwrap_or(4)).clamp(0, MAX_HUNGER);
+                String::new()
+            }
+            // /fire EVENT [WHAT]: raise an event, for any pack's `when` to answer.
+            // How mods hook into one another: one pack fires, another reacts.
+            "/fire" => {
+                if self.fire_depth < 4 {
+                    self.fire_depth += 1;
+                    self.fire(&arg(1).to_ascii_lowercase(), &arg(2).to_ascii_lowercase());
+                    self.fire_depth -= 1;
+                }
                 String::new()
             }
             "/hurt" => {

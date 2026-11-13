@@ -183,6 +183,11 @@ command <name> <commands separated by ;>
 | `death` | you die | none |
 | `episode <id>` | an episode of a pack begins (see [Episodes](#episodes)) | episode id |
 | `episode_end <id>` | that episode ends | episode id |
+| *any name* | a pack raises it with `/fire <event> [what]` | whatever it sends |
+
+A pack hooks into another by raising an event with `/fire`, and the other
+answers with its own `when`. `/fire` can be used within a `when` too, but a
+chain of events is cut off after four levels, so two packs cannot loop.
 
 Leave `what` out and the line runs for every block, item, creature or
 dimension (`when break do /sound chime`). `use` and `useitem` need a `what`.
