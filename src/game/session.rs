@@ -110,6 +110,13 @@ pub struct Session {
     coupling: Option<usize>,
     /// The creature being ridden (its id).
     pub riding_mob: Option<u32>,
+    /// Numbers that pack scripts keep (`/var`), saved with the world.
+    pub vars: alloc::collections::BTreeMap<String, i64>,
+    vars_path: String,
+    /// Commands waiting their turn (`/after`): seconds left, command.
+    later: Vec<(f32, String)>,
+    was_night: bool,
+    death_told: bool,
     /// Shared games: when state was last sent, the chest last opened and
     /// what was last said about it.
     share_timer: f32,
@@ -329,6 +336,13 @@ impl Session {
             sitting: None,
             coupling: None,
             riding_mob: None,
+            vars: sys::read_file(&alloc::format!("{}{}.vars.txt", base, name))
+                .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.split_once('=').and_then(|(k, v)| Some((String::from(k), v.parse::<i64>().ok()?)))).collect())
+                .unwrap_or_default(),
+            vars_path: alloc::format!("{}{}.vars.txt", base, name),
+            later: Vec::new(),
+            was_night: false,
+            death_told: false,
             share_timer: 0.0,
             bite_timer: 0.0,
             open_chest: None,
@@ -430,6 +444,51 @@ impl Session {
         }
     }
 
+    /// Whether a condition of `/if` is true. Conditions: `chance N`,
+    /// `holding ITEM`, `has ITEM [N]`, `dim NAME`, `night`, `day`,
+    /// `creative`, `survival`, `riding`, `hurt` (health below full),
+    /// `hungry`, `NAME OP NUMBER` for a variable (= != < > <= >=); and
+    /// `not` in front of any of them.
+    fn holds(&mut self, cond: &[&str]) -> bool {
+        let w = |k: usize| cond.get(k).copied().unwrap_or("");
+        let r = reg();
+        match w(0) {
+            "not" => !self.holds(&cond[1.min(cond.len())..]),
+            "chance" => {
+                self.rng = self.rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                ((self.rng >> 8) % 100) < w(1).parse::<u32>().unwrap_or(50)
+            }
+            "holding" => self.held().map_or(false, |h| h.1.id == w(1)),
+            "has" => r.items.iter().position(|it| it.id == w(1)).map_or(false, |i| self.inv.count(i as u16) >= w(2).parse::<u32>().unwrap_or(1)),
+            "dim" => self.dim == if w(1) == "home" { "" } else { w(1) },
+            "night" => crate::math::sinf(self.time * crate::math::TAU) < -0.05,
+            "day" => crate::math::sinf(self.time * crate::math::TAU) >= -0.05,
+            "creative" => self.mode == GameMode::Creative,
+            "survival" => self.mode == GameMode::Survival,
+            "riding" => self.riding_mob.is_some() || self.vehicles.riding.is_some(),
+            "hurt" => self.health < MAX_HEALTH,
+            "hungry" => self.hunger < MAX_HUNGER,
+            name => {
+                let have = match name {
+                    "health" => self.health as i64,
+                    "hunger" => self.hunger as i64,
+                    "y" => floord(self.player.pos[1]) as i64,
+                    _ => self.vars.get(name).copied().unwrap_or(0),
+                };
+                let want = w(2).parse::<i64>().unwrap_or(0);
+                match w(1) {
+                    "=" | "==" => have == want,
+                    "!=" => have != want,
+                    "<" => have < want,
+                    ">" => have > want,
+                    "<=" => have <= want,
+                    ">=" => have >= want,
+                    _ => false,
+                }
+            }
+        }
+    }
+
     /// Whether any pack script listens for this.
     pub fn listens(&self, event: &str, what: &str) -> bool {
         reg().scripts.iter().any(|s| s.event == event && s.what == what)
@@ -468,7 +527,111 @@ impl Session {
                 None => a.parse::<f64>().ok(),
             }
         };
+        // "$name" stands for a variable set with /var; "$x $y $z" for
+        // where the player stands.
+        if line.contains('$') {
+            let mut filled = String::from(line);
+            for (k, axis) in ["$x", "$y", "$z"].iter().enumerate() {
+                filled = filled.replace(axis, &alloc::format!("{}", here[k]));
+            }
+            let mut names: Vec<&String> = self.vars.keys().collect();
+            names.sort_by(|a, b| b.len().cmp(&a.len()));
+            for name in names {
+                filled = filled.replace(&alloc::format!("${}", name), &alloc::format!("{}", self.vars[name]));
+            }
+            if filled != line && depth < 6 {
+                return self.run(&filled, depth + 1);
+            }
+        }
         Some(match arg(0) {
+            // ---- Scripting: variables, conditions, timing.
+            // /var NAME = N | + N | - N | random N
+            "/var" if !arg(1).is_empty() => {
+                let n = arg(3).parse::<i64>().unwrap_or(0);
+                let now = self.vars.get(arg(1)).copied().unwrap_or(0);
+                let value = match arg(2) {
+                    "=" => n,
+                    "+" => now.saturating_add(n),
+                    "-" => now.saturating_sub(n),
+                    "random" => {
+                        self.rng = self.rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                        ((self.rng >> 8) as i64) % n.max(1)
+                    }
+                    _ => return Some(String::from("USE  /VAR NAME = N,  + N,  - N  OR  RANDOM N")),
+                };
+                if self.vars.len() < 256 || self.vars.contains_key(arg(1)) {
+                    self.vars.insert(String::from(arg(1)), value);
+                }
+                String::new()
+            }
+            // /if CONDITION then COMMAND [else COMMAND]
+            "/if" => {
+                let then = words.iter().position(|w| *w == "then");
+                let other = words.iter().position(|w| *w == "else");
+                match then {
+                    Some(t) if depth < 6 => {
+                        let yes = self.holds(&words[1..t]);
+                        let end = other.filter(|&o| o > t).unwrap_or(words.len());
+                        let branch = if yes { words[t + 1..end].join(" ") } else if end < words.len() { words[end + 1..].join(" ") } else { String::new() };
+                        if branch.is_empty() {
+                            String::new()
+                        } else {
+                            self.run(&branch, depth + 1).unwrap_or_default()
+                        }
+                    }
+                    _ => String::from("USE  /IF CONDITION THEN COMMAND [ELSE COMMAND]"),
+                }
+            }
+            // /after SECONDS COMMAND: do it later.
+            "/after" => {
+                let wait = arg(1).parse::<f32>().unwrap_or(1.0).clamp(0.0, 3600.0);
+                if self.later.len() < 64 && words.len() > 2 {
+                    self.later.push((wait, words[2..].join(" ")));
+                }
+                String::new()
+            }
+            // /repeat N COMMAND
+            "/repeat" if depth < 6 => {
+                let n = arg(1).parse::<u32>().unwrap_or(1).min(64);
+                let what = words[2.min(words.len())..].join(" ");
+                for _ in 0..n {
+                    self.run(&what, depth + 1);
+                }
+                String::new()
+            }
+            // /take ITEM [N]: remove from the player's pack (if they have it).
+            "/take" => match r.items.iter().position(|it| it.id == arg(1)) {
+                Some(item) => {
+                    self.inv.remove(item as u16, arg(2).parse::<u16>().unwrap_or(1).clamp(1, 999));
+                    String::new()
+                }
+                None => String::from("NO SUCH ITEM"),
+            },
+            // /title TEXT: a notice in the middle of the screen.
+            "/title" => {
+                let text = words[1.min(words.len())..].join(" ").to_ascii_uppercase();
+                self.say(&text);
+                String::new()
+            }
+            // /blast R: clear a ball of blocks where the player is pointing.
+            "/blast" if !online => {
+                if let Some(c) = self.target.as_ref().map(|h| h.cell) {
+                    let rad = arg(1).parse::<i32>().unwrap_or(2).clamp(1, 5);
+                    for dx in -rad..=rad {
+                        for dy in -rad..=rad {
+                            for dz in -rad..=rad {
+                                let cell = [c[0] + dx, c[1] + dy, c[2] + dz];
+                                let b = self.world.get(cell[0], cell[1], cell[2]);
+                                if dx * dx + dy * dy + dz * dz <= rad * rad && b != AIR && !block::def(b).unbreakable && cell[1] > 0 {
+                                    self.world.set_block(cell[0], cell[1], cell[2], AIR);
+                                }
+                            }
+                        }
+                    }
+                    self.sound_queue.push(String::from("thunder"));
+                }
+                String::new()
+            }
             // ---- For scripts mostly: things that happen to the player.
             "/say" => {
                 self.push_chat(words[1.min(words.len())..].join(" ").to_ascii_uppercase());
@@ -634,7 +797,7 @@ impl Session {
                 }
             }
             "/seed" => alloc::format!("SEED {}", self.base_seed),
-            "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" => String::from("NOT ON A SERVER"),
+            "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" | "/blast" => String::from("NOT ON A SERVER"),
             _ => return None,
         })
     }
@@ -1316,6 +1479,31 @@ impl Session {
                 }
             }
         }
+        // Commands put off with /after, and the turn of day and night.
+        let mut due = Vec::new();
+        for l in self.later.iter_mut() {
+            l.0 -= dt;
+        }
+        self.later.retain(|l| {
+            if l.0 <= 0.0 {
+                due.push(l.1.clone());
+            }
+            l.0 > 0.0
+        });
+        for line in due {
+            self.run(&line, 1);
+        }
+        let night = crate::math::sinf(self.time * crate::math::TAU) < -0.05;
+        if night != self.was_night {
+            self.was_night = night;
+            self.fire(if night { "night" } else { "day" }, "");
+        }
+        if self.dead && !self.death_told {
+            self.death_told = true;
+            self.fire("death", "");
+        } else if !self.dead {
+            self.death_told = false;
+        }
         for name in core::mem::take(&mut self.sound_queue) {
             audio.play_named(&name, 1.0);
         }
@@ -1744,6 +1932,10 @@ impl Session {
                             return;
                         }
                         Interaction::Ride(id) => {
+                            if let Some(m) = self.mobs.list.get(i) {
+                                let what = reg().entities[m.kind].id.clone();
+                                self.fire("ride", &what);
+                            }
                             self.riding_mob = Some(id);
                             self.sitting = None;
                             return;
@@ -1779,6 +1971,7 @@ impl Session {
                         self.inv.add(drop as u16, n);
                     }
                     audio.play(if killed { Sound::Pop } else { Sound::Hurt }, 0.8);
+                    self.fire("hit", &reg().entities[kind].id);
                     if killed {
                         self.fire("kill", &reg().entities[kind].id);
                     }
@@ -2026,6 +2219,8 @@ impl Session {
             }
             sys::write_file(&self.explored_path, text.as_bytes());
             sys::write_file(&self.pets_path, self.mobs.save_pets().as_bytes());
+            let vars: String = self.vars.iter().map(|(k, v)| alloc::format!("{}={}\n", k, v)).collect();
+            sys::write_file(&self.vars_path, vars.as_bytes());
         }
         let text = alloc::format!(
             "seed={}\ndim={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\ninventory={}\n",
