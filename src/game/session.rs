@@ -955,6 +955,28 @@ impl Session {
                 self.hunger = (self.hunger + arg(1).parse::<i32>().unwrap_or(4)).clamp(0, MAX_HUNGER);
                 String::new()
             }
+            // /sleep: lie down in the nearest bed (within four blocks), as if used.
+            "/sleep" => {
+                let p = [floord(self.player.pos[0]), floord(self.player.pos[1]), floord(self.player.pos[2])];
+                let mut found = None;
+                for dx in -4..=4 {
+                    for dy in -2..=2 {
+                        for dz in -4..=4 {
+                            let c = [p[0] + dx, p[1] + dy, p[2] + dz];
+                            if found.is_none() && block::def(self.world.get(c[0], c[1], c[2])).usable == Usable::Bed {
+                                found = Some(c);
+                            }
+                        }
+                    }
+                }
+                match found {
+                    Some(c) => {
+                        self.lie_down(c);
+                        String::from("lying down")
+                    }
+                    None => String::from("NO BED WITHIN FOUR BLOCKS"),
+                }
+            }
             // /fire EVENT [WHAT]: raise an event, for any pack's `when` to answer.
             // How mods hook into one another: one pack fires, another reacts.
             "/fire" => {
@@ -1709,6 +1731,20 @@ impl Session {
         }
     }
 
+    /// Use the bed at `cell`: it becomes where you wake up after dying, and at
+    /// night (in a world of your own) you sleep until morning.
+    fn lie_down(&mut self, cell: [i32; 3]) {
+        self.spawn = [cell[0] as f64 + 0.5, cell[1] as f64 + 1.0, cell[2] as f64 + 0.5];
+        let night = crate::math::sinf(self.time * crate::math::TAU) < -0.05;
+        if night && self.net.is_none() {
+            // Sleep until morning: the night passes at forty times the speed.
+            self.sleeping = true;
+            self.say("ZZZ...  MOVE TO WAKE UP");
+        } else {
+            self.say(if night { "YOU WILL WAKE UP HERE" } else { "YOU CAN SLEEP WHEN IT IS DARK" });
+        }
+    }
+
     fn retarget(&mut self) {
         self.target = self.world.raycast(self.player.eye(), forward(self.player.yaw, self.player.pitch), self.reach());
         // Aiming at any part of a big prop is aiming at the prop.
@@ -2286,15 +2322,8 @@ impl Session {
                 let u = aimed.usable;
                 if u == Usable::Bed {
                     self.cooldown[1] = 0.6;
-                    self.spawn = [hit.cell[0] as f64 + 0.5, hit.cell[1] as f64 + 1.0, hit.cell[2] as f64 + 0.5];
-                    let night = crate::math::sinf(self.time * crate::math::TAU) < -0.05;
-                    if night && self.net.is_none() {
-                        // Sleep until morning: the night passes at forty times the speed.
-                        self.sleeping = true;
-                        self.say("ZZZ...  MOVE TO WAKE UP");
-                    } else {
-                        self.say(if night { "YOU WILL WAKE UP HERE" } else { "YOU CAN SLEEP WHEN IT IS DARK" });
-                    }
+                    let cell = hit.cell;
+                    self.lie_down(cell);
                     return;
                 }
                 if u != Usable::Nothing {

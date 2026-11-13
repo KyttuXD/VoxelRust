@@ -144,6 +144,8 @@ pub struct State {
     coupling: Option<usize>,
     /// Across a reload of the content: everything as text, and who rides.
     carried: Option<(String, Option<usize>)>,
+    /// Cruise control: the vehicle being driven keeps full throttle (`/cruise`).
+    cruise: bool,
 }
 
 fn path(g: &Session) -> String {
@@ -191,7 +193,13 @@ fn update(g: &mut Session, dt: f32, c: &Controls, audio: &mut Audio) {
         g.player.pos[1] += 0.6;
         g.player.vel = [0.0; 3];
     }
-    if let Some(eye) = st.v.update(dt, &g.world, &c.input, (g.player.yaw, g.player.pitch)) {
+    let mut input = c.input;
+    if st.cruise && st.v.riding.is_some() {
+        input.forward = 1.0;
+    } else {
+        st.cruise = false;
+    }
+    if let Some(eye) = st.v.update(dt, &g.world, &input, (g.player.yaw, g.player.pitch)) {
         g.seat = Some(eye);
     }
     // A passenger rides along: placed at the seat, beside the driver's, without steering.
@@ -228,9 +236,11 @@ fn explode(g: &mut Session, v: &mut Vehicles, crash: Crash, audio: &mut Audio) {
         g.player.pos = [crash.pos[0], crash.pos[1] + 1.0, crash.pos[2]];
         g.player.vel = [0.0; 3];
     }
+    let hurt = 2 + (crash.speed / 3.0) as i32;
     if riding || near {
-        g.damage(2 + (crash.speed / 3.0) as i32, audio);
+        g.damage(hurt, audio);
     }
+    logf!("voxelrust: vehicle crash at {:.1} {:.1} {:.1}, speed {:.1}: wrecked{}", crash.pos[0], crash.pos[1], crash.pos[2], crash.speed, if riding || near { alloc::format!(", the player is hurt for {}", hurt) } else { String::new() });
     audio.play_named("thunder", 1.0);
 }
 
@@ -507,6 +517,18 @@ fn command(g: &mut Session, words: &[&str]) -> Option<String> {
                     st.v.passenger = Some(i);
                     String::from("RIDING ALONG")
                 }
+            };
+            g.put_ext(NAME, st);
+            Some(reply)
+        }
+        // /cruise: keep the vehicle you are driving at full throttle (it stops when you get out).
+        Some("/cruise") => {
+            let mut st = g.take_ext::<State>(NAME);
+            let reply = if st.v.riding.is_some() {
+                st.cruise = !st.cruise;
+                String::from(if st.cruise { "CRUISE ON" } else { "CRUISE OFF" })
+            } else {
+                String::from("GET IN A VEHICLE FIRST")
             };
             g.put_ext(NAME, st);
             Some(reply)

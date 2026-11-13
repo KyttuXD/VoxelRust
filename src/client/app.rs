@@ -135,6 +135,8 @@ struct Opts {
     time: Option<f32>,
     /// `--wait-frames N`: with `--screenshot`, wait N more frames after the world settles (for remeshing).
     wait_frames: u32,
+    /// `--step SECONDS`: in a scripted run, how much game time each frame lasts (default none: the game stands still).
+    step: Option<f32>,
     hidden: bool,
     showcase: bool,
     show: String,
@@ -234,6 +236,7 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             }
             "--time" => o.time = Some(num::<f32>(&next(&mut i, a)?, a)?.clamp(0.0, 1.0)),
             "--wait-frames" => o.wait_frames = num::<u32>(&next(&mut i, a)?, a)?,
+            "--step" => o.step = Some(num::<f32>(&next(&mut i, a)?, a)?.clamp(0.0, 0.1)),
             // Finder on old Mac OS X adds a process serial number when an
             // app is double-clicked; it is not for us.
             _ if a.starts_with("-psn_") => {}
@@ -3362,7 +3365,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         // Scripted runs freeze time so pictures are repeatable, except
         // online, where the conversation with the server needs a clock.
         let online = app.session.as_ref().map_or(false, |g| g.net.is_some());
-        app.update(&mut r, if scripted && !online { 0.0 } else { dt }, dt);
+        app.update(&mut r, if scripted && !online { opts.step.unwrap_or(0.0) } else { dt }, dt);
         app.draw(&mut r, &inp);
         app.auto_tune(real_dt, r.w);
 
