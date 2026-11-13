@@ -60,8 +60,56 @@ fn other_half(world: &World, c: [i32; 3]) -> Option<[i32; 3]> {
     }
 }
 
-/// Take one block out of the world, with its other half if it has one.
+/// Every cell a prop `w` blocks wide and `h` tall takes up when it stands
+/// at `c` (the middle of its floor), the cell `c` itself included.
+fn footprint(c: [i32; 3], (w, h): (u8, u8), mut f: impl FnMut([i32; 3])) {
+    let (w, h) = (w.max(1) as i32, h.max(1) as i32);
+    for dy in 0..h {
+        for dx in -(w / 2)..(w + 1) / 2 {
+            for dz in -(w / 2)..(w + 1) / 2 {
+                f([c[0] + dx, c[1] + dy, c[2] + dz]);
+            }
+        }
+    }
+}
+
+/// The block a cell belongs to: for the hidden bulk of a big prop, the
+/// prop's own cell; for anything else, the cell itself.
+pub fn prop_root(world: &World, c: [i32; 3]) -> [i32; 3] {
+    if !block::def(world.get(c[0], c[1], c[2])).x.part {
+        return c;
+    }
+    for dy in 0..24 {
+        for dx in -3..=3 {
+            for dz in -3..=3 {
+                let r = [c[0] + dx, c[1] - dy, c[2] + dz];
+                let fills = block::def(world.get(r[0], r[1], r[2])).x.fills;
+                if fills.0 == 0 {
+                    continue;
+                }
+                let mut inside = false;
+                footprint(r, fills, |f| inside |= f == c);
+                if inside {
+                    return r;
+                }
+            }
+        }
+    }
+    c
+}
+
+/// Take one block out of the world, with its other half if it has one, or
+/// the whole of a big prop.
 pub fn remove(world: &mut World, c: [i32; 3]) {
+    let c = prop_root(world, c);
+    let fills = block::def(world.get(c[0], c[1], c[2])).x.fills;
+    if fills.0 != 0 {
+        footprint(c, fills, |f| {
+            if block::def(world.get(f[0], f[1], f[2])).x.part {
+                world.set_block(f[0], f[1], f[2], AIR);
+            }
+        });
+    }
     if let Some(o) = other_half(world, c) {
         world.set_block(o[0], o[1], o[2], AIR);
     }
@@ -153,6 +201,17 @@ pub fn place_at(world: &mut World, player: &Player, item: &ItemDef, hit: &Hit) -
         if !extra.on.is_empty() && !extra.on.contains(&block::def(world.get(c[0], c[1] - 1, c[2])).first) {
             return;
         }
+        if extra.fills.0 != 0 && reg().part != AIR {
+            // A big prop needs all of its room free.
+            let mut free = true;
+            footprint(c, extra.fills, |f| free &= (0..CH).contains(&f[1]) && replaceable(world.get(f[0], f[1], f[2])) && !player.overlaps_cell(f));
+            if !free {
+                return;
+            }
+            footprint(c, extra.fills, |f| {
+                world.set_block(f[0], f[1], f[2], reg().part);
+            });
+        }
         if extra.tall {
             // Doors need room for their upper half.
             let up = [c[0], c[1] + 1, c[2]];
@@ -219,6 +278,32 @@ mod tests {
     }
 
     const DOWN: Vec3 = Vec3::new(0.0, -1.0, 0.0);
+
+    #[test]
+    fn big_props_take_their_room_and_break_as_one() {
+        let mut w = world();
+        let p = Player::new([2.5, 121.0, 2.5]);
+        let hit = aim(&w, [8.5, 126.0, 8.5], DOWN);
+        assert!(place_at(&mut w, &p, item("golem_statue"), &hit));
+        let statue = reg().block("golem_statue").unwrap();
+        assert_eq!(block::def(w.get(8, 121, 8)).first, statue);
+        assert!(block::def(w.get(8, 122, 8)).x.part && block::def(w.get(8, 123, 8)).x.part, "the rest of it is filled in");
+        assert_eq!(w.get(8, 124, 8), AIR);
+        // Any part of it is the statue.
+        assert_eq!(prop_root(&w, [8, 123, 8]), [8, 121, 8]);
+        // No room: a second one cannot stand where the first one's head is.
+        w.set_block(9, 122, 8, reg().wk.stone);
+        let side = Hit { cell: [9, 122, 8], prev: [9, 123, 8], dist: 1.0, point: [9.5, 123.0, 8.5] };
+        assert!(place_at(&mut w, &p, item("golem_statue"), &side));
+        w.set_block(10, 121, 8, reg().wk.stone);
+        let low = Hit { cell: [8, 120, 9], prev: [8, 121, 9], dist: 1.0, point: [8.5, 121.0, 9.5] };
+        w.set_block(8, 122, 9, reg().wk.stone);
+        assert!(!place_at(&mut w, &p, item("golem_statue"), &low), "blocked above");
+        // Breaking the top takes all of it and nothing else.
+        remove(&mut w, [8, 123, 8]);
+        assert_eq!((w.get(8, 121, 8), w.get(8, 122, 8), w.get(8, 123, 8)), (AIR, AIR, AIR));
+        assert!(block::def(w.get(9, 124, 8)).x.part, "the neighbour stands");
+    }
 
     #[test]
     fn doors_are_two_high_and_open_shut_and_break_as_one() {

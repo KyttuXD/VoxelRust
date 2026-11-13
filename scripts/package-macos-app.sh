@@ -50,7 +50,7 @@ PLIST
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 # The mods that come with the game ride inside the app.
 mkdir -p "$APP/Contents/Resources/mods"
-for m in disasters earth landvehicles holidays; do
+for m in disasters earth boats trains planes landvehicles holidays; do
   [ -d "mods/$m" ] && cp -R "mods/$m" "$APP/Contents/Resources/mods/"
 done
 # SDL2 rides inside the app, so nothing else need be installed: the

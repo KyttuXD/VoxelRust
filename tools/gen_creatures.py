@@ -242,7 +242,7 @@ PEOPLE = [
     ("villager_smith", "Smith", "smith", (150, 130, 130), ["iron_ore 6 iron_pick 1", "iron_ore 4 iron_hoe 1", "coal 8 ruby 1", "ruby 3 crystal_pick 1"]),
     ("villager_trader", "Trader", "trader", (230, 200, 110), ["ruby 1 bread 6", "ruby 1 oak_door 2", "ruby 2 red_bed 1", "crystal 2 ruby 1", "string 6 ruby 1"]),
     ("villager_shepherd", "Shepherd", "shepherd", (200, 200, 220), ["white_wool 4 ruby 1", "ruby 1 white_wool 6", "milk 3 ruby 1"]),
-    ("villager_fisher", "Fisher", "fisher", (130, 190, 220), ["raw_fish 4 ruby 1", "ruby 1 cooked_fish 5", "ruby 2 boat 1"]),
+    ("villager_fisher", "Fisher", "fisher", (130, 190, 220), ["raw_fish 4 ruby 1", "ruby 1 cooked_fish 5", "ruby 2 fish_soup 3"]),
 ]
 for id, name, job, (r, g, b), trades in PEOPLE:
     entity(id, name, "player", 1.8, 0.6, 2.6, 24, behavior="villager", biomes="plains savanna forest taiga desert", weight=2,

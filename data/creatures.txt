@@ -24,9 +24,3 @@ model horse file models/horse.bbmodel
 model frog file models/frog.bbmodel
 model duck file models/duck.bbmodel
 
-# --- vehicle models (the vehicles themselves are declared elsewhere)
-model boat file models/boat.bbmodel
-model cargo_boat file models/cargo_boat.bbmodel
-model cart file models/cart.bbmodel
-model chest_cart file models/chest_cart.bbmodel
-model plane file models/plane.bbmodel

@@ -1,9 +1,61 @@
 # Earth - a mod that comes with the game, in its own folder.
 #
-# Worlds made from the real planet: heights from elevation data, land cover,
-# roads, buildings and farmland from the map, the world map screen (M) and
-# place-name notices. The code for it is part of the program; this pack is
-# what switches it on. Switch the mod off in Settings > MODS (or delete its folder) and the EARTH
-# terrain choice and the --earth option go away (worlds already made stay
-# playable). Needs the internet; see docs/EARTH.md.
-feature earth
+# Worlds made from the real planet: heights from elevation data; land
+# cover, roads, buildings and farmland from the map; the world map screen
+# (M) and place-name notices. The program only knows how to lay map tiles
+# out as terrain. Which tiles, what their colours mean and where a world
+# may start is all written here, so another source or another planet's map
+# is a matter of editing these lines. Switch the mod off in Settings > MODS
+# (or delete its folder) and the EARTH terrain choice and the --earth
+# option go away (worlds already made stay, but load no new ground).
+# Needs the internet; see docs/EARTH.md.
+#
+# Map data (c) OpenStreetMap contributors. Elevation: Mapzen / AWS Terrain
+# Tiles.
+
+# Elevation tiles ({z} zoom, {x} and {y} tile numbers), their encoding and
+# the deepest zoom they go to.
+map heights https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png terrarium 14
+# Map tiles: read for land cover, and shown on the map screen.
+map cover https://tile.openstreetmap.org/{z}/{x}/{y}.png
+# Naming the place you are in.
+map names https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}&zoom={zoom}&accept-language=en
+
+# What the map's colours mean. Kinds: land water forest grass sand ice rock
+# urban building road farm. Anything not close to one of these is land.
+map colour 170 211 223 water
+map colour 173 209 158 forest
+map colour 200 215 171 forest
+map colour 205 235 176 grass
+map colour 200 250 204 grass
+map colour 238 240 213 farm
+map colour 245 220 186 farm
+map colour 174 223 163 farm
+map colour 222 252 225 grass
+map colour 245 233 198 sand
+map colour 255 241 186 sand
+map colour 221 236 236 ice
+map colour 238 229 220 rock
+map colour 224 223 223 urban
+map colour 217 208 201 building
+map colour 255 255 255 road
+map colour 247 250 191 road
+map colour 252 214 164 road
+map colour 249 178 156 road
+map colour 232 146 162 road
+
+# Permanent snow: above 5200 m at the equator, 75 m lower per degree north
+# or south.
+map snowline 5200 75
+
+# Starting places offered when making a world: latitude, longitude, name.
+map place 46.8523 -121.7603 Mount Rainier
+map place 36.1069 -112.1129 Grand Canyon
+map place 35.3606 138.7274 Mount Fuji
+map place 45.9763 7.6586 Matterhorn
+map place 40.7831 -73.9712 Manhattan
+map place 51.5072 -0.1276 London
+map place -33.8568 151.2153 Sydney Harbour
+map place 27.9881 86.9250 Mount Everest
+map place 30.9 31.1 Nile Delta
+map place 19.6 -155.5 Hawaii

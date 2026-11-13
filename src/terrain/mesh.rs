@@ -348,6 +348,8 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                             }
                         }
                     }
+                    // The unseen bulk of a big prop.
+                    Kind::Boxes if d.x.part => {}
                     Kind::Boxes if d.x.prop.is_some() => {
                         // Drawn as a model each frame; nothing to mesh.
                         if out.props.len() < 4096 {

@@ -1,0 +1,161 @@
+# Trains - a mod that comes with the game, in its own folder.
+#
+# Rail track, carts that run on it, a locomotive that pulls them, and
+# station furniture. `track <percent>` on a block is how fast carts run on
+# it; `station <seconds>` makes carts running by themselves stop and wait.
+# Nothing here is part of the program: a vehicle is a `vehicle` block naming
+# a model, what it travels on (water, rail, land or air) and its numbers.
+# Change them or add your own (docs/DATA.md). Switch the mod off in
+# Settings > MODS, or delete its folder, and these are gone from the game.
+model cart file models/cart.bbmodel
+model chest_cart file models/chest_cart.bbmodel
+texture rail paint rail 170 172 180
+texture speed_rail paint rail 236 196 70
+texture slow_rail paint rail 200 80 70
+texture station_rail paint rail 80 150 230
+texture depot_rail paint rail 90 200 120
+texture chain paint web 150 154 164
+texture icon_cart paint vehicle 132 134 142
+texture icon_chest_cart paint vehicle 160 120 70
+texture icon_locomotive paint vehicle 60 60 70
+texture icon_passenger_cart paint vehicle 90 130 200
+texture icon_hopper_cart paint vehicle 150 110 70
+
+# ---- Track ----
+block rail
+  name Rail
+  tex rail
+  category Travel
+  hardness 0.4
+  solid no
+  box 0 0 0 16 2 16
+block speed_rail
+  name Speed Rail
+  tex speed_rail
+  category Travel
+  hardness 0.4
+  solid no
+  box 0 0 0 16 2 16
+  track 220
+block slow_rail
+  name Slow Rail
+  tex slow_rail
+  category Travel
+  hardness 0.4
+  solid no
+  box 0 0 0 16 2 16
+  track 40
+block station_rail
+  name Station Rail (6 s stop)
+  tex station_rail
+  category Travel
+  hardness 0.4
+  solid no
+  box 0 0 0 16 2 16
+  track 100
+  station 6
+block depot_rail
+  name Depot Rail (30 s stop)
+  tex depot_rail
+  category Travel
+  hardness 0.4
+  solid no
+  box 0 0 0 16 2 16
+  track 100
+  station 30
+block platform
+  name Station Platform
+  tex stone_bricks
+  category Travel
+  hardness 1.5
+  tool pick
+  box 0 0 0 16 10 16
+block buffer_stop
+  name Buffer Stop
+  tex planks
+  category Travel
+  hardness 1.0
+  tool axe
+  rotate
+  box 1 0 6 3 12 10
+  box 13 0 6 15 12 10
+  box 1 8 6 15 12 10
+block signal_post
+  name Signal Post
+  tex lamp
+  category Travel
+  hardness 0.6
+  light 10
+  box 7 0 7 9 12 9
+  box 5 12 5 11 16 11
+
+# A chain couples carts into a train: hold it and right click two carts.
+item chain
+  name Chain
+  icon chain
+  category Travel
+
+# ---- Rolling stock ----
+vehicle cart
+  name Rail Cart
+  model cart
+  icon icon_cart
+  medium rail
+  speed 10
+  height 0.8
+  width 1.0
+  seat 0.9
+vehicle chest_cart
+  name Chest Cart
+  model chest_cart
+  icon icon_chest_cart
+  medium rail
+  speed 8
+  height 1.0
+  width 1.0
+  seat 1.0
+  storage
+vehicle locomotive
+  name Locomotive
+  model chest_cart
+  icon icon_locomotive
+  medium rail
+  speed 12
+  height 1.1
+  width 1.0
+  seat 1.1
+  powered
+vehicle passenger_cart
+  name Passenger Cart
+  model cart
+  icon icon_passenger_cart
+  medium rail
+  speed 12
+  height 0.8
+  width 1.0
+  seat 0.9
+vehicle hopper_cart
+  name Freight Cart
+  model chest_cart
+  icon icon_hopper_cart
+  medium rail
+  speed 12
+  height 1.0
+  width 1.0
+  seat 1.0
+  storage
+
+craft rail 16 iron_ore 3 stick 2
+craft speed_rail 8 rail 8 crystal 1
+craft slow_rail 8 rail 8 coal 1
+craft station_rail 2 rail 2 lamp 1
+craft depot_rail 2 station_rail 2 oak_chest 1
+craft platform 4 stone_bricks 3
+craft buffer_stop 1 planks 3
+craft signal_post 1 lamp 1 stick 2
+craft chain 2 iron_ingot 1
+craft cart 1 iron_ore 5
+craft chest_cart 1 cart 1 oak_chest 1
+craft locomotive 1 cart 1 furnace 1 iron_ingot 4
+craft passenger_cart 1 cart 1 chair 1
+craft hopper_cart 1 chest_cart 1 iron_ingot 2

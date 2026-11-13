@@ -1231,7 +1231,7 @@ entity villager_fisher
   damage 2
   trade raw_fish 4 ruby 1
   trade ruby 1 cooked_fish 5
-  trade ruby 2 boat 1
+  trade ruby 2 fish_soup 3
   baby 0.55 900
 entity wanderer
   name Wanderer

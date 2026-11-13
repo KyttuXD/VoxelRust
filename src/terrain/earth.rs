@@ -20,25 +20,115 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
-/// Where a new Earth world starts unless the player picks somewhere else.
-pub fn default_kind() -> WorldKind {
-    let p = &PLACES[0];
-    WorldKind::Earth { lat: p.1, lon: p.2, scale: 30, vscale: 75, features: true }
+/// Everything about the planet that is not arithmetic: where the tiles
+/// come from, what the map's colours mean, where worlds may start. None of
+/// it is in the program; a pack's `map` lines give it (the Earth mod's
+/// `mods/earth/pack.txt`), and without them there are no Earth worlds.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MapDef {
+    /// Address of an elevation tile, with `{z}`, `{x}` and `{y}` in it.
+    pub heights: String,
+    /// The deepest zoom the elevation tiles go to.
+    pub height_zoom: u32,
+    /// Address of a map tile, read for land cover and shown on the map.
+    pub cover: String,
+    /// Address that names a place, with `{lat}`, `{lon}` and `{zoom}`.
+    pub names: String,
+    /// What each colour of the map means: a colour and a [`class`].
+    pub colours: Vec<([u8; 3], u8)>,
+    /// Starting places offered when making a world: name, latitude, longitude.
+    pub places: Vec<(String, f64, f64)>,
+    /// Permanent snow: metres up at the equator, and metres lower per
+    /// degree of latitude.
+    pub snow: (f32, f32),
+}
+
+/// Whether an address from a pack may be handed to `curl`: https only, and
+/// nothing a shell could read as more than an address.
+pub fn safe_url(u: &str) -> bool {
+    u.len() < 300
+        && u.starts_with("https://")
+        && u.chars().all(|c| c.is_ascii_alphanumeric() || "/:._-?=&{},+~".contains(c))
+}
+
+impl MapDef {
+    /// Take in one `map ...` line of a pack (the words after `map`).
+    pub fn apply(&mut self, w: &[&str]) -> Result<(), &'static str> {
+        let num = |k: usize| w.get(k).and_then(|s| s.parse::<f64>().ok());
+        match (w.first().copied().unwrap_or(""), w.get(1).copied().unwrap_or("")) {
+            ("heights", url) if safe_url(url) => {
+                if w.get(2).map_or(false, |f| *f != "terrarium") {
+                    return Err("the only elevation format is terrarium");
+                }
+                self.heights = String::from(url);
+                self.height_zoom = num(3).map_or(14, |z| (z as u32).clamp(1, 15));
+            }
+            ("cover", url) if safe_url(url) => self.cover = String::from(url),
+            ("names", url) if safe_url(url) => self.names = String::from(url),
+            ("heights" | "cover" | "names", _) => return Err("needs an https address without spaces or quotes"),
+            ("colour" | "color", _) => {
+                let kind = class::NAMES.iter().position(|n| Some(n) == w.get(4));
+                match (num(1), num(2), num(3), kind) {
+                    (Some(r), Some(g), Some(b), Some(k)) if self.colours.len() < 64 => self.colours.push(([r as u8, g as u8, b as u8], k as u8)),
+                    _ => return Err("map colour needs R G B and one of: land water forest grass sand ice rock urban building road farm"),
+                }
+            }
+            ("place", _) => match (num(1), num(2)) {
+                (Some(lat), Some(lon)) if w.len() > 3 && (-85.0..=85.0).contains(&lat) && (-180.0..=180.0).contains(&lon) && self.places.len() < 64 => {
+                    self.places.push((w[3..].join(" ").to_ascii_uppercase(), lat, lon))
+                }
+                _ => return Err("map place needs LATITUDE LONGITUDE NAME"),
+            },
+            ("snowline", _) => match (num(1), num(2)) {
+                (Some(top), Some(drop)) => self.snow = (top as f32, drop as f32),
+                _ => return Err("map snowline needs METRES-AT-THE-EQUATOR METRES-LOWER-PER-DEGREE"),
+            },
+            _ => return Err("map lines are: heights, cover, names, colour, place, snowline"),
+        }
+        Ok(())
+    }
+}
+
+/// The map a pack has described, if any.
+#[cfg(not(test))]
+pub fn def() -> Option<&'static MapDef> {
+    crate::block::reg().map.as_ref()
+}
+
+/// In tests: what the Earth mod itself says.
+#[cfg(test)]
+pub fn def() -> Option<&'static MapDef> {
+    static DEF: AtomicPtr<MapDef> = AtomicPtr::new(core::ptr::null_mut());
+    let p = DEF.load(Ordering::Acquire);
+    if !p.is_null() {
+        return unsafe { p.as_ref() };
+    }
+    let mut d = MapDef::default();
+    for line in include_str!("../../mods/earth/pack.txt").lines() {
+        let w: Vec<&str> = line.split_whitespace().collect();
+        if w.first() == Some(&"map") {
+            d.apply(&w[1..]).unwrap();
+        }
+    }
+    DEF.store(alloc::boxed::Box::into_raw(alloc::boxed::Box::new(d)), Ordering::Release);
+    def()
+}
+
+/// Whether Earth worlds can be made: a pack says where the tiles are.
+pub fn available() -> bool {
+    def().map_or(false, |d| !d.colours.is_empty() && !d.places.is_empty())
 }
 
 /// Starting places offered when creating an Earth world.
-pub const PLACES: [(&str, f64, f64); 10] = [
-    ("MOUNT RAINIER", 46.8523, -121.7603),
-    ("GRAND CANYON", 36.1069, -112.1129),
-    ("MOUNT FUJI", 35.3606, 138.7274),
-    ("MATTERHORN", 45.9763, 7.6586),
-    ("MANHATTAN", 40.7831, -73.9712),
-    ("LONDON", 51.5072, -0.1276),
-    ("SYDNEY HARBOUR", -33.8568, 151.2153),
-    ("MOUNT EVEREST", 27.9881, 86.9250),
-    ("NILE DELTA", 30.9, 31.1),
-    ("HAWAII", 19.6, -155.5),
-];
+pub fn places() -> &'static [(String, f64, f64)] {
+    def().map_or(&[], |d| &d.places)
+}
+
+/// Where a new Earth world starts unless the player picks somewhere else.
+pub fn default_kind() -> WorldKind {
+    let (lat, lon) = places().first().map_or((0.0, 0.0), |p| (p.1, p.2));
+    WorldKind::Earth { lat, lon, scale: 30, vscale: 75, features: true }
+}
 
 // ------------------------------------------------------------ small maths
 // (f64 versions of the few functions the map projection needs; `core` has
@@ -139,7 +229,6 @@ pub struct Proj {
 
 /// Elevation tiles stop at this zoom; finer worlds interpolate between
 /// their pixels.
-const MAX_ELEVATION_ZOOM: u32 = 14;
 
 /// The elevation (metres) that sits at sea level in a finely scaled world,
 /// found from the world's origin the first time it is needed. `i32::MIN`
@@ -210,6 +299,8 @@ pub mod class {
     pub const ROAD: u8 = 9;
     /// Farmland, farmyards, orchards and vineyards.
     pub const FARM: u8 = 10;
+    /// What packs call them, in the order of the numbers above.
+    pub const NAMES: [&str; 11] = ["land", "water", "forest", "grass", "sand", "ice", "rock", "urban", "building", "road", "farm"];
 }
 
 pub struct Tile {
@@ -223,32 +314,11 @@ pub struct Tile {
 
 pub type TileKey = (Layer, u32, u32, u32);
 
-/// What colour means what on OpenStreetMap's standard map.
+/// What a colour of the map means, by the pack's key to it.
 fn classify(r: u8, g: u8, b: u8) -> u8 {
-    const KNOWN: [([u8; 3], u8); 20] = [
-        ([170, 211, 223], class::WATER),
-        ([173, 209, 158], class::FOREST),
-        ([200, 215, 171], class::FOREST),
-        ([205, 235, 176], class::GRASS),
-        ([200, 250, 204], class::GRASS),
-        ([238, 240, 213], class::FARM),
-        ([245, 220, 186], class::FARM),
-        ([174, 223, 163], class::FARM),
-        ([222, 252, 225], class::GRASS),
-        ([245, 233, 198], class::SAND),
-        ([255, 241, 186], class::SAND),
-        ([221, 236, 236], class::ICE),
-        ([238, 229, 220], class::ROCK),
-        ([224, 223, 223], class::URBAN),
-        ([217, 208, 201], class::BUILDING),
-        ([255, 255, 255], class::ROAD),
-        ([247, 250, 191], class::ROAD),
-        ([252, 214, 164], class::ROAD),
-        ([249, 178, 156], class::ROAD),
-        ([232, 146, 162], class::ROAD),
-    ];
+    let known: &[([u8; 3], u8)] = def().map_or(&[], |d| &d.colours);
     let mut best = (40 * 40 * 3, class::LAND);
-    for (c, k) in KNOWN {
+    for &(c, k) in known {
         let d = [(r, c[0]), (g, c[1]), (b, c[2])].iter().map(|&(a, b)| (a as i32 - b as i32) * (a as i32 - b as i32)).sum::<i32>();
         if d < best.0 {
             best = (d, k);
@@ -335,11 +405,15 @@ pub fn insert_tile(key: TileKey, tile: Tile) {
     });
 }
 
-pub fn tile_url(key: TileKey) -> String {
-    match key.0 {
-        Layer::Elevation => alloc::format!("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{}/{}/{}.png", key.1, key.2, key.3),
-        Layer::Map => alloc::format!("https://tile.openstreetmap.org/{}/{}/{}.png", key.1, key.2, key.3),
+/// Where a tile is fetched from, by the pack's `map heights` and
+/// `map cover` lines.
+pub fn tile_url(key: TileKey) -> Option<String> {
+    let d = def()?;
+    let template = if key.0 == Layer::Elevation { &d.heights } else { &d.cover };
+    if !safe_url(template) {
+        return None;
     }
+    Some(template.replace("{z}", &alloc::format!("{}", key.1)).replace("{x}", &alloc::format!("{}", key.2)).replace("{y}", &alloc::format!("{}", key.3)))
 }
 
 fn cache_path(conf: &Conf, key: TileKey) -> String {
@@ -347,12 +421,17 @@ fn cache_path(conf: &Conf, key: TileKey) -> String {
 }
 
 /// Download one tile to `path` with the system's `curl`. The command line
-/// is built only from numbers and our own cache path.
+/// is built from numbers, our own cache path, and the pack's address
+/// (checked by [`safe_url`]).
 pub fn download_with_curl(key: TileKey, path: &str) -> bool {
     if path.contains('"') || path.contains('$') || path.contains('`') || path.contains('%') {
         return false; // never hand the shell a path that could be misread
     }
-    let cmd = alloc::format!("curl -fsSL --max-time 25 -A \"VoxelRust/{}\" -o \"{}\" \"{}\"", env!("CARGO_PKG_VERSION"), path, tile_url(key));
+    let url = match tile_url(key) {
+        Some(u) => u,
+        None => return false,
+    };
+    let cmd = alloc::format!("curl -fsSL --max-time 25 -A \"VoxelRust/{}\" -o \"{}\" \"{}\"", env!("CARGO_PKG_VERSION"), path, url);
     sys::run_command(&cmd) == 0
 }
 
@@ -489,15 +568,10 @@ pub fn fetch_place_json(lat: f64, lon: f64, level: i32) -> Option<Vec<u8>> {
     if path.contains('"') || path.contains('$') || path.contains('`') || path.contains('%') {
         return None;
     }
-    // Built only from numbers and our own path.
-    let cmd = alloc::format!(
-        "curl -fsSL --max-time 15 -A \"VoxelRust/{}\" -o \"{}\" \"https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={:.5}&lon={:.5}&zoom={}&accept-language=en\"",
-        env!("CARGO_PKG_VERSION"),
-        path,
-        lat,
-        lon,
-        zoom
-    );
+    // Built from numbers, our own path and the pack's checked address.
+    let template = def().map(|d| d.names.as_str()).filter(|t| safe_url(t))?;
+    let url = template.replace("{lat}", &alloc::format!("{:.5}", lat)).replace("{lon}", &alloc::format!("{:.5}", lon)).replace("{zoom}", &alloc::format!("{}", zoom));
+    let cmd = alloc::format!("curl -fsSL --max-time 15 -A \"VoxelRust/{}\" -o \"{}\" \"{}\"", env!("CARGO_PKG_VERSION"), path, url);
     if sys::run_command(&cmd) != 0 {
         return None;
     }
@@ -565,7 +639,7 @@ pub fn column(p: &Proj, x: i32, z: i32) -> Column {
     let (px, py) = p.block_to_px(x as f64 + 0.5, z as f64 + 0.5);
     // Elevation comes from a shallower zoom than the map when the world is
     // finer than the elevation data.
-    let ez = p.zoom.min(MAX_ELEVATION_ZOOM);
+    let ez = p.zoom.min(def().map_or(14, |d| d.height_zoom.max(1)));
     let shrink = (1u64 << (p.zoom - ez)) as f64;
     let sample = |px: f64, py: f64| sample_metres(ez, px / shrink, py / shrink);
     let mut m = sample(px, py).unwrap_or(-10.0);
@@ -631,7 +705,8 @@ pub fn column(p: &Proj, x: i32, z: i32) -> Column {
         }
     };
     // Permanent snow starts lower the further from the equator.
-    let snow_line = (5200.0 - 75.0 * lat as f32).max(0.0);
+    let snow = def().map_or((5200.0, 75.0), |d| d.snow);
+    let snow_line = (snow.0 - snow.1 * lat as f32).max(0.0);
     let biome = match cover {
         class::FOREST => {
             if lat > 58.0 || m > snow_line * 0.7 {
@@ -782,6 +857,24 @@ mod tests {
         assert_eq!(metres_to_height(0.0, 25.0), SEA - 1);
         assert_eq!(metres_to_height(100.0, 25.0), SEA + 5);
         assert_eq!(metres_to_height(99_999.0, 25.0), CH - 14);
-        assert_eq!(tile_url((Layer::Map, 3, 1, 2)), "https://tile.openstreetmap.org/3/1/2.png");
+        assert_eq!(tile_url((Layer::Map, 3, 1, 2)).as_deref(), Some("https://tile.openstreetmap.org/3/1/2.png"));
+    }
+
+    #[test]
+    fn a_pack_describes_the_map_and_odd_addresses_are_refused() {
+        let d = def().unwrap();
+        assert!(d.places.len() >= 10 && d.colours.len() >= 20 && d.height_zoom == 14);
+        assert!(available());
+        let mut m = MapDef::default();
+        assert!(m.apply(&["cover", "https://example.org/{z}/{x}/{y}.png"]).is_ok());
+        for bad in ["http://example.org/{z}.png", "https://example.org/$(reboot).png", "https://example.org/a\"b", "https://example.org/a;b", "https://example.org/a`b`", "https://example.org/%PATH%"] {
+            assert!(m.apply(&["cover", bad]).is_err(), "{}", bad);
+            assert!(m.apply(&["names", bad]).is_err(), "{}", bad);
+        }
+        assert_eq!(m.cover, "https://example.org/{z}/{x}/{y}.png");
+        assert!(m.apply(&["colour", "1", "2", "3", "lava"]).is_err());
+        assert!(m.apply(&["place", "95", "0", "Nowhere"]).is_err());
+        assert!(m.apply(&["place", "51.5", "-0.12", "Some", "Town"]).is_ok());
+        assert_eq!(m.places[0].0, "SOME TOWN");
     }
 }

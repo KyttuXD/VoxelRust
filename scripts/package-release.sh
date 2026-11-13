@@ -48,7 +48,7 @@ package() { # package NAME PROGRAM-OR-APP FORMAT
   case "$2" in
     *.app) ;; # the app carries its mods (and SDL2) inside
     *) mkdir -p "$dir/mods"
-       for m in disasters earth landvehicles holidays; do cp -R "mods/$m" "$dir/mods/"; done ;;
+       for m in disasters earth boats trains planes landvehicles holidays; do cp -R "mods/$m" "$dir/mods/"; done ;;
   esac
   if [ "$3" = "tar.gz" ]; then
     mkdir -p "$dir/share"

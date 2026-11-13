@@ -20,6 +20,8 @@ pub struct UiInput {
     pub text: String,
     /// Keys pressed this frame (SDL scancodes), repeats included.
     pub keys: Vec<i32>,
+    /// Text pasted this frame (Ctrl or Cmd + V).
+    pub paste: String,
 }
 
 impl UiInput {
@@ -29,6 +31,7 @@ impl UiInput {
         self.wheel = 0;
         self.text.clear();
         self.keys.clear();
+        self.paste.clear();
     }
     pub fn pressed(&self, scancode: i32) -> bool {
         self.keys.contains(&scancode)
@@ -39,6 +42,10 @@ pub const KEY_RETURN: i32 = 40;
 pub const KEY_ESCAPE: i32 = 41;
 pub const KEY_BACKSPACE: i32 = 42;
 pub const KEY_TAB: i32 = 43;
+/// Not scancodes: what Ctrl or Cmd with A, C and X arrive as.
+pub const KEY_SELECT_ALL: i32 = 1001;
+pub const KEY_COPY: i32 = 1002;
+pub const KEY_CUT: i32 = 1003;
 
 pub const PANEL: Color = [18, 20, 28, 225];
 pub const BUTTON: Color = [46, 50, 64, 235];
@@ -58,6 +65,9 @@ pub struct Ui<'a> {
     pub clicked_any: bool,
     /// Seconds since start, for labels that scroll.
     pub clock: f32,
+    /// The focused text field is selected whole (Ctrl or Cmd + A): typing
+    /// or pasting replaces it, Backspace empties it.
+    pub selected: &'a mut bool,
 }
 
 /// The part of `label` to show in a space `chars` wide. Labels that fit are
@@ -214,16 +224,38 @@ impl Ui<'_> {
         let focused = *self.focus == id;
         let mut entered = false;
         if focused {
-            for c in self.inp.text.chars() {
-                if value.chars().count() < max && allow(c) {
+            let typed: String = self.inp.text.chars().chain(self.inp.paste.chars().filter(|c| *c != '\n' && *c != '\r')).collect();
+            for c in typed.chars() {
+                if !allow(c) {
+                    continue;
+                }
+                if *self.selected {
+                    value.clear();
+                    *self.selected = false;
+                }
+                if value.chars().count() < max {
                     value.push(c);
                 }
             }
             for &k in &self.inp.keys {
-                if k == KEY_BACKSPACE {
-                    value.pop();
-                } else if k == KEY_RETURN {
-                    entered = true;
+                match k {
+                    KEY_BACKSPACE if *self.selected => {
+                        value.clear();
+                        *self.selected = false;
+                    }
+                    KEY_BACKSPACE => {
+                        value.pop();
+                    }
+                    KEY_RETURN => entered = true,
+                    KEY_SELECT_ALL => *self.selected = !value.is_empty(),
+                    // With nothing selected, copy and cut take the whole box.
+                    KEY_COPY => crate::sys::set_clipboard(value),
+                    KEY_CUT => {
+                        crate::sys::set_clipboard(value);
+                        value.clear();
+                        *self.selected = false;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -233,7 +265,10 @@ impl Ui<'_> {
         self.r.rect(x, y, w, 2.0 * self.s, [0, 0, 0, 120]);
         self.r.frame(x, y, w, h, self.s, if focused { ACCENT } else { [84, 90, 112, 255] });
         let mut shown = value.clone();
-        if focused {
+        if focused && *self.selected {
+            let tw = Renderer::text_width(&shown, self.s);
+            self.r.rect(x + 3.0 * self.s, y + 2.0 * self.s, tw + 2.0 * self.s, h - 4.0 * self.s, [60, 100, 190, 255]);
+        } else if focused {
             shown.push('_');
         }
         self.r.label(x + 4.0 * self.s, y + (h - 7.0 * self.s) * 0.5, self.s, &shown, WHITE);

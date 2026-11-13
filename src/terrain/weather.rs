@@ -7,7 +7,7 @@
 //! its own conditions: tornadoes come only out of storms over open country,
 //! tsunamis only follow an earthquake near the sea.
 
-use crate::noise::{hash2, noise2};
+use crate::noise::noise2;
 use crate::worldgen::{self, Biome, SEA};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -45,20 +45,20 @@ pub fn sky_at(seed: u32, x: i32, z: i32, seconds: f32) -> Sky {
     Sky { rain, snow, storm: rain > 0.75 && !snow }
 }
 
+/// A disaster in progress. What kinds there are, when they come and what
+/// they do is all in the packs (`disaster` lines; see docs/MODDING.md):
+/// this is only the one running now.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Disaster {
-    /// The ground shakes; `left` seconds to go.
-    Earthquake { left: f32 },
-    /// A funnel at (x, z) travelling along (dx, dz).
-    Tornado { x: f32, z: f32, dx: f32, dz: f32, left: f32 },
-    /// The sea comes up `rise` blocks above its level, then drains.
-    Tsunami { left: f32, rise: f32 },
-}
-
-/// Whether a tornado could form here: a storm overhead, over open, low country.
-pub fn tornado_possible(seed: u32, x: i32, z: i32, sky: Sky) -> bool {
-    let col = worldgen::column(seed, x, z);
-    sky.storm && matches!(col.biome, Biome::Plains | Biome::Savanna) && col.height < SEA + 24
+pub struct Running {
+    /// Which of the registry's disasters.
+    pub kind: usize,
+    /// Seconds to go.
+    pub left: f32,
+    /// Where it is (one that does not move stays on the player's start).
+    pub x: f32,
+    pub z: f32,
+    pub dx: f32,
+    pub dz: f32,
 }
 
 /// Whether the sea is close enough for a tsunami to reach (x, z).
@@ -72,41 +72,17 @@ pub fn near_sea(seed: u32, x: i32, z: i32) -> bool {
         .any(|&(dx, dz)| worldgen::column(seed, x + dx, z + dz).height < SEA - 2)
 }
 
-/// Roll for a new disaster. Called once a second while disasters are
-/// enabled and none is running; `roll` is a random number.
-pub fn maybe_start(seed: u32, x: i32, z: i32, sky: Sky, roll: u32) -> Option<Disaster> {
-    // On average a quake every twenty minutes or so; a tornado within a
-    // couple of minutes of suitable weather.
-    if roll % 1200 == 0 {
-        return Some(Disaster::Earthquake { left: 7.0 });
-    }
-    if roll % 120 == 1 && tornado_possible(seed, x, z, sky) {
-        let a = (hash2(roll, x, z) % 628) as f32 / 100.0;
-        let (dx, dz) = (crate::math::sinf(a), crate::math::cosf(a));
-        // It starts thirty blocks off and passes close by.
-        return Some(Disaster::Tornado { x: x as f32 - dx * 30.0, z: z as f32 - dz * 30.0, dx: dx * 3.5, dz: dz * 3.5, left: 26.0 });
-    }
-    None
-}
-
-/// What follows when a disaster ends: an earthquake by the sea brings a wave.
-pub fn aftermath(seed: u32, x: i32, z: i32, ended: Disaster) -> Option<Disaster> {
-    match ended {
-        Disaster::Earthquake { .. } if near_sea(seed, x, z) => Some(Disaster::Tsunami { left: 24.0, rise: 0.0 }),
-        _ => None,
-    }
-}
-
-/// How high a tsunami stands `left` seconds before its end: it climbs for
-/// six seconds, holds, then drains over the last eight.
-pub fn tsunami_height(left: f32) -> f32 {
-    let t = 24.0 - left;
-    if t < 6.0 {
-        t / 6.0 * 3.0
-    } else if left > 8.0 {
-        3.0
+/// How high a wave of `peak` blocks stands when the disaster that raises
+/// it is `progress` (0..1) of the way through: it climbs for the first
+/// quarter, holds, then drains over the last third.
+pub fn wave_height(progress: f32, peak: f32) -> f32 {
+    let p = progress.clamp(0.0, 1.0);
+    if p < 0.25 {
+        p / 0.25 * peak
+    } else if p < 2.0 / 3.0 {
+        peak
     } else {
-        (left / 8.0 * 3.0).max(0.0)
+        (1.0 - p) * 3.0 * peak
     }
 }
 
@@ -142,18 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn disasters_need_their_conditions() {
-        // A tornado is never offered under a clear sky.
-        for roll in 0..5000u32 {
-            if let Some(Disaster::Tornado { .. }) = maybe_start(7, 100, 100, CLEAR, roll) {
-                panic!("a tornado out of a clear sky");
-            }
-        }
-        // Earthquakes are rare but do happen.
-        let quakes = (0..12_000u32).filter(|&r| matches!(maybe_start(7, 0, 0, CLEAR, r), Some(Disaster::Earthquake { .. }))).count();
-        assert_eq!(quakes, 10);
-        // A wave only follows a quake, and only by the sea.
-        let quake = Disaster::Earthquake { left: 0.0 };
+    fn the_sea_is_near_coasts_only_and_waves_rise_hold_and_drain() {
         let mut coast = None;
         let mut inland = None;
         for i in 0..4000 {
@@ -165,13 +130,11 @@ mod tests {
                 inland = Some((x, z));
             }
         }
-        let (c, l) = (coast.expect("no coast found"), inland.expect("no high ground found"));
-        assert!(matches!(aftermath(7, c.0, c.1, quake), Some(Disaster::Tsunami { .. })));
-        assert_eq!(aftermath(7, l.0, l.1, quake), None);
-        assert_eq!(aftermath(7, c.0, c.1, Disaster::Tsunami { left: 0.0, rise: 0.0 }), None);
-        // The wave rises, holds and drains.
-        assert_eq!(tsunami_height(24.0), 0.0);
-        assert_eq!(tsunami_height(15.0), 3.0);
-        assert!(tsunami_height(4.0) < 2.0 && tsunami_height(0.0) == 0.0);
+        let l = inland.expect("no high ground found");
+        assert!(coast.is_some(), "no coast found");
+        assert!(!near_sea(7, l.0, l.1));
+        assert_eq!(wave_height(0.0, 3.0), 0.0);
+        assert_eq!(wave_height(0.4, 3.0), 3.0);
+        assert!(wave_height(0.85, 3.0) < 2.0 && wave_height(1.0, 3.0) == 0.0);
     }
 }

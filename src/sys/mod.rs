@@ -538,3 +538,27 @@ pub fn now() -> f64 {
         c as f64 / f as f64
     }
 }
+
+/// The text on the system clipboard (empty if there is none).
+pub fn clipboard() -> String {
+    if !sdl::loaded() {
+        return String::new();
+    }
+    unsafe {
+        let p = (sdl::sdl().SDL_GetClipboardText)();
+        if p.is_null() {
+            return String::new();
+        }
+        let text = from_cstr(p);
+        (sdl::sdl().SDL_free)(p as *mut core::ffi::c_void);
+        text
+    }
+}
+
+/// Put `text` on the system clipboard.
+pub fn set_clipboard(text: &str) {
+    if sdl::loaded() {
+        let c = cstr(text);
+        unsafe { (sdl::sdl().SDL_SetClipboardText)(c.as_ptr() as *const core::ffi::c_char) };
+    }
+}

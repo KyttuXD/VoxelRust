@@ -261,6 +261,8 @@ enum Screen {
     Dead,
     Map,
     Join,
+    /// Adding or editing one entry of the server list.
+    AddServer,
     Chat,
     /// The crafting table's recipe list.
     Craft,
@@ -361,10 +363,13 @@ struct App {
     servers: Vec<(String, String)>,
     servers_loaded: bool,
     form_server: String,
+    server_edit: Option<usize>,
+    server_scroll: i32,
     host: Option<sys::thread::Thread>,
     /// This machine's network address, looked up once.
     my_address: Option<Option<String>>,
     form_chat: String,
+    text_selected: bool,
     /// The player's own skin texture, other players' by id, and the PNG to
     /// send to a server.
     skin_tex: u32,
@@ -634,6 +639,19 @@ impl App {
             }
             return;
         }
+        // Ctrl (Cmd on a Mac) with A, C, X or V works on the text box that
+        // has the keyboard.
+        let command = [224usize, 228, 227, 231].iter().any(|&k| self.keys[k]);
+        if command && self.focus != 0 {
+            match sc {
+                4 => inp.keys.push(ui::KEY_SELECT_ALL),
+                6 => inp.keys.push(ui::KEY_COPY),
+                27 => inp.keys.push(ui::KEY_CUT),
+                25 => inp.paste.push_str(&sys::clipboard()),
+                _ => {}
+            }
+            return;
+        }
         inp.keys.push(sc);
         if repeat {
             return;
@@ -701,6 +719,7 @@ impl App {
             Screen::Pause if sc == key::ESCAPE => self.set_screen(Screen::Game),
             Screen::Chat if sc == key::ESCAPE => self.set_screen(Screen::Game),
             Screen::Join if sc == key::ESCAPE && !typing => self.set_screen(Screen::Title),
+            Screen::AddServer if sc == key::ESCAPE => self.set_screen(Screen::Join),
             Screen::Map if sc == key::ESCAPE || sc == k_map => self.set_screen(Screen::Game),
             Screen::Settings if sc == key::ESCAPE && !typing => self.leave_settings(),
             Screen::NewWorld if sc == key::ESCAPE => self.set_screen(Screen::Worlds),
@@ -754,6 +773,7 @@ impl App {
                     }
                 }
                 sdl::EV_TEXTINPUT if self.swallow_text => self.swallow_text = false,
+                sdl::EV_TEXTINPUT if [224usize, 228, 227, 231].iter().any(|&k| self.keys[k]) => {}
                 sdl::EV_TEXTINPUT => {
                     // A NUL-terminated UTF-8 string at offset 12.
                     for &b in ev.0[12..44].iter().take_while(|&&b| b != 0) {
@@ -852,7 +872,7 @@ impl App {
         if let Some(g) = self.session.as_mut() {
             if playing {
                 g.update(dt, &controls, distance, self.settings.far_distance, r, &mut self.audio);
-                g.weather_update(dt, self.settings.weather, self.settings.disasters && reg().has("disasters"), &mut self.audio);
+                g.weather_update(dt, self.settings.weather, self.settings.disasters, &mut self.audio);
                 g.place_level = self.settings.place_notices;
                 died = g.dead;
             } else {
@@ -1001,7 +1021,7 @@ impl App {
             if !underwater {
                 r.draw_precipitation(&cam, g.sky.rain, g.sky.snow, g.clock);
             }
-            if let Some(crate::weather::Disaster::Tornado { x, z, .. }) = g.disaster {
+            if let Some(crate::weather::Running { x, z, .. }) = g.disaster.filter(|d| reg().disasters.get(d.kind).map_or(false, |k| k.funnel)) {
                 let ground = crate::worldgen::column(g.world.seed, x as i32, z as i32).height as f64;
                 r.draw_funnel([(x as f64 - cam.pos[0]) as f32, (ground - cam.pos[1]) as f32, (z as f64 - cam.pos[2]) as f32], g.clock);
             }
@@ -1055,9 +1075,10 @@ impl App {
         }
         let before = self.screen;
         let mut focus = self.focus;
+        let mut selected = self.text_selected;
         let clicked;
         {
-            let mut ui = Ui { r: &mut *r, inp, s, focus: &mut focus, clicked_any: false, clock: self.ui_clock };
+            let mut ui = Ui { r: &mut *r, inp, s, focus: &mut focus, clicked_any: false, clock: self.ui_clock, selected: &mut selected };
             match self.screen {
                 Screen::Game => {}
                 Screen::Title => self.screen_title(&mut ui),
@@ -1069,12 +1090,15 @@ impl App {
                 Screen::Dead => self.screen_dead(&mut ui),
                 Screen::Map => self.screen_map(&mut ui),
                 Screen::Join => self.screen_join(&mut ui),
+                Screen::AddServer => self.screen_add_server(&mut ui),
                 Screen::Chat => self.screen_chat(&mut ui),
             }
             clicked = ui.clicked_any;
         }
         // Changing screen resets the focus; otherwise keep what the UI set.
         if self.screen == before && self.rebinding.is_none() {
+            // A selection belongs to one box: moving to another drops it.
+            self.text_selected = selected && focus == self.focus;
             self.focus = focus;
         }
         if clicked {
@@ -1477,7 +1501,7 @@ impl App {
         let turn = ui.button_lr(x, y + step * 3.7, bw, bh, &kind, true);
         if turn != 0 {
             // Normal, flat, and (when the Earth mod is on) the real Earth.
-            let kinds = if reg().has("earth") { 3 } else { 2 };
+            let kinds = if crate::earth::available() { 3 } else { 2 };
             let now = if self.form_earth { 2 } else { self.form_flat as i32 };
             let next = (now + turn).rem_euclid(kinds);
             self.form_flat = next == 1;
@@ -1485,9 +1509,9 @@ impl App {
         }
         if self.form_earth {
             let half = (bw - 4.0 * s) * 0.5;
-            let place = alloc::format!("START AT  < {} >", crate::earth::PLACES[self.form_place].0);
+            let place = alloc::format!("START AT  < {} >", crate::earth::places()[self.form_place.min(crate::earth::places().len() - 1)].0);
             let mut i = self.form_place as i32;
-            ui.stepper_text(x, y + step * 4.7, bw, bh, &place, &mut i, 0, crate::earth::PLACES.len() as i32 - 1, 1);
+            ui.stepper_text(x, y + step * 4.7, bw, bh, &place, &mut i, 0, crate::earth::places().len() as i32 - 1, 1);
             self.form_place = i as usize;
             // Scale is "1:N": one block stands for N metres. 1:1 is life size.
             let sc = alloc::format!("SCALE  < 1:{} >", self.form_scale);
@@ -1511,7 +1535,7 @@ impl App {
                     seed_from(self.form_seed.trim())
                 };
                 let kind = if self.form_earth {
-                    let p = crate::earth::PLACES[self.form_place];
+                    let p = crate::earth::places()[self.form_place.min(crate::earth::places().len() - 1)].clone();
                     WorldKind::Earth { lat: p.1, lon: p.2, scale: self.form_scale as u32, vscale: self.form_vscale as u32, features: self.form_features }
                 } else if self.form_flat {
                     WorldKind::Flat
@@ -1713,7 +1737,7 @@ impl App {
                     let half = (bw - 4.0 * s) * 0.5;
                     changed |= ui.toggle(x, row(2), half, bh, "VIEW BOBBING", &mut st.view_bobbing);
                     changed |= ui.toggle(x + half + 4.0 * s, row(2), half, bh, "WEATHER", &mut st.weather);
-                    if reg().has("disasters") {
+                    if !reg().disasters.is_empty() {
                         changed |= ui.toggle(x, row(6), half, bh, "NATURAL DISASTERS", &mut st.disasters);
                     }
                     let pn = alloc::format!("PLACE NOTICES  < {} >", ["OFF", "COUNTRIES", "REGIONS", "TOWNS"][st.place_notices as usize]);
@@ -1766,6 +1790,29 @@ impl App {
         }
     }
 
+    fn save_servers(&self) {
+        let text: String = self.servers.iter().map(|(n, a)| alloc::format!("{} {}\n", n, a)).collect();
+        sys::write_file(&alloc::format!("{}servers.txt", self.base), text.as_bytes());
+    }
+
+    fn join_address(&mut self, r: &mut Renderer, address: &str) -> bool {
+        let name = crate::settings::clean_name(&self.settings.player_name, 16);
+        match Session::join(&self.base, address, if name.is_empty() { "Player" } else { &name }, self.threads) {
+            Ok(g) => {
+                self.close_world(r);
+                self.session = Some(g);
+                self.distance = self.settings.distance;
+                self.set_screen(Screen::Game);
+                true
+            }
+            Err(e) => {
+                self.status = e;
+                false
+            }
+        }
+    }
+
+    /// The multiplayer screen: the servers you have added, as a list.
     fn screen_join(&mut self, ui: &mut Ui) {
         let s = ui.s;
         if !self.servers_loaded {
@@ -1775,85 +1822,127 @@ impl App {
                 .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.split_once(' ').map(|(n, a)| (String::from(n), String::from(a.trim())))).collect())
                 .unwrap_or_default();
         }
-        let shown = self.servers.len().min(5);
-        let (x, y0, bw, bh, step) = Self::column(ui, 10 + shown);
+        const ROWS: usize = 6;
+        let (bw, bh, step) = (260.0 * s, 16.0 * s, 19.0 * s);
+        let x = (ui.w() - bw) * 0.5;
+        let y0 = ((ui.h() - (ROWS as f32 + 5.5) * step) * 0.5 + 14.0 * s).max(40.0 * s);
         ui.centered(ui.w() * 0.5, y0 - 30.0 * s, 2.0, "MULTIPLAYER", WHITE);
-        // The saved servers: click one to join; EDIT puts it in the boxes
-        // below to change and save again; X forgets it.
-        let side = 30.0 * s;
-        let mut go = false;
-        let mut changed = false;
-        let mut k = 0;
-        while k < shown {
-            let (name, address) = self.servers[k].clone();
-            let ry = y0 + k as f32 * step;
-            if ui.button(x, ry, bw - 2.0 * side - 6.0 * s, bh, &alloc::format!("{}   {}", name, address).to_ascii_uppercase()) {
-                self.form_address = address.clone();
-                go = true;
-            }
-            if ui.button(x + bw - 2.0 * side - 3.0 * s, ry, side, bh, "EDIT") {
-                self.form_address = address;
-                self.form_server = name;
-            }
-            if ui.button(x + bw - side, ry, side, bh, "X") {
-                self.servers.remove(k);
-                changed = true;
+        ui.panel(x - 4.0 * s, y0 - 4.0 * s, bw + 8.0 * s, ROWS as f32 * step + 5.0 * s);
+        let total = self.servers.len();
+        if ui.hot(x, y0, bw, ROWS as f32 * step) {
+            self.server_scroll -= ui.inp.wheel;
+        }
+        self.server_scroll = self.server_scroll.clamp(0, total.saturating_sub(ROWS) as i32);
+        if total == 0 {
+            ui.centered(ui.w() * 0.5, y0 + 2.2 * step, 1.0, "NO SERVERS YET", ui::DIM);
+            ui.centered(ui.w() * 0.5, y0 + 3.0 * step, 1.0, "ADD ONE BELOW, OR HOST YOUR OWN", ui::DIM);
+        }
+        let (edit_w, del_w, bar) = (34.0 * s, 16.0 * s, 5.0 * s);
+        let row_w = bw - edit_w - del_w - bar - 9.0 * s;
+        let mut join: Option<String> = None;
+        for row in 0..ROWS.min(total) {
+            let k = row + self.server_scroll as usize;
+            if k >= self.servers.len() {
                 break;
             }
-            k += 1;
-        }
-        let y = y0 + shown as f32 * step + if shown > 0 { 12.0 * s } else { 0.0 };
-        ui.text(x, y - 9.0 * s, "SERVER ADDRESS (HOST OR HOST:PORT)", ui::DIM);
-        let enter = ui.text_field(30, x, y, bw, bh, &mut self.form_address, 60, ui::any_char);
-        ui.text(x, y + step * 1.5 - 9.0 * s, "YOUR NAME", ui::DIM);
-        ui.text_field(31, x, y + step * 1.5, bw * 0.5 - 2.0 * s, bh, &mut self.settings.player_name, 16, ui::name_char);
-        // Keep this address under a name of your choosing.
-        ui.text(x + bw * 0.5 + 2.0 * s, y + step * 1.5 - 9.0 * s, "SAVE IT AS", ui::DIM);
-        ui.text_field(33, x + bw * 0.5 + 2.0 * s, y + step * 1.5, bw * 0.5 - side - 5.0 * s, bh, &mut self.form_server, 16, ui::name_char);
-        if ui.button(x + bw - side, y + step * 1.5, side, bh, "SAVE") && !self.form_address.trim().is_empty() {
-            let name = if self.form_server.is_empty() { alloc::format!("server{}", self.servers.len() + 1) } else { self.form_server.clone() };
-            let address: String = self.form_address.trim().chars().filter(|c| !c.is_whitespace()).collect();
-            match self.servers.iter().position(|sv| sv.0 == name) {
-                Some(at) => self.servers[at].1 = address,
-                None if self.servers.len() < 32 => self.servers.push((name, address)),
-                None => {}
+            let (name, address) = self.servers[k].clone();
+            let ry = y0 + row as f32 * step;
+            if ui.button(x, ry, row_w, bh, &alloc::format!("{}   {}", name, address).to_ascii_uppercase()) {
+                join = Some(address.clone());
             }
-            changed = true;
-        }
-        if changed {
-            let text: String = self.servers.iter().map(|(n, a)| alloc::format!("{} {}\n", n, a)).collect();
-            sys::write_file(&alloc::format!("{}servers.txt", self.base), text.as_bytes());
-        }
-        if ui.button(x, y + step * 2.8, bw, bh, "JOIN") || enter || go {
-            let name = crate::settings::clean_name(&self.settings.player_name, 16);
-            match Session::join(&self.base, &self.form_address, if name.is_empty() { "Player" } else { &name }, self.threads) {
-                Ok(g) => {
-                    self.close_world(ui.r);
-                    self.session = Some(g);
-                    self.distance = self.settings.distance;
-                    self.set_screen(Screen::Game);
-                    return;
-                }
-                Err(e) => self.status = e,
+            if ui.button(x + row_w + 3.0 * s, ry, edit_w, bh, "EDIT") {
+                self.form_server = name;
+                self.form_address = address;
+                self.server_edit = Some(k);
+                self.status.clear();
+                self.set_screen(Screen::AddServer);
+                self.focus = 30;
+                return;
+            }
+            if ui.button(x + row_w + edit_w + 6.0 * s, ry, del_w, bh, "X") {
+                self.servers.remove(k);
+                self.save_servers();
+                break;
             }
         }
+        ui.scrollbar(x + bw - bar, y0, bar, ROWS as f32 * step - 3.0 * s, &mut self.server_scroll, ROWS, total);
+        if let Some(address) = join {
+            if self.join_address(ui.r, &address) {
+                return;
+            }
+        }
+        let y = y0 + ROWS as f32 * step + 12.0 * s;
+        let half = bw * 0.5 - 2.0 * s;
+        if ui.button(x, y, half, bh, "ADD SERVER") {
+            self.form_server.clear();
+            self.form_address.clear();
+            self.server_edit = None;
+            self.status.clear();
+            self.set_screen(Screen::AddServer);
+            self.focus = 33;
+            return;
+        }
+        ui.text(x + half + 4.0 * s, y - 9.0 * s, "YOUR NAME", ui::DIM);
+        ui.text_field(31, x + half + 4.0 * s, y, half, bh, &mut self.settings.player_name, 16, ui::name_char);
         // Hosting: a server runs inside the game for as long as you play.
-        ui.text(x, y + step * 4.4 - 9.0 * s, "OR HOST YOUR OWN: SHARED WORLD NAME", ui::DIM);
-        ui.text_field(32, x, y + step * 4.4, bw, bh, &mut self.form_host, 24, ui::name_char);
-        if ui.button(x, y + step * 5.5, bw, bh, "HOST A GAME") {
+        ui.text(x + half + 4.0 * s, y + step * 1.5 - 9.0 * s, "SHARED WORLD NAME", ui::DIM);
+        ui.text_field(32, x + half + 4.0 * s, y + step * 1.5, half, bh, &mut self.form_host, 24, ui::name_char);
+        if ui.button(x, y + step * 1.5, half, bh, "HOST A GAME") {
             self.status.clear();
             self.host_game(ui.r);
             if self.session.is_some() {
                 return;
             }
         }
-        if ui.button(x, y + step * 6.7, bw, bh, "BACK") {
+        if ui.button(x, y + step * 2.7, bw, bh, "BACK") {
             self.set_screen(Screen::Title);
         }
-        ui.centered(ui.w() * 0.5, y + step * 7.9, 1.0, &self.status, ui::ACCENT);
+        ui.centered(ui.w() * 0.5, y + step * 3.9, 1.0, &self.status, ui::ACCENT);
         let mine = self.my_address.get_or_insert_with(sys::net::local_address).as_ref().map(|a| alloc::format!("YOUR ADDRESS ON THIS NETWORK: {}", a)).unwrap_or_default();
-        ui.centered(ui.w() * 0.5, y + step * 8.8, 1.0, &mine, ui::DIM);
-        ui.centered(ui.w() * 0.5, y + step * 9.6, 1.0, "NO SCREEN? HOST WITH  VOXELRUST --SERVER", ui::DIM);
+        ui.centered(ui.w() * 0.5, y + step * 4.7, 1.0, &mine, ui::DIM);
+    }
+
+    /// Add a server to the list, or change one already there.
+    fn screen_add_server(&mut self, ui: &mut Ui) {
+        let s = ui.s;
+        let (x, y, bw, bh, step) = Self::column(ui, 7);
+        ui.centered(ui.w() * 0.5, y - 30.0 * s, 2.0, if self.server_edit.is_some() { "EDIT SERVER" } else { "ADD SERVER" }, WHITE);
+        ui.text(x, y - 9.0 * s, "SERVER NAME", ui::DIM);
+        ui.text_field(33, x, y, bw, bh, &mut self.form_server, 16, ui::name_char);
+        ui.text(x, y + step * 1.5 - 9.0 * s, "SERVER ADDRESS (HOST OR HOST:PORT)", ui::DIM);
+        let enter = ui.text_field(30, x, y + step * 1.5, bw, bh, &mut self.form_address, 60, ui::any_char);
+        if ui.inp.pressed(ui::KEY_TAB) {
+            *ui.focus = if *ui.focus == 33 { 30 } else { 33 };
+        }
+        let half = bw * 0.5 - 2.0 * s;
+        let save = ui.button(x, y + step * 2.8, half, bh, "SAVE") || enter;
+        let save_join = ui.button(x + half + 4.0 * s, y + step * 2.8, half, bh, "SAVE AND JOIN");
+        if save || save_join {
+            let address: String = self.form_address.chars().filter(|c| !c.is_whitespace()).collect();
+            if address.is_empty() {
+                self.status = String::from("TYPE THE SERVER'S ADDRESS");
+            } else {
+                let name = if self.form_server.is_empty() { alloc::format!("server{}", self.servers.len() + 1) } else { self.form_server.clone() };
+                match self.server_edit {
+                    Some(k) if k < self.servers.len() => self.servers[k] = (name, address.clone()),
+                    _ if self.servers.len() < 64 => self.servers.push((name, address.clone())),
+                    _ => {}
+                }
+                self.save_servers();
+                self.status.clear();
+                self.set_screen(Screen::Join);
+                if save_join {
+                    self.join_address(ui.r, &address);
+                }
+                return;
+            }
+        }
+        if ui.button(x, y + step * 4.0, bw, bh, "CANCEL") {
+            self.status.clear();
+            self.set_screen(Screen::Join);
+        }
+        ui.centered(ui.w() * 0.5, y + step * 5.2, 1.0, &self.status, ui::ACCENT);
+        ui.centered(ui.w() * 0.5, y + step * 6.0, 1.0, "CTRL+V PASTES AN ADDRESS", ui::DIM);
     }
 
     /// Paint a little more of the minimap; when a picture is finished it
@@ -2706,7 +2795,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         return Err(String::from("the data files define no items"));
     }
 
-    if opts.earth.is_some() && !registry.has("earth") {
+    if opts.earth.is_some() && registry.map.is_none() {
         return Err(String::from("--earth needs the Earth mod, which is switched off (Settings > MODS)"));
     }
     if opts.server {
@@ -2833,9 +2922,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
         servers: Vec::new(),
         servers_loaded: false,
         form_server: String::new(),
+        server_edit: None,
+        server_scroll: 0,
         host: None,
         my_address: None,
         form_chat: String::new(),
+        text_selected: false,
         skin_tex: 0,
         remote_skins: BTreeMap::new(),
         skin_png: Vec::new(),
@@ -2937,6 +3029,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             ("worlds", Screen::Worlds),
             ("newworld", Screen::NewWorld),
             ("multiplayer", Screen::Join),
+            ("addserver", Screen::AddServer),
         ] {
             if opts.show.contains(word) {
                 app.screen = screen;
@@ -3332,7 +3425,16 @@ fn server_content(pack: &[u8]) -> Registry {
         }
     }
     let refs: Vec<(&str, &str)> = sources.iter().map(|(p, t)| (*p, t.as_str())).collect();
-    Registry::from_sources(&refs, &mut |p| files.iter().find(|f| f.0.strip_prefix("file:") == Some(p)).map(|f| f.1.clone()))
+    let mut registry = Registry::from_sources(&refs, &mut |p| files.iter().find(|f| f.0.strip_prefix("file:") == Some(p)).map(|f| f.1.clone()));
+    // A server may say what the map's colours mean, but never where this
+    // computer fetches from: those addresses stay the ones of our own mods.
+    if let Some(m) = registry.map.as_mut() {
+        let own = block::reg().map.clone().unwrap_or_default();
+        m.heights = own.heights;
+        m.cover = own.cover;
+        m.names = own.names;
+    }
+    registry
 }
 
 /// Set to stop a server started from the multiplayer menu.

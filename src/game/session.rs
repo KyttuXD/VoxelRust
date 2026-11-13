@@ -75,7 +75,9 @@ pub struct Session {
     pub lost: bool,
     /// The weather overhead, and any disaster in progress.
     pub sky: crate::weather::Sky,
-    pub disaster: Option<crate::weather::Disaster>,
+    pub disaster: Option<crate::weather::Running>,
+    /// A `/pull` in force: how far it reaches, how hard, seconds left.
+    pull: (f32, f32, f32),
     /// Camera shake strength (earthquakes).
     pub shake: f32,
     /// Lightning: counts down from a flash.
@@ -329,6 +331,7 @@ impl Session {
             lost: false,
             sky: crate::weather::CLEAR,
             disaster: None,
+            pull: (0.0, 0.0, 0.0),
             shake: 0.0,
             flash: 0.0,
             weather_tick: 0.0,
@@ -484,6 +487,15 @@ impl Session {
             "riding" => self.riding_mob.is_some() || self.vehicles.riding.is_some(),
             "hurt" => self.health < MAX_HEALTH,
             "hungry" => self.hunger < MAX_HUNGER,
+            "storm" => self.sky.storm,
+            "rain" => self.sky.rain > 0.2 && !self.sky.snow,
+            "snow" => self.sky.rain > 0.2 && self.sky.snow,
+            "coast" => crate::weather::near_sea(self.world.seed, floord(self.player.pos[0]), floord(self.player.pos[2])),
+            "lowland" => worldgen::column(self.world.seed, floord(self.player.pos[0]), floord(self.player.pos[2])).height < worldgen::SEA + 24,
+            "biome" => {
+                let b = worldgen::column(self.world.seed, floord(self.player.pos[0]), floord(self.player.pos[2])).biome;
+                cond[1.min(cond.len())..].iter().any(|n| alloc::format!("{:?}", b).eq_ignore_ascii_case(n))
+            }
             name => {
                 let have = match name {
                     "health" => self.health as i64,
@@ -657,6 +669,73 @@ impl Session {
                 self.sound_queue.push(String::from(arg(1)));
                 String::new()
             }
+            // /shake S: rock the view (it dies away by itself).
+            "/shake" => {
+                self.shake = arg(1).parse::<f32>().unwrap_or(0.35).clamp(0.0, 1.0);
+                String::new()
+            }
+            // /disaster ID | stop: begin one a pack defines, or end the one running.
+            "/disaster" if !online => match reg().disasters.iter().position(|d| d.id == arg(1)) {
+                Some(k) => {
+                    self.drain_flood(0);
+                    self.start_disaster(k);
+                    String::from("it begins")
+                }
+                None => {
+                    self.disaster = None;
+                    self.drain_flood(0);
+                    String::from(if arg(1) == "stop" { "stopped" } else { "NO SUCH DISASTER" })
+                }
+            },
+            // /pull REACH STRENGTH: for the next moment, drag the player
+            // towards the disaster and lift them when close.
+            "/pull" => {
+                self.pull = (arg(1).parse::<f32>().unwrap_or(14.0).clamp(1.0, 64.0), arg(2).parse::<f32>().unwrap_or(2.2).clamp(0.0, 10.0), 0.6);
+                String::new()
+            }
+            // /strip R N: tear up to N plants and leaves within R blocks of
+            // the disaster (of the player, when none is running).
+            "/strip" if !online => {
+                let (cx, cz) = match self.disaster {
+                    Some(d) => (floord(d.x as f64), floord(d.z as f64)),
+                    None => (floord(self.player.pos[0]), floord(self.player.pos[2])),
+                };
+                let rad = arg(1).parse::<i32>().unwrap_or(3).clamp(1, 16);
+                let seed = self.world.seed;
+                for _ in 0..arg(2).parse::<u32>().unwrap_or(40).min(400) {
+                    let span = (rad * 2 + 1) as u32;
+                    let (bx, bz) = (cx + (self.roll() % span) as i32 - rad, cz + (self.roll() % span) as i32 - rad);
+                    let by = worldgen::column(seed, bx, bz).height + 1 + (self.roll() % 10) as i32;
+                    let b = self.world.get(bx, by, bz);
+                    if b != AIR && matches!(reg().kind[b as usize], Kind::Cross | Kind::Cutout) {
+                        self.world.set_block(bx, by, bz, AIR);
+                    }
+                }
+                String::new()
+            }
+            // /flood PEAK: while a disaster runs, the sea stands up to PEAK
+            // blocks over its level near the player: rising through the
+            // first quarter of the disaster and draining over the last third.
+            "/flood" if !online => {
+                if let Some(d) = self.disaster {
+                    let lasts = reg().disasters[d.kind].lasts.max(0.1);
+                    let peak = arg(1).parse::<f32>().unwrap_or(3.0).clamp(0.0, 24.0);
+                    let level = worldgen::SEA + crate::weather::wave_height(1.0 - d.left / lasts, peak) as i32;
+                    let (px, pz) = (floord(self.player.pos[0]), floord(self.player.pos[2]));
+                    let (seed, water) = (self.world.seed, reg().wk.water);
+                    for _ in 0..160 {
+                        let (x, z) = (px + (self.roll() % 49) as i32 - 24, pz + (self.roll() % 49) as i32 - 24);
+                        let ground = worldgen::column(seed, x, z).height;
+                        for y in (ground + 1).max(worldgen::SEA + 1)..=level {
+                            if self.world.get(x, y, z) == AIR && self.world.set_block(x, y, z, water) {
+                                self.flood.push([x, y, z]);
+                            }
+                        }
+                    }
+                    self.drain_flood(level);
+                }
+                String::new()
+            }
             "/heal" => {
                 self.health = (self.health + arg(1).parse::<i32>().unwrap_or(4)).clamp(1, MAX_HEALTH);
                 String::new()
@@ -813,7 +892,7 @@ impl Session {
                 }
             }
             "/seed" => alloc::format!("SEED {}", self.base_seed),
-            "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" | "/blast" => String::from("NOT ON A SERVER"),
+            "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" | "/blast" | "/disaster" | "/strip" | "/flood" => String::from("NOT ON A SERVER"),
             _ => return None,
         })
     }
@@ -1098,7 +1177,7 @@ impl Session {
     /// Weather, lightning, snow settling, and disasters. `weather` and
     /// `disasters` are the player's settings.
     pub fn weather_update(&mut self, dt: f32, weather: bool, disasters: bool, audio: &mut Audio) {
-        use crate::weather::{self, Disaster};
+        use crate::weather;
         let (px, pz) = (floord(self.player.pos[0]), floord(self.player.pos[2]));
         let seed = self.world.seed;
         self.sky = if weather { weather::sky_at(seed, px, pz, self.time * 1200.0) } else { weather::CLEAR };
@@ -1151,98 +1230,93 @@ impl Session {
             }
         }
         // Disasters are a single-player affair: the server does not run them.
-        if !disasters || self.net.is_some() {
+        if !disasters || self.net.is_some() || reg().disasters.is_empty() {
             if self.disaster.is_some() {
                 self.disaster = None;
                 self.drain_flood(0);
             }
             return;
         }
-        match self.disaster {
+        let run = match self.disaster {
+            Some(run) => run,
             None => {
-                if tick && roll() % 3 == 0 {
-                    // About once a second.
-                    self.disaster = weather::maybe_start(seed, px, pz, self.sky, roll());
-                    match self.disaster {
-                        Some(Disaster::Earthquake { .. }) => self.say("EARTHQUAKE"),
-                        Some(Disaster::Tornado { .. }) => self.say("TORNADO"),
-                        _ => {}
-                    }
-                }
-            }
-            Some(Disaster::Earthquake { left }) => {
-                self.shake = 0.35;
-                if tick {
-                    audio.play(Sound::Rumble, 1.0);
-                }
-                let left = left - dt;
-                self.disaster = if left > 0.0 {
-                    Some(Disaster::Earthquake { left })
-                } else {
-                    let next = weather::aftermath(seed, px, pz, Disaster::Earthquake { left: 0.0 });
-                    if next.is_some() {
-                        self.say("TSUNAMI - GET TO HIGH GROUND");
-                    }
-                    next
-                };
-            }
-            Some(Disaster::Tornado { x, z, dx, dz, left }) => {
-                let (x, z) = (x + dx * dt, z + dz * dt);
-                // Anything close is dragged in and thrown upward.
-                let (tx, tz) = (x - self.player.pos[0] as f32, z - self.player.pos[2] as f32);
-                let d2 = tx * tx + tz * tz;
-                if d2 < 14.0 * 14.0 && !self.player.flying && self.vehicles.riding.is_none() {
-                    let d = sqrtf(d2).max(0.5);
-                    let pull = (14.0 - d) * 2.2 * dt;
-                    self.player.vel[0] += tx / d * pull;
-                    self.player.vel[2] += tz / d * pull;
-                    if d < 5.0 {
-                        self.player.vel[1] = (self.player.vel[1] + 34.0 * dt).min(9.0);
-                    }
-                }
-                // It tears up plants and leaves along its path.
-                if tick {
-                    audio.play(Sound::Rumble, (1.0 - sqrtf(d2) / 40.0).clamp(0.1, 1.0));
-                    for _ in 0..40 {
-                        let (bx, bz) = (floord(x as f64) + (roll() % 7) as i32 - 3, floord(z as f64) + (roll() % 7) as i32 - 3);
-                        let top = worldgen::column(seed, bx, bz).height;
-                        let by = top + 1 + (roll() % 10) as i32;
-                        let b = self.world.get(bx, by, bz);
-                        if b != AIR && matches!(reg().kind[b as usize], Kind::Cross | Kind::Cutout) {
-                            self.world.set_block(bx, by, bz, AIR);
+                // About once a second, each kind a pack defines gets its
+                // chance, if its conditions hold here and now.
+                if tick && self.roll() % 3 == 0 {
+                    let roll = self.roll();
+                    for (k, d) in reg().disasters.iter().enumerate() {
+                        if d.every > 0 && roll % d.every == k as u32 % d.every && self.disaster_fits(k) {
+                            self.start_disaster(k);
+                            break;
                         }
                     }
                 }
-                let left = left - dt;
-                self.disaster = if left > 0.0 { Some(Disaster::Tornado { x, z, dx, dz, left }) } else { None };
+                return;
             }
-            Some(Disaster::Tsunami { left, .. }) => {
-                let rise = weather::tsunami_height(left);
-                let level = worldgen::SEA + rise as i32;
-                if tick {
-                    // The sea climbs over low ground near the player...
-                    let water = reg().wk.water;
-                    for _ in 0..160 {
-                        let (x, z) = (px + (roll() % 49) as i32 - 24, pz + (roll() % 49) as i32 - 24);
-                        let ground = worldgen::column(seed, x, z).height;
-                        for y in (ground + 1).max(worldgen::SEA + 1)..=level {
-                            if self.world.get(x, y, z) == AIR && self.world.set_block(x, y, z, water) {
-                                self.flood.push([x, y, z]);
-                            }
-                        }
-                    }
-                    // ...and falls back as the wave drains.
-                    self.drain_flood(level);
+        };
+        let def = &reg().disasters[run.kind];
+        let (x, z) = (run.x + run.dx * dt, run.z + run.dz * dt);
+        // A `/pull` in force drags the player in and throws them upward.
+        self.pull.2 -= dt;
+        if self.pull.2 > 0.0 && !self.player.flying && self.vehicles.riding.is_none() {
+            let (reach, strength) = (self.pull.0, self.pull.1);
+            let (tx, tz) = (x - self.player.pos[0] as f32, z - self.player.pos[2] as f32);
+            let d2 = tx * tx + tz * tz;
+            if d2 < reach * reach {
+                let d = sqrtf(d2).max(0.5);
+                let pull = (reach - d) * strength * dt;
+                self.player.vel[0] += tx / d * pull;
+                self.player.vel[2] += tz / d * pull;
+                if d < reach * 0.36 {
+                    self.player.vel[1] = (self.player.vel[1] + 34.0 * dt).min(9.0);
                 }
-                let left = left - dt;
-                self.disaster = if left > 0.0 {
-                    Some(Disaster::Tsunami { left, rise })
-                } else {
-                    self.drain_flood(0);
-                    None
-                };
             }
         }
+        let left = run.left - dt;
+        self.disaster = Some(crate::weather::Running { x, z, left, ..run });
+        if tick {
+            for a in &def.actions {
+                self.run(&a.to_ascii_lowercase(), 1);
+            }
+        }
+        // (A command may have stopped it, or started another.)
+        if left <= 0.0 && self.disaster.map_or(false, |d| d.kind == run.kind) {
+            self.disaster = None;
+            self.drain_flood(0);
+            self.fire("disaster_end", &def.id);
+            if let Some(next) = reg().disasters.iter().position(|d| !def.then.is_empty() && d.id == def.then) {
+                if self.disaster.is_none() && self.disaster_fits(next) {
+                    self.start_disaster(next);
+                }
+            }
+        }
+    }
+
+    fn roll(&mut self) -> u32 {
+        self.rng = self.rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        self.rng >> 8
+    }
+
+    /// Whether the conditions a pack gave disaster `k` hold where the
+    /// player is.
+    fn disaster_fits(&mut self, k: usize) -> bool {
+        let needs = reg().disasters[k].needs.clone();
+        needs.iter().all(|c| {
+            let words: Vec<&str> = c.split_whitespace().collect();
+            self.holds(&words)
+        })
+    }
+
+    /// Begin disaster `k`. One that moves starts thirty blocks off and
+    /// passes close by.
+    pub fn start_disaster(&mut self, k: usize) {
+        let def = &reg().disasters[k];
+        let (px, pz) = (self.player.pos[0] as f32, self.player.pos[2] as f32);
+        let a = (self.roll() % 628) as f32 / 100.0;
+        let (dx, dz) = (crate::math::sinf(a), crate::math::cosf(a));
+        let far = if def.moves > 0.0 { 30.0 } else { 0.0 };
+        self.disaster = Some(crate::weather::Running { kind: k, left: def.lasts, x: px - dx * far, z: pz - dz * far, dx: dx * def.moves, dz: dz * def.moves });
+        self.fire("disaster", &def.id);
     }
 
     /// Take back flood water standing above `level`.
@@ -1448,6 +1522,10 @@ impl Session {
 
     fn retarget(&mut self) {
         self.target = self.world.raycast(self.player.eye(), forward(self.player.yaw, self.player.pitch), self.reach());
+        // Aiming at any part of a big prop is aiming at the prop.
+        if let Some(hit) = self.target.as_mut() {
+            hit.cell = interact::prop_root(&self.world, hit.cell);
+        }
     }
 
     /// Advance the world by `dt` seconds.

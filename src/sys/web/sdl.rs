@@ -144,6 +144,31 @@ unsafe extern "C" fn SDL_SetRelativeMouseMode(on: c_int) -> c_int {
 // Keys always produce text events in a page.
 unsafe extern "C" fn SDL_StartTextInput() {}
 
+// A page may not read the system clipboard without asking, so copy and
+// paste work inside the game only: this is the text last copied.
+static mut CLIP: [u8; 256] = [0; 256];
+
+unsafe extern "C" fn SDL_SetClipboardText(text: *const c_char) -> c_int {
+    let clip = &mut *core::ptr::addr_of_mut!(CLIP);
+    let mut i = 0;
+    while i < clip.len() - 1 && *text.add(i) != 0 {
+        clip[i] = *text.add(i) as u8;
+        i += 1;
+    }
+    clip[i] = 0;
+    0
+}
+
+unsafe extern "C" fn SDL_GetClipboardText() -> *mut c_char {
+    // The caller frees what it gets, so hand out a copy.
+    let clip = &*core::ptr::addr_of!(CLIP);
+    let out = super::malloc(clip.len()) as *mut u8;
+    if !out.is_null() {
+        core::ptr::copy_nonoverlapping(clip.as_ptr(), out, clip.len());
+    }
+    out as *mut c_char
+}
+
 /// The names SDL gives the keys, for the controls screen.
 fn scancode_name(code: c_int, out: &mut [u8; 16]) {
     const LETTERS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
@@ -445,6 +470,7 @@ pub fn sym(name: &[u8]) -> *mut c_void {
         SDL_InitSubSystem SDL_OpenAudioDevice SDL_PauseAudioDevice SDL_CloseAudioDevice
         SDL_LockAudioDevice SDL_UnlockAudioDevice SDL_CreateRGBSurfaceFrom SDL_FreeSurface
         SDL_SetWindowIcon SDL_GetScancodeName SDL_StartTextInput SDL_CreateThread
+        SDL_GetClipboardText SDL_SetClipboardText
     }
     core::ptr::null_mut()
 }

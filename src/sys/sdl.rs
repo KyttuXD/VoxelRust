@@ -152,6 +152,8 @@ sdl_api! {
     fn SDL_SetWindowIcon(*mut c_void, *mut c_void);
     fn SDL_GetScancodeName(c_int) -> *const c_char;
     fn SDL_StartTextInput();
+    fn SDL_GetClipboardText() -> *mut c_char;
+    fn SDL_SetClipboardText(*const c_char) -> c_int;
 }
 
 static API: AtomicPtr<Api> = AtomicPtr::new(core::ptr::null_mut());

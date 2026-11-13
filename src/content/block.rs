@@ -136,6 +136,25 @@ pub struct Script {
     pub actions: Vec<String>,
 }
 
+/// A pack's disaster: when it may come, how long it lasts, and the chat
+/// commands carried out a few times a second while it does.
+#[derive(Clone, Debug)]
+pub struct DisasterDef {
+    pub id: String,
+    /// It starts about once in this many seconds (0 = never by itself).
+    pub every: u32,
+    pub lasts: f32,
+    /// `/if` conditions that must all hold for it to start.
+    pub needs: Vec<String>,
+    /// Blocks a second it travels (0 = it is everywhere at once).
+    pub moves: f32,
+    /// Drawn as a funnel where it is.
+    pub funnel: bool,
+    /// The disaster that follows it, if that one's conditions hold.
+    pub then: String,
+    pub actions: Vec<String>,
+}
+
 fn split_actions(text: &str) -> Vec<String> {
     text.split(';').map(|c| String::from(c.trim())).filter(|c| !c.is_empty()).collect()
 }
@@ -192,6 +211,11 @@ pub struct BlockExtra {
     /// tall to draw it in blocks. Its `box` lines still say where it is solid.
     /// The third number lifts it off the floor (a lamp hung from above).
     pub prop: Option<(usize, f32, f32)>,
+    /// A big prop: how many blocks wide (square) and tall it stands. The
+    /// extra cells are taken by hidden filler blocks. (0, 0) = one cell.
+    pub fills: (u8, u8),
+    /// The hidden filler itself: solid, never drawn, part of a big prop.
+    pub part: bool,
 }
 
 /// What an item does besides being placed or eaten.
@@ -547,6 +571,10 @@ pub struct Registry {
     /// Parts of the game that packs switch on (`feature earth`): things
     /// built into the program that only run when a pack asks for them.
     pub features: Vec<String>,
+    /// The disasters packs define.
+    pub disasters: Vec<DisasterDef>,
+    /// The real planet's map, if a pack describes one (the Earth mod).
+    pub map: Option<crate::earth::MapDef>,
     pub plants: Vec<PlantRule>,
     /// Per-state lookup tables for the hot loops.
     pub opaque: Vec<u8>,
@@ -554,6 +582,8 @@ pub struct Registry {
     pub sky_loss: Vec<u8>,
     pub kind: Vec<Kind>,
     pub wk: WellKnown,
+    /// The hidden filler that big props put in the cells they take up.
+    pub part: Block,
     pub sun_tile: u16,
     pub moon_tile: u16,
     by_id: BTreeMap<String, Block>,
@@ -579,12 +609,25 @@ pub fn reg() -> &'static Registry {
     {
         sources.push(("mods/disasters/pack.txt", include_str!("../../mods/disasters/pack.txt")));
         sources.push(("mods/earth/pack.txt", include_str!("../../mods/earth/pack.txt")));
+        sources.push(("mods/boats/pack.txt", include_str!("../../mods/boats/pack.txt")));
+        sources.push(("mods/trains/pack.txt", include_str!("../../mods/trains/pack.txt")));
+        sources.push(("mods/planes/pack.txt", include_str!("../../mods/planes/pack.txt")));
         sources.push(("mods/landvehicles/pack.txt", include_str!("../../mods/landvehicles/pack.txt")));
     }
     install(Registry::from_sources(&sources, &mut |_path| {
         #[cfg(test)]
-        if _path == "mods/landvehicles/models/car.bbmodel" {
-            return Some(include_bytes!("../../mods/landvehicles/models/car.bbmodel").to_vec());
+        {
+            let files: [(&str, &[u8]); 6] = [
+                ("mods/landvehicles/models/car.bbmodel", include_bytes!("../../mods/landvehicles/models/car.bbmodel")),
+                ("mods/boats/models/boat.bbmodel", include_bytes!("../../mods/boats/models/boat.bbmodel")),
+                ("mods/boats/models/cargo_boat.bbmodel", include_bytes!("../../mods/boats/models/cargo_boat.bbmodel")),
+                ("mods/trains/models/cart.bbmodel", include_bytes!("../../mods/trains/models/cart.bbmodel")),
+                ("mods/trains/models/chest_cart.bbmodel", include_bytes!("../../mods/trains/models/chest_cart.bbmodel")),
+                ("mods/planes/models/plane.bbmodel", include_bytes!("../../mods/planes/models/plane.bbmodel")),
+            ];
+            if let Some(f) = files.iter().find(|f| f.0 == _path) {
+                return Some(f.1.to_vec());
+            }
         }
         None
     }));
@@ -961,7 +1004,7 @@ impl Parser<'_> {
                     cur = Cur::Vehicle(i);
                 }
                 // (Inside a block or creature, `sound <id>` names the sound it makes.)
-                "ore" | "plant" | "sound" | "command" | "when" | "dimension" | "feature" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
+                "ore" | "plant" | "sound" | "command" | "when" | "dimension" | "feature" | "disaster" | "map" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
                     cur = Cur::None;
                     let mut words: Vec<String> = args.iter().map(|a| a.to_string()).collect();
                     words.insert(0, key.to_string());
@@ -1134,7 +1177,7 @@ impl Parser<'_> {
                     Some(t) => b.tool = t as u8,
                     None => bad = Some("tool must be none, pick, axe, shovel or hoe"),
                 },
-                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" | "sound" | "seat" | "eat" | "track" | "station" | "prop" => {
+                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" | "sound" | "seat" | "eat" | "track" | "station" | "prop" | "fills" | "part" => {
                     b.extra.retain(|e| e.0 != key);
                     b.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
@@ -1601,9 +1644,12 @@ impl Registry {
                     "eat" => x.eat = word(0).parse::<u8>().unwrap_or(4).clamp(1, 40),
                     // prop <model> [height in blocks] [lift off the floor]
                     "prop" => match models.iter().position(|m| m.id == word(0)) {
-                        Some(m) => x.prop = Some((m, word(1).parse::<f32>().unwrap_or(1.0).clamp(0.1, 8.0), word(2).parse::<f32>().unwrap_or(0.0).clamp(-1.0, 4.0))),
+                        Some(m) => x.prop = Some((m, word(1).parse::<f32>().unwrap_or(1.0).clamp(0.1, 24.0), word(2).parse::<f32>().unwrap_or(0.0).clamp(-1.0, 4.0))),
                         None => ok = false,
                     },
+                    // fills <blocks wide> <blocks tall>
+                    "fills" => x.fills = (word(0).parse::<u8>().unwrap_or(1).clamp(1, 7), word(1).parse::<u8>().unwrap_or(1).clamp(1, 24)),
+                    "part" => x.part = true,
                     "track" => x.track = word(0).parse::<u16>().unwrap_or(100).clamp(10, 400),
                     "station" => {
                         x.station = word(0).parse::<u8>().unwrap_or(5).clamp(1, 120);
@@ -1774,6 +1820,8 @@ impl Registry {
         let mut scripts: Vec<Script> = Vec::new();
         let mut dimensions: Vec<(String, u8)> = Vec::new();
         let mut features: Vec<String> = Vec::new();
+        let mut disasters: Vec<DisasterDef> = Vec::new();
+        let mut map: Option<crate::earth::MapDef> = None;
         for (at, w) in &raw_rules {
             let f = |k: usize| w.get(k).and_then(|v| v.parse::<f32>().ok());
             match w[0].as_str() {
@@ -1816,6 +1864,50 @@ impl Registry {
                         actions: split_actions(&w[d + 1..].join(" ")),
                     }),
                     _ => warnings.push(alloc::format!("{}: when needs <event> [what] do <commands>", at)),
+                },
+                // map ...: where the planet's tiles are and how to read
+                // them (see `earth::MapDef`).
+                "map" => {
+                    let words: Vec<&str> = w[1..].iter().map(|x| x.as_str()).collect();
+                    if let Err(e) = map.get_or_insert_with(crate::earth::MapDef::default).apply(&words) {
+                        warnings.push(alloc::format!("{}: {}", at, e));
+                    }
+                }
+                // disaster <id> [every S] [lasts S] [moves SPEED] [funnel]
+                //   [then ID] [if COND [and COND]...] do <commands>
+                "disaster" => match w.iter().position(|x| x == "do") {
+                    Some(d) if d >= 2 && d + 1 < w.len() => {
+                        let mut def = DisasterDef { id: w[1].to_ascii_lowercase(), every: 0, lasts: 10.0, needs: Vec::new(), moves: 0.0, funnel: false, then: String::new(), actions: split_actions(&w[d + 1..].join(" ")) };
+                        let mut k = 2;
+                        let mut bad = false;
+                        while k < d {
+                            let val = w.get(k + 1).filter(|_| k + 1 < d).map(|s| s.as_str()).unwrap_or("");
+                            match w[k].as_str() {
+                                "every" => def.every = val.parse::<u32>().unwrap_or(0).min(1_000_000),
+                                "lasts" => def.lasts = val.parse::<f32>().unwrap_or(10.0).clamp(1.0, 600.0),
+                                "moves" => def.moves = val.parse::<f32>().unwrap_or(3.5).clamp(0.0, 20.0),
+                                "then" => def.then = val.to_ascii_lowercase(),
+                                "funnel" => {
+                                    def.funnel = true;
+                                    k += 1;
+                                    continue;
+                                }
+                                "if" => {
+                                    def.needs = w[k + 1..d].join(" ").to_ascii_lowercase().split(" and ").map(|c| String::from(c.trim())).filter(|c| !c.is_empty()).collect();
+                                    break;
+                                }
+                                _ => bad = true,
+                            }
+                            k += 2;
+                        }
+                        if bad {
+                            warnings.push(alloc::format!("{}: disaster options are every, lasts, moves, funnel, then, if", at));
+                        } else {
+                            disasters.retain(|x: &DisasterDef| x.id != def.id);
+                            disasters.push(def);
+                        }
+                    }
+                    _ => warnings.push(alloc::format!("{}: disaster needs <name> [options] do <commands>", at)),
                 },
                 "command" => warnings.push(alloc::format!("{}: command needs <name> <what it does>", at)),
                 "feature" => {
@@ -2005,6 +2097,7 @@ impl Registry {
             sun_tile: find_tile("sun"),
             moon_tile: find_tile("moon"),
             wk,
+            part: blocks.iter().position(|b| b.x.part).map_or(AIR, |i| i as Block),
             blocks,
             items,
             tiles,
@@ -2017,6 +2110,8 @@ impl Registry {
             sounds,
             commands,
             scripts,
+            disasters,
+            map,
             dimensions,
             features,
             plants,
@@ -2079,6 +2174,29 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn packs_define_disasters_and_the_map() {
+        let r = reg();
+        // The test registry has the game's own mods in it.
+        let ids: Vec<&str> = r.disasters.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(ids, ["earthquake", "tsunami", "tornado"]);
+        let quake = &r.disasters[0];
+        assert_eq!((quake.every, quake.lasts, quake.then.as_str()), (1200, 7.0, "tsunami"));
+        assert_eq!(quake.actions, ["/shake 0.35", "/sound quake"]);
+        let tornado = &r.disasters[2];
+        assert!(tornado.funnel && tornado.moves == 3.5);
+        assert_eq!(tornado.needs, ["storm", "lowland", "biome plains savanna"]);
+        assert_eq!(r.disasters[1].every, 0, "a wave never comes by itself");
+        assert!(r.map.as_ref().map_or(false, |m| m.places.len() == 10 && m.cover.starts_with("https://tile.")));
+        // A pack's own, and a mistake in one.
+        let pack = "disaster hail every 300 lasts 20 if storm do /hurt 1; /sound pop\ndisaster bad sometimes do /say hi\nmap cover http://insecure.example/{z}.png\n";
+        let p = Registry::from_sources(&[("base.txt", BASE_DATA), ("p", pack)], &mut |_| None);
+        assert_eq!(p.disasters.len(), 1);
+        assert_eq!((p.disasters[0].id.as_str(), p.disasters[0].every, p.disasters[0].needs.len()), ("hail", 300, 1));
+        assert_eq!(p.warnings.len(), 2, "{:?}", p.warnings);
+        assert!(p.map.map_or(true, |m| m.cover.is_empty()));
+    }
 
     #[test]
     fn base_data_loads_cleanly() {
