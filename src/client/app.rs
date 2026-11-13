@@ -1347,7 +1347,10 @@ impl App {
     /// A centred column of full-width rows: (x, first y, width, row height, step).
     fn column(ui: &Ui, rows: usize) -> (f32, f32, f32, f32, f32) {
         let s = ui.s;
-        let (bw, bh, step) = (200.0 * s, 16.0 * s, 19.0 * s);
+        // Below 1000 pixels wide the buttons widen, so their labels (and
+        // the halves of rows) still fit at the small interface size.
+        let wide = if ui.w() < 1000.0 { 1.6 } else { 1.0 };
+        let (bw, bh, step) = (200.0 * s * wide, 16.0 * s, 19.0 * s);
         ((ui.w() - bw) * 0.5, ((ui.h() - rows as f32 * step) * 0.5 + 14.0 * s).max(40.0 * s), bw, bh, step)
     }
 
@@ -1360,7 +1363,6 @@ impl App {
         let size = 64.0 * s;
         ui.r.emblem(cx - size * 0.5, y - 132.0 * s, size);
         ui.centered(cx, y - 60.0 * s, 4.0, "VOXELRUST", WHITE);
-        ui.centered(cx, y - 24.0 * s, 1.0, "A VOXEL SANDBOX FOR OLD AND NEW MACHINES", ui::DIM);
         if ui.button(x, y, bw, bh, "SINGLEPLAYER") {
             self.worlds = session::list_worlds(&self.base);
             self.status.clear();
@@ -1381,6 +1383,26 @@ impl App {
         ui.centered(cx, ui.h() - 12.0 * s, 1.0, &version, ui::DIM);
         // What the look for a newer version found.
         ui.centered(cx, ui.h() - 23.0 * s, 1.0, crate::update::message(), ui::ACCENT);
+        // A credit in the bottom right corner, with a pixel heart (the
+        // font has no emoji).
+        let (a, b) = ("MADE WITH", "BY KYTTU");
+        let (wa, wb) = (Renderer::text_width(a, s), Renderer::text_width(b, s));
+        let heart = 7.0 * s;
+        let total = wa + 4.0 * s + heart + 4.0 * s + wb;
+        let x0 = ui.w() - 8.0 * s - total;
+        let y0 = ui.h() - 12.0 * s;
+        ui.text(x0, y0, a, ui::DIM);
+        let hx = x0 + wa + 4.0 * s;
+        // 7 x 6 pixels, one `s` square each.
+        const HEART: [&str; 6] = [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."];
+        for (row, line) in HEART.iter().enumerate() {
+            for (col, c) in line.chars().enumerate() {
+                if c == 'X' {
+                    ui.r.rect(hx + col as f32 * s, y0 - 0.5 * s + row as f32 * s, s, s, [228, 48, 78, 255]);
+                }
+            }
+        }
+        ui.text(hx + heart + 4.0 * s, y0, b, ui::DIM);
     }
 
     fn screen_worlds(&mut self, ui: &mut Ui) {
