@@ -255,13 +255,7 @@ w('''
 # ---- Items ----
 # Every block that is not `hidden` gets an item automatically; these are the
 # ones that do something else.
-item builders_wand
-  name Builder's Wand
-  icon wand
-  category Tools
-  brush 2
-  reach 12
-  stack 1''')
+''')
 
 w("""
 # Materials, tools and food.

@@ -106,7 +106,7 @@ fn boxq(out: &mut Vec<Quad>, lo: [f32; 3], hi: [f32; 3], tiles: [u16; 6], tint: 
 }
 
 /// The held item, centred on the origin, facing forward (-z).
-fn item_geometry(held: Held, white: u16, out: &mut Vec<Quad>) {
+fn item_geometry(held: Held, white: u16, out: &mut Vec<Quad>, first: bool) {
     let start = out.len();
     match held {
         Held::Nothing => {}
@@ -123,21 +123,126 @@ fn item_geometry(held: Held, white: u16, out: &mut Vec<Quad>) {
         }
         Held::Tool(tile) => {
             // The handle (bottom-left of the picture) is in the fist and the
-            // blade stands out of it, tipped a little toward the viewer's far side.
-            let (lo, hi, z) = ([-0.025, -0.025], [0.19, 0.19], 0.0);
-            let front = [[lo[0], lo[1], z], [hi[0], lo[1], z], [hi[0], hi[1], z], [lo[0], hi[1], z]];
-            quad(out, front, tile, [255, 255, 255, 255], UPRIGHT);
-            // Turn it about the grip so the flat of the blade faces forward-left.
-            map(&mut out[start..], |p| rot_y(p, -0.5));
+            // blade stands out of it.
+            if first {
+                // The model, as in LastRoute's pose table: the handle's end (the grip) at
+                // the origin and the long axis up (+Y), the flat of it facing +Z.
+                stacked(out, tile, [0.0, 0.0], [TOOL_SIZE, TOOL_SIZE], false);
+                map(&mut out[start..], |p| rot_z(p, core::f32::consts::FRAC_PI_4));
+            } else {
+                stacked(out, tile, [-0.025, -0.025], [0.19, 0.19], false);
+                map(&mut out[start..], |p| rot_y(p, -0.5));
+            }
         }
         Held::Bow(tile) => {
-            let (lo, hi, z) = ([-0.1, -0.1], [0.1, 0.1], 0.0);
-            let front = [[lo[0], lo[1], z], [hi[0], lo[1], z], [hi[0], hi[1], z], [lo[0], hi[1], z]];
-            quad(out, front, tile, [255, 255, 255, 255], UPRIGHT);
-            map(&mut out[start..], |p| rot_y(p, -0.5));
+            if first {
+                stacked(out, tile, [-TOOL_SIZE * 0.5, -TOOL_SIZE * 0.5], [TOOL_SIZE * 0.5, TOOL_SIZE * 0.5], false);
+                map(&mut out[start..], |p| rot_z(p, core::f32::consts::FRAC_PI_4));
+            } else {
+                stacked(out, tile, [-0.1, -0.1], [0.1, 0.1], false);
+                map(&mut out[start..], |p| rot_y(p, -0.5));
+            }
         }
     }
     let _ = white;
+}
+
+/// A picture made solid: every opaque pixel is a little block, as a held tool
+/// is in the game it comes from, so it has a real edge and thickness. `lo`
+/// and `hi` are the picture's corners (the handle end first); `mirror` reads
+/// the picture from its right side to its left. Falls back to a thin slab
+/// if the picture's shape is not known yet.
+fn stacked(out: &mut Vec<Quad>, tile: u16, lo: [f32; 2], hi: [f32; 2], mirror: bool) {
+    let Some(alpha) = crate::textures::tile_alpha(tile as usize) else {
+        return slab(out, tile, lo, hi, mirror);
+    };
+    let n = 16usize;
+    let (pw, ph) = ((hi[0] - lo[0]) / n as f32, (hi[1] - lo[1]) / n as f32);
+    // As thick as a pixel is wide.
+    let t = (if pw < 0.0 { -pw } else { pw }).max(0.004);
+    let solid = |px: i32, py: i32| -> bool { px >= 0 && py >= 0 && px < n as i32 && py < n as i32 && alpha[py as usize * n + px as usize] > 128 };
+    // Where the pixel in column `px` and row `py` is: x runs with the picture
+    // (or against it, mirrored), y runs up as the rows go up the picture.
+    let col_x = |px: usize| -> (f32, f32) {
+        if mirror { (hi[0] - (px + 1) as f32 * pw, hi[0] - px as f32 * pw) } else { (lo[0] + px as f32 * pw, lo[0] + (px + 1) as f32 * pw) }
+    };
+    let row_y = |py: usize| -> (f32, f32) { (hi[1] - (py + 1) as f32 * ph, hi[1] - py as f32 * ph) };
+    let (z0, z1) = (-t * 0.5, t * 0.5);
+    let tint = [255u8, 255, 255];
+    // The two big faces: the whole picture, cut out by its own holes.
+    let front = [[lo[0], lo[1], z1], [hi[0], lo[1], z1], [hi[0], hi[1], z1], [lo[0], hi[1], z1]];
+    let fuv = if mirror { [UPRIGHT[1], UPRIGHT[0], UPRIGHT[3], UPRIGHT[2]] } else { UPRIGHT };
+    quad(out, front, tile, shade(tint, 255), fuv);
+    let back = [[hi[0], lo[1], z0], [lo[0], lo[1], z0], [lo[0], hi[1], z0], [hi[0], hi[1], z0]];
+    let buv = if mirror { [UPRIGHT[0], UPRIGHT[1], UPRIGHT[2], UPRIGHT[3]] } else { [UPRIGHT[1], UPRIGHT[0], UPRIGHT[3], UPRIGHT[2]] };
+    quad(out, back, tile, shade(tint, 205), buv);
+    // The edges: wherever an opaque pixel has an empty one beside it.
+    for py in 0..n {
+        for px in 0..n {
+            if !solid(px as i32, py as i32) {
+                continue;
+            }
+            let (x0, x1) = col_x(px);
+            let (y0, y1) = row_y(py);
+            // The pixel's own colour: all four corners at its middle.
+            let mid = [(px as f32 + 0.5) / n as f32, (py as f32 + 0.5) / n as f32];
+            let uv = [mid; 4];
+            // In world terms: the pixel to the left (-x) is column px-1 unless mirrored.
+            let (left, right) = if mirror { (px as i32 + 1, px as i32 - 1) } else { (px as i32 - 1, px as i32 + 1) };
+            if !solid(left, py as i32) {
+                quad(out, [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], tile, shade(tint, 200), uv);
+            }
+            if !solid(right, py as i32) {
+                quad(out, [[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]], tile, shade(tint, 200), uv);
+            }
+            if !solid(px as i32, py as i32 - 1) {
+                quad(out, [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], tile, shade(tint, 255), uv);
+            }
+            if !solid(px as i32, py as i32 + 1) {
+                quad(out, [[x0, y0, z1], [x1, y0, z1], [x1, y0, z0], [x0, y0, z0]], tile, shade(tint, 140), uv);
+            }
+        }
+    }
+    for q in out.iter_mut().rev().take(0) {
+        let _ = q;
+    }
+}
+
+/// The thin version of [`stacked`]: a few copies one behind another.
+fn slab(out: &mut Vec<Quad>, tile: u16, lo: [f32; 2], hi: [f32; 2], mirror: bool) {
+    for k in 0..5 {
+        let z = (k as f32 - 2.0) * 0.007;
+        let front = [[lo[0], lo[1], z], [hi[0], lo[1], z], [hi[0], hi[1], z], [lo[0], hi[1], z]];
+        let uv = if mirror { [UPRIGHT[1], UPRIGHT[0], UPRIGHT[3], UPRIGHT[2]] } else { UPRIGHT };
+        quad(out, front, tile, [255, 255, 255, 255], uv);
+    }
+}
+
+/// Side of a tool's picture in the first-person model (blocks).
+const TOOL_SIZE: f32 = 0.30;
+
+fn rot_z(p: [f32; 3], a: f32) -> [f32; 3] {
+    let (c, s) = (cosf(a), sinf(a));
+    [p[0] * c - p[1] * s, p[0] * s + p[1] * c, p[2]]
+}
+
+/// How a held tool sits in the first-person view, as LastRoute's `HeldItemPoses`
+/// has it: `scale` the model's size, `yaw` turns the flat of the blade toward
+/// the target, `pitch` (negative: the head tipped forward and up) leans the long axis.
+#[derive(Clone, Copy, Debug)]
+pub struct Pose {
+    /// Lean of the long axis to the left (+) in the view, in radians.
+    pub roll: f32,
+    pub scale: f32,
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
+pub fn pose_of(held: Held) -> Pose {
+    match held {
+        Held::Bow(_) => Pose { roll: 0.3, scale: 1.3, yaw: 0.4, pitch: -0.3 },
+        _ => Pose { roll: 0.62, scale: 1.9, yaw: 0.35, pitch: -0.5 },
+    }
 }
 
 fn rot_x(p: [f32; 3], a: f32) -> [f32; 3] {
@@ -171,10 +276,54 @@ const BARE_VIEW: [f32; 3] = [0.27, -0.24, -0.52];
 /// Where a point of the hand model goes, for the first-person view: a swing
 /// (a blow or a use) turns it about the wrist first, then the tilt and the
 /// place. `bob` lifts it as the player walks.
-pub fn arm_point(p: [f32; 3], swing: f32, bob: f32) -> [f32; 3] {
-    let p = rot_x(p, swing_angle(swing));
+pub fn arm_point(p: [f32; 3], swing: f32, bob: f32, held: Held) -> [f32; 3] {
+    let (angle, off) = swing_of(held, swing);
+    let p = rot_x(p, angle);
     let p = rot_x(p, TILT_DEG.to_radians());
-    [p[0] + BARE_VIEW[0], p[1] + BARE_VIEW[1] + bob, p[2] + BARE_VIEW[2]]
+    let v = hand_view(held);
+    [p[0] + v[0] + off[0], p[1] + v[1] + bob + off[1], p[2] + v[2] + off[2]]
+}
+
+/// Where the hand is in the view. A tool is held where LastRoute's crowbar and
+/// axe are (HeldItemPoses.FIRST_PERSON `view`), a little lower and nearer the
+/// middle than the bare hand.
+pub fn hand_view(held: Held) -> [f32; 3] {
+    match held {
+        Held::Tool(_) | Held::Bow(_) => [0.24, -0.28, -0.54],
+        _ => BARE_VIEW,
+    }
+}
+
+/// The swing of a tool, as LastRoute's `_animate_tool_use` tweens it on the
+/// view node: a windup that raises the hand and tips the head back toward you
+/// (to `arc` x 0.70, easing out), a strike that drops it forward past rest (to
+/// -`arc` x 1.15, easing in), and a recovery (easing out). `t` is 0 at rest, then
+/// runs 0..1 through the whole use. Gives the turn about the wrist and how far
+/// the hand moves. Anything else swings as before.
+pub fn swing_of(held: Held, t: f32) -> (f32, [f32; 3]) {
+    if !matches!(held, Held::Tool(_)) {
+        return (swing_angle(t), [0.0; 3]);
+    }
+    let t = t.clamp(0.0, 1.0);
+    if t <= 0.0 {
+        return (0.0, [0.0; 3]);
+    }
+    let arc = 70.0f32.to_radians();
+    let (up, down) = ([0.02f32, 0.05, 0.06], [-0.03f32, -0.05, -0.12]);
+    let lerp = |a: [f32; 3], b: [f32; 3], k: f32| [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+    if t < 0.30 {
+        let u = t / 0.30;
+        let e = 1.0 - (1.0 - u) * (1.0 - u);
+        (arc * 0.70 * e, lerp([0.0; 3], up, e))
+    } else if t < 0.52 {
+        let u = (t - 0.30) / 0.22;
+        let e = u * u;
+        (arc * (0.70 + (-1.15 - 0.70) * e), lerp(up, down, e))
+    } else {
+        let u = (t - 0.52) / 0.48;
+        let e = 1.0 - (1.0 - u) * (1.0 - u);
+        (-arc * 1.15 * (1.0 - e), lerp(down, [0.0; 3], e))
+    }
 }
 
 /// Where the held item goes: in the fist, at the end of the fingers. The
@@ -189,7 +338,21 @@ pub fn item_point(p: [f32; 3], swing: f32, bob: f32) -> [f32; 3] {
 /// The held item for the first-person view, put in `out`.
 pub fn first_person(held: Held, white: u16, swing: f32, bob: f32, out: &mut Vec<Quad>) {
     let start = out.len();
-    item_geometry(held, white, out);
+    item_geometry(held, white, out, true);
+    if matches!(held, Held::Tool(_) | Held::Bow(_)) {
+        let pose = pose_of(held);
+        let fingers = rot_x([0.0, -0.05, 0.0], TILT_DEG.to_radians());
+        let (angle, off) = swing_of(held, swing);
+        let view = hand_view(held);
+        map(&mut out[start..], |p| {
+            // Turned and leaned about the grip, then put in the fist.
+            let q = rot_x(rot_y(rot_z([p[0] * pose.scale, p[1] * pose.scale, p[2] * pose.scale], pose.roll), pose.yaw), pose.pitch);
+            let q = [q[0] + fingers[0], q[1] + fingers[1], q[2] + fingers[2]];
+            let q = rot_x(q, angle);
+            [q[0] + view[0] + off[0], q[1] + view[1] + bob + off[1], q[2] + view[2] + off[2]]
+        });
+        return;
+    }
     map(&mut out[start..], |p| item_point(p, swing, bob));
 }
 
@@ -201,10 +364,21 @@ pub fn on_body(held: Held, white: u16, swing: f32, feet: [f32; 3], yaw: f32, hei
         return;
     }
     let start = out.len();
-    item_geometry(held, white, out);
+    item_geometry(held, white, out, false);
     // Seen from farther off, the item is drawn larger than in the hand: a
     // stick's picture is mostly empty space.
-    map(&mut out[start..], |p| [p[0] * 1.8, p[1] * 1.8, p[2] * 1.8]);
+    // A tool or weapon is gripped by its handle and seen at about the length it
+    // has in the hand: big, at the fist, the blade up and out to the side.
+    let scale = match held {
+        Held::Tool(_) => 3.1,
+        Held::Bow(_) => 2.8,
+        _ => 1.8,
+    };
+    if matches!(held, Held::Tool(_) | Held::Bow(_)) {
+        // Undo the first-person turn, and point the blade ahead and a little out, plane on edge.
+        map(&mut out[start..], |p| rot_y(p, 0.5 + PI * 0.5 - 0.7));
+    }
+    map(&mut out[start..], |p| [p[0] * scale, p[1] * scale, p[2] * scale]);
     let s = swing_angle(swing);
     // Right hand: about the height of the chest, to the right, forward a bit.
     // At the right hand, at the side of the body and about hip height, where
@@ -212,7 +386,11 @@ pub fn on_body(held: Held, white: u16, swing: f32, feet: [f32; 3], yaw: f32, hei
     // The model's right hand is at x 0.22..0.45 blocks, at about 0.73 blocks up
     // (its arm's lower end). The item is held just outside it, so it shows from
     // the front and the back alike.
-    let hand = [0.50_f32, height * 0.42, 0.0];
+    let hand = match held {
+        // At the right fist (the lower end of the arm), a little ahead of the hip.
+        Held::Tool(_) | Held::Bow(_) => [0.48_f32, height * 0.40, -0.10],
+        _ => [0.50_f32, height * 0.42, 0.0],
+    };
     map(&mut out[start..], |p| {
         let p = rot_x(p, s * 0.6);
         let p = rot_y([p[0] + hand[0], p[1] + hand[1], p[2] + hand[2]], yaw);
@@ -224,7 +402,7 @@ pub fn on_body(held: Held, white: u16, swing: f32, feet: [f32; 3], yaw: f32, hei
 /// upright axis. `at` is where it lies (camera-relative), `turn` the angle.
 pub fn dropped(held: Held, white: u16, at: [f32; 3], turn: f32, out: &mut Vec<Quad>) {
     let start = out.len();
-    item_geometry(held, white, out);
+    item_geometry(held, white, out, false);
     map(&mut out[start..], |p| {
         let p = [p[0] * 1.6, p[1] * 1.6, p[2] * 1.6];
         let p = rot_y(p, turn);
@@ -245,9 +423,9 @@ mod tests {
     fn the_hand_is_placed_as_last_route_places_it() {
         // The hand (the model origin) is at LastRoute's bare view, and the
         // forearm (up the model) comes down from it and toward the viewer.
-        let wrist = arm_point([0.0, 0.0, 0.0], 0.0, 0.0);
+        let wrist = arm_point([0.0, 0.0, 0.0], 0.0, 0.0, Held::Nothing);
         assert!(wrist.iter().zip(BARE_VIEW).all(|(a, b)| (a - b).abs() < 1e-5), "{wrist:?}");
-        let elbow = arm_point([0.0, 0.5, 0.0], 0.0, 0.0);
+        let elbow = arm_point([0.0, 0.5, 0.0], 0.0, 0.0, Held::Nothing);
         assert!(elbow[1] < wrist[1] - 0.2 && elbow[2] > wrist[2] + 0.2, "{wrist:?} {elbow:?}");
     }
 
@@ -274,5 +452,20 @@ mod tests {
         on_body(Held::Card(1), 0, 0.0, [0.0, 0.0, 0.0], 0.0, 1.8, &mut out);
         let c = out[0].p.iter().fold([0.0f32; 3], |a, p| [a[0] + p[0], a[1] + p[1], a[2] + p[2]]);
         assert!(c[0] / 4.0 > 0.4 && c[1] / 4.0 > 0.6, "held at the right hand: {:?}", c);
+    }
+
+    #[test]
+    fn a_tool_swing_winds_up_strikes_past_rest_and_comes_back() {
+        let tool = Held::Tool(1);
+        let arc = 70.0f32.to_radians();
+        assert_eq!(swing_of(tool, 0.0), (0.0, [0.0; 3]));
+        let (a, _) = swing_of(tool, 0.299);
+        assert!((a - arc * 0.7).abs() < 0.03, "{a}");
+        let (a, off) = swing_of(tool, 0.519);
+        assert!((a + arc * 1.15).abs() < 0.05 && off[2] < -0.1, "{a} {off:?}");
+        let (a, off) = swing_of(tool, 1.0);
+        assert!(a.abs() < 1e-4 && off.iter().all(|v| v.abs() < 1e-4));
+        // A block in the hand swings as it always did.
+        assert_eq!(swing_of(Held::Cube([0; 6]), 0.5).1, [0.0; 3]);
     }
 }

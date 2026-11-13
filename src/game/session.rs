@@ -606,6 +606,15 @@ impl Session {
 
     /// The player killed a creature of this kind at this place: tell the
     /// mods' code (`Native::killed`).
+    /// The player hit a creature: tell the mods' code (`Native::hit`).
+    fn mob_hit(&mut self, id: u32, kind: usize, at: [f64; 3]) {
+        for (_, n) in crate::native::active() {
+            if let Some(hit) = n.hit {
+                hit(self, id, kind, at);
+            }
+        }
+    }
+
     fn mob_killed(&mut self, kind: usize, at: [f64; 3]) {
         for (_, n) in crate::native::active() {
             if let Some(killed) = n.killed {
@@ -1335,6 +1344,8 @@ impl Session {
             if let Some(k) = struck {
                 let kind = self.mobs.list[k].kind;
                 let at = self.mobs.list[k].body.pos;
+                let mid = self.mobs.list[k].id;
+                self.mob_hit(mid, kind, at);
                 if self.strike(k, damage, self.player.pos) {
                     if let (GameMode::Survival, Some((drop, n))) = (self.mode, reg().entities[kind].drop) {
                         self.inv.add(drop as u16, n);
@@ -2319,6 +2330,8 @@ impl Session {
                     self.cooldown[0] = 0.35;
                     let kind = self.mobs.list[i].kind;
                     let at = self.mobs.list[i].body.pos;
+                    let mid = self.mobs.list[i].id;
+                    self.mob_hit(mid, kind, at);
                     let killed = self.strike(i, if creative { 1000 } else { item.x.damage.max(3) }, eye);
                     if let (true, false, Some((drop, n))) = (killed, creative, reg().entities[kind].drop) {
                         self.inv.add(drop as u16, n);

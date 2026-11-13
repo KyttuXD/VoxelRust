@@ -125,6 +125,8 @@ pub struct Settings {
     pub extras: Vec<(String, String)>,
     /// Names of mods that are switched off, separated by commas.
     pub mods_off: String,
+    /// Texture pack folders (Minecraft-style), separated by `|`: their pictures replace the game's own.
+    pub texture_pack: String,
     /// Install newer versions from the nightly release by itself.
     pub auto_update: bool,
 }
@@ -175,6 +177,7 @@ impl Default for Settings {
             flags: Vec::new(),
             extras: Vec::new(),
             mods_off: String::new(),
+            texture_pack: String::new(),
             auto_update: true,
         }
     }
@@ -281,6 +284,7 @@ impl Settings {
                     .collect()
             },
             auto_update: flag("auto_update", true),
+            texture_pack: kv(text, "texture_pack").unwrap_or("").chars().filter(|c| !c.is_control()).take(1000).collect(),
             mods_off: kv(text, "mods_off").unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, ',' | '_' | '-')).take(400).collect(),
         }
     }
@@ -314,7 +318,7 @@ impl Settings {
         );
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\nslim_arms={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.slim_arms as i32));
         s.push_str(&alloc::format!("map_zoom={}\nmap_preset_1={}\nmap_preset_2={}\nmap_preset_3={}\nmap_follow={}\nmap_grid={}\nmap_waypoints={}\n", self.map_zoom, self.map_preset[0], self.map_preset[1], self.map_preset[2], self.map_follow as i32, self.map_grid as i32, self.map_waypoints as i32));
-        s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.auto_update as i32));
+        s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\ntexture_pack={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.texture_pack, self.auto_update as i32));
         for (i, a) in ACTIONS.iter().enumerate() {
             s.push_str(&alloc::format!("key_{}={}\n", a.1, self.keys[i]));
         }

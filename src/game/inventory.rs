@@ -188,7 +188,7 @@ mod tests {
         assert_eq!(inv.slots[2], None);
         assert_eq!(inv.count(stone), 100);
         // The wand does not stack.
-        let wand = item("builders_wand");
+        let wand = item("iron_sword");
         assert_eq!(inv.add(wand, 2), 0);
         assert_eq!(inv.slots[2], Some(Stack { item: wand, count: 1 }));
         assert_eq!(inv.slots[3], Some(Stack { item: wand, count: 1 }));

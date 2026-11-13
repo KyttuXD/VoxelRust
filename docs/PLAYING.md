@@ -132,7 +132,7 @@ breaks.
 tab is a small picture of something it holds; point at it to see its name.
 Blocks are drawn as little cubes in a true isometric view, other items as
 flat pictures. Blocks break at once, nothing hurts you, and pressing jump
-twice quickly starts or stops flying. You reach 6 blocks. Area tools such as the Builder's Wand (which works on a ball
+twice quickly starts or stops flying. You reach 6 blocks. Area tools that packs add (items with `brush`, which work on a ball
 of blocks at a time) only work in creative. The Eggs tab holds a spawn egg
 for every creature (see [CREATURES.md](CREATURES.md#spawn-eggs)). The mouse
 wheel scrolls the list, and a scroll bar at its right edge can be dragged

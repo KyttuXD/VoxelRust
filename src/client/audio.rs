@@ -198,13 +198,15 @@ impl Audio {
         Audio { device: 0, mixer, seed: 1, effects: 0.0, steps: 0.0, ui: 0.0, captions: Vec::new(), user: Vec::new() }
     }
 
-    /// Read the sounds the player has put in `<base>sounds/` (`<id>.wav`).
+    /// Read the sounds the player has put in `<base>sounds/` (`<id>.wav`, `.flac`, `.aiff`).
     /// Each replaces the sound of that name. Returns the names found.
     pub fn load_folder(&mut self, base: &str) -> Vec<alloc::string::String> {
         let dir = alloc::format!("{}sounds/", base);
         let mut names = Vec::new();
         for f in crate::sys::list_dir(&dir) {
-            let Some(id) = f.strip_suffix(".wav").or_else(|| f.strip_suffix(".WAV")) else { continue };
+            let lower = f.to_ascii_lowercase();
+            let Some(stem) = [".wav", ".flac", ".aiff", ".aif"].iter().find_map(|e| lower.strip_suffix(e)) else { continue };
+            let id = &f[..stem.len()];
             if let Some(samples) = crate::sys::read_file(&alloc::format!("{}{}", dir, f)).and_then(|b| crate::wav::decode(&b)) {
                 let leaked: &'static [i16] = alloc::boxed::Box::leak(samples.into_boxed_slice());
                 self.user.retain(|u| u.0 != id);

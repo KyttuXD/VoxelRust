@@ -70,7 +70,7 @@ Textures are 16 x 16 pixels. Up to 1024 can be defined (they share one 512 x
 texture <id> builtin <painter>            one of the built-in painted textures
 texture <id> paint <style> <r> <g> <b>    a built-in pattern in any colour
 texture <id> flat <r> <g> <b> [noise <n>] a colour, with optional grain 0..255
-texture <id> file <image.tga>             a TGA file, path relative to this file
+texture <id> file <image>                 a PNG, JPEG, GIF, BMP or TGA file (any size, fitted to 16 x 16), path relative to this file
 ```
 
 Colours are three numbers 0..255.
@@ -731,9 +731,10 @@ A sound can be a recording instead of a made noise:
 sound <id> <effects|steps|ui> file <path> [loudness] [caption]
 ```
 
-`path` is relative to the pack file, as for textures. The file is a WAV: PCM
-of 8, 16, 24 or 32 bits (or 32-bit float), any number of channels, any
-rate, at most 12 seconds. It is turned into one channel at 22050 Hz when the
+`path` is relative to the pack file, as for textures. The file is a WAV (PCM of
+8, 16, 24 or 32 bits, 32-bit float, A-law, mu-law, MS ADPCM or IMA ADPCM), an
+AIFF or AIFF-C (PCM), or a FLAC; any number of channels, any rate, at most 12
+seconds. (Ogg Vorbis and MP3 are not read: convert them to FLAC or WAV.) It is turned into one channel at 22050 Hz when the
 pack is read, and its pitch varies a little less than a made sound's.
 `loudness` is 0..2 (default 1). A file that cannot be read is a warning in
 the log, and that sound does not exist. Zip packs may hold the files too.
@@ -743,7 +744,7 @@ sound ding ui file sounds/ding.wav 0.8 A ding
 ```
 
 Players can also replace any sound, made or recorded, without a pack: put
-`<id>.wav` in the `sounds/` folder inside the game's data folder (next to
+`<id>.wav` (or `.flac`, `.aiff`) in the `sounds/` folder inside the game's data folder (next to
 `worlds/`), for example `sounds/step.wav` or `sounds/thunder.wav`. They are
 read when the game starts and the log lists them.
 
@@ -949,4 +950,19 @@ editing. Change any of them in an image editor and copy the ones you changed
 into the `textures/` folder of the data folder (the game makes it when it
 starts). They replace the data's picture of the same id the next time the
 game starts or packs are reloaded, in singleplayer and on servers alike. A
-file that is not 16 x 16 is ignored; delete a file to get the original back.
+picture can be a PNG, JPEG, GIF, BMP or TGA (`<id>.png`, `<id>.jpg`, ...) of any size, fitted to 16 x 16; delete the file to get the original back. JPEG is read as baseline only (not progressive); a GIF gives its first picture.
+
+### Texture packs
+
+`voxelrust --texture-pack DIR` (repeat it for several; later ones win), or
+`texture_pack=DIR|DIR` in `settings.txt`, uses a folder of pictures in the
+usual Minecraft-style layout (`assets/<name>/textures/block/*.png` and
+`.../item/*.png`, or a plain folder of PNG files). A texture is taken from a
+pack when the pack has a picture of that name, or one the game knows it by
+(a table of names in `src/content/textures.rs`: `grass_top` is `grass_block_top`,
+`wood_pick` is `wooden_pickaxe`, `crystal_*` tools are `diamond_*`, `pine` is
+`spruce`, crops by stage, and so on). Tall pictures (animation strips) give
+their first frame, other sizes are fitted to 16 x 16, and the grey textures
+the packs expect a biome to colour (grass, leaves, water) are tinted green and
+blue. A picture in the data folder's `textures/` folder beats the pack's; what
+neither has is made as before.

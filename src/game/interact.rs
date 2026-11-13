@@ -559,18 +559,5 @@ mod tests {
         assert!(place_at(&mut w, &p, item("planks"), &hit));
         assert_eq!(w.get(8, 121, 8), reg().block("planks").unwrap());
 
-        // The wand has no block of its own: it copies what it points at.
-        let wand = item("builders_wand");
-        let hit = aim(&w, [8.5, 126.0, 8.5], DOWN);
-        assert!(place_at(&mut w, &p, wand, &hit));
-        let planks = reg().block("planks").unwrap();
-        assert_eq!(w.get(8, 122, 8), planks);
-        assert_eq!(w.get(10, 122, 8), planks);
-        assert_eq!(w.get(8, 124, 8), planks);
-        // ...and carves a ball out when breaking.
-        let hit = aim(&w, [8.5, 127.0, 8.5], DOWN);
-        break_at(&mut w, wand, &hit);
-        assert_eq!(w.get(8, 122, 8), AIR);
-        assert_eq!(w.get(8, 123, 8), AIR);
     }
 }

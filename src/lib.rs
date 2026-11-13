@@ -25,7 +25,7 @@ pub mod native;
 pub mod mods {
     include!(concat!(env!("OUT_DIR"), "/native_mods.rs"));
 }
-pub use util::{math, noise, json, png, settings, sha256, wav};
+pub use util::{math, noise, json, png, settings, sha256, wav, image};
 pub use content::{block, textures, font, icon, bbmodel, model};
 pub use terrain::{chunk, world, worldgen, mesh, lod, save, jobs, weather};
 pub use game::{player, inventory, interact, entity, path, session};

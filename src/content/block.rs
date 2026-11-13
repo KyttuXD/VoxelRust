@@ -1053,7 +1053,7 @@ impl Parser<'_> {
                                 words[3] = String::from("clip");
                             }
                             None => {
-                                self.warn(file, line_no, &alloc::format!("cannot read {} as a WAV sound (PCM, up to 12 seconds)", path));
+                                self.warn(file, line_no, &alloc::format!("cannot read {} as a sound (WAV, AIFF or FLAC, up to 12 seconds)", path));
                                 continue;
                             }
                         }
@@ -1130,10 +1130,11 @@ impl Parser<'_> {
             }
             "file" => {
                 let path = alloc::format!("{}{}", dir_of(file), a[2..].join(" "));
-                match (self.load)(&path).and_then(|b| crate::textures::decode_tga(&b)) {
+                let read = (self.load)(&path).and_then(|b| crate::image::decode(&b)).map(|img| if img.w == 16 && img.h == 16 { img.rgba } else { crate::image::fit(&img, 16) });
+                match read {
                     Some(px) => TileSrc::Pixels(px),
                     None => {
-                        self.warn(file, line, &alloc::format!("cannot read {} as a 16x16 TGA", path));
+                        self.warn(file, line, &alloc::format!("cannot read {} as a picture (PNG, JPEG, GIF, BMP or TGA)", path));
                         return;
                     }
                 }
@@ -2332,7 +2333,9 @@ mod tests {
         assert_eq!(r.sky_loss[r.block("leaves").unwrap() as usize], 1);
         assert!(!is_solid(r.block("water").unwrap()));
         assert!(!is_solid(r.block("tall_grass").unwrap()));
-        assert!(r.items.iter().any(|i| i.id == "builders_wand" && i.brush == 2));
+        // Area items (a brush) are still possible in packs: no built-in one.
+        let brush = Registry::from_sources(&[("p", "item ball_wand\n  icon stone\n  brush 2\n  reach 12\n  stack 1\n")], &mut |_| None);
+        assert!(brush.items.iter().any(|i| i.id == "ball_wand" && i.brush == 2 && i.reach == 12.0));
         assert!(r.items.iter().all(|i| i.id != "air"));
     }
 

@@ -102,6 +102,9 @@ pub struct Native {
     /// entities) and where it was. Not called for creatures that die some
     /// other way.
     pub killed: Option<fn(g: &mut Session, kind: usize, at: [f64; 3])>,
+    /// The player hit a creature (and may have killed it): its stable id, its
+    /// kind and where it was.
+    pub hit: Option<fn(g: &mut Session, id: u32, kind: usize, at: [f64; 3])>,
     /// The player is about to be hurt by `amount`. `attacker` is the kind of
     /// creature that bit them, when a creature did. Returns the amount to
     /// apply (armour makes it smaller; 0 cancels it). Called in survival
@@ -163,6 +166,7 @@ impl Native {
         command: None,
         condition: None,
         killed: None,
+        hit: None,
         hurt: None,
         message: None,
         share: None,

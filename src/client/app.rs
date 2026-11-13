@@ -60,6 +60,8 @@ Run it with no options for the title screen. Options:
   --add-mod PATH      copy a mod (a folder, a .zip or a pack file) into the
                       data folder's mods, and exit
   --export FILE       with --world NAME: write that world as one file, and exit
+  --texture-pack DIR  use a Minecraft-style texture pack folder (repeat for several, later ones win);
+                      or list them in settings.txt as texture_pack=DIR|DIR
   --export-textures DIR   write every texture as a PNG file (and an atlas) in DIR, and exit.
                       Edit them and put them in the data folder's textures/ folder
   --import FILE       with --world NAME: add a world from such a file, and exit
@@ -111,6 +113,8 @@ struct Opts {
     data: Option<String>,
     log: Option<String>,
     packs: Vec<String>,
+    /// `--texture-pack DIR` (repeatable): texture pack folders to use this time.
+    texture_packs: Vec<String>,
     screenshot: Option<String>,
     bench: Option<u32>,
     /// Fly straight ahead for this many frames, timing them (a render test).
@@ -202,6 +206,7 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--data" => o.data = Some(next(&mut i, a)?),
             "--log" => o.log = Some(next(&mut i, a)?),
             "--pack" => o.packs.push(next(&mut i, a)?),
+            "--texture-pack" => o.texture_packs.push(next(&mut i, a)?),
             "--screenshot" => o.screenshot = Some(next(&mut i, a)?),
             "--write-icon" => o.write_icon = Some(next(&mut i, a)?),
             "--icon-size" => o.icon_size = num::<usize>(&next(&mut i, a)?, a)?.clamp(8, 1024),
@@ -1165,7 +1170,7 @@ impl App {
                     let mut items = Vec::new();
                     let held = crate::client::hand::held_of(g.held().map(|h| h.0));
                     crate::client::hand::first_person(held, crate::client::hand::white_tile(), swing, bob, &mut items);
-                    let to_view = |p: [f32; 3]| crate::client::hand::arm_point(p, swing, bob);
+                    let to_view = |p: [f32; 3]| crate::client::hand::arm_point(p, swing, bob, held);
                     r.draw_first_person(hand, self.skin_tex, cam.fov, 0.12, &to_view, &items);
                 }
             }
@@ -3073,6 +3078,16 @@ fn run(args: Vec<String>) -> Result<(), String> {
     // Pictures the player has edited replace the game's own: textures/<id>.png.
     sys::make_dir(&alloc::format!("{}textures/", base));
     crate::textures::set_override_dir(&alloc::format!("{}textures/", base));
+    // Texture packs: the settings' list, then any named on the command line.
+    {
+        let saved = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| crate::settings::Settings::parse(&String::from_utf8_lossy(&b)).texture_pack).unwrap_or_default();
+        let mut list: Vec<String> = saved.split('|').map(|s| String::from(s.trim())).filter(|s| !s.is_empty()).collect();
+        list.extend(opts.texture_packs.iter().cloned());
+        if !list.is_empty() {
+            let n = crate::textures::set_texture_packs(&list);
+            logf!("voxelrust: texture pack{} {}: {} pictures", if list.len() == 1 { "" } else { "s" }, list.join(", "), n);
+        }
+    }
     if let Some(dir) = &opts.export_textures {
         let n = export_textures(reg(), dir)?;
         logf!("voxelrust: wrote {} textures to {}", n, dir);
@@ -3808,7 +3823,7 @@ fn export_textures(r: &block::Registry, dir: &str) -> Result<usize, String> {
     }
     sys::write_file(&alloc::format!("{}atlas.png", dir), &crate::png::encode(crate::textures::ATLAS, crate::textures::ATLAS, &crate::textures::build_atlas_described(r)));
     sys::write_file(&alloc::format!("{}textures.txt", dir), list.as_bytes());
-    sys::write_file(&alloc::format!("{}README.txt", dir), b"One PNG per texture, 16 x 16 pixels, RGBA (transparent pixels are holes).\nEdit any of them with an image editor and copy the ones you changed into the\n`textures` folder of the game's data folder (it is made when the game starts):\nthey replace the game's own the next time the game starts, or when packs are\nreloaded. A file of any other size is ignored. atlas.png is every texture in one\npicture, for looking at; textures.txt lists the number and id of each one.\n");
+    sys::write_file(&alloc::format!("{}README.txt", dir), b"One PNG per texture, 16 x 16 pixels, RGBA (transparent pixels are holes).\nEdit any of them with an image editor and copy the ones you changed into the\n`textures` folder of the game's data folder (it is made when the game starts):\nthey replace the game's own the next time the game starts, or when packs are\nreloaded. PNG, JPEG, GIF, BMP and TGA files of any size are read (a picture of\nanother size is fitted to 16 x 16). atlas.png is every texture in one\npicture, for looking at; textures.txt lists the number and id of each one.\n");
     Ok(r.tiles.len())
 }
 

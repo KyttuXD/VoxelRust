@@ -686,9 +686,12 @@ the program as a module. The game itself names none of them.
 Each mod's code offers one table of hooks, `struct Native` in
 [src/native.rs](../src/native.rs). The game calls a hook at a fixed point, and
 a hook left out is not called. The hooks cover start-up, the content once it
-is loaded (a mod checks the lines and sections it claimed), new-world terrain,
+is loaded (a mod checks the lines and sections it claimed), new-world terrain
+and the land of a dimension of its own (`dimension_terrain`),
 a world being opened, saved or reloaded, each frame, clicks, chat commands,
-`/if` conditions, messages and state shared between players, drawing, the map,
+`/if` conditions, the player killing a creature (`killed`) and being hurt
+(`hurt`, which may lessen or cancel the blow and says which creature bit),
+messages and state shared between players, drawing, the map,
 rows in SETTINGS > GAME, and answers to a server. A mod claims pack lines and
 indented sections by name; the game keeps those word for word for the code to
 read, and each section also becomes an item.

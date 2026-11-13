@@ -932,13 +932,14 @@ pub fn decode_tga(d: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// Where pictures the player has edited are looked for (`<id>.png`, 16 x 16),
+/// Where pictures the player has edited are looked for (`<id>.png`, `.jpg`, `.gif`, `.bmp` or `.tga`),
 /// set once by the game when it starts.
 static OVERRIDE_DIR: core::sync::atomic::AtomicPtr<alloc::string::String> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
 
 pub fn set_override_dir(dir: &str) {
     let p = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(alloc::string::String::from(dir)));
     OVERRIDE_DIR.store(p, core::sync::atomic::Ordering::Release);
+    rescan_overrides();
 }
 
 fn override_dir() -> Option<&'static str> {
@@ -947,17 +948,260 @@ fn override_dir() -> Option<&'static str> {
     if p.is_null() { None } else { Some(unsafe { &*p }.as_str()) }
 }
 
+/// The files in the textures folder when the atlas was last built (the old
+/// lists are kept for good: a few names each time packs are reloaded).
+static OVERRIDE_FILES: core::sync::atomic::AtomicPtr<Vec<alloc::string::String>> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+
+/// Look in the textures folder again (when the atlas is rebuilt).
+pub fn rescan_overrides() {
+    let Some(dir) = override_dir() else { return };
+    let files: Vec<alloc::string::String> = crate::sys::list_dir(dir);
+    OVERRIDE_FILES.store(alloc::boxed::Box::into_raw(alloc::boxed::Box::new(files)), core::sync::atomic::Ordering::Release);
+}
+
+fn override_files() -> &'static [alloc::string::String] {
+    let p = OVERRIDE_FILES.load(core::sync::atomic::Ordering::Acquire);
+    // SAFETY: from a leaked box, never freed.
+    if p.is_null() { &[] } else { unsafe { &*p } }
+}
+
+/// Texture packs: folders of PNG pictures named as Minecraft-style packs name
+/// them (`assets/<namespace>/textures/block/stone.png` and `.../item/...`, or
+/// just a folder of pictures). A texture the game has an id for is taken from
+/// a pack when the pack has a picture it matches (see [`pack_names`]).
+struct PackIndex {
+    /// `(file stem, full path)`; later packs come later and win.
+    files: Vec<(alloc::string::String, alloc::string::String)>,
+}
+
+static PACKS: core::sync::atomic::AtomicPtr<PackIndex> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+
+/// Use these packs (folders), in order, and index their pictures. Returns how many pictures were found.
+pub fn set_texture_packs(paths: &[alloc::string::String]) -> usize {
+    let mut files = Vec::new();
+    for root in paths {
+        let root = if root.ends_with('/') { root.clone() } else { alloc::format!("{}/", root) };
+        // Every folder a pack might keep its pictures in.
+        let mut dirs: Vec<alloc::string::String> = Vec::new();
+        for sub in ["", "textures/", "block/", "item/", "blocks/", "items/"] {
+            dirs.push(alloc::format!("{}{}", root, sub));
+        }
+        for ns in crate::sys::list_dir(&alloc::format!("{}assets/", root)) {
+            for sub in ["textures/block/", "textures/item/", "textures/blocks/", "textures/items/"] {
+                dirs.push(alloc::format!("{}assets/{}/{}", root, ns, sub));
+            }
+        }
+        for d in dirs {
+            for f in crate::sys::list_dir(&d) {
+                if let Some(stem) = f.strip_suffix(".png") {
+                    let name = alloc::string::String::from(stem);
+                    let path = alloc::format!("{}{}", d, f);
+                    files.retain(|e: &(alloc::string::String, alloc::string::String)| e.0 != name);
+                    files.push((name, path));
+                }
+            }
+        }
+    }
+    let n = files.len();
+    let p = if paths.is_empty() { core::ptr::null_mut() } else { alloc::boxed::Box::into_raw(alloc::boxed::Box::new(PackIndex { files })) };
+    PACKS.store(p, core::sync::atomic::Ordering::Release);
+    n
+}
+
+fn packs() -> Option<&'static PackIndex> {
+    let p = PACKS.load(core::sync::atomic::Ordering::Acquire);
+    // SAFETY: from a leaked box, never freed.
+    if p.is_null() { None } else { Some(unsafe { &*p }) }
+}
+
+/// The names a pack might call the texture `id`, best first.
+pub fn pack_names(id: &str) -> Vec<alloc::string::String> {
+    use alloc::string::{String, ToString};
+    let mut v: Vec<String> = Vec::new();
+    let mut add = |n: &str| {
+        if !v.iter().any(|x| x == n) {
+            v.push(n.to_string());
+        }
+    };
+    add(id);
+    // Wood: `<wood>_side` and `_top` are the log's sides and ends; our pine is the spruce.
+    fn wood(w: &str) -> &str {
+        match w {
+            "pine" => "spruce",
+            "blossom" => "cherry",
+            w => w,
+        }
+    }
+    if let Some(w) = id.strip_suffix("_side") {
+        add(&alloc::format!("{}_log", wood(w)));
+    }
+    if let Some(w) = id.strip_suffix("_top") {
+        add(&alloc::format!("{}_log_top", wood(w)));
+    }
+    for tail in ["_planks", "_leaves", "_door", "_chest"] {
+        if let Some(w) = id.strip_suffix(tail) {
+            add(&alloc::format!("{}{}", wood(w), tail));
+        }
+    }
+    let fixed: &[(&str, &str)] = &[
+        ("grass_top", "grass_block_top"),
+        ("grass_side", "grass_block_side"),
+        ("log_side", "oak_log"),
+        ("log_top", "oak_log_top"),
+        ("leaves", "oak_leaves"),
+        ("planks", "oak_planks"),
+        ("cobble", "cobblestone"),
+        ("brick", "bricks"),
+        ("snow_side", "grass_block_snow"),
+        ("lamp", "redstone_lamp_on"),
+        ("flower_red", "poppy"),
+        ("flower_yellow", "dandelion"),
+        ("tall_grass", "short_grass"),
+        ("deepstone", "deepslate"),
+        ("water", "water_still"),
+        ("lava", "lava_still"),
+        ("crystal_ore", "diamond_ore"),
+        ("ruby_ore", "redstone_ore"),
+        ("workbench_top", "crafting_table_top"),
+        ("marble", "calcite"),
+        ("slate", "deepslate"),
+        ("basalt", "basalt_side"),
+        ("moss", "moss_block"),
+        ("mushroom", "red_mushroom"),
+        ("glow_mushroom", "brown_mushroom"),
+        ("farmland_top", "farmland"),
+        ("raw_meat", "beef"),
+        ("cooked_meat", "cooked_beef"),
+        ("raw_fish", "cod"),
+        ("cooked_fish", "cooked_cod"),
+        ("berries", "sweet_berries"),
+        ("crystal", "diamond"),
+        ("ruby", "emerald"),
+        ("copper_ingot", "copper_ingot"),
+        ("icicle", "pointed_dripstone"),
+        ("bread_crust", "bread"),
+        ("ceramic", "white_terracotta"),
+        ("steel", "iron_block"),
+        ("books", "bookshelf"),
+        ("pizza", "pumpkin_pie"),
+        ("jack_face", "carved_pumpkin"),
+        ("pumpkin_skin", "pumpkin_side"),
+        ("straw", "hay_block_side"),
+        ("pear", "apple"),
+        ("cherry", "sweet_berries"),
+        ("orange", "orange_dye"),
+        ("milk", "milk_bucket"),
+        ("flour", "sugar"),
+        ("dough", "bread"),
+        ("stew", "mushroom_stew"),
+        ("cheese", "cake"),
+        ("honeydew", "honeycomb"),
+        ("crossbow", "crossbow_standby"),
+        ("longbow", "bow"),
+        ("magic_bow", "bow"),
+    ];
+    for (ours, theirs) in fixed {
+        if id == *ours {
+            add(theirs);
+        }
+    }
+    // Coloured blocks: our `<colour>_glass` is their stained glass; `_boards` and chests are plain.
+    if let Some(c) = id.strip_suffix("_glass") {
+        add(&alloc::format!("{}_stained_glass", c));
+    }
+    if let Some(c) = id.strip_suffix("_boards") {
+        add(&alloc::format!("{}_terracotta", c));
+    }
+    // Crops in stages: wheat_1..4 is wheat_stage0..3 (the last two share the ripe picture).
+    for (ours, theirs, max) in [("wheat", "wheat_stage", 7), ("carrot", "carrots_stage", 3), ("potato", "potatoes_stage", 3), ("beet", "beetroots_stage", 3)] {
+        if let Some(n) = id.strip_prefix(ours).and_then(|r| r.strip_prefix('_')).and_then(|r| r.parse::<usize>().ok()) {
+            let stage = if max == 7 { [0, 2, 4, 7][(n.clamp(1, 4)) - 1] } else { n.clamp(1, 4) - 1 };
+            add(&alloc::format!("{}{}", theirs, stage));
+        }
+    }
+    // Seeds and plain crops.
+    if let Some(c) = id.strip_suffix("_seeds") {
+        add(&alloc::format!("{}_seeds", match c { "carrot" => "pumpkin", "potato" => "beetroot", c => c }));
+    }
+    // Tools: our wood is their wooden, our crystal their diamond, and a pick is a pickaxe.
+    for (kind, theirs) in [("_pick", "_pickaxe"), ("_axe", "_axe"), ("_shovel", "_shovel"), ("_hoe", "_hoe"), ("_sword", "_sword")] {
+        if let Some(m) = id.strip_suffix(kind) {
+            let m = match m {
+                "wood" => "wooden",
+                "crystal" => "diamond",
+                "ruby" => "netherite",
+                "tin" | "silver" => "iron",
+                m => m,
+            };
+            add(&alloc::format!("{}{}", m, theirs));
+            add(&alloc::format!("{}{}", if m == "copper" { "iron" } else { m }, theirs));
+        }
+    }
+    for (kind, theirs) in [("_ingot", "_ingot"), ("_ore", "_ore"), ("_block", "_block")] {
+        if let Some(m) = id.strip_suffix(kind) {
+            if m == "tin" || m == "silver" {
+                add(&alloc::format!("iron{}", theirs));
+            }
+        }
+    }
+    v
+}
+
+/// The tint a grey texture of the packs gets (they are coloured by the biome in their own game).
+fn tint_of(name: &str) -> Option<[u8; 3]> {
+    Some(match name {
+        "grass_block_top" | "short_grass" | "tall_grass_top" | "tall_grass_bottom" | "fern" | "large_fern_top" | "large_fern_bottom" | "sugar_cane" | "grass" => [145, 189, 89],
+        "oak_leaves" | "jungle_leaves" | "acacia_leaves" | "dark_oak_leaves" | "mangrove_leaves" | "vine" => [72, 181, 24],
+        "spruce_leaves" => [97, 153, 97],
+        "birch_leaves" => [128, 167, 85],
+        "water_still" | "water_flow" => [63, 118, 228],
+        "lily_pad" => [32, 128, 48],
+        _ => return None,
+    })
+}
+
+/// A pack's picture for texture `id`, 16 x 16 RGBA, if a pack has one.
+pub fn pack_pixels(id: &str) -> Option<Vec<u8>> {
+    let index = packs()?;
+    for name in pack_names(id) {
+        let Some((_, path)) = index.files.iter().find(|f| f.0 == name) else { continue };
+        let Some(mut img) = crate::sys::read_file(path).and_then(|b| crate::image::decode(&b)) else { continue };
+        // An animated picture is a tall strip of frames: the first one.
+        if img.h > img.w && img.w > 0 && img.h % img.w == 0 {
+            img.rgba.truncate(img.w * img.w * 4);
+            img.h = img.w;
+        }
+        let mut px = if img.w == TILE && img.h == TILE { img.rgba } else { crate::image::fit(&img, TILE) };
+        if let Some(t) = tint_of(&name) {
+            for p in px.chunks_mut(4) {
+                p[0] = (p[0] as u32 * t[0] as u32 / 255) as u8;
+                p[1] = (p[1] as u32 * t[1] as u32 / 255) as u8;
+                p[2] = (p[2] as u32 * t[2] as u32 / 255) as u8;
+            }
+        }
+        return Some(px);
+    }
+    None
+}
+
 /// The 16 x 16 RGBA picture of texture number `i`, top row first: the file
 /// the player has put in the textures folder if there is one, else what the
 /// data describes.
 pub fn tile_pixels(i: usize, t: &TileDef) -> Vec<u8> {
     if let Some(dir) = override_dir() {
-        let file = alloc::format!("{}{}.png", dir, t.id);
-        if let Some(img) = crate::sys::read_file(&file).and_then(|b| crate::png::decode(&b)) {
-            if img.w == TILE && img.h == TILE {
-                return img.rgba;
+        for ext in ["png", "jpg", "jpeg", "gif", "bmp", "tga"] {
+            let name = alloc::format!("{}.{}", t.id, ext);
+            if !override_files().iter().any(|f| *f == name) {
+                continue;
+            }
+            if let Some(img) = crate::sys::read_file(&alloc::format!("{}{}", dir, name)).and_then(|b| crate::image::decode(&b)) {
+                // Any size: fitted to a tile.
+                return if img.w == TILE && img.h == TILE { img.rgba } else { crate::image::fit(&img, TILE) };
             }
         }
+    }
+    if let Some(px) = pack_pixels(&t.id) {
+        return px;
     }
     described_pixels(i, t)
 }
@@ -994,6 +1238,20 @@ pub fn described_pixels(i: usize, t: &TileDef) -> Vec<u8> {
     out
 }
 
+/// The see-through-ness of every pixel of every texture as last built into
+/// the atlas, 256 bytes a texture: what held items are cut out by.
+static ALPHA: core::sync::atomic::AtomicPtr<Vec<u8>> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+
+/// The alpha of texture `tile`, 16 x 16, top row first (`None` before the atlas exists).
+pub fn tile_alpha(tile: usize) -> Option<&'static [u8]> {
+    let p = ALPHA.load(core::sync::atomic::Ordering::Acquire);
+    if p.is_null() {
+        return None;
+    }
+    // SAFETY: from a leaked box, never freed.
+    unsafe { &*p }.get(tile * TILE * TILE..(tile + 1) * TILE * TILE)
+}
+
 /// The atlas of what the data describes, ignoring the player's own files (for exporting).
 pub fn build_atlas_described(r: &Registry) -> Vec<u8> {
     let mut a = alloc::vec![0u8; ATLAS * ATLAS * 4];
@@ -1010,15 +1268,19 @@ pub fn build_atlas_described(r: &Registry) -> Vec<u8> {
 
 /// Paint every registered texture into one 512 x 512 RGBA atlas.
 pub fn build_atlas(r: &Registry) -> Vec<u8> {
+    rescan_overrides();
     let mut a = alloc::vec![0u8; ATLAS * ATLAS * 4];
+    let mut mask: Vec<u8> = Vec::with_capacity(r.tiles.len() * TILE * TILE);
     for (i, t) in r.tiles.iter().enumerate() {
         let (tx, ty) = (i % PER_ROW, i / PER_ROW);
         let px = tile_pixels(i, t);
+        mask.extend(px.chunks(4).map(|p| p[3]));
         for y in 0..TILE {
             let o = ((ty * TILE + y) * ATLAS + tx * TILE) * 4;
             a[o..o + TILE * 4].copy_from_slice(&px[y * TILE * 4..(y + 1) * TILE * 4]);
         }
     }
+    ALPHA.store(alloc::boxed::Box::into_raw(alloc::boxed::Box::new(mask)), core::sync::atomic::Ordering::Release);
     a
 }
 
@@ -1101,5 +1363,20 @@ mod tests {
             assert_eq!((img.w, img.h), (TILE, TILE), "{}", t.id);
             assert_eq!(img.rgba, px, "{}", t.id);
         }
+    }
+
+    #[test]
+    fn pack_names_know_our_names_for_things() {
+        let has = |id: &str, want: &str| assert!(pack_names(id).iter().any(|n| n == want), "{id}: {:?}", pack_names(id));
+        has("stone", "stone");
+        has("grass_top", "grass_block_top");
+        has("pine_side", "spruce_log");
+        has("birch_top", "birch_log_top");
+        has("wood_pick", "wooden_pickaxe");
+        has("crystal_axe", "diamond_axe");
+        has("red_glass", "red_stained_glass");
+        has("wheat_3", "wheat_stage4");
+        has("carrot_4", "carrots_stage3");
+        has("raw_meat", "beef");
     }
 }
