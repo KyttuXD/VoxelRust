@@ -30,6 +30,9 @@ pub struct MeshData {
     /// Vertical extent of the geometry in blocks, for culling.
     pub ymin: i32,
     pub ymax: i32,
+    /// Blocks drawn as models rather than as part of the mesh: where in
+    /// the chunk each is, and which block.
+    pub props: Vec<([u8; 3], crate::block::Block)>,
 }
 
 const R: usize = 48;
@@ -235,7 +238,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
     let reg_ = Region { blk, light };
     let opaque = |b: Block| b == u16::MAX || r.opaque[b as usize] != 0;
 
-    let mut out = MeshData { opaque: Vec::new(), water: Vec::new(), ymin: CH, ymax: 0 };
+    let mut out = MeshData { opaque: Vec::new(), water: Vec::new(), ymin: CH, ymax: 0, props: Vec::new() };
     let mut shape: Vec<Bx> = Vec::new();
 
     for lx in 0..CW {
@@ -343,6 +346,12 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                                     });
                                 }
                             }
+                        }
+                    }
+                    Kind::Boxes if d.x.prop.is_some() => {
+                        // Drawn as a model each frame; nothing to mesh.
+                        if out.props.len() < 4096 {
+                            out.props.push(([lx as u8, y as u8, lz as u8], b));
                         }
                     }
                     Kind::Boxes => {

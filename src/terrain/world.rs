@@ -47,6 +47,8 @@ pub trait MeshSink {
 pub struct Chunk {
     pub data: Option<Arc<ChunkData>>,
     pub mesh: Option<GpuMesh>,
+    /// Blocks in this chunk that are drawn as models.
+    pub props: Vec<([u8; 3], Block)>,
     gen_requested: bool,
     mesh_in_flight: bool,
     /// The mesh does not match the blocks any more.
@@ -282,6 +284,7 @@ impl World {
                             sink.free(old);
                         }
                         c.mesh = Some(sink.upload(&mesh));
+                        c.props = mesh.props;
                     }
                 }
             }

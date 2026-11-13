@@ -125,7 +125,7 @@ pub fn build(seed: u32, tx: i32, tz: i32, step: i32) -> MeshData {
     let white = r.tiles.iter().position(|t| t.id == "white").unwrap_or(0) as i32;
     let uv = [((white % 16) * 256 + 128) as i16, ((white / 16) * 256 + 128) as i16];
     let luv = [8i16, 15 * 16 + 8];
-    let mut out = MeshData { opaque: Vec::with_capacity(n * n * 12), water: Vec::new(), ymin: i32::MAX, ymax: 0 };
+    let mut out = MeshData { opaque: Vec::with_capacity(n * n * 12), water: Vec::new(), ymin: i32::MAX, ymax: 0, props: Vec::new() };
     // A vertex at block offset (x, z) within the tile, in 1/16ths.
     let vert = |x: i32, y: i32, z: i32, col: [u8; 3], shade: i32| Vertex {
         pos: [x as i16, (y * 16) as i16, z as i16, 0],

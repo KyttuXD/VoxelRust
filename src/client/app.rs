@@ -1062,6 +1062,35 @@ impl App {
             let pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, ..Default::default() };
             r.draw_model(model, &pose, p, m.body.yaw, height, tint);
         }
+        // Props: blocks that are models (furniture, statues, plants). Only
+        // those near enough to matter, and not the ones behind the camera.
+        let (pcx, pcz) = crate::world::chunk_at(cam.pos[0], cam.pos[2]);
+        let still = crate::model::Pose::default();
+        for dx in -3..=3 {
+            for dz in -3..=3 {
+                let (cx, cz) = (pcx + dx, pcz + dz);
+                let chunk = match g.world.chunks.get(&(cx, cz)) {
+                    Some(c) if !c.props.is_empty() => c,
+                    _ => continue,
+                };
+                for &(at, b) in &chunk.props {
+                    let d = block::def(b);
+                    let (model, height) = match d.x.prop {
+                        Some(p) => p,
+                        None => continue,
+                    };
+                    let pos = [(cx * 16 + at[0] as i32) as f64 + 0.5, at[1] as f64, (cz * 16 + at[2] as i32) as f64 + 0.5];
+                    let p = rel(pos);
+                    if p[0] * p[0] + p[2] * p[2] > 44.0 * 44.0 || behind(p, 3.0) {
+                        continue;
+                    }
+                    // Placed facing the player: each state is a quarter turn.
+                    let turn = ((b - d.first) % d.rotations.max(1) as u16) as f32;
+                    let l = (light_at([pos[0], pos[1], pos[2]]) * 255.0) as u8;
+                    r.draw_model(model, &still, p, turn * PI * 0.5, height, [l, l, l]);
+                }
+            }
+        }
         let sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
         r.draw_sparks(&sparks);
         for (i, v) in g.vehicles.list.iter().enumerate() {
@@ -2352,6 +2381,14 @@ fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Co
         let pose = crate::model::Pose::default();
         r.tint_2d = e.tint;
         r.draw_model_2d(e.model, &pose, x + size * 0.5, y + size * 0.84, PI - 0.6, height);
+        return;
+    }
+    // A prop shows as its model.
+    if let Some((model, _)) = it.place.and_then(|b| block::def(b).x.prop) {
+        let (tall, wide) = r.model_extent(model);
+        let height = (size * 0.9).min(size * 0.95 * tall / wide);
+        r.tint_2d = [tint[0], tint[1], tint[2]];
+        r.draw_model_2d(model, &crate::model::Pose::default(), x + size * 0.5, y + size * 0.95, PI - 0.6, height);
         return;
     }
     // Blocks are shown as small 3D blocks; everything else as its picture.

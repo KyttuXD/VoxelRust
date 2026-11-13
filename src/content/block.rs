@@ -188,6 +188,9 @@ pub struct BlockExtra {
     pub track: u16,
     /// Track where carts pull up and wait this many seconds before going on.
     pub station: u8,
+    /// Drawn as a model (a prop) instead of as boxes: the model, and how
+    /// tall to draw it in blocks. Its `box` lines still say where it is solid.
+    pub prop: Option<(usize, f32)>,
 }
 
 /// What an item does besides being placed or eaten.
@@ -1127,7 +1130,7 @@ impl Parser<'_> {
                     Some(t) => b.tool = t as u8,
                     None => bad = Some("tool must be none, pick, axe, shovel or hoe"),
                 },
-                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" | "sound" | "seat" | "eat" | "track" | "station" => {
+                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" | "sound" | "seat" | "eat" | "track" | "station" | "prop" => {
                     b.extra.retain(|e| e.0 != key);
                     b.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
@@ -1592,6 +1595,11 @@ impl Registry {
                     "sound" => x.sound = word(0).to_string(),
                     "seat" => x.seat = word(0).parse::<u8>().unwrap_or(8).clamp(1, 16),
                     "eat" => x.eat = word(0).parse::<u8>().unwrap_or(4).clamp(1, 40),
+                    // prop <model> [height in blocks]
+                    "prop" => match models.iter().position(|m| m.id == word(0)) {
+                        Some(m) => x.prop = Some((m, word(1).parse::<f32>().unwrap_or(1.0).clamp(0.1, 8.0))),
+                        None => ok = false,
+                    },
                     "track" => x.track = word(0).parse::<u16>().unwrap_or(100).clamp(10, 400),
                     "station" => {
                         x.station = word(0).parse::<u8>().unwrap_or(5).clamp(1, 120);
