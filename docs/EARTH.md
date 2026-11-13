@@ -142,8 +142,11 @@ later. If a tile cannot be fetched, that piece of terrain comes out as sea;
 opening the map makes the game try failed tiles again.
 
 Machines whose `curl` cannot make modern HTTPS connections (Mac OS X 10.6)
-can fetch through any machine running `voxelrust --server`: set SETTINGS >
-GAME > MAP DATA RELAY to its `host:port` and restart the game. See
+need no setting: when curl fails its secure connection, the game fetches
+through the project's public server instead (logged once as "earth: this
+computer's curl cannot make secure connections"). Singleplayer and
+multiplayer worlds both do this. To use another server, set SETTINGS > GAME
+> MAP DATA RELAY to its `host:port`; a change applies at once. See
 [MULTIPLAYER.md](MULTIPLAYER.md#the-map-data-relay).
 
 ## Data sources and attribution

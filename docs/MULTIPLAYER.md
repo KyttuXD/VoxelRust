@@ -187,18 +187,20 @@ no buggy, truck or kart there, whatever their own settings say.
 ## The map-data relay
 
 Earth worlds download map tiles with the system's `curl` over HTTPS. Machines
-whose `curl` is too old for today's HTTPS (Mac OS X 10.6, for example) can
-ask a VoxelRust server to fetch for them instead:
+whose `curl` is too old for today's HTTPS (Mac OS X 10.6, for example) fetch
+through a VoxelRust server instead. This is automatic: when curl fails its
+secure connection and no relay is set, the game uses the project's public
+server, 195.62.47.178:25590. The game logs this once.
 
-1. Run `voxelrust --server` on a machine with working internet and a modern
-   `curl` (any server will do, including a game hosted from the menu; it
-   need not be the one you play on).
-2. On the old machine, set SETTINGS > GAME > MAP DATA RELAY to that server's
-   `host:port`, for example `192.168.1.20:25590`, then restart the game (the
-   relay address is read at start-up).
+To use another server (for example one on your own network), run
+`voxelrust --server` on a machine with working internet and a modern `curl`
+(any server will do, including a game hosted from the menu), then set SETTINGS
+> GAME > MAP DATA RELAY to its `host:port`, for example `192.168.1.20:25590`.
+A change applies at once; blank the field to go back to automatic.
 
-The old machine then gets elevation tiles, map tiles and place names through
-the server. Tiles are cached on both machines.
+The game then gets elevation tiles, map tiles and place names through the
+server. Tiles are cached on both machines. Every map request reaches the
+relay's operator, so use a server you trust.
 
 ## Hosting for people outside your network
 

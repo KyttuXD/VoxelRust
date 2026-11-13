@@ -609,7 +609,7 @@ impl App {
         self.close_world(r);
         let name = crate::settings::clean_world_name(&self.form_host, 24);
         let port = crate::proto::DEFAULT_PORT;
-        let (server, edits) = match open_server(if name.is_empty() { "shared" } else { &name }, None, None, port, 16, &self.base, &self.pack_text) {
+        let (server, edits) = match open_server(if name.is_empty() { "shared" } else { &name }, None, None, port, 16, &self.base, &self.pack_text, &self.settings) {
             Ok(v) => v,
             Err(e) => {
                 self.status = e.to_ascii_uppercase();
@@ -3609,7 +3609,7 @@ static HOST_STOP: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBoo
 
 /// Open the server for the world `name`: its small save (seed, kind and
 /// every edit) is read, or made on first use.
-fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u16, players: usize, base: &str, pack: &[u8]) -> Result<(crate::server::Server, String), String> {
+fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u16, players: usize, base: &str, pack: &[u8], settings: &Settings) -> Result<(crate::server::Server, String), String> {
     use crate::server::{Config, Server};
     if name.is_empty() || name != crate::settings::clean_world_name(name, 24) {
         return Err(String::from("world names use only letters, digits, spaces, - and _ (24 at most)"));
@@ -3643,9 +3643,11 @@ fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u1
     if let Some(text) = sys::read_file(&edits_path) {
         server.load_text(&String::from_utf8_lossy(&text));
     }
+    // The player's own settings when hosting from the menu, so the map relay
+    // they set keeps working; a dedicated server passes its defaults.
     for (_, n) in crate::native::active() {
         if let Some(start) = n.start {
-            start(base, &crate::settings::Settings::default());
+            start(base, settings);
         }
     }
     logf!("voxelrust: serving world `{}` (seed {}, {}) on port {}, {} saved edits", name, seed, kind, server.port(), server.edits.len());
@@ -3704,7 +3706,7 @@ fn run_server(opts: &Opts, base: &str, pack_text: &[u8]) -> Result<(), String> {
     let name = opts.world.clone().unwrap_or_else(|| String::from("server"));
     let new_kind = crate::native::active().filter_map(|(_, n)| n.option_kind).find_map(|kind| kind());
     let port = opts.port.unwrap_or(crate::proto::DEFAULT_PORT);
-    let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text)?;
+    let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, &Settings::default())?;
     let address = sys::net::local_address().unwrap_or_else(|| String::from("<this machine's address>"));
     logf!("voxelrust: players join with:  voxelrust --join {}:{}", address, server.port());
     server_loop(server, edits_path, false);

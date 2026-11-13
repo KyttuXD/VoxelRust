@@ -386,12 +386,65 @@ struct Conf {
     relay: String,
 }
 
+/// The project's own map relay. Used by a game whose curl cannot make the
+/// secure connection the map services need (see [`AUTO_RELAY`]).
+pub const DEFAULT_RELAY: &str = "195.62.47.178:25590";
+
+/// Set once this computer's curl has failed the secure connection (exit 35
+/// or 60) and the player has no relay of their own: from then on the
+/// project's relay supplies whatever is not in the cache.
+static AUTO_RELAY: AtomicBool = AtomicBool::new(false);
+static AUTO_LOGGED: AtomicBool = AtomicBool::new(false);
+
+fn conf() -> Option<&'static Conf> {
+    // SAFETY: a Conf is leaked when stored and never freed.
+    unsafe { CONF.load(Ordering::Acquire).as_ref() }
+}
+
 /// Say where tiles are cached and how they are fetched. Until this is
 /// called nothing is downloaded (tiles can still be put in by hand).
 pub fn configure(cache_dir: &str, relay: &str) {
     let c = alloc::boxed::Box::new(Conf { cache: String::from(cache_dir), relay: String::from(relay) });
     // The old value is leaked on purpose: other threads may be reading it.
     CONF.store(alloc::boxed::Box::into_raw(c), Ordering::Release);
+}
+
+/// Change the player's relay while the game runs: it applies to the next
+/// download, with no restart.
+pub fn set_relay(relay: &str) {
+    if let Some(c) = conf() {
+        configure(&c.cache, relay);
+    }
+}
+
+/// The relay to use now: the player's own if they set one; otherwise the
+/// project's, if curl has been found unable to make secure connections;
+/// otherwise none (curl is used).
+pub fn relay_for<'a>(set: &'a str, auto: bool) -> &'a str {
+    if !set.is_empty() {
+        set
+    } else if auto {
+        DEFAULT_RELAY
+    } else {
+        ""
+    }
+}
+
+/// Whether a [`sys::run_command`] status is curl saying it could not make a
+/// secure connection (35: the TLS handshake failed; 60: the certificate was
+/// not accepted), as old curls on old Macs do.
+pub fn tls_failure(status: i32) -> bool {
+    status & 0x7f == 0 && matches!(status >> 8, 35 | 60)
+}
+
+fn note_auto_relay() {
+    AUTO_RELAY.store(true, Ordering::Release);
+    if !AUTO_LOGGED.swap(true, Ordering::Relaxed) {
+        sys::log(&alloc::format!(
+            "earth: this computer's curl cannot make secure connections, so map data comes from the project's relay {} (set MAP DATA RELAY to use another)",
+            DEFAULT_RELAY
+        ));
+    }
 }
 
 fn tiles<R>(f: impl FnOnce(&mut BTreeMap<TileKey, Slot>) -> R) -> R {
@@ -429,19 +482,25 @@ fn cache_path(conf: &Conf, key: TileKey) -> String {
 /// is built from numbers, our own cache path, and the pack's address
 /// (checked by [`safe_url`]).
 pub fn download_with_curl(key: TileKey, path: &str) -> bool {
+    match curl_tile(key, path) {
+        Some(0) => true,
+        Some(status) => {
+            let url = tile_url(key).unwrap_or_default();
+            note_failure(&alloc::format!("curl could not fetch {} ({})", url, exit_text(status)));
+            false
+        }
+        None => false,
+    }
+}
+
+/// Run curl for a tile: its status, or None if it was not run at all.
+fn curl_tile(key: TileKey, path: &str) -> Option<i32> {
     if path.contains('"') || path.contains('$') || path.contains('`') || path.contains('%') {
-        return false; // never hand the shell a path that could be misread
+        return None; // never hand the shell a path that could be misread
     }
-    let url = match tile_url(key) {
-        Some(u) => u,
-        None => return false,
-    };
+    let url = tile_url(key)?;
     let cmd = alloc::format!("curl -fsSL --max-time 25 -A \"VoxelRust/{}\" -o \"{}\" \"{}\"", env!("CARGO_PKG_VERSION"), path, url);
-    let status = sys::run_command(&cmd);
-    if status != 0 {
-        note_failure(&alloc::format!("curl could not fetch {} ({})", url, exit_text(status)));
-    }
-    status == 0
+    Some(sys::run_command(&cmd))
 }
 
 /// The first failed download of a session is written to the log, with what
@@ -488,29 +547,54 @@ fn download_via_relay(relay: &str, key: TileKey) -> Option<Vec<u8>> {
 
 /// Get a tile's bytes: from disk if cached, else from the network.
 pub fn fetch_bytes(key: TileKey) -> Option<Vec<u8>> {
-    let conf = unsafe { CONF.load(Ordering::Acquire).as_ref()? };
+    fetch_bytes_via(key, true)
+}
+
+/// For a server answering another game: from disk or straight from the
+/// upstream service, never through a relay (a server could be its own relay).
+pub fn serve_tile(key: TileKey) -> Option<Vec<u8>> {
+    fetch_bytes_via(key, false)
+}
+
+fn fetch_bytes_via(key: TileKey, use_relay: bool) -> Option<Vec<u8>> {
+    let conf = conf()?;
     let path = cache_path(conf, key);
     if let Some(bytes) = sys::read_file(&path) {
         if !bytes.is_empty() {
             return Some(bytes);
         }
     }
-    if !conf.relay.is_empty() {
-        let bytes = match download_via_relay(&conf.relay, key) {
-            Some(b) => b,
-            None => {
-                note_failure(&alloc::format!("the map relay {} gave no data for tile {:?}", conf.relay, key));
-                return None;
-            }
-        };
-        sys::write_file(&path, &bytes);
-        return Some(bytes);
+    if use_relay {
+        let relay = relay_for(&conf.relay, AUTO_RELAY.load(Ordering::Acquire));
+        if !relay.is_empty() {
+            return tile_via_relay(relay, key, &path);
+        }
     }
-    if download_with_curl(key, &path) {
-        sys::read_file(&path)
-    } else {
-        None
+    match curl_tile(key, &path)? {
+        0 => sys::read_file(&path),
+        status if use_relay && conf.relay.is_empty() && tls_failure(status) => {
+            // This curl cannot do HTTPS: this tile and the rest come from the project's relay.
+            note_auto_relay();
+            tile_via_relay(DEFAULT_RELAY, key, &path)
+        }
+        status => {
+            let url = tile_url(key).unwrap_or_default();
+            note_failure(&alloc::format!("curl could not fetch {} ({})", url, exit_text(status)));
+            None
+        }
     }
+}
+
+fn tile_via_relay(relay: &str, key: TileKey, path: &str) -> Option<Vec<u8>> {
+    let bytes = match download_via_relay(relay, key) {
+        Some(b) => b,
+        None => {
+            note_failure(&alloc::format!("the map relay {} gave no data for tile {:?}", relay, key));
+            return None;
+        }
+    };
+    sys::write_file(path, &bytes);
+    Some(bytes)
 }
 
 /// A tile, loading it if need be (this can take seconds the first time).
@@ -582,26 +666,26 @@ pub fn place_from_json(text: &str, level: i32) -> Option<String> {
 /// Ask OpenStreetMap's Nominatim service what is at a position. Returns
 /// the raw JSON answer. Used sparingly: one question every several seconds.
 pub fn fetch_place_json(lat: f64, lon: f64, level: i32) -> Option<Vec<u8>> {
-    let conf = unsafe { CONF.load(Ordering::Acquire).as_ref()? };
+    fetch_place_json_via(lat, lon, level, true)
+}
+
+/// For a server answering another game (see [`serve_tile`]).
+pub fn serve_place_json(lat: f64, lon: f64, level: i32) -> Option<Vec<u8>> {
+    fetch_place_json_via(lat, lon, level, false)
+}
+
+fn fetch_place_json_via(lat: f64, lon: f64, level: i32, use_relay: bool) -> Option<Vec<u8>> {
+    let conf = conf()?;
     let zoom = match level {
         1 => 3,
         2 => 5,
         _ => 10,
     };
-    if !conf.relay.is_empty() {
-        use crate::sys::net::TcpStream;
-        let (host, port) = conf.relay.rsplit_once(':')?;
-        let mut s = TcpStream::connect(host, port.parse().ok()?, 8000).ok()?;
-        s.send_all(alloc::format!("GEO {:.5} {:.5} {}\n", lat, lon, level).as_bytes(), 8000).ok()?;
-        let mut len = [0u8; 4];
-        s.recv_exact(&mut len, 30_000).ok()?;
-        let n = u32::from_le_bytes(len) as usize;
-        if n == 0 || n > 1 << 16 {
-            return None;
+    if use_relay {
+        let relay = relay_for(&conf.relay, AUTO_RELAY.load(Ordering::Acquire));
+        if !relay.is_empty() {
+            return place_via_relay(relay, lat, lon, level);
         }
-        let mut data = alloc::vec![0u8; n];
-        s.recv_exact(&mut data, 30_000).ok()?;
-        return Some(data);
     }
     let path = alloc::format!("{}place.json", conf.cache);
     if path.contains('"') || path.contains('$') || path.contains('`') || path.contains('%') {
@@ -612,11 +696,31 @@ pub fn fetch_place_json(lat: f64, lon: f64, level: i32) -> Option<Vec<u8>> {
     let url = template.replace("{lat}", &alloc::format!("{:.5}", lat)).replace("{lon}", &alloc::format!("{:.5}", lon)).replace("{zoom}", &alloc::format!("{}", zoom));
     let cmd = alloc::format!("curl -fsSL --max-time 15 -A \"VoxelRust/{}\" -o \"{}\" \"{}\"", env!("CARGO_PKG_VERSION"), path, url);
     let status = sys::run_command(&cmd);
-    if status != 0 {
-        note_failure(&alloc::format!("curl could not fetch {} ({})", url, exit_text(status)));
+    if status == 0 {
+        return sys::read_file(&path);
+    }
+    if use_relay && conf.relay.is_empty() && tls_failure(status) {
+        note_auto_relay();
+        return place_via_relay(DEFAULT_RELAY, lat, lon, level);
+    }
+    note_failure(&alloc::format!("curl could not fetch {} ({})", url, exit_text(status)));
+    None
+}
+
+fn place_via_relay(relay: &str, lat: f64, lon: f64, level: i32) -> Option<Vec<u8>> {
+    use crate::sys::net::TcpStream;
+    let (host, port) = relay.rsplit_once(':')?;
+    let mut s = TcpStream::connect(host, port.parse().ok()?, 8000).ok()?;
+    s.send_all(alloc::format!("GEO {:.5} {:.5} {}\n", lat, lon, level).as_bytes(), 8000).ok()?;
+    let mut len = [0u8; 4];
+    s.recv_exact(&mut len, 30_000).ok()?;
+    let n = u32::from_le_bytes(len) as usize;
+    if n == 0 || n > 1 << 16 {
         return None;
     }
-    sys::read_file(&path)
+    let mut data = alloc::vec![0u8; n];
+    s.recv_exact(&mut data, 30_000).ok()?;
+    Some(data)
 }
 
 /// The name of the place at a position, at the given detail level.
@@ -780,6 +884,25 @@ pub fn column(p: &Proj, x: i32, z: i32) -> Column {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_relay_is_the_players_own_else_the_projects_when_curl_cannot_do_https() {
+        assert_eq!(relay_for("10.0.0.5:25590", false), "10.0.0.5:25590");
+        assert_eq!(relay_for("10.0.0.5:25590", true), "10.0.0.5:25590", "the player's choice wins");
+        assert_eq!(relay_for("", true), DEFAULT_RELAY);
+        assert_eq!(relay_for("", false), "", "a working curl is used directly");
+    }
+
+    #[test]
+    fn only_the_secure_connection_failures_switch_to_the_relay() {
+        // curl's exit status comes from system(): the code is in the high byte.
+        assert!(tls_failure(35 << 8), "SSL connect error");
+        assert!(tls_failure(60 << 8), "certificate not accepted");
+        assert!(!tls_failure(6 << 8), "could not resolve the host is not a TLS problem");
+        assert!(!tls_failure(28 << 8), "a timeout is not a TLS problem");
+        assert!(!tls_failure(0), "success");
+        assert!(!tls_failure(9), "killed by a signal");
+    }
+
     use super::*;
 
     const ELEV: &[u8] = include_bytes!("../../../tests/fixtures/terrarium_8_40_97.png");

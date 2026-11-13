@@ -422,12 +422,13 @@ fn settings(ui: &mut Ui, st: &mut Settings, x: f32, y: f32, w: f32, h: f32, step
         state().level = level;
         changed = true;
     }
-    ui.text(x, y + step * 1.5 - 9.0 * ui.s, "MAP DATA RELAY (HOST:PORT), FOR OLD MACHINES", ui::DIM);
+    ui.text(x, y + step * 1.5 - 9.0 * ui.s, "MAP DATA RELAY (HOST:PORT). BLANK: AUTOMATIC", ui::DIM);
     let mut relay = String::from(st.extra("relay"));
     let before = relay.clone();
     ui.text_field(11, x, y + step * 1.5, w, h, &mut relay, 80, ui::any_char);
     if relay != before {
         st.set_extra("relay", &relay);
+        map::set_relay(&relay);
         changed = true;
     }
     (2.5, changed)
@@ -442,7 +443,7 @@ fn serve(w: &[&str]) -> Option<Vec<u8>> {
         Some(&"GEO") => {
             let f = |i: usize| w.get(i).and_then(|v| v.parse::<f64>().ok());
             match (f(1), f(2), w.get(3).and_then(|v| v.parse::<i32>().ok())) {
-                (Some(lat), Some(lon), Some(level)) if (-85.0..=85.0).contains(&lat) && (-180.0..=180.0).contains(&lon) => fetch_place_json(lat, lon, level.clamp(1, 3)),
+                (Some(lat), Some(lon), Some(level)) if (-85.0..=85.0).contains(&lat) && (-180.0..=180.0).contains(&lon) => map::serve_place_json(lat, lon, level.clamp(1, 3)),
                 _ => None,
             }
         }
@@ -454,7 +455,7 @@ fn serve(w: &[&str]) -> Option<Vec<u8>> {
             };
             let n = |i: usize| w.get(i).and_then(|v| v.parse::<u32>().ok());
             match (n(2), n(3), n(4)) {
-                (Some(z), Some(x), Some(y)) if z <= 16 && x < (1 << z) && y < (1 << z) => fetch_bytes((layer, z, x, y)),
+                (Some(z), Some(x), Some(y)) if z <= 16 && x < (1 << z) && y < (1 << z) => map::serve_tile((layer, z, x, y)),
                 _ => None,
             }
         }
