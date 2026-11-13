@@ -129,6 +129,10 @@ block <id>
   tag <name> [number]            a mark that mod code reads (see below)
   fills <wide> <tall>            a big prop: the room it takes (see Big props)
   part                           the hidden filler of a big prop
+  long ahead|behind <block>      two blocks long: the other half, one block ahead of this one or behind it
+  connect <group> [cubes]        joins neighbouring blocks of its group (and full cubes with `cubes`)
+  arm x0 y0 z0 x1 y1 z1          drawn toward a joined neighbour, written for the north (-z) side (up to 4)
+  react <next to> <becomes>      turns into the second block when the first is beside it
   sound <sound id>               heard when it is broken, placed or toggled
   tall                           two blocks high
   falls                          drops when nothing is under it
@@ -310,6 +314,24 @@ block garden_bench
 - Props are drawn out to about 44 blocks from the player, in the chunks
   within three of the one the player is in; a chunk draws 4096 of them at
   most.
+
+### Long blocks, connections and reactions
+
+`long ahead <block>` on the block you place, and `long behind <block>` on
+the block it adds, make a thing two blocks long (the base data's beds): the
+second half goes one block the way the player faces, needs its room free,
+and breaking either half takes both. Give the second half `hidden` and
+`drops <the first>`.
+
+`connect <group>` with `arm` boxes makes a custom block join its neighbours
+the way fences do: an arm is drawn toward each side (north, west, south, east)
+that holds a block of the same group, or with `cubes` a full cube. The groups
+`fence` and `wall` are the built-in ones, so a custom block can join them.
+
+`react <block> <becomes>` (up to 8 lines) turns the block into `<becomes>`
+whenever `<block>` is beside it (any of the six sides), checked whenever a
+block nearby changes, including changes made by other reactions. Make
+reactions one-way: two blocks that turn into each other would flip for ever.
 
 ### Big props
 
