@@ -353,6 +353,10 @@ struct App {
     form_address: String,
     /// World name typed for hosting, and the server thread while hosting.
     form_host: String,
+    /// Servers the player has saved (name, address), and the name box.
+    servers: Vec<(String, String)>,
+    servers_loaded: bool,
+    form_server: String,
     host: Option<sys::thread::Thread>,
     /// This machine's network address, looked up once.
     my_address: Option<Option<String>>,
@@ -1747,13 +1751,63 @@ impl App {
 
     fn screen_join(&mut self, ui: &mut Ui) {
         let s = ui.s;
-        let (x, y, bw, bh, step) = Self::column(ui, 9);
-        ui.centered(ui.w() * 0.5, y - 30.0 * s, 2.0, "MULTIPLAYER", WHITE);
+        if !self.servers_loaded {
+            // Saved servers: one "name address" per line.
+            self.servers_loaded = true;
+            self.servers = sys::read_file(&alloc::format!("{}servers.txt", self.base))
+                .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.split_once(' ').map(|(n, a)| (String::from(n), String::from(a.trim())))).collect())
+                .unwrap_or_default();
+        }
+        let shown = self.servers.len().min(5);
+        let (x, y0, bw, bh, step) = Self::column(ui, 10 + shown);
+        ui.centered(ui.w() * 0.5, y0 - 30.0 * s, 2.0, "MULTIPLAYER", WHITE);
+        // The saved servers: click one to join; EDIT puts it in the boxes
+        // below to change and save again; X forgets it.
+        let side = 30.0 * s;
+        let mut go = false;
+        let mut changed = false;
+        let mut k = 0;
+        while k < shown {
+            let (name, address) = self.servers[k].clone();
+            let ry = y0 + k as f32 * step;
+            if ui.button(x, ry, bw - 2.0 * side - 6.0 * s, bh, &alloc::format!("{}   {}", name, address).to_ascii_uppercase()) {
+                self.form_address = address.clone();
+                go = true;
+            }
+            if ui.button(x + bw - 2.0 * side - 3.0 * s, ry, side, bh, "EDIT") {
+                self.form_address = address;
+                self.form_server = name;
+            }
+            if ui.button(x + bw - side, ry, side, bh, "X") {
+                self.servers.remove(k);
+                changed = true;
+                break;
+            }
+            k += 1;
+        }
+        let y = y0 + shown as f32 * step + if shown > 0 { 12.0 * s } else { 0.0 };
         ui.text(x, y - 9.0 * s, "SERVER ADDRESS (HOST OR HOST:PORT)", ui::DIM);
         let enter = ui.text_field(30, x, y, bw, bh, &mut self.form_address, 60, ui::any_char);
         ui.text(x, y + step * 1.5 - 9.0 * s, "YOUR NAME", ui::DIM);
-        ui.text_field(31, x, y + step * 1.5, bw, bh, &mut self.settings.player_name, 16, ui::name_char);
-        if ui.button(x, y + step * 2.8, bw, bh, "JOIN") || enter {
+        ui.text_field(31, x, y + step * 1.5, bw * 0.5 - 2.0 * s, bh, &mut self.settings.player_name, 16, ui::name_char);
+        // Keep this address under a name of your choosing.
+        ui.text(x + bw * 0.5 + 2.0 * s, y + step * 1.5 - 9.0 * s, "SAVE IT AS", ui::DIM);
+        ui.text_field(33, x + bw * 0.5 + 2.0 * s, y + step * 1.5, bw * 0.5 - side - 5.0 * s, bh, &mut self.form_server, 16, ui::name_char);
+        if ui.button(x + bw - side, y + step * 1.5, side, bh, "SAVE") && !self.form_address.trim().is_empty() {
+            let name = if self.form_server.is_empty() { alloc::format!("server{}", self.servers.len() + 1) } else { self.form_server.clone() };
+            let address: String = self.form_address.trim().chars().filter(|c| !c.is_whitespace()).collect();
+            match self.servers.iter().position(|sv| sv.0 == name) {
+                Some(at) => self.servers[at].1 = address,
+                None if self.servers.len() < 32 => self.servers.push((name, address)),
+                None => {}
+            }
+            changed = true;
+        }
+        if changed {
+            let text: String = self.servers.iter().map(|(n, a)| alloc::format!("{} {}\n", n, a)).collect();
+            sys::write_file(&alloc::format!("{}servers.txt", self.base), text.as_bytes());
+        }
+        if ui.button(x, y + step * 2.8, bw, bh, "JOIN") || enter || go {
             let name = crate::settings::clean_name(&self.settings.player_name, 16);
             match Session::join(&self.base, &self.form_address, if name.is_empty() { "Player" } else { &name }, self.threads) {
                 Ok(g) => {
@@ -2754,6 +2808,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
         form_place: 0,
         form_address: String::new(),
         form_host: String::from("shared"),
+        servers: Vec::new(),
+        servers_loaded: false,
+        form_server: String::new(),
         host: None,
         my_address: None,
         form_chat: String::new(),
