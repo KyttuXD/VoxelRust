@@ -6,7 +6,9 @@ weapons, food, recipes, ores and wild plants, models, creatures, vehicles,
 sounds, dimensions, chat commands and small scripts. The game's own
 content is [data/base.txt](../data/base.txt) with
 [data/wildlife.txt](../data/wildlife.txt) (built into the program). A **pack** is a file in the same format that is read after it and
-may add new things or redefine anything by reusing its id.
+may add new things or redefine anything by reusing its id. A mod can also bring
+a little Rust of its own, built into the program when it is compiled (see
+[Code that mods bring](#code-that-mods-bring)).
 
 The format, keyword by keyword, is in [DATA.md](DATA.md).
 
@@ -24,7 +26,7 @@ In this order, each able to override the ones before:
       is `VoxelRust.app/Contents/Resources/mods`.
    3. `<data folder>/mods/`: the place for mods you install.
    4. `./mods/`, a `mods` folder where the game was started (handy while
-      making one; in the source tree it is where the three mods live).
+      making one; in the source tree it is where the mods that come with the game live).
 4. Every file given with `--pack FILE`, in the order given.
 
 A mod goes by the name of its folder (or of its file without `.txt`). **A
@@ -38,42 +40,58 @@ For each file it reads from disk, the game prints `voxelrust: content from
 
 ### Mods that come with the game
 
-Three mods come with the game. They are not inside the program: each is an
+Eight mods come with the game. They are not inside the program: each is an
 ordinary folder with a `pack.txt`, and can be read, changed, switched off or
-deleted like any other mod.
+deleted like any other mod. Earth and Vehicles also have Rust code of their
+own (see [Code that mods bring](#code-that-mods-bring)).
 
 | Mod | Folder | What it holds |
 | --- | --- | --- |
-| Natural Disasters | `mods/disasters` | `feature disasters`, which lets earthquakes, tsunamis and tornadoes happen, and the sounds `quake` and `twister` |
+| Natural Disasters | `mods/disasters` | earthquakes, tsunamis and tornadoes, as `episode` lines (see [Episodes](#episodes)), and the `disasters` switch in SETTINGS > GAME, off at first. Pack lines only |
 | Earth | `mods/earth` | `feature earth`, which offers real-world terrain (see [EARTH.md](EARTH.md)) |
+| Vehicles | `mods/vehicles` | `feature vehicles`: how boats float, carts follow track, cars drive and planes fly, getting in and out, and vehicles kept in step between players. It adds no vehicle of its own |
+| Boats | `mods/boats` | the boat |
+| Trains | `mods/trains` | rail track (`tag track`), station furniture (`tag station`), the carts and the locomotive |
+| Planes | `mods/planes` | the plane |
 | Land Vehicles | `mods/landvehicles` | the buggy, the truck and the kart, their icons and their recipes, and their model, `models/car.bbmodel` |
+| Holidays | `mods/holidays` | trees, presents, lights and treats for the year's feasts, four of them big props |
 
 Where they are:
 
-- in the source tree, `mods/` at the top (the only three folders under
-  `mods/` that git tracks);
+- in the source tree, `mods/` at the top (the eight folders above, with
+  `mods/SHIPPED` and `mods/tests.rs`, are the only things under `mods/` that
+  git tracks);
 - in the Linux and Windows archives, a `mods/` folder beside the program;
 - in the Mac apps, `Contents/Resources/mods`.
 
 If the game cannot find them (a program copied somewhere without its `mods`
-folder, say) it still runs, without Earth worlds, disasters or land
-vehicles. The browser version has no folders and so has none of the three.
+folder, say) it still runs, but without any of the eight: no Earth terrain,
+disasters, vehicles, boats, trains, planes, land vehicles or holidays. The
+browser version has no folders and so has none of them.
 
-Boats, rail carts, the locomotive and the plane are in the base data, not in
-a mod.
+Vehicles are not in the base game (`data/base.txt` has no vehicles and no
+rails). Boats, trains, planes and land vehicles are mods that write `vehicle`
+sections, and each needs the Vehicles mod switched on. Without it the loader
+warns that the section needs the mod `vehicles`, which is switched off or
+missing. With Vehicles on, `/vehicle ID` sets a vehicle down 2.5 blocks ahead,
+`/board` gets into the nearest one within 6 blocks, and `/vehicles` says how
+many there are.
 
-The first two show what `feature <name>` is for: the code for disasters and
-for Earth worlds is part of the program, and the pack is what switches it
-on. With the Disasters mod off, disasters cannot happen and their setting
-is not shown; with the Earth mod off, the EARTH terrain choice is not
-offered and `--earth` is refused. The program knows only these two feature
-names; a pack cannot add new program behaviour by inventing another. See
-[DATA.md](DATA.md#features).
+`feature <name>` switches on the code of the mod with that name, and nothing
+else. Earth and Vehicles have code, built into the program (see
+[Code that mods bring](#code-that-mods-bring)); their `feature` lines are what
+switch it on. With the Earth mod off, the EARTH terrain choice is not offered
+and `--earth` is refused. With the Vehicles mod off, the vehicle sections are
+reported, and the vehicle commands and conditions are not there. With the
+Disasters mod off, disasters cannot happen and their setting is not shown.
+The Disasters mod has no code: its episodes are pack lines that the program
+runs. A pack cannot switch on anything by inventing a feature name; a name
+with no code behind it does nothing. See [DATA.md](DATA.md#features).
 
 ### Switching mods on and off
 
-SETTINGS > MODS lists every mod found in the mods folders, the three above
-included, each with a switch. A change takes effect at once (the
+SETTINGS > MODS lists every mod found in the mods folders, the ones that come with the
+game included, each with a switch. A change takes effect at once (the
 content is reloaded). The names switched off are kept in `settings.txt` as
 `mods_off`, a list separated by commas, for example
 `mods_off=disasters,landvehicles`. A mod goes by the name of its folder, or
@@ -81,6 +99,12 @@ of its file without `.txt`.
 
 The data folder's own `pack.txt` and files given with `--pack` are not mods
 and have no switch.
+
+A pack's `setting` switches (see [Episodes](#episodes)) are saved in
+`settings.txt` as `flag_<id>=0` or `flag_<id>=1`. Settings keys the game does
+not know are kept there too, for mod code. A world made with a mod's terrain
+keeps its kind, so it has that terrain again once the mod is on; while the
+mod is off, the terrain is not used.
 
 ### The mods folder
 
@@ -98,9 +122,9 @@ appears after `/reload`, and one taken out disappears. A mod can be switched
 off without removing it: see
 [Switching mods on and off](#switching-mods-on-and-off).
 
-In the source tree, everything under `mods/` except `disasters`, `earth`
-and `landvehicles` is ignored by git, so a mod under development there is
-not committed by accident.
+In the source tree, everything under `mods/` is ignored by git except the
+mods that come with the game, `mods/SHIPPED` and `mods/tests.rs`, so a mod
+under development there is not committed by accident.
 
 A pack can pull in more files with `include`, and refers to textures (`.tga`)
 and models (`.bbmodel`) by paths relative to the pack file itself.
@@ -157,6 +181,8 @@ command <name> <commands separated by ;>
 | `night` | night falls | none |
 | `day` | day breaks | none |
 | `death` | you die | none |
+| `episode <id>` | an episode of a pack begins (see [Episodes](#episodes)) | episode id |
+| `episode_end <id>` | that episode ends | episode id |
 
 Leave `what` out and the line runs for every block, item, creature or
 dimension (`when break do /sound chime`). `use` and `useitem` need a `what`.
@@ -243,10 +269,20 @@ written with `$`.
 | `riding` | you are on a creature or in a vehicle |
 | `hurt` | your health is below full |
 | `hungry` | your hunger is below full |
+| `driving` | you are in a vehicle (the Vehicles mod is on); `riding` is true then too |
+| `setting ID` | that switch is on in SETTINGS > GAME (a pack's `setting` line) |
+| `storm` | a storm is on |
+| `rain` | it is raining, not snowing |
+| `snow` | it is snowing |
+| `coast` | you are near the sea |
+| `lowland` | the ground is less than 24 blocks above sea level |
+| `biome NAME [NAME...]` | you are in one of those biomes, by name, such as `plains` or `savanna` |
 | `not CONDITION` | the condition is false |
 
 There is no `and` or `or`. For "both", put one `/if` inside another:
 `/if night then /if survival then /say BEWARE`.
+
+The one place `and` is read is an episode's `if` line (see [Episodes](#episodes)).
 
 Each branch is **one** command. A `;` ends the `/if` along with the command,
 so in `/if night then /heal 2; /say HELLO` the `/say` always runs. To do
@@ -273,6 +309,51 @@ limit of six levels of nesting.
 | `/take ITEM [N]` | removes N of the item (1 if left out) from the player, if they have it. Pair it with `/if has ITEM N` to charge a price |
 | `/title TEXT` | large letters in the middle of the screen for two seconds |
 | `/blast [R]` | clears a ball of blocks of radius R (1 to 5; 2 if left out) around the block the player points at; unbreakable blocks stay. Not on a server |
+
+### Episodes
+
+A pack can give the world events of its own. An `episode` line says how one
+may start, how long it lasts and what it does while it lasts:
+
+```
+episode <id> [every S] [lasts S] [moves SPEED] [funnel] [then ID] [if COND [and COND]...] do <commands>
+setting <id> <on|off> <LABEL>
+```
+
+- `every S`: it may start on its own, about once every S seconds on average,
+  while its `if` conditions hold. Without `every` it starts only by
+  `/episode`, or by `then` from another episode.
+- `lasts S`: how long it runs, from 1 to 600 seconds (10 if left out).
+- `moves SPEED`: it travels that many blocks a second. One that moves starts
+  30 blocks away and passes close by.
+- `funnel`: it is drawn as a whirling funnel where it is.
+- `then ID`: when it ends, episode ID starts, if its conditions hold.
+- `if`: every condition must hold for it to start on its own. Here, and only
+  here, conditions are joined with `and`.
+- `do`: its commands run a few times a second while it lasts.
+
+`setting <id> <on|off> <LABEL>` adds a switch to SETTINGS > GAME, with its
+label in capitals. The condition `setting <id>` is true while the switch is
+on. The Disasters mod has one, `disasters`, which is off at first. Its three
+episodes are an earthquake, a tsunami and a tornado. The tornado is the one
+with the most conditions:
+
+```
+episode tornado every 120 lasts 26 moves 3.5 funnel if setting disasters and storm and lowland and biome plains savanna do /pull 14 2.2; /strip 3 40; /sound twister
+```
+
+The commands an episode can run:
+
+| Command | Effect |
+| --- | --- |
+| `/episode ID` | begins episode ID now; `/episode stop` ends the one running |
+| `/shake S` | rocks the view; S from 0 to 1 (0.35 if left out). It dies away by itself |
+| `/pull REACH STRENGTH` | for a moment, drags the player towards the episode and lifts them when close |
+| `/strip R N` | tears up to N plants and leaves within R blocks of the episode |
+| `/flood PEAK` | while an episode runs, the sea rises up to PEAK blocks (24 at most) over its level near the player, then drains away |
+
+Episodes do not run in a shared game (multiplayer). `/episode`, `/strip` and
+`/flood` are refused on a server.
 
 ### Worked examples
 
@@ -314,14 +395,13 @@ for counters, quests, random outcomes, prices and timed effects.
 
 It is not a general programming language. There are no text variables,
 lists, functions with results, or loops that run until something is true;
-conditions cannot be joined with `and` or `or`; and a script can ask only
-what the conditions above offer (it cannot look at a block or a creature in
-the world).
+conditions in `/if` cannot be joined with `and` or `or`; and a script can ask
+only what the conditions above offer, plus what a mod's code adds (it cannot
+look at a block or a creature in the world).
 
-Compiled Rust mods are not supported: the game has no plug-in interface,
-and a pack is only ever data. (The mods that come with the game are no
-exception; they are plain packs, and their `feature` lines switch on code
-that is already in the program.)
+A pack is only ever data. Code that a mod brings is compiled into the program
+when it is built, not loaded from a pack (see
+[Code that mods bring](#code-that-mods-bring)).
 
 On a server the scripts of the server's packs run in each player's own
 game, and the commands that are refused on a server (`/time`, `/set`,
@@ -393,9 +473,9 @@ voxelrust --pack my-pack.txt --show creatures --screenshot out.bmp
 
 ### Props: blocks drawn as models
 
-A model can also stand in for a block. Give a block `prop <model> [height]`
+A model can also stand in for a block. Give a block `prop <model> [height] [lift]`
 and it is drawn as that model, scaled to that many blocks high (1 if left
-out), instead of as boxes:
+out) and raised by `lift` blocks (0 if left out), instead of as boxes:
 
 ```
 model stone_lantern file models/lantern.bbmodel
@@ -421,6 +501,26 @@ craft stone_lantern 1 stone 3 lamp 1
   near the player, out to about 44 blocks.
 
 The keyword is described in [DATA.md](DATA.md#props).
+
+#### Big props
+
+A prop can take up more than one block. `fills <wide> <tall>` gives its room:
+up to 7 blocks wide and 24 tall, standing on the block's floor and centred on
+the block. The rest of that room is hidden solid blocks, the `part` blocks
+(`prop_part` in the base data). Placing needs all of the room free, and
+breaking or aiming at any part acts on the whole prop.
+
+```
+block grand_tree
+  name Grand Festive Tree
+  box 0 0 0 16 16 16
+  prop grand_tree 7
+  fills 3 7
+```
+
+The base game has `golem_statue` (one wide, three tall). `mods/holidays` has
+four big props (a grand tree, a giant snowman, a great pumpkin and a maypole),
+with their models made by `tools/gen_props.py`.
 
 ## Player skins
 
@@ -499,21 +599,22 @@ repository**. It is an original pack in the big-adventure style: its names,
 content and models were made for VoxelRust, and it is **not a port of any
 existing mod**. Its `pack.txt` is written by a script,
 `mods/titanlands/gen.py`, from tables, which is a practical way to make a
-pack of this size. It has nine ores, each with an ingot, tools, a sword, a
-block and bricks; special gear driven by `useitem` scripts; and four
-dimensions reached through gate blocks (`when use gate_... do /dim ...;
-/title ...`). It has 24 creatures, giants and dragons among them, some to
-tame and ride (`tamable`, `rideable`), each with its own model in
-`mods/titanlands/models/`; the script writes a creature into the pack only
-when its model file is there. It uses the newer scripting too: `/title`,
+pack of this size. It has 68 creatures, about 130 blocks and 173 items:
+hatch stones, a capture net and cages, three more metal tiers, crops and
+fruit trees, ants with nests, dinosaurs, robots, worms, sea creatures, birds,
+bosses called with lures, and gadgets. Its dimensions include Crystalis and
+Undergrowth, reached through gate blocks (`when use gate_... do /dim ...;
+/title ...`). Creatures have their own models in `mods/titanlands/models/`;
+the script writes a creature into the pack only when its model file is
+there. It uses the newer scripting too: `/title`,
 `/blast`, `/if chance`, and the `ride` and `night` events.
 
 ### A pack of props: Hearth & Garden
 
 "Hearth & Garden", in `mods/hearthgarden/`, is a decoration pack and is
 also **not in the repository**. Its `pack.txt` is written by
-`mods/hearthgarden/gen.py` from one table of about sixty furniture and
-garden pieces (64 at the time of writing), every one a prop: a block drawn
+`mods/hearthgarden/gen.py` from one table of 64 furniture and garden
+pieces, every one a prop: a block drawn
 as a model (see [Props](#props-blocks-drawn-as-models)). Some can be sat on
 (`seat`: the garden bench, the wing chair, the hay bale), some store things
 (`use chest`: the crate, the barrel, the mailbox), some give light or make a
@@ -547,7 +648,9 @@ Settings > MODS has a box for a path: a folder, a `.zip`, or a lone pack
 file. ADD copies it into the data folder's `mods` (unpacking a zip with the
 system's `unzip` or `tar`) and reloads. From a terminal:
 `voxelrust --add-mod PATH`. A mod that sits one folder down inside its
-archive is found too.
+archive is found too. A mod with code in it (see
+[Code that mods bring](#code-that-mods-bring)) is copied the same way, but
+its code is used only by a program built with it.
 
 ## The food chain
 
@@ -562,12 +665,46 @@ own small quarry.
 
 `mods/holidays` comes with the game: trees, presents, lights and treats for
 winter, the spooky season, the harvest feast, spring and the new year. All
-of it is made by recipe, at a crafting table or in an oven.
+of it is made by recipe, at a crafting table or in an oven. Four of its
+pieces are big props (see [Big props](#big-props)).
 
-## What mods cannot yet replace
+## Code that mods bring
 
-Earth worlds, weather and natural disasters are parts of the program that a
-pack switches on with `feature earth` / `feature disasters`; a pack cannot
-yet define a new kind of disaster or a new source of terrain. Scripts
-(`when ... do ...`) can stage events of their own, but they are not a way
-to add code.
+A pack's text can only say so much. A mod that needs more carries Rust of its
+own in `mods/<name>/code/`, with `mod.rs` as its entry point (Earth also has
+`map.rs`, Vehicles `physics.rs`). The build script, [build.rs](../build.rs),
+finds every folder of the source tree's `mods` that has a `code/mod.rs` (its
+name letters, digits and `_`, starting with a letter) and compiles it into
+the program as a module. The game itself names none of them.
+
+Each mod's code offers one table of hooks, `struct Native` in
+[src/native.rs](../src/native.rs). The game calls a hook at a fixed point, and
+a hook left out is not called. The hooks cover start-up, the content once it
+is loaded (a mod checks the lines and sections it claimed), new-world terrain,
+a world being opened, saved or reloaded, each frame, clicks, chat commands,
+`/if` conditions, messages and state shared between players, drawing, the map,
+rows in SETTINGS > GAME, and answers to a server. A mod claims pack lines and
+indented sections by name; the game keeps those word for word for the code to
+read, and each section also becomes an item.
+
+The code runs only while a loaded pack says `feature <name>` for that mod, so
+switching the mod off in SETTINGS > MODS switches its code off too.
+
+The code is built in, not loaded. To change it, change the source and rebuild
+the program. A mod folder with code copied into a data folder or a `mods`
+folder adds its pack but not its code, since the program has only the code it
+was built with; a `feature` line for code that is not there does nothing. A
+server's packs can switch on only the code that a player's build has, because
+the packs are sent to players and the code is not.
+
+`mods/SHIPPED` lists the mods that come with the game, one folder name a line.
+The release scripts and the tests use it, and `mods/tests.rs` holds the tests
+for those mods.
+
+## What mods cannot replace
+
+A mod's code is called only at the hooks in `src/native.rs`. Anything those
+hooks do not reach stays the game's own. A pack alone cannot add a kind of
+terrain, a vehicle's physics or a new kind of effect: those need code, and
+code needs a rebuild. What a pack can do is run the episodes and scripts
+described above.

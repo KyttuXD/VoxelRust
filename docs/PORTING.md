@@ -36,9 +36,9 @@ time the program needs only:
 - an **OpenGL 1.5** driver;
 - `curl` on the `PATH`, for Earth worlds and for the game updating itself.
 
-The three mods that come with the game are folders read at start-up, from
-`mods/` beside the program or, in a Mac app, from `Contents/Resources/mods`
-(see [MODDING.md](MODDING.md#where-packs-are-read-from)).
+The eight mods that come with the game, listed in `mods/SHIPPED`, are folders
+read at start-up, from `mods/` beside the program or, in a Mac app, from
+`Contents/Resources/mods` (see [MODDING.md](MODDING.md#where-packs-are-read-from)).
 
 Building needs a Rust toolchain and nothing else; see
 [BUILDING.md](BUILDING.md).
@@ -130,7 +130,7 @@ and started with `open` (default view distance 8, distant terrain 32):
 - The second graphics card's display was locked to 60 Hz and slower.
 
 SETTINGS > VIDEO has 3D DETAIL (the render scale) and HOLD FRAME RATE, which
-lowers the view distance by itself to keep a rate you choose. F3 shows the
+adjusts the view distance by itself to keep a rate you choose. F3 shows the
 frame rate and how much is being drawn.
 
 The game also tunes full screen once by itself: the first time it is played

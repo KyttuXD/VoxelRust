@@ -14,8 +14,8 @@ together, one of you hosts and gives the others an address.
 ## Hosting from inside the game
 
 On the title screen choose MULTIPLAYER, type a name for the shared world
-under `OR HOST YOUR OWN` (letters, digits, `-` and `_`; `shared` if left
-empty) and click **HOST A GAME**. From the command line:
+in the **SHARED WORLD NAME** box (letters, digits, `-` and `_`; `shared` if
+left empty) and click **HOST A GAME**. From the command line:
 
 ```sh
 voxelrust --host myworld
@@ -73,16 +73,18 @@ the two kinds of save are separate.
 
 ## Joining
 
-- From the title screen: MULTIPLAYER, type the address (`host` or
-  `host:port`) and your name, JOIN.
+- From the title screen: MULTIPLAYER, then click a saved server to join it.
+  To add one, use ADD SERVER (see [Saved servers](#saved-servers)).
 - From the command line: `voxelrust --join host` or `voxelrust --join host:port`.
+  Without a port the game uses 25590.
 
-Your name comes from SETTINGS > GAME (letters, digits, `-` and `_`, 16 at
-most). If someone on the server already has it, a number is added.
+Your name is the **YOUR NAME** box on the MULTIPLAYER screen, the same name
+as in SETTINGS > GAME. It takes letters, digits, `-` and `_`, 16 at most; an
+empty name becomes `Player`. If someone on the server already has it, a
+number is added (`Bob` becomes `Bob2`).
 
 The server refuses a player whose game speaks a different version of the
-network protocol (currently version 4; it changed when creatures, vehicles
-and chest contents became shared), and anyone beyond the player limit.
+network protocol (currently version 4), and anyone beyond the player limit.
 Everyone should run the same version of the game.
 
 ## What is shared, and what is not
@@ -96,9 +98,9 @@ Shared between everyone on a server:
 - **Time of day**, and with it the weather (which is worked out from the
   seed, place and time, so everyone sees the same sky).
 - **Content**: the server's packs (next section).
-
 - **Creatures.** Everyone sees the same animals, monsters and villagers.
-- **Vehicles**, including trains and what they carry.
+- **Vehicles**, when the Vehicles mod is on: boats, trains, planes and land
+  vehicles, with what is in their holds.
 - **Chest contents.**
 
 ### How creatures, vehicles and chests are shared
@@ -107,7 +109,8 @@ The server does not run creatures or vehicles itself: it only passes
 messages on. Instead **one player's game runs them for everybody**: the
 player with the lowest player number of those present (normally whoever
 joined first). When that player
-leaves, the next lowest takes over.
+leaves, the next lowest takes over. Vehicles are run by the code of the
+Vehicles mod, so they are shared only while that mod is on.
 
 - That game moves the creatures and the vehicles nobody is riding, and
   tells the others where everything is five times a second. The others
@@ -130,6 +133,15 @@ leaves, the next lowest takes over.
 This has been tested only between two copies of the game on one machine. It
 has not been tried over a real network, with slow connections, or with
 many players.
+
+### Messages from mod code
+
+A mod's own code can send messages to the same mod's code on the other
+players' machines. Each mod whose code is built into the program has its own
+channel, from 32 up (`channel::NATIVE` in `src/net/proto.rs`). The server
+passes these on like everything else and keeps a message only when the mod
+asks it to. A game acts on them only while that mod is on; the others
+ignore them.
 
 ### Not shared
 
@@ -164,12 +176,12 @@ and see `USING THE SERVER'S CONTENT`. Nothing is written to the player's
 disk; when they go back to singleplayer their own packs are in use again.
 
 So players do not need to install anything to join a modded server. While on
-a server, `/reload` and RELOAD CONTENT PACKS NOW do nothing: the server
+a server, `/reload` and RELOAD MODS NOW do nothing: the server
 decides the content. To change a server's packs, restart it.
 
-The mods that come with the game (Natural Disasters, Earth, Land Vehicles)
-are ordinary packs here: the ones found and switched on where the server runs are sent
-with the rest, so players on a server whose Land Vehicles mod is off have
+The mods that come with the game (Natural Disasters, Earth, Vehicles, Boats,
+Trains, Planes, Land Vehicles and Holidays) are ordinary packs here: the ones
+found and switched on where the server runs are sent with the rest, so players on a server whose Land Vehicles mod is off have
 no buggy, truck or kart there, whatever their own settings say.
 
 ## The map-data relay
@@ -201,17 +213,33 @@ Be clear about what the server does **not** have:
   under any free name, build and break anything, and use the relay.
 - **No encryption.** Positions, chat, skins, edits and chest contents travel
   as plain data.
-- **No moderation tools**: no kick, ban or protected areas.
+- **Little moderation**: operators can `/kick` and `/ban` by name, but there
+  are no protected areas.
 
 Host for people you trust, keep backups of the two server files, and close
 the port when you are done.
 
 ## Saved servers
 
-The MULTIPLAYER screen keeps a list of servers. Type an address, give it a
-name under SAVE IT AS and press SAVE; click a saved server to join it, EDIT
-to put it back in the boxes for changing (saving under the same name
-replaces it), X to forget it. The list is `servers.txt` in the data folder.
+The MULTIPLAYER screen lists the servers you have added, up to 64. Six show
+at a time; scroll with the mouse wheel or the bar at the side. Each row shows
+a server's name and address:
+
+- Click a row to join that server.
+- **EDIT** opens the server on the ADD SERVER screen, to change its name or
+  address.
+- **X** removes the server from the list.
+
+**ADD SERVER** opens a screen with SERVER NAME and SERVER ADDRESS boxes. The
+address is `host` or `host:port`, and spaces in it are ignored. **SAVE** keeps
+the server and returns to the list; **SAVE AND JOIN** keeps it and joins;
+**CANCEL** goes back without saving. Tab moves between the two boxes, Enter in
+the address box saves, and CTRL+V pastes an address. A server saved without a
+name is called `server` and a number. Saving from EDIT replaces that entry;
+saving from ADD SERVER adds a new entry, even if the name is already listed.
+
+The list is `servers.txt` in the data folder, one `name address` pair per
+line.
 
 ## Operators and server commands
 

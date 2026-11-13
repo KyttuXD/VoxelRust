@@ -7,7 +7,7 @@
   works too.
 - **No crates.** There is nothing to download: `Cargo.toml` has no
   dependencies.
-- **Python 3**, only for the Mac OS X 10.6 build and for regenerating data.
+- **Python 3**, only for the Mac OS X 10.6 build, the icon script and regenerating data.
 - **SDL2 is not needed to build**, only to run: the game opens it when it
   starts. See [PORTING.md](PORTING.md) for where it looks.
 
@@ -20,12 +20,13 @@ cargo build --release
 The program is `target/release/voxelrust`. To run it, install the SDL2
 runtime library (`libsdl2-2.0-0` on Debian and Ubuntu).
 
-The three mods that come with the game are not inside the program: they are
-the folders `mods/disasters`, `mods/earth` and `mods/landvehicles`. The game
-finds them in a `mods` folder beside the program or in `./mods`, so run a
-program you built from the top of the source tree (`cargo run --release`
-does), or copy those three folders into a `mods` folder next to it. Without
-them the game still runs, with no Earth worlds, disasters or land vehicles.
+The mods that come with the game are not inside the program: they are the
+folders named in `mods/SHIPPED` (see [Mod code](#mod-code)). The game finds
+them in a `mods` folder beside the program or in `./mods`, so run a program
+you built from the top of the source tree (`cargo run --release` does), or
+copy those folders into a `mods` folder next to it. Without them the game
+still runs, with no Earth worlds, disasters, boats, trains, planes, land
+vehicles or holidays.
 
 ## Windows (64-bit)
 
@@ -87,8 +88,8 @@ scripts/package-macos-app.sh [path/to/SDL2.framework]
 VARIANT=modern scripts/package-macos-app.sh [path/to/SDL2.framework]
 ```
 
-Each wraps one of the two Mac programs (building them first if they are
-missing) as a double-clickable app, with the icon from `assets/icon.icns`
+Each wraps one of the two Mac programs (if the legacy one is missing, both
+are built first) as a double-clickable app, with the icon from `assets/icon.icns`
 and the version from `Cargo.toml`:
 
 | Command | Wraps | Result | Declares |
@@ -102,8 +103,8 @@ on a system older than 10.12. If you give the script an `SDL2.framework`,
 it is copied inside the app, which then needs nothing else installed. For
 Mac OS X 10.6 use the official SDL2 2.0.4 framework.
 
-The script also copies the three mods that come with the game into the app,
-as `Contents/Resources/mods`, which is one of the places the game looks.
+The script also copies the mods listed in `mods/SHIPPED` into the app, as
+`Contents/Resources/mods`, which is one of the places the game looks.
 
 ## Packaging a release
 
@@ -126,11 +127,13 @@ of a release out in `dist/nightly/`:
 | `nightly.txt` | the commit, and each bare program's SHA-256 and size: what the updater reads |
 | `BUILDS.txt`, `SHA256SUMS.txt` | for people: which file is for which machine, and checksums |
 
-Every archive also holds `README.md`, `LICENSE`, `docs/` and `examples/`.
-The Linux and Windows archives hold the three mods that come with the game
-in a `mods/` folder beside the program; the Mac apps carry them inside, in
+Each program archive also holds `README.md`, `LICENSE`, `docs/` and `examples/`.
+The Linux and Windows archives hold the mods listed in `mods/SHIPPED` (one
+folder name a line; `scripts/package-release.sh` copies each one) in a `mods/`
+folder beside the program; the Mac apps carry them inside, in
 `Contents/Resources/mods`. The game's own data (`data/`) is inside the
-program. SDL2 is not included.
+program. SDL2 is not in the Linux archive; the Windows and Mac files include
+it when `vendor/sdl2` holds it (see `vendor/README.md`).
 
 The script takes the commit from git (or from `VOXELRUST_COMMIT` if that is
 set) and builds it into every program; that is what `--version` prints and
@@ -164,9 +167,10 @@ $ voxelrust --version
 voxelrust 0.1.0 (linux-x86_64, commit 5f38cb02e2e3)
 ```
 
-A program built without `VOXELRUST_COMMIT` in the environment (plain `cargo
-build`) says `commit dev`. The title screen shows version, build name and
-commit in its corner.
+A program built without `VOXELRUST_COMMIT` in the environment takes the
+commit from git (plain `cargo build` in a checkout). Only outside git does it
+say `commit dev`. The title screen shows version, build name and commit at
+the bottom.
 
 Nightly files are named after the build name (`voxelrust-<build name>`), and
 `BUILDS.txt` in the nightly release lists them.
@@ -205,7 +209,7 @@ The title screen shows how far this has got:
 | THIS IS THE NEWEST VERSION | same commit, or the release has nothing for this build name |
 | A NEWER VERSION IS INSTALLED - START THE GAME AGAIN TO USE IT | replaced |
 | A NEWER VERSION IS OUT (AUTOMATIC UPDATES ARE OFF) | there is one, and it was not installed |
-| COULD NOT CHECK FOR UPDATES | a download failed, the list could not be read, the checksum did not match, or the program could not be replaced |
+| (no message) | a download failed, the list could not be read, the checksum did not match, or the program could not be replaced |
 
 Switching it off:
 
@@ -221,8 +225,8 @@ Switching it off:
 What it cannot do:
 
 - **While the repository is private, it does not work.** The download is
-  anonymous, GitHub refuses it, and the game says COULD NOT CHECK FOR
-  UPDATES.
+  anonymous, GitHub refuses it, and the game shows no message: the check
+  fails quietly.
 - **The old-Mac build cannot update itself on Mac OS X 10.6.** The `curl`
   that comes with 10.6 cannot make modern HTTPS connections. Replace the app
   by hand there.
@@ -237,6 +241,32 @@ and settings are kept in the data folder, not beside the program, so they
 are untouched. The two Mac builds are different files on purpose: a Mac on
 10.6 must keep using `macos-legacy-x86_64`.
 
+## Mod code
+
+A mod is a folder under `mods/`. Its `pack.txt` is plain text and needs no
+build. A mod that needs Rust brings it in `mods/<name>/code/mod.rs`, and may
+have more files beside it (`mods/vehicles/code/physics.rs` does). At build
+time `build.rs` (`embed_mods`) finds every folder whose `code/mod.rs` exists
+and compiles each one into the program as a module. The folder name must be
+letters, digits or `_`, starting with a letter. The build does not check git:
+a local mod that git ignores is compiled in too. The game names none of the
+mods itself.
+
+Each mod offers a `Native` (struct `Native` in `src/native.rs`): a table of
+hooks the game calls at fixed points. A hook that is `None` is not called.
+The code runs only while a loaded pack says `feature <name>`, so switching
+the mod off in SETTINGS > MODS switches its code off too. Mod code cannot be
+loaded at run time: after changing anything under `code/`, rebuild.
+
+Two shipped mods have code: `earth` and `vehicles`.
+
+`mods/SHIPPED` lists the mods that come with the game, one folder name a
+line: `disasters`, `earth`, `vehicles`, `boats`, `trains`, `planes`,
+`landvehicles` and `holidays`. The release scripts copy them (see
+[Packaging a release](#packaging-a-release)). `build.rs` also includes their
+files in the test build only. `mods/tests.rs` is compiled in as a test module,
+so `cargo test --lib` checks the shipped mods.
+
 ## Tests
 
 ```sh
@@ -245,7 +275,8 @@ cargo test --lib
 
 The tests are unit tests inside the library. They open no window and need no
 SDL2, graphics card or network. (The game itself is `no_std`; the tests build
-against `std` so that plain `cargo test` works.)
+against `std` so that plain `cargo test` works.) They include `mods/tests.rs`,
+the tests of the shipped mods (see [Mod code](#mod-code)).
 
 ## GitHub workflows
 
@@ -296,8 +327,8 @@ program (`build.rs` embeds them). Three scripts write those files:
 
 | Script | Writes | Needs |
 | --- | --- | --- |
-| `python3 tools/gen_base.py` | `data/base.txt`: the textures, blocks, items, recipes and vehicles, generated from tables (sixteen colours times several materials, six woods, stairs and slabs of each, doors, beds, furniture, rail track, crops, tools, food, sounds, dimensions) | Python 3 |
-| `python3 tools/gen_models.py` | `data/models/*.bbmodel` (creature and vehicle models). With `--creatures` it also rewrites `data/creatures.txt`, the list of base models | Python 3 with Pillow |
+| `python3 tools/gen_base.py` | `data/base.txt`: the textures, blocks, items and recipes, generated from tables (sixteen colours times several materials, six woods, stairs and slabs of each, doors, beds, furniture, rail track, crops, tools, food, sounds, dimensions) | Python 3 |
+| `python3 tools/gen_models.py` | `data/models/*.bbmodel` (creature models; the vehicle models and those of the other mods go to `mods/<name>/models`). With `--creatures` it also rewrites `data/creatures.txt`, the list of base models | Python 3 with Pillow |
 | `python3 tools/gen_creatures.py` | `data/wildlife.txt`: every creature, where it lives and how it behaves | Python 3 |
 
 `tools/gen_models.py --sheet out.png` also renders a contact sheet of the
@@ -309,12 +340,13 @@ latter only uses models whose files exist.
 
 Rebuild after changing anything under `data/`.
 
-The mods that come with the game are **not** embedded. Each is a folder
-written by hand, `mods/disasters`, `mods/earth` and `mods/landvehicles`,
-with a `pack.txt` (Land Vehicles also has `models/car.bbmodel`), and is
-listed in SETTINGS > MODS under its folder name. They are the only folders
-under `mods/` that git tracks (`.gitignore` ignores the rest). Changing one
-needs no rebuild: `/reload` reads it again.
+The mods that come with the game are **not** embedded in the data. Their
+packs are read from the `mods` folders when the game starts, and their code
+is compiled in (see [Mod code](#mod-code)). Each is a folder written by hand,
+named in `mods/SHIPPED`, and shows in SETTINGS > MODS under its folder name.
+Git tracks only the shipped folders, `mods/SHIPPED` and `mods/tests.rs`
+(`.gitignore` ignores the rest of `mods/`). Changing a `pack.txt` needs no
+rebuild: `/reload` reads it again. Changing the Rust under `code/` does.
 
 ## Icons
 

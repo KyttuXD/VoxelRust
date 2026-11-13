@@ -7,14 +7,17 @@ The title screen has four buttons:
 - **SINGLEPLAYER**: the list of your worlds. Click a world to open it,
   CREATE A NEW WORLD to make one, or use EXPORT / IMPORT (see
   [Moving a world](#moving-a-world-to-another-machine)).
-- **MULTIPLAYER**: type a server's address and your name, then JOIN; or
-  type a world name and HOST A GAME to run a server inside the game while
-  you play. See [MULTIPLAYER.md](MULTIPLAYER.md).
+- **MULTIPLAYER**: a list of saved servers. Click one to join it, or use
+  EDIT and X beside it. ADD SERVER opens a screen for a name and an address
+  (SAVE, SAVE AND JOIN, CANCEL; Tab moves between the boxes). YOUR NAME is
+  the name you play under. Type a world name in SHARED WORLD NAME and use
+  HOST A GAME to run a server inside the game while you play. See
+  [MULTIPLAYER.md](MULTIPLAYER.md).
 - **SETTINGS**: see [Settings](#settings).
 - **QUIT**.
 
 The bottom of the title screen shows the version, the build name and the
-commit, and above that what the look for a newer version found (see
+commit, and above that what the update check found (see
 [Updating](#updating)). The menus stand in front of a backdrop made of the
 game's own blocks.
 
@@ -69,6 +72,20 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 Flying is creative only and has no key of its own: press jump twice
 quickly to take off, and twice again to land. Nothing on screen lists the
 keys; SETTINGS > CONTROLS does.
+
+### Text boxes
+
+Every text box (the player name, a server address, a shared world name, a
+path to import) takes these keys while it has the keyboard:
+
+- **Ctrl** or **Cmd** with **A** selects all, **C** copies, **X** cuts and
+  **V** pastes.
+- With nothing selected, C and X take the whole box.
+- Typing or pasting over a selection replaces it. Backspace empties a
+  selected box; otherwise it deletes the last character.
+- There is no cursor movement and no partial selection.
+
+In the browser version, copy and paste work inside the game only.
 
 ### The minimap
 
@@ -375,42 +392,55 @@ Vehicles are items (the Travel tab in creative; crafting table recipes in
 survival). Right click with one in hand to set it down on the block you aim
 at, or on water.
 
-| Vehicle | Travels on | Notes |
-| --- | --- | --- |
-| Boat | water | |
-| Cargo Boat | water | has storage |
-| Rail Cart | rails | follows the track, including corners and slopes |
-| Chest Cart | rails | has storage |
-| Locomotive | rails | keeps going by itself; see [Railways](#railways) |
-| Passenger Cart | rails | |
-| Freight Cart | rails | has storage |
-| Plane | air | |
-| Buggy | land | has storage. Land Vehicles mod |
-| Truck | land | slower than the buggy; has storage. Land Vehicles mod |
-| Kart | land | the fastest of the three; no storage. Land Vehicles mod |
+Vehicles come from four mods: Boats, Trains, Planes and Land Vehicles. Each
+of them needs the Vehicles mod (`mods/vehicles`), which is on unless you
+switch it off. The Vehicles mod adds no vehicle itself; it is the code that
+floats boats, runs carts on track, drives cars and flies planes. With the
+Vehicles mod off, the vehicle items stay in the list but cannot be set down
+or ridden, and the game warns about each one. Switching one of the four
+mods off removes its vehicles, recipes and (for Trains) track from the game
+(see [Mods](#mods)).
 
-Boats, rail carts and the plane are part of the base game. The buggy, truck
-and kart come from the Land Vehicles mod, which is on unless you switch it
-off (see [Mods](#mods)); with it off they are gone from the item list, the
-recipes and the world.
+| Vehicle | Travels on | Notes | From the mod |
+| --- | --- | --- | --- |
+| Boat | water | | Boats |
+| Cargo Boat | water | has storage | Boats |
+| Rail Cart | rails | follows the track, including corners and slopes | Trains |
+| Chest Cart | rails | has storage | Trains |
+| Locomotive | rails | keeps going by itself; see [Railways](#railways) | Trains |
+| Passenger Cart | rails | | Trains |
+| Freight Cart | rails | has storage | Trains |
+| Plane | air | | Planes |
+| Buggy | land | has storage | Land Vehicles |
+| Truck | land | slower than the buggy; has storage | Land Vehicles |
+| Kart | land | the fastest of the three; no storage | Land Vehicles |
 
-- **Get in**: right click it. **Get out**: F (GET OUT OF A VEHICLE in the
+The base game has no vehicles and no rails.
+
+- **Get in**: right click it. **Get out**: F (GET OFF / GET OUT in the
   controls).
-- **Drive**: W / S for forward and reverse, A / D to steer. Carts steer
-  themselves along the track; lay it with Rail blocks.
+- **Drive**: W / S for forward and reverse. A / D steer boats, cars and
+  planes. Rail carts do not steer: they follow the track, so lay it with
+  Rail blocks.
 - **Plane**: hold W to gather speed. Once fast enough it flies, and climbs or
   dives as you look up or down. Let go and it slows and sinks.
 - **Storage**: hold the fly-down key (Left Shift) and right click a vehicle
   that has storage, from outside or while riding.
 - **Pick up**: left click it from outside. You get the item back, and
   anything in its storage.
+- **Commands**: `/vehicle ID` sets one down 2.5 blocks ahead, `/board` gets
+  into the nearest one within 6 blocks, and `/vehicles` says how many there
+  are.
 
 Vehicles are saved with the world. They are single items that you place, not
 ships built from blocks.
 
 ### Railways
 
-All of this is in the Travel tab in creative and has crafting table recipes.
+The track and stations come from the Trains mod. All of it is in the Travel
+tab in creative and has crafting table recipes. The speeds and stop times
+are the `tag track` and `tag station` numbers in the Trains pack (see
+[DATA.md](DATA.md)).
 
 | Track or block | What it does |
 | --- | --- |
@@ -448,8 +478,10 @@ There are 75 kinds: farm animals that give milk, wool and eggs, animals you
 can tame with their favourite food, wildlife with their own temperaments,
 birds and fish, night monsters (some of which shoot), cave dwellers, and
 villagers who trade and work. Right click a creature to collect from it,
-trade or tame it; left click to hit it. Creatures and vehicles behind the
-camera are not drawn. All of it is in [CREATURES.md](CREATURES.md).
+trade or tame it; left click to hit it. Creatures behind the camera, or more
+than 72 blocks away, are not drawn. Vehicles are drawn out to 96 blocks
+whichever way you face; your own vehicle is only seen from outside (third
+person). All of it is in [CREATURES.md](CREATURES.md).
 
 **Riding.** A horse, donkey, camel or elephant can be ridden once it is
 tamed: right click it with an empty hand. It faces the way you look; the
@@ -487,16 +519,18 @@ Rain, snow and thunderstorms come and go by region: walk far enough and you
 leave a storm behind. Cold biomes get snow, which settles on the ground;
 deserts stay almost dry. Turn weather off with SETTINGS > GAME > WEATHER.
 
-Disasters belong to the Natural Disasters mod, which comes with the game.
-With the mod on (it is, unless you switch it off under SETTINGS > MODS), the
-GAME tab has a NATURAL DISASTERS switch, **off** by default. Turned on, it
-adds:
+Disasters come from the Disasters mod (`mods/disasters`), which comes with
+the game. With the mod on (it is, unless you switch it off under SETTINGS >
+MODS), the GAME tab has a NATURAL DISASTERS switch, **off** by default. Turned
+on, these can happen:
 
-- **Earthquakes**: the view shakes for a few seconds.
-- **Tsunamis**: after an earthquake near the sea, the water rises about three
-  blocks over low ground, then drains away again.
-- **Tornadoes**: form under thunderstorms over plains and savanna, pull you
-  in and throw you upward, and tear up leaves and plants along their path.
+- **Earthquakes**: the view shakes for seven seconds.
+- **Tsunamis**: after an earthquake near the sea, the sea rises three blocks
+  above its level and floods the low ground within 24 blocks of you, then
+  drains away again.
+- **Tornadoes**: come during thunderstorms over low plains and savanna (land
+  less than 24 blocks above sea level). A funnel passes close by, pulls you
+  in and throws you upward, and tears up leaves and plants along its path.
 
 Disasters only happen in singleplayer. With the mod switched off the switch
 is not shown and they cannot happen at all.
@@ -564,7 +598,9 @@ commands are explained in [MODDING.md](MODDING.md#scripts-and-commands).
 
 ## Settings
 
-Settings are kept in `settings.txt` in the data folder.
+Settings are kept in `settings.txt` in the data folder. A switch a pack adds
+is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
+(such as the Earth mod's) sit beside them.
 
 - **VIDEO**: view distance (2-48 chunks), distant terrain (0-256 chunks, 0 is
   off), field of view, interface size, HOLD FRAME RATE (lowers the view
@@ -578,11 +614,14 @@ Settings are kept in `settings.txt` in the data folder.
   leave a world.
 - **CONTROLS**: mouse speed, invert mouse, every key marked * above, RESET
   KEYS. Click a binding, then press the new key (Esc cancels).
-- **GAME**: player name, autosave interval, view bobbing, weather, natural
-  disasters (shown while the Natural Disasters mod is on), place notices
-  (Earth worlds), game mode of the open world, the
-  map data relay (see [EARTH.md](EARTH.md)), the minimap, and RELOAD CONTENT
-  PACKS NOW.
+- **GAME**: player name, autosave interval, view bobbing, weather, the
+  minimap, RELOAD MODS NOW, and GAME MODE while a world is open. Below those
+  come the switches the packs add (the first four are shown; NATURAL
+  DISASTERS is one, from the Disasters mod, see
+  [Weather and disasters](#weather-and-disasters)). Then, while the Earth
+  mod is on, its two rows: PLACE NOTICES (off, countries, regions or towns)
+  and MAP DATA RELAY (host:port, for old machines; see
+  [EARTH.md](EARTH.md)).
 - **SKIN**: pick one of the built-in looks or use your own 64 x 64 PNG. See
   [MODDING.md](MODDING.md#player-skins).
 - **MODS**: a switch for every mod, and UPDATE THE GAME AUTOMATICALLY. See
@@ -591,23 +630,32 @@ Settings are kept in `settings.txt` in the data folder.
 ### Mods
 
 SETTINGS > MODS lists every mod the game has found, with an on/off switch:
-the three that come with the game and any you have added (see
-[MODDING.md](MODDING.md#where-packs-are-read-from)). Eight are shown at a
-time; the mouse wheel scrolls. A change takes effect at once: the content is read
-again, as with `/reload`. The mods switched off are remembered in
-`settings.txt` (`mods_off`).
+the eight that come with the game and any you have added (see
+[MODDING.md](MODDING.md#where-packs-are-read-from)). Six are shown at a
+time; the mouse wheel scrolls. Under ADD A MOD FROM A FOLDER OR .ZIP, type the
+path of a folder, a .zip or a pack file to bring one in. A change takes
+effect at once: the content is read again, as with `/reload`. The mods
+switched off are remembered in `settings.txt` (`mods_off`).
 
 | Mod | What it holds | With it off |
 | --- | --- | --- |
-| DISASTERS | earthquakes, tsunamis and tornadoes, and their two sounds | the NATURAL DISASTERS switch is not shown and disasters cannot happen |
-| EARTH | real-world terrain, the world map and place notices | the EARTH terrain choice is not offered and `--earth` is refused. Earth worlds already made stay playable |
+| DISASTERS | earthquakes, tsunamis and tornadoes, the NATURAL DISASTERS switch, and two sounds | the switch is not shown and disasters cannot happen |
+| EARTH | real-world terrain, the world map, place notices, the map data relay, and the `--earth` option | the EARTH terrain choice is not offered and `--earth` is refused. Earth worlds already made stay, but load no new ground |
+| VEHICLES | the code that moves vehicles, and the `/vehicle`, `/board` and `/vehicles` commands. It adds no vehicle | the Boats, Trains, Planes and Land Vehicles mods warn that they need it, and no vehicle can be set down or ridden |
+| BOATS | a rowing boat and a cargo boat | both boats are gone from the item list, recipes and the world |
+| TRAINS | rail track and stations, rail carts, the locomotive and the chain | the rails, carts, locomotive, chain and stations are gone |
+| PLANES | a small plane | the plane is gone |
 | LANDVEHICLES | the buggy, the truck and the kart, with their recipes | those vehicles are gone from the item list, recipes and the world |
+| HOLIDAYS | decorations and treats for the year's feasts, and some big props | those blocks and items are gone |
 
-All three are on to begin with. They are folders, not part of the program:
-`mods/disasters`, `mods/earth` and `mods/landvehicles`, in a `mods` folder
-beside the program (inside the app on a Mac, in `Contents/Resources/mods`).
-If that folder is missing they are not listed and their content is not in
-the game.
+All eight are on to begin with. Each is a folder with a `pack.txt`:
+`mods/disasters`, `mods/earth`, `mods/vehicles`, `mods/boats`, `mods/trains`,
+`mods/planes`, `mods/landvehicles` and `mods/holidays`. They sit in a `mods`
+folder beside the program (inside the app on a Mac, in
+`Contents/Resources/mods`), in your data folder's `mods` folder, or in a
+`mods` folder where you started the game. Mod code is compiled into the
+program, but it runs only while that mod's pack is loaded. If the mods
+cannot be found, they are not listed and their content is not in the game.
 
 ### Updating
 
@@ -670,7 +718,8 @@ it are copied, not folders inside it such as `mods`: move those yourself.
 
 ## Command-line options
 
-`voxelrust --help` prints this list.
+`voxelrust --help` prints this list, then the options that mods add (here
+marked "From the Earth mod").
 
 | Option | Meaning |
 | --- | --- |
@@ -682,8 +731,8 @@ it are copied, not folders inside it such as `mods`: move those yourself.
 | `--server` | run a multiplayer server instead of the game (no window); uses `--world`, `--seed`, `--earth`, `--port` and `--players` |
 | `--port N` | server port (default 25590) |
 | `--players N` | most players at once on the server (default 16) |
-| `--earth LAT LON` | make the new world real-world terrain starting there. Refused, with a message, when the Earth mod is switched off |
-| `--scale M V` | with `--earth`: metres per block across and up (default 30 75) |
+| `--earth LAT LON` | From the Earth mod: make the new world real-world terrain starting there. Refused, with a message, when the Earth mod is switched off |
+| `--scale M V` | From the Earth mod: with `--earth`, metres per block across and up (default 30 75) |
 | `--distance N` | view distance in chunks, 2..48 |
 | `--far N` | distant terrain out to N chunks, 0 = off (up to 256) |
 | `--threads N` | worker threads, 0 = none (default: one per spare core) |
@@ -703,23 +752,23 @@ it are copied, not folders inside it such as `mods`: move those yourself.
 | `--icon-size N` | with `--write-icon`: its size in pixels (default 256) |
 | `--version` | print the version and which build this is, and exit |
 | `--no-update` | do not look for a newer version this time |
+| `--add-mod PATH` | copy a mod (a folder, a .zip or a pack file) into the data folder's `mods`, and exit |
 | `--export FILE` | with `--world NAME`: write that world as one file, and exit |
 | `--import FILE` | with `--world NAME`: add a world from such a file, and exit |
 | `--pos X Y Z` | start position |
 | `--look YAW PITCH` | start direction, in degrees |
 | `--time T` | time of day, 0..1 (0.25 = noon) |
 | `--hidden` | do not show the window (with `--screenshot` / `--bench`) |
-| `--showcase` | with `--screenshot`: lay out every block in front of the camera first (handy for checking a pack) |
-| `--show LIST` | with `--screenshot`: also draw `hud`, `debug`, `pause`, `items`, `title`, `worlds`, `newworld`, `dead`, `map`, `settings:TAB`, `third` (camera behind the player) or `creatures` (one of each) |
+| `--showcase` | with `--screenshot`: lay out every placeable block in front of the camera first (vehicles are not laid out; handy for checking a pack) |
+| `--show LIST` | with `--screenshot`: also draw `hud`, `debug`, `pause`, `items`, `title`, `worlds`, `newworld`, `multiplayer`, `addserver`, `dead`, `map`, `settings:TAB`, `items:TAB`, `third` (camera behind the player), `creatures` (one of each) or `walking` (the same, mid-stride) |
 
-`--show` takes several words joined by commas. Three more are read by the
-program though `--help` does not list them:
+`--show` takes several words joined by commas. Two of them take a value:
 
 - `items:<tab>` opens the creative item list at that tab, named as in the
   list (`items:Eggs`); capitals do not matter.
 - `settings:TAB` opens SETTINGS at that tab: `VIDEO`, `AUDIO`, `CONTROLS`,
   `GAME`, `SKIN` or `MODS`.
-- `walking`, with `creatures`, is for showing the line-up mid-stride.
+- `walking`, with `creatures`, shows the line-up mid-stride.
 
 `--version` prints, for example, `voxelrust 0.1.0 (linux-x86_64, commit
 5f38cb02e2e3)`. The first word in brackets is the build name (see

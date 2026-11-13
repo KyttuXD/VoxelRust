@@ -30,7 +30,7 @@ own procedurally painted textures and its own terrain generator.
 - **Farming and cooking.** Hoes till soil; wheat, carrots, potatoes and
   tomatoes grow in four stages; an oven bakes bread, pies, stew and three
   kinds of pizza.
-- **About 410 blocks.** Sixteen colours of concrete, wool, terracotta,
+- **About 490 blocks.** Sixteen colours of concrete, wool, terracotta,
   glass, beds, couches and armchairs; six woods with five kinds of door,
   trapdoors and gates that open; furniture to sit on, store things in and
   cook at; food set out on plates; stone kinds; stairs, slabs, walls and
@@ -41,8 +41,9 @@ own procedurally painted textures and its own terrain generator.
   monsters (skeleton archers among them), cave dwellers, and villagers who
   trade, farm, build and stand guard. Horses, donkeys, camels and elephants
   can be tamed and ridden. See [docs/CREATURES.md](docs/CREATURES.md).
-- **Vehicles and railways.** Boats, a plane and rail carts, some with
-  storage; a buggy, a truck and a kart in the Land Vehicles mod. Speed, slow
+- **Vehicles and railways.** Boats, a plane, rail carts (some with
+  storage), a buggy, a truck and a kart, from the Boats, Planes, Trains and
+  Land Vehicles mods. Speed, slow
   and station track; chains that join carts into trains; a locomotive that
   runs by itself, stops at stations and shuttles along its line.
 - **Dimensions.** Other worlds inside each world (`sky`, `flatland`, `void`,
@@ -61,11 +62,12 @@ own procedurally painted textures and its own terrain generator.
   blocks), shapes, items, tools, weapons, food, recipes, ores, plants,
   models, creatures, vehicles, sounds, dimensions, chat commands and small
   scripts (`when <event> do <commands>`, with variables and conditions) are
-  declared in text files. Drop a mod into the `mods` folder and it loads;
-  `/reload` picks up changes without restarting. Three mods come with the
-  game, each a folder of its own in `mods/` (Natural Disasters, Earth, Land
-  Vehicles); SETTINGS > MODS switches any mod on or off. Blockbench `.bbmodel` files are read directly. Player skins
-  are 64 x 64 PNGs. The default player model is the LastRoute mannequin.
+  declared in text files. Drop a mod folder with a `pack.txt` into the
+  `mods` folder and it loads; `/reload` picks up changes to packs without
+  restarting. Eight mods come with the game, each a folder of its own in
+  `mods/` (see [The mods that come with the game](#the-mods-that-come-with-the-game));
+  SETTINGS > MODS switches any mod on or off. Blockbench `.bbmodel` files
+  are read directly. Player skins are 64 x 64 PNGs. The default player model is the LastRoute mannequin.
 - **Long views.** Detailed chunks near you, simplified terrain beyond (tested
   out to 2 km).
 - **A minimap** in the corner showing the ground you have explored (in
@@ -77,6 +79,22 @@ own procedurally painted textures and its own terrain generator.
   another machine.
 - **Updates.** The game looks for a newer nightly build when it starts and
   can replace its own program (see [Builds and updating](#builds-and-updating)).
+
+## The mods that come with the game
+
+Each is a folder in `mods/`, and each is named in `mods/SHIPPED`. SETTINGS >
+MODS switches it off.
+
+| Folder | What it adds |
+| --- | --- |
+| `disasters` | Natural Disasters: earthquakes, tsunamis and tornadoes. Pack only. Its own switch is in SETTINGS > GAME. |
+| `earth` | Real-world Earth: the terrain, the map (M) and the EARTH world choice. Has Rust code. |
+| `vehicles` | The machinery for boats, carts, cars and planes. Has Rust code. Adds no vehicle of its own. |
+| `boats` | Boats. Needs `vehicles`. |
+| `trains` | Rail track, carts, a locomotive and stations. Needs `vehicles`. |
+| `planes` | A small plane. Needs `vehicles`. |
+| `landvehicles` | A buggy, a truck and a kart. Needs `vehicles`. |
+| `holidays` | Decorations and treats for the feast days, made at a crafting table or in an oven, and four big props. |
 
 ## Documentation
 
@@ -133,22 +151,34 @@ scripts/package-release.sh
 Details: [docs/BUILDING.md](docs/BUILDING.md). `voxelrust --help` lists the
 command-line options.
 
-The game reads the three mods that come with it from a `mods` folder beside
+The game reads the mods that come with it from a `mods` folder beside
 the program (inside the app on a Mac) or from `./mods`, so start a program
 built by hand from the top of the source tree, as `cargo run` does.
+
+## Repository layout
+
+| Path | What is in it |
+| --- | --- |
+| `src/` | The game. `src/native.rs` holds the table of hooks (`struct Native`) that mod code fills in. |
+| `mods/<name>/` | A mod: a `pack.txt`, and a `code/` folder if it has Rust. `build.rs` compiles each `code/mod.rs` into the program, so changing mod code needs a rebuild. The code runs only while a loaded pack says `feature <name>`. |
+| `mods/SHIPPED` | The mods that come with the game, one folder name a line. The release scripts and `mods/tests.rs` use it. |
+| `data/` | The base content (`base.txt`, `creatures.txt`, `wildlife.txt`) and its models. |
+| `scripts/` | Build, cross-build and release scripts. |
+| `tools/` | Python generators for the data, icons and models. |
+| `web/` | The browser build. |
 
 ## Builds and updating
 
 Each build has a name that says what machine it is for: `linux-x86_64`,
 `windows-x86_64`, `macos-x86_64` (macOS 10.12 and later) or
-`macos-legacy-x86_64` (Mac OS X 10.6 and later). `voxelrust --version` prints
+`macos-legacy-x86_64` (Mac OS X 10.6 to 10.11). `voxelrust --version` prints
 it with the commit the program was built from, and the F3 screen shows it.
 The two Mac apps declare their minimum system, so macOS refuses to start the
 10.12 one on an older system.
 
 The files are on the `nightly` release:
 <https://github.com/KyttuXD/VoxelRust/releases/tag/nightly>. Each archive
-holds the program (an app on the Mac), the three mods that come with the
+holds the program (an app on the Mac), the mods that come with the
 game, and the docs; `BUILDS.txt` says which file is for which machine. They
 are built by `scripts/package-release.sh` and uploaded by hand.
 
@@ -161,7 +191,7 @@ one run; UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS turns the
 replacing off (the game then only says a newer version is out). Limits:
 
 - **While the repository is private, the download fails** (it is made
-  without signing in), and the game says COULD NOT CHECK FOR UPDATES.
+  without signing in), and the game says nothing about it.
 - The download is done by the system's `curl`. Mac OS X 10.6's own `curl`
   cannot make modern HTTPS connections, so **the old-Mac build cannot update
   itself**: replace the app by hand.
@@ -202,8 +232,8 @@ Worlds and settings live in the data folder and are not touched. Details:
   along its line), not a scheduling system: no timetables, routes or working
   signals.
 - Pack scripts are an event-and-command language with variables and
-  conditions, not a general programming language, and compiled Rust code
-  cannot be loaded as a mod.
+  conditions, not a general programming language, and a mod's Rust is
+  compiled in at build time, so changing it needs a rebuild.
 - In multiplayer, inventories, health and hunger stay per player and are not
   kept by the server. Creatures, vehicles and chest contents are shared, but
   one player's game runs the creatures and unridden vehicles for everyone.
@@ -227,9 +257,8 @@ Worlds and settings live in the data folder and are not touched. Details:
   workflows (CI and nightly builds) cannot run: the account's Actions budget
   blocks them on private repositories. The nightly files are built on the
   author's machine and uploaded by hand.
-- The browser build has no folders to read mods from, so the three mods that
-  come with the game (Earth, Natural Disasters, Land Vehicles) are not in
-  it.
+- The browser build has no folders to read mods from, so none of the mods that
+  come with the game are in it.
 - The browser build ([docs/WEB.md](docs/WEB.md)) has been built and run
   locally in Chromium, but the website is not deployed: the server meant for
   it (`voxelrust.games.kyttuslab.org`) could not be reached over SSH without
@@ -261,7 +290,7 @@ router to let people outside your network in.
 ## Earth worlds
 
 Earth is a mod that comes with the game and is on unless you switch it off
-in SETTINGS > MODS. Choose TERRAIN: EARTH when creating a world, pick a
+in SETTINGS > MODS. Choose EARTH on the TERRAIN button when creating a world, pick a
 starting place and a scale. This needs the internet and the system's `curl`.
 [docs/EARTH.md](docs/EARTH.md) has the rest.
 

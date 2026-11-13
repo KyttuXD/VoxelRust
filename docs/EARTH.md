@@ -5,15 +5,48 @@ or travel by map to anywhere between 85 degrees north and south.
 
 ## The Earth mod
 
-Earth is a mod that comes with the game. The code is part of the program;
-the pack `mods/earth/pack.txt`, a folder that ships beside the program
-(inside the app on a Mac), switches it on with one line (`feature earth`).
-It is on unless you turn it off under SETTINGS > MODS, where it is listed as
-EARTH, or the folder is missing.
+Earth is a mod that comes with the game. It lives in `mods/earth/`:
+
+- `pack.txt` holds the data. Its `feature earth` line switches the mod on,
+  and its `map` lines give the sources, the colours, the snow line and the
+  starting places.
+- `code/` holds the Rust code, `mod.rs` and `map.rs`. It is compiled into
+  the program at build time, and it runs only while a loaded pack says
+  `feature earth`.
+
+The game itself has no Earth code. Changing the code needs a rebuild.
+Changing the `map` lines does not, because they are read from the pack.
+
+The mod ships beside the program in a `mods` folder (inside the app on a
+Mac). It is on unless you turn it off under SETTINGS > MODS, where it is
+listed as EARTH, or the folder is missing.
 
 With the mod off, the NEW WORLD screen does not offer EARTH as a terrain,
-and `--earth` stops with the message `--earth needs the Earth mod, which is
-switched off (Settings > MODS)`. Earth worlds made earlier stay playable.
+and `--earth` stops with the message ``that option needs the mod `earth`,
+which is switched off (Settings > MODS)``. An Earth world made earlier still
+opens, but its ground is made up from the seed, as in any other world, until
+the mod is on again.
+
+The mod's code adds these to the game:
+
+- the EARTH choice on the NEW WORLD screen, and the `--earth` and `--scale`
+  options (listed under "From the mod `earth`" in `--help`),
+- the map on M, and place notices,
+- two rows on SETTINGS > GAME: PLACE NOTICES and MAP DATA RELAY,
+- answers to other players' requests for map data.
+
+The `map` lines in `pack.txt` are:
+
+| Line | Meaning |
+| --- | --- |
+| `map heights URL terrarium 14` | Elevation tiles. `{z}`, `{x}` and `{y}` are filled in. 14 is the deepest zoom. |
+| `map cover URL` | Map tiles. Read for land cover, roads and buildings, and shown on the map. |
+| `map names URL` | Place-name lookup. `{lat}`, `{lon}` and `{zoom}` are filled in. |
+| `map colour R G B KIND` | What a colour on the map tiles means. Kinds: land, water, forest, grass, sand, ice, rock, urban, building, road, farm. |
+| `map snowline TOP DROP` | Permanent snow: metres up at the equator, and metres lower per degree north or south. |
+| `map place LAT LON NAME` | A starting place on the NEW WORLD screen. |
+
+A line that is wrong is left out, and the game logs a warning.
 
 ## Making one
 
@@ -115,11 +148,27 @@ GAME > MAP DATA RELAY to its `host:port` and restart the game. See
 
 ## Data sources and attribution
 
-| Data | Source | Address |
-| --- | --- | --- |
-| Elevation | Mapzen "terrarium" tiles, hosted as AWS Terrain Tiles | `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png` |
-| Land cover, roads, buildings, the map screen | OpenStreetMap standard map tiles | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` |
-| Place names | OpenStreetMap Nominatim reverse geocoding | `https://nominatim.openstreetmap.org/reverse` |
+The mod fetches from three addresses. Each is set by a `map` line in
+`mods/earth/pack.txt`:
+
+| Data | Source | Pack line | Address |
+| --- | --- | --- | --- |
+| Elevation | Mapzen "terrarium" tiles, hosted as AWS Terrain Tiles | `map heights` | `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png` |
+| Land cover, roads, buildings, the map screen | OpenStreetMap standard map tiles | `map cover` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` |
+| Place names | OpenStreetMap Nominatim reverse geocoding | `map names` | `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}&zoom={zoom}&accept-language=en` |
+
+An address must start with `https://`, be under 300 characters, and use only
+letters, digits and `/ : . _ - ? = & { } , + ~`. A line with any other
+address is left out. The addresses go into a `curl` command, so the rule
+keeps shell characters out. For place names, `{zoom}` is 3 for countries, 5
+for regions and 10 for towns.
+
+A client builds every address from its own packs. When it joins a server,
+the server's packs replace the blocks and items, but its `map` lines stay
+the client's own. A server cannot change the addresses a client fetches
+from. A MAP DATA RELAY is a server that fetches for the client: the client
+sends only tile or place numbers, and the relay answers using the addresses
+in its own packs.
 
 Required attribution, shown at the bottom of the map screen and to be kept
 with any pictures or videos of Earth worlds that you publish:

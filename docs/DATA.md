@@ -10,10 +10,10 @@ built into the program. Packs are read after it:
    at start-up; `--data DIR` chooses another).
 2. Every mod, unless switched off, in a `mods` folder beside the program,
    in `../Resources/mods` (inside a Mac app), in the data folder's `mods`
-   folder, and in a `mods` folder where the game was started. The three mods
-   that come with the game (`mods/disasters`, `mods/earth`,
-   `mods/landvehicles`) are found this way; they are folders, not part of
-   the program. A mod found twice is loaded once.
+   folder, and in a `mods` folder where the game was started. The mods that
+   come with the game (the folders named in [mods/SHIPPED](../mods/SHIPPED))
+   are found this way; they are folders, not part of the program. A mod
+   found twice is loaded once.
 3. Every file given with `--pack FILE`.
 
 Mods are switched on and off in SETTINGS > MODS (see
@@ -32,11 +32,19 @@ One declaration per line; `#` starts a comment. Words are separated by spaces
 or tabs; indentation is optional.
 
 These keywords start something new: `texture`, `block`, `item`, `recipe`,
-`craft`, `bake`, `smelt`, `ore`, `plant`, `model`, `entity`, `vehicle`,
-`sound`, `command`, `when`, `dimension`, `feature`, `include`. Any other line sets a
-property of the block, item, entity or vehicle most recently started.
-(`sound` with a single word, inside a block or an entity, is a property; see
-[Sounds](#sounds).)
+`craft`, `bake`, `smelt`, `ore`, `plant`, `model`, `entity`, `sound`,
+`command`, `when`, `dimension`, `feature`, `episode`, `setting`, `include`.
+Any other line sets a property of the block, item or entity most recently
+started, or of the mod section described below. (`sound` with a single word,
+inside a block or an entity, is a property; see [Sounds](#sounds).)
+
+Mod code can claim words of its own. A mod's code (see [Features](#features))
+can claim a top-level line, such as `map` for the Earth mod, or an indented
+section starting at the left margin, such as `vehicle` for the Vehicles mod.
+Claimed lines and sections are kept as written for that code to read; the
+indented lines under a section are its properties. Every section also becomes
+an item, with the section's `name`, `icon` and `category` (`Things` if none),
+and a stack size of 1.
 
 Ids are single words. Declaring an id a second time replaces the first
 declaration completely (it keeps its place in the order).
@@ -87,7 +95,7 @@ stages of a crop).
 
 **`paint` styles for item pictures** (a shape in the given colour on a clear
 background): `stick pick axe shovel hoe sword gem meat fruit fishfood rail
-vehicle hull wings chest workbench seeds sheaf loaf pizza wedge root tuber jar
+machine hull wings chest workbench seeds sheaf loaf pizza wedge root tuber jar
 egg sack cookie pie bowl bow crossbow arrow ingot`.
 
 **`file`:** TGA files must be 16 x 16, uncompressed true colour, 24 or 32
@@ -118,8 +126,9 @@ block <id>
   toggle <block>                 right click swaps it for that block
   seat <sixteenths>              right click sits on it, that high
   eat <points>                   right click eats it where it stands
-  track <percent>                rail vehicles run on it, at this share of their speed
-  station <seconds>              track where a cart running by itself stops that long
+  tag <name> [number]            a mark that mod code reads (see below)
+  fills <wide> <tall>            a big prop: the room it takes (see Big props)
+  part                           the hidden filler of a big prop
   sound <sound id>               heard when it is broken, placed or toggled
   tall                           two blocks high
   falls                          drops when nothing is under it
@@ -161,13 +170,17 @@ category is `Blocks`; `solid` is yes for everything except `cross` and
   `seat 7`.
 - `eat <points>`: 1..40 (4 if written alone). Right click restores that much
   hunger and half as much health, and removes the block.
-- `track <percent>`: 10..400 (100 if written alone). The block counts as
-  rail, and rail vehicles on it move at that percentage of their speed
-  (`speed_rail` has 220, `slow_rail` 40).
-- `station <seconds>`: 1..120 (5 if written alone). Also makes the block
-  track (at 100 percent unless `track` says otherwise). A rail vehicle that
-  nobody is driving and that is not chained behind another stops on it for
-  that long, then goes on. `station_rail` has 6, `depot_rail` 30.
+- `tag <name> [number]`: a mark on the block, the number being 1 if left out.
+  A block can carry up to 16 tags, and saying a name again replaces its
+  number. The game reads no tag itself; what a mark means is up to the mod
+  code that looks for it.
+- `tag track <percent>`: the block is track. Rail vehicles on it move at
+  that percentage of their speed (10..400; 100 if no number is given). The
+  Trains mod's `speed_rail` has 220 and `slow_rail` 40.
+- `tag station <seconds>`: 1..120 (1 if no number is given). A rail vehicle
+  that nobody is driving and that is not chained behind another stops on the
+  block for that long, then goes on. The Trains mod's `station_rail` has 6
+  and `depot_rail` 30.
 - `sound <sound id>`: the sound played when the block is broken, placed, or
   toggled. Without it a block uses `break`, `place` and (for `toggle`)
   `door`.
@@ -269,8 +282,9 @@ a plain block uses one, a `slab` two, a `rotate` block four, `stairs` eight).
 A block with `prop` is drawn as a model (see [Models](#models)) instead of
 as its boxes: furniture, statues, plants. `<model>` is the id of a model
 declared before the block; with an unknown id the line is reported and
-skipped. `<height>` is how tall the model is drawn, in blocks: 0.1 to 8,
-and 1 if left out. The model stands on the bottom of the block, in the
+skipped. `<height>` is how tall the model is drawn, in blocks: 0.1 to 24, and
+1 if left out. `<lift>` raises the model off the floor by that many blocks
+(-1 to 4, 0 if left out). The model stands on the bottom of the block, in the
 middle.
 
 ```
@@ -297,15 +311,24 @@ block garden_bench
   within three of the one the player is in; a chunk draws 4096 of them at
   most.
 
+### Big props
+
+`fills <wide> <tall>` gives a prop more room than one block. The room is a
+square `<wide>` blocks across (1..7) and `<tall>` blocks high (1..24),
+starting at the block it is placed in. Placing it needs all of that room
+free. The other cells are filled with hidden solid blocks that have the
+`part` property. They are never drawn. Breaking or aiming at any part acts
+on the whole prop. The base data's `golem_statue` is `fills 1 3`.
+
 ## Items
 
 Every block that is not `hidden` gets an item that places it. Declare an item
 for anything else: materials, tools, food, or an item that places a block in
 a special way.
 
-Two more kinds of item are made for you: one for each vehicle (see
-[Vehicles](#vehicles)) and a spawn egg for each creature (see
-[Spawn eggs](#spawn-eggs)).
+Two more kinds of item are made for you: one for each section that mod code
+has claimed, such as each vehicle (see [Vehicles](#vehicles)), and a spawn
+egg for each creature (see [Spawn eggs](#spawn-eggs)).
 
 ```
 item <id>
@@ -372,7 +395,8 @@ item cooked_fish
 ```
 
 The creative inventory shows one tab per category, in the order categories
-first appear (block items, then declared items, then vehicles). A tab is
+first appear (block items, then declared items, then the sections of mods,
+then spawn eggs). A tab is
 drawn as the first item of its category; its name appears when pointed at.
 
 ## Recipes
@@ -574,8 +598,9 @@ underground only, and one that lists plain `cave` appears in every kind of
 cave. A creature cannot live both on the surface and underground: with one
 cave name in the list, its surface biomes are ignored.
 
-Inside an `entity` or `vehicle`, a `model` line with one word names the model
-to use; anywhere else (or with more words) `model` declares a model.
+Inside an `entity` or a mod section (such as `vehicle`), a `model` line with
+one word names the model to use; anywhere else (or with more words) `model`
+declares a model.
 
 ### Spawn eggs
 
@@ -589,12 +614,21 @@ in recipes, trades and `/give` like any other item.
 
 ## Vehicles
 
+The game has no vehicles of its own. The Vehicles mod (`mods/vehicles`) is
+the code that moves them: boats float, carts follow track, cars drive, and
+planes fly. It adds no vehicles itself. Each vehicle is a `vehicle` section
+in another mod's pack. Boats (`mods/boats`), Trains (`mods/trains`), Planes
+(`mods/planes`) and Land Vehicles (`mods/landvehicles`) declare theirs. A
+`vehicle` section needs the Vehicles mod switched on; otherwise the loader
+warns that the section needs the mod `vehicles`.
+
 ```
 vehicle <id>
   name <display name>
+  category <tab name>       its tab in the creative item list (Things if left out)
   model <model id>
   icon <texture>            picture of its item
-  medium water | rail | land | air
+  medium water | rail | land | air     land if left out
   speed <0.5..60>           top speed, blocks per second (default 6)
   height <0.2..6>           blocks; the model is scaled to this (default 1)
   width <0.2..3>            blocks, for collision (default 1.2)
@@ -603,15 +637,22 @@ vehicle <id>
   powered                   a rail vehicle that keeps going with nobody driving
 ```
 
-Each vehicle gets an item with the same id (stack of 1, tab `Travel`) that
-sets it down, so recipes can make it: `craft boat 1 planks 5`.
+Any other line in a `vehicle` section is reported as an unknown property.
+Each vehicle also gets an item with the same id, a stack of 1, in its
+category, that sets it down, so recipes can make it: `craft boat 1 planks 5`.
+
+The chat commands `/vehicle ID` (sets one down two and a half blocks ahead),
+`/board` (gets into the nearest one within 6 blocks) and `/vehicles` (says
+how many there are) are the Vehicles mod's. Its condition `driving` is true
+while the player is in a vehicle; `riding` is true there too.
 
 - `water`: floats on the block `water`; barely moves aground.
-- `rail`: runs only along the block `rail` and blocks with a `track`
-  property, turning with the track and climbing one block at a time. With
-  `powered` it holds the direction and throttle it was last driven at,
-  waits on `station` blocks, and turns back at the end of the line. Rail
-  vehicles can be chained into trains with the item `chain` (see
+- `rail`: runs only along track, which is any block tagged `tag track` (see
+  [Blocks](#blocks)). It turns with the track and climbs one block at a
+  time. With `powered` it keeps going at the speed and direction it was last
+  driven, waits at blocks tagged `tag station`, and turns back at the end of
+  the line when nobody drives it. Rail vehicles can be chained into trains
+  with the item `chain`, from the Trains mod (see
   [PLAYING.md](PLAYING.md#railways)).
 - `land`: drives on the ground. The default.
 - `air`: rolls slowly until near full throttle, then flies where the rider
@@ -619,10 +660,8 @@ sets it down, so recipes can make it: `craft boat 1 planks 5`.
 
 How they are driven is in [PLAYING.md](PLAYING.md#vehicles).
 
-The base data declares the boats, the rail carts, the locomotive and the
-plane. The `land` vehicles (`buggy`, `truck`, `kart`) are declared in the
-Land Vehicles mod, `mods/landvehicles/pack.txt`, which is a short
-complete example of a model, textures, vehicles and recipes.
+The Land Vehicles mod, `mods/landvehicles/pack.txt`, is a short complete
+example of a model, textures, vehicles and recipes.
 
 ## Sounds
 
@@ -657,7 +696,7 @@ so a pack may restyle them: `step break place hurt click pop splash thunder
 rain rumble wave door bow rail`. The base data also defines `glass wood moo
 baa oink cluck bark meow howl growl hiss chirp buzz groan rattle roar chime
 whoosh sizzle` for blocks, creatures and packs to use. The Natural Disasters
-mod defines `quake` and `twister`.
+mod (`mods/disasters`) defines `quake` and `twister`.
 
 A sound is used by naming it:
 
@@ -699,17 +738,19 @@ in a script (`when use my_portal do /dim sky`). Not available on a server.
 feature <name> [<name> ...]
 ```
 
-Switches on a part of the program that is otherwise left off. The program
-asks for two names:
+Switches on the Rust code that a mod brings with it, in `mods/<name>/code`.
+That code is built into the program, and it runs only while a loaded pack
+says `feature <name>`. Changing it needs a rebuild. Its hooks are the table
+`Native` in [src/native.rs](../src/native.rs).
 
 | Feature | What it switches on | Declared by |
 | --- | --- | --- |
-| `disasters` | earthquakes, tsunamis and tornadoes (which still need NATURAL DISASTERS on in SETTINGS > GAME) | the Natural Disasters mod |
-| `earth` | the EARTH terrain choice and the `--earth` option | the Earth mod |
+| `earth` | the EARTH terrain choice, the `--earth` and `--scale` options, the map screen and place-name notices | the Earth mod (`mods/earth`) |
+| `vehicles` | how vehicles move, board and are kept, the `/vehicle`, `/board` and `/vehicles` commands and the `driving` condition | the Vehicles mod (`mods/vehicles`) |
 
-Both are declared by mods that come with the game, so they are on unless
-that mod is switched off. Any other name is accepted and does nothing: a
-`feature` line cannot add behaviour the program does not already have.
+Both mods come with the game, so they are on unless switched off. Any other
+name is accepted and does nothing: a `feature` line can only switch on code
+that is already built in.
 
 ## Commands and scripts
 
@@ -722,7 +763,8 @@ when <event> [what] do <commands separated by ;>
 after it). `when` runs commands when something happens: `start`, `every
 <seconds>`, `break <block>`, `place <block>`, `use <block>`, `useitem
 <item>`, `eat <item>`, `hit <entity>`, `kill <entity>`, `tame <entity>`,
-`ride <entity>`, `dimension <name>`, `night`, `day`, `death`. `when` lines
+`ride <entity>`, `dimension <name>`, `night`, `day`, `death`, `episode <id>`,
+`episode_end <id>`. `when` lines
 are added, never replaced; a `command` with a name already used replaces the
 earlier one.
 
@@ -731,6 +773,44 @@ The commands themselves can use numbered variables (`/var`, `$NAME`, and
 [else ...]`), delays (`/after`) and repeats (`/repeat`). The full
 description, worked examples, and what this language cannot do, are in
 [MODDING.md](MODDING.md#scripts-and-commands).
+
+### Episodes and switches
+
+```
+episode <id> [every <seconds>] [lasts <seconds>] [moves <speed>] [funnel]
+        [then <id>] [if <condition> [and <condition>]...] do <commands separated by ;>
+setting <id> <on|off> <LABEL>
+```
+
+An episode is something that goes on for a while, such as an earthquake. Its
+commands run about every 0.4 seconds while it lasts.
+
+- `every`: how often it may start on its own, roughly. Without it, an
+  episode starts only from a script or from `/episode ID`.
+- `lasts`: 1..600 seconds (10 if left out).
+- `moves`: 0..20 blocks a second. The episode starts 30 blocks away and
+  travels across the player's place.
+- `funnel`: drawn as a funnel (a tornado).
+- `then`: an episode that starts when this one ends, if its conditions hold.
+- `if`: conditions, as for `/if` (see [MODDING.md](MODDING.md#conditions)),
+  joined with `and`.
+
+Episodes do not run in multiplayer. Commands made for episodes:
+
+- `/episode ID` starts one; `/episode stop` ends the one running.
+- `/shake S`: shakes the view, 0..1, dying away by itself.
+- `/pull REACH STRENGTH`: for about 0.6 seconds, drags the player towards the
+  episode and lifts them when close (14 and 2.2 if left out).
+- `/strip R N`: tears up to N plants and leaves (40 if left out, 400 at most)
+  within R blocks (1..16, 3 if left out) of the episode.
+- `/flood PEAK`: while an episode runs, the sea stands up to PEAK blocks
+  (0..24) over its level near the player, rising and then draining away.
+
+A `setting` line adds a switch to SETTINGS > GAME, on or off to start. Its
+label is shown in capitals, and the first four switches from packs are
+shown. A condition reads it as `setting <id>`, and the game saves it in the
+settings file as `flag_<id>`. The Natural Disasters mod
+(`mods/disasters/pack.txt`) is a complete example of episodes and a setting.
 
 ## Terrain
 
@@ -766,7 +846,6 @@ These are used when they exist and quietly replaced when they do not:
 | `birch_log birch_leaves maple_log maple_leaves palm_log palm_leaves blossom_log blossom_leaves` | the other trees | oak (`log`, `leaves`) |
 | `ruby_ore` | deep ore | stone |
 | `snow_layer` | snow settling in snowfall | no settling |
-| `rail` | what rail vehicles run on | rail vehicles do not move |
 | `moss glow_mushroom brown_mushroom crystal_cluster icicle magma cave_vine stalagmite cobweb` | dressing the seven kinds of cave | left out |
 | `basalt` | floors of magma caves | stone |
 | `farmland` | fields in Earth worlds; what a farmer villager tills | no fields, no tilling |
@@ -810,4 +889,4 @@ voxelrust --pack my-pack.txt --showcase --show hud --screenshot out.bmp
 ```
 
 lays one of every block out in front of the camera and writes a picture.
-`--show creatures` instead lines up one of every creature and vehicle model.
+`--show creatures` instead lines up one of every creature model.
