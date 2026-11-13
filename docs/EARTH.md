@@ -180,3 +180,27 @@ The OpenStreetMap tile and Nominatim servers are free, shared services run on
 donations. The game identifies itself as `VoxelRust/<version>`, caches every
 tile and limits place-name questions; please do not script bulk downloads
 through it.
+
+## Compared with Tellus
+
+[Tellus](https://github.com/Yucareux/Tellus) is a Minecraft Java mod that
+also builds real-world terrain. The two work differently, and this is what
+the Earth mod does and does not do, as Tellus's own README describes its
+features:
+
+| Feature | Tellus | VoxelRust Earth mod |
+| --- | --- | --- |
+| Terrain from elevation data | Yes | Yes (Terrarium tiles on AWS) |
+| Land cover from map data | Yes | Yes (OpenStreetMap tiles, colour-classified) |
+| Biomes by climate | Yes (Köppen-style zones) | No: biomes come from latitude and the map's cover |
+| Roads and buildings from OSM | Yes | Yes, with heights guessed from footprint |
+| Building interiors, stairs, street lights | Yes | No |
+| Rivers and water from the map | Yes | Water from the map's colour, no river flow |
+| Map teleport UI | Yes | Yes: press M and right click a spot |
+| Terrain preview before making a world | Yes | No |
+| Real-time time and weather | Yes (optional) | No |
+| Distant Horizons integration | Yes | No: distant terrain is the game's own |
+| Multiplayer server support | Installed on the server | Shared worlds: the server keeps the kind, packs define the Earth mod |
+
+Not compared against Tellus's code, only its README. Anything Tellus does
+that is not in the table is not in this game.
