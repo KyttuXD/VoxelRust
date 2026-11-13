@@ -1053,7 +1053,7 @@ impl Parser<'_> {
                                 words[3] = String::from("clip");
                             }
                             None => {
-                                self.warn(file, line_no, &alloc::format!("cannot read {} as a sound (WAV, AIFF or FLAC, up to 12 seconds)", path));
+                                self.warn(file, line_no, &alloc::format!("cannot read {} as a sound (WAV, AIFF, FLAC or MP3, up to 12 seconds)", path));
                                 continue;
                             }
                         }
