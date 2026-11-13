@@ -22,7 +22,8 @@ pub fn colour(height: i32, biome: Biome) -> [u8; 3] {
     }
     match biome {
         Biome::Plains => [74, 150, 70],
-        Biome::Forest => [52, 122, 54],
+        // Forest floor is earthier than the crowns on it, so the ground reads.
+        Biome::Forest => [86, 104, 56],
         Biome::Desert => [220, 204, 152],
         Biome::Tundra => [236, 241, 248],
         Biome::Taiga => [150, 176, 160],
@@ -191,6 +192,9 @@ pub fn build(seed: u32, tx: i32, tz: i32, step: i32) -> MeshData {
         let half = (s16 * 3 / 8).min(40);
         let top = ground + 4 + (leaf[0] as i32 + i as i32) % 3;
         let base = ground + 2;
+        // A trunk up to the crown, so the tree stands on the ground.
+        let trunk = (s16 / 12).clamp(2, 6);
+        pillar(cx - trunk, cz - trunk, cx + trunk, cz + trunk, base, [96, 70, 44], [ground; 4], &mut out);
         pillar(cx - half, cz - half, cx + half, cz + half, top, leaf, [base; 4], &mut out);
     }
     if out.ymin > out.ymax {
