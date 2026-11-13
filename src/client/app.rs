@@ -2563,6 +2563,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mut settled_frames = 0u32;
     let mut bench: Option<(u32, f64, f64)> = None; // frames left, start, worst frame
     let load_start = sys::now();
+    // The main loop and what follows it are a closure, left at the loop's
+    // own indentation. Here it is called once and returns when the game
+    // ends. A browser cannot be kept waiting in a loop, so there each call
+    // runs one frame and returns, and the page calls again for the next
+    // (see the end of this function, and docs/WEB.md).
+    let frames = move || -> Result<bool, String> {
     loop {
         let frame_start = sys::now();
         app.handle_events(&mut r, &mut inp);
@@ -2690,20 +2696,30 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 unsafe { (api.SDL_Delay)(((want - spent) * 1000.0) as u32) };
             }
         }
+        #[cfg(target_arch = "wasm32")]
+        return Ok(true);
     }
 
     app.close_world(&mut r);
     if !scripted {
         sys::write_file(&app.settings_path, app.settings.to_text().as_bytes());
     }
-    let App { audio, .. } = app;
-    drop(audio);
+    // Close the sound device before SDL goes.
+    drop(core::mem::replace(&mut app.audio, Audio::silent()));
     unsafe {
         (api.SDL_GL_DeleteContext)(ctx);
         (api.SDL_DestroyWindow)(window);
         (api.SDL_Quit)();
     }
-    Ok(())
+    Ok(false)
+    };
+    #[cfg(target_arch = "wasm32")]
+    return sys::web::run_frames(alloc::boxed::Box::new(frames));
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut frames = frames;
+        frames().map(|_| ())
+    }
 }
 
 /// Read the pack files and build the content from them (after the built-in
