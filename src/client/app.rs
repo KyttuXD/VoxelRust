@@ -59,6 +59,8 @@ Run it with no options for the title screen. Options:
   --icon-size N       with --write-icon: its size in pixels (default 256)
   --version           print the version and which build this is, and exit
   --no-update         do not look for a newer version this time
+  --add-mod PATH      copy a mod (a folder, a .zip or a pack file) into the
+                      data folder's mods, and exit
   --export FILE       with --world NAME: write that world as one file, and exit
   --import FILE       with --world NAME: add a world from such a file, and exit
   --pos X Y Z         start position      --look YAW PITCH   in degrees
@@ -119,6 +121,7 @@ struct Opts {
     run: Option<String>,
     write_icon: Option<String>,
     no_update: bool,
+    import_mod: Option<String>,
     icon_size: usize,
     version: bool,
     export: Option<String>,
@@ -205,6 +208,7 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--icon-size" => o.icon_size = num::<usize>(&next(&mut i, a)?, a)?.clamp(8, 1024),
             "--version" => o.version = true,
             "--no-update" => o.no_update = true,
+            "--add-mod" => o.import_mod = Some(next(&mut i, a)?),
             "--export" => o.export = Some(next(&mut i, a)?),
             "--import" => o.import = Some(next(&mut i, a)?),
             "--bench" => o.bench = Some(num::<u32>(&next(&mut i, a)?, a)?.max(1)),
@@ -379,6 +383,7 @@ struct App {
     at_oven: bool,
     show_walking: bool,
     mods_scroll: i32,
+    form_mod_path: String,
     at_furnace: bool,
     /// Seconds and frames counted while timing full screen.
     tune: (f32, u32),
@@ -1669,10 +1674,10 @@ impl App {
                     // Every mod, built in or from a mods folder, with a
                     // switch. Changes take effect at once.
                     let names = all_mods(&self.pack_paths);
-                    let hidden = names.len().saturating_sub(8) as i32;
+                    let hidden = names.len().saturating_sub(6) as i32;
                     self.mods_scroll = (self.mods_scroll - ui.inp.wheel).clamp(0, hidden);
                     ui.text(x, row(0) - 9.0 * s, if names.is_empty() { "NO MODS FOUND" } else { "MODS (PUT YOUR OWN IN THE MODS FOLDER)" }, ui::DIM);
-                    for (k, name) in names.iter().skip(self.mods_scroll as usize).take(8).enumerate() {
+                    for (k, name) in names.iter().skip(self.mods_scroll as usize).take(6).enumerate() {
                         let mut on = !st.mods_off.split(',').any(|o| o == name);
                         if ui.toggle(x, row(k), bw, bh, &name.to_ascii_uppercase().replace('_', " "), &mut on) {
                             let mut off: Vec<&str> = st.mods_off.split(',').filter(|o| !o.is_empty() && o != name).collect();
@@ -1685,8 +1690,20 @@ impl App {
                         }
                     }
                     if hidden > 0 {
-                        ui.text(x, row(8) + 4.0 * s, "SCROLL FOR MORE", ui::DIM);
+                        ui.text(x + bw - 70.0 * s, row(0) - 9.0 * s, "SCROLL FOR MORE", ui::DIM);
                     }
+                    // Bring one in from elsewhere: a folder, a .zip or a pack file.
+                    ui.text(x, row(7) - 9.0 * s, "ADD A MOD FROM A FOLDER OR .ZIP (TYPE ITS PATH)", ui::DIM);
+                    ui.text_field(41, x, row(7), bw - 44.0 * s, bh, &mut self.form_mod_path, 200, ui::any_char);
+                    if ui.button(x + bw - 41.0 * s, row(7), 41.0 * s, bh, "ADD") {
+                        self.status = import_mod(&self.base, &self.form_mod_path);
+                        if self.status.starts_with("ADDED") {
+                            self.form_mod_path.clear();
+                            self.want_reload = true;
+                        }
+                    }
+                    let note = self.status.clone();
+                    ui.text(x, row(8) + 2.0 * s, &note, ui::ACCENT);
                     changed |= ui.toggle(x, row(9), bw, bh, "UPDATE THE GAME AUTOMATICALLY", &mut st.auto_update);
                 }
                 _ => {
@@ -2616,6 +2633,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
         base.push('/');
     }
 
+    if let Some(from) = &opts.import_mod {
+        let said = import_mod(&base, from);
+        logf!("voxelrust: {}", said.to_ascii_lowercase());
+        return if said.starts_with("ADDED") { Ok(()) } else { Err(String::from("the mod was not added")) };
+    }
     // Moving a world in or out as one file needs no window.
     if opts.export.is_some() || opts.import.is_some() {
         let name = opts.world.clone().unwrap_or_default();
@@ -2825,6 +2847,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         at_oven: false,
         show_walking: opts.show.contains("walking"),
         mods_scroll: 0,
+        form_mod_path: String::new(),
         at_furnace: false,
         tune: (0.0, 0),
         worlds_scroll: 0,
@@ -3117,6 +3140,15 @@ fn mods_in(folder: &str) -> Vec<String> {
             let pack = alloc::format!("{}/pack.txt", path);
             if sys::read_file(&pack).is_some() {
                 found.push(pack);
+            } else {
+                // A mod unpacked from an archive often sits one folder down.
+                for inner in sys::list_dir(&path) {
+                    let pack = alloc::format!("{}/{}/pack.txt", path, inner);
+                    if sys::read_file(&pack).is_some() {
+                        found.push(pack);
+                        break;
+                    }
+                }
             }
         }
     }
@@ -3133,6 +3165,58 @@ fn mod_name(path: &str) -> String {
 /// The mods that come inside the program (`data/packs/<name>/pack.txt`).
 fn bundled_mods() -> Vec<(String, &'static [u8])> {
     block::embedded::FILES.iter().filter(|f| f.0.starts_with("packs/") && f.0.ends_with("/pack.txt")).map(|f| (String::from(f.0), f.1)).collect()
+}
+
+/// Bring a mod in from somewhere else on the machine: a folder, a .zip,
+/// or a lone pack file. It is copied into the data folder's `mods`, where
+/// the game then finds it. Returns what to tell the player.
+#[cfg(not(target_arch = "wasm32"))]
+fn import_mod(base: &str, from: &str) -> String {
+    let from = from.trim().trim_end_matches(|c| c == '/' || c == '\\');
+    // The path goes on a command line: nothing that could end the quotes.
+    if from.is_empty() || from.chars().any(|c| matches!(c, '"' | '`' | '$' | '\n' | '\r' | '%' | '!')) {
+        return String::from("TYPE WHERE THE MOD IS: A FOLDER, A .ZIP OR A PACK FILE");
+    }
+    let mods = alloc::format!("{}mods", base);
+    let name: String = mod_name(from).trim_end_matches(".zip").chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')).take(32).collect();
+    if name.is_empty() {
+        return String::from("THAT NAME WILL NOT DO FOR A MOD");
+    }
+    let dest = alloc::format!("{}/{}", mods, name);
+    let win = cfg!(windows);
+    sys::run_command(&if win { alloc::format!("mkdir \"{}\" 2>nul", mods.replace('/', "\\")) } else { alloc::format!("mkdir -p \"{}\"", mods) });
+    let lower = from.to_ascii_lowercase();
+    let ok = if lower.ends_with(".txt") {
+        match sys::read_file(from) {
+            Some(bytes) => sys::write_file(&alloc::format!("{}.txt", dest), &bytes),
+            None => false,
+        }
+    } else if lower.ends_with(".zip") {
+        // Windows 10 and later, macOS and most Linux systems can unpack a zip.
+        let cmd = if win {
+            alloc::format!("mkdir \"{0}\" 2>nul & tar -xf \"{1}\" -C \"{0}\"", dest.replace('/', "\\"), from)
+        } else {
+            alloc::format!("mkdir -p \"{0}\" && (unzip -o -q \"{1}\" -d \"{0}\" || tar -xf \"{1}\" -C \"{0}\")", dest, from)
+        };
+        sys::run_command(&cmd) == 0
+    } else {
+        let cmd = if win { alloc::format!("xcopy /E /I /Y /Q \"{}\" \"{}\" >nul", from, dest.replace('/', "\\")) } else { alloc::format!("rm -rf \"{1}\" && cp -R \"{0}\" \"{1}\"", from, dest) };
+        sys::run_command(&cmd) == 0
+    };
+    if !ok {
+        return String::from("COULD NOT COPY THAT. IS THE PATH RIGHT?");
+    }
+    let found = mods_in(&alloc::format!("{}/", mods)).iter().any(|m| mod_name(m) == name || m.contains(&alloc::format!("/{}/", name)));
+    if found {
+        alloc::format!("ADDED THE MOD {}", name.to_ascii_uppercase())
+    } else {
+        String::from("COPIED, BUT THERE IS NO PACK.TXT IN IT")
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn import_mod(_: &str, _: &str) -> String {
+    String::from("NOT POSSIBLE IN A BROWSER")
 }
 
 /// Every mod there is to switch on or off: those built in, then those in
