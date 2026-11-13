@@ -41,9 +41,9 @@ vehicle kart
   width 1.1
   seat 0.9
 
-craft buggy 1 iron_ore 6 planks 4 oak_chest 1
+craft buggy 1 iron_ore 6 @planks 4 oak_chest 1
 craft truck 1 buggy 1 iron_ingot 6 oak_chest 2
-craft kart 1 iron_ingot 4 planks 2
+craft kart 1 iron_ingot 4 @planks 2
 
 # More cars. `seats N` is how many can ride: one drives, the others join
 # with /passenger (see docs/DATA.md).
@@ -99,5 +99,5 @@ vehicle quad
 
 craft jeep 1 buggy 1 iron_ingot 4
 craft bus 1 truck 1 iron_ingot 8 glass 6
-craft tractor 1 buggy 1 iron_ingot 3 planks 4
+craft tractor 1 buggy 1 iron_ingot 3 @planks 4
 craft quad 1 kart 1 iron_ingot 2

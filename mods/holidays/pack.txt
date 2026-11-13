@@ -399,18 +399,18 @@ when useitem sparkler do /sound sparkle; /shoot 0 22 ghost_light
 craft fir_tree 1 pine_leaves 6 pine_log 1 red_wool 1
 craft fir_garland 4 pine_leaves 2
 craft wreath 1 pine_leaves 4 berries 1
-craft gift_red 1 oak_chest 1 red_wool 1
-craft gift_green 1 oak_chest 1 green_wool 1
-craft gift_blue 1 oak_chest 1 blue_wool 1
-craft gift_gold 1 oak_chest 1 yellow_wool 1
+shaped gift_red 1 "W" "C" with C oak_chest W red_wool
+shaped gift_green 1 "W" "C" with C oak_chest W green_wool
+shaped gift_blue 1 "W" "C" with C oak_chest W blue_wool
+shaped gift_gold 1 "W" "C" with C oak_chest W yellow_wool
 craft candy_cane_block 4 candy_cane 4
 craft candy_cane_post 2 candy_cane 2
 craft gingerbread_block 2 gingerbread_man 4
-craft gingerbread_stairs 4 gingerbread_block 3
-craft gingerbread_slab 2 gingerbread_block 1
-craft icing_block 2 milk 1 egg 1
+shaped gingerbread_stairs 4 "M.." "MM." "MMM" with M gingerbread_block
+shaped gingerbread_slab 6 "MMM" with M gingerbread_block
+shaped icing_block 2 "M" "E" with E egg M milk
 craft fairy_lights 4 lamp 1 string 2
-craft tree_star 1 crystal 2 stick 1
+shaped tree_star 1 "C.C" ".S." with C crystal S stick
 craft stocking 1 red_wool 2 white_wool 1
 craft snowman 1 snow 3 carrot 1 coal 2
 craft menorah 1 iron_ore 2 coal 2
@@ -421,28 +421,28 @@ craft bone_pile 1 raw_meat 2 stone 1
 craft skull 1 bone_pile 1
 craft witch_cauldron 1 oven 1 brown_mushroom 2
 craft candy_bowl 1 candy 6 plate 1
-craft coffin 1 oak_chest 1 planks 2
+shaped coffin 1 "P" "C" "P" with C oak_chest P @planks
 craft ghost_light 2 white_glass 1 lamp 1
 craft hay_stack 1 wheat 8
 craft corn_stalks 2 wheat 3 stick 1
 craft cornucopia 1 wheat 3 apple 2 carrot 2
 craft feast_turkey 1 holiday_roast 1 plate 1
 craft cranberry_dish 1 berries 4 plate 1
-craft harvest_wreath 1 wheat 4 stick 2
+shaped harvest_wreath 1 "WSW" "WSW" with S stick W wheat
 craft egg_blue 1 egg 1 blue_wool 1
 craft egg_pink 1 egg 1 pink_wool 1
 craft egg_yellow 1 egg 1 yellow_wool 1
-craft egg_basket 1 wheat 4 stick 2
+shaped egg_basket 1 "W.W" "WSW" "S.." with S stick W wheat
 craft heart_block 1 red_wool 2
 craft paper_lantern 2 red_wool 1 lamp 1 stick 1
-craft firework_box 1 planks 2 coal 2 red_wool 1
+craft firework_box 1 @planks 2 coal 2 red_wool 1
 craft party_banner 3 yellow_wool 1 string 1
 craft sparkler 4 stick 2 coal 1
 craft candy 4 berries 2 apple 1
 bake candy_cane 4 candy 2 berries 1
 bake gingerbread_man 4 flour 2 egg 1
 bake cocoa 1 milk 1 coal 1
-craft eggnog 1 milk 1 egg 1
+shaped eggnog 1 "ME" with E egg M milk
 bake fruitcake 1 flour 2 berries 2 apple 1
 bake pumpkin_pie 1 dough 1 carrot 2 egg 1
 bake holiday_roast 1 raw_meat 3 potato 1 carrot 1

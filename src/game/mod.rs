@@ -10,3 +10,4 @@ pub mod waypoints;
 pub mod fluid;
 pub mod bow;
 pub mod eating;
+pub mod crafting;

@@ -154,14 +154,14 @@ vehicle hopper_cart
   seat 1.0
   storage
 
-craft rail 16 iron_ore 3 stick 2
+shaped rail 16 "I.I" "SIS" with I iron_ore S stick
 craft speed_rail 8 rail 8 crystal 1
 craft slow_rail 8 rail 8 coal 1
 craft station_rail 2 rail 2 lamp 1
 craft depot_rail 2 station_rail 2 oak_chest 1
-craft platform 4 stone_bricks 3
-craft buffer_stop 1 planks 3
-craft signal_post 1 lamp 1 stick 2
+shaped platform 4 "M" "M" "M" with M stone_bricks
+shaped buffer_stop 1 "P" "P" "P" with P @planks
+shaped signal_post 1 "S" "L" "S" with L lamp S stick
 craft chain 2 iron_ingot 1
 craft cart 1 iron_ore 5
 craft chest_cart 1 cart 1 oak_chest 1

@@ -32,7 +32,7 @@ One declaration per line; `#` starts a comment. Words are separated by spaces
 or tabs; indentation is optional.
 
 These keywords start something new: `texture`, `block`, `item`, `recipe`,
-`craft`, `bake`, `smelt`, `ore`, `plant`, `model`, `entity`, `sound`,
+`craft`, `shapeless`, `shaped`, `group`, `bake`, `smelt`, `ore`, `plant`, `model`, `entity`, `sound`,
 `command`, `when`, `dimension`, `feature`, `episode`, `setting`, `include`.
 Any other line sets a property of the block, item or entity most recently
 started, or of the mod section described below. (`sound` with a single word,
@@ -161,7 +161,7 @@ category is `Blocks`; `solid` is yes for everything except `cross` and
   always gives two.
 - `tool`: only matters together with items that have a `tool` property (see
   Items). Without the right tool the block still breaks, at hand speed.
-- `use craft`: right click opens the crafting-table recipe list.
+- `use craft`: right click opens the crafting table's 3 x 3 grid.
 - `use chest`: right click opens 27 slots of storage belonging to that block.
 - `use oven`: right click opens the `bake` recipes.
 - `use furnace`: right click opens the `smelt` recipes. In the base data the
@@ -433,34 +433,115 @@ drawn as the first item of its category; its name appears when pointed at.
 
 ## Recipes
 
-```
-recipe <item> <count> <ingredient> <count> [<ingredient> <count> ...]
-craft  <item> <count> <ingredient> <count> [<ingredient> <count> ...]
-bake   <item> <count> <ingredient> <count> [<ingredient> <count> ...]
-smelt  <item> <count> <ingredient> <count> [<ingredient> <count> ...]
-```
-
-- `recipe`: can be made **by hand**, in the inventory screen (and also at a
-  crafting table).
-- `craft`: needs a **crafting table** (a block with `use craft`).
-- `bake`: needs an **oven** (a block with `use oven`), and is offered only
-  there.
-- `smelt`: needs a **furnace** (a block with `use furnace`), and is offered
-  only there. Fuel is not special: list coal as an ingredient if the recipe
-  should need it.
+Things are made in a **crafting grid**: 2 x 2 in the inventory screen, 3 x 3
+at a crafting table. A recipe says what items must be in the grid, and
+what comes out.
 
 ```
-recipe planks 4 log 1
+craft     <item> <count> <ingredient> <count> [<ingredient> <count> ...]
+shaped    <item> <count> <row> [<row> ...] with <letter> <ingredient> [<letter> <ingredient> ...]
+group     <name> <item> [<item> ...]
+bake      <item> <count> <ingredient> <count> [<ingredient> <count> ...]
+smelt     <item> <count> <ingredient> <count> [<ingredient> <count> ...]
+```
+
+- `craft` (also spelt `shapeless`, or `recipe`, which older packs use): a
+  **shapeless** recipe. The ingredients can be put in the grid anywhere, one
+  to a cell. `craft stick 4 planks 2` is two planks anywhere in the grid.
+- `shaped`: a **shaped** recipe. The rows are the pattern, top to bottom; the
+  letters after `with` say what each letter is. See below.
+- `group`: a name for a set of items, so that a recipe can take any of them
+  (see Groups).
+- `bake`: needs an **oven** (a block with `use oven`) and is offered only
+  there, as a list to click. The oven and `smelt` have no grid.
+- `smelt`: needs a **furnace** (a block with `use furnace`), offered only
+  there as a list. Fuel is not special: list coal as an ingredient if the
+  recipe should need it.
+
+Whether a recipe can be made by hand or needs a table is not written down:
+it follows from its size. What fits the 2 x 2 grid (a shaped pattern no
+bigger than 2 x 2, or a shapeless list of at most 4 items) can be made by
+hand, and everything can be made at a table.
+
+### Shaped recipes
+
+```
+shaped iron_pick 1 "III" ".S." ".S." with I iron_ingot S stick
+shaped stone_stairs 4 "M.." "MM." "MMM" with M stone
+shaped bookshelf 1 "PPP" "..." "PPP" with P @planks
+shaped glass_lamp 2 III .L. with I glass L lamp
+```
+
+- After the item and the count made come one to three **rows**, each one to
+  three cells wide, all the same width. A row is written in double quotes (it
+  may then hold spaces) or, when it has no spaces, bare. A cell is a letter
+  for an ingredient, or `.` or a space for **nothing**.
+- After the word `with` come pairs: a single letter and the ingredient it
+  stands for. Every letter used in the rows must be given.
+- Letters are any character except `.`, quotes, `#` and blanks. The word
+  `with` cannot be used as a row.
+- Empty rows and columns around the pattern do not matter: `"I.."` and `"I"`
+  are the same recipe.
+- The pattern may be put **anywhere** in the grid, and **mirrored** left to
+  right (so an axe `II`/`IS`/`.S` also works the other way round). It may not
+  be turned upside down, and no other items may be in the grid.
+- The recipe is as big as its pattern: a pattern of 3 x 3 or 3 x 2 needs a
+  table.
+
+### Ingredients, counts and groups
+
+An ingredient is an item id (blocks count, through their automatic items),
+or `@name`, any item of the group `name`, and may end in `*N` to ask for N
+of it in its one cell: `shaped heavy_door 1 DD DD with D iron_ingot*5`.
+Counts are 1..999, but nothing can ask for more than one stack holds.
+
+`craft` lines count units: `craft rail 16 iron_ore 3 stick 2` is five
+cells, three with ore and two with sticks.
+
+**Too big for the grid.** When the units add up to more than nine, there is
+no way to give each its own cell. The rule is then: **each kind of
+ingredient takes one cell and that cell must hold the whole amount.**
+`craft plane 1 iron_ore 10 planks 8 white_wool 4` is three cells, holding at
+least 10 ore, 8 planks and 4 wool; taking the result uses exactly those
+amounts. (Stack sizes limit this: a non-stacking item cannot be asked for
+more than one.) The recipe still needs the table, being three cells wide
+in no particular pattern, and it costs what it always cost. If the units
+come to nine or fewer, each unit gets its own cell as usual.
+
+**Groups.** `group planks planks pine_planks birch_planks` names a set;
+`@planks` in a recipe then means any of them. Naming a group again adds to
+it, so a pack can add its own planks to the ones the base data has. The
+base data defines `@planks` (all eight woods' planks).
+
+### Making things
+
+- The result appears when the grid holds a recipe; if two recipes could both
+  match, the one that was defined first is made, so give recipes that make
+  different things different shapes. (The tests check that none in the base
+  data and the shipped mods clash.)
+- Taking the result uses up one of each ingredient, or the amount asked for
+  with `*N` or by a recipe that was too big for the grid. Shift-click makes
+  as many as the grid and the inventory allow.
+- The recipe book lists the recipes that fit the grid and can be made with
+  the items you carry; a click fills the grid from the inventory.
+
+```
+group gems ruby crystal
+shaped glow_ring 1 ".G." "G.G" ".G." with G @gems
 craft lamp 1 glass 1 crystal 1
-craft rail 16 iron_ore 3 stick 2
+craft lantern 2 lamp 1 iron_ore 1
 bake bread 1 dough 1
 smelt iron_ingot 1 iron_ore 1 coal 1
 ```
 
-Counts are 1..999. Every name must be an existing item (blocks count, through
-their automatic items). Any number of ingredients is allowed; the recipe list
-draws the first three and names them all when pointed at. Recipes are added,
-never replaced: a pack cannot remove a base recipe.
+Every name must be an existing item. Recipes are added, never replaced: a pack
+cannot remove a base recipe. A recipe that does not read is left out, with a
+warning that names its file and line.
+
+`tools/craft_convert.py` rewrites `craft` lines into `shaped` ones where the
+shape is well known (tools, stairs, slabs, doors, beds, chests, furnaces
+...), and `tools/craft_convert.py --check FILE...` looks for recipes that
+could clash. `tools/gen_base.py` runs the converter on `data/base.txt`.
 
 ## Models
 

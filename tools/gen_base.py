@@ -7,6 +7,7 @@ stairs and slabs of each). Edit the tables here and run it again, or edit
 base.txt by hand: both are fine.
 """
 import os
+import sys
 
 out = []
 w = out.append
@@ -273,8 +274,14 @@ for iid, name, food in [("apple", "Apple", 3), ("berries", "Berries", 2), ("raw_
 
 w("""
 # ---- Recipes (survival mode) ----
-#   recipe <item> <count> <ingredient> <count> [<ingredient> <count> ...]""")
-w("#   recipe ...   can be made by hand;   craft ...   needs a crafting table")
+# Recipes are laid out in the crafting grid (2 x 2 in the inventory screen,
+# 3 x 3 at a crafting table):
+#   craft  <item> <count> <ingredient> <count> [<ingredient> <count> ...]    shapeless
+#   shaped <item> <count> <row> [<row> ...] with <letter> <ingredient> [<letter> <ingredient> ...]
+#   group  <name> <item> [<item> ...]       @name in a recipe means any of them
+# This file writes plain `craft` lines; tools/craft_convert.py turns the ones
+# with a well-known shape (tools, stairs, doors, beds ...) into `shaped` ones.
+group planks planks pine_planks birch_planks maple_planks palm_planks blossom_planks acacia_planks dark_oak_planks""")
 w("recipe planks 4 log 1")
 for id, name, *_ in WOODS:
     if id != "oak":
@@ -735,5 +742,7 @@ else:
   weight 30""")
 
 path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "base.txt")
-open(path, "w").write("\n".join(out) + "\n")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import craft_convert
+open(path, "w").write(craft_convert.convert_text("\n".join(out) + "\n"))
 print("wrote", os.path.normpath(path), len(out), "lines")
