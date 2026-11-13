@@ -25,7 +25,19 @@ pub struct Vehicle {
     pub cruise: f32,
     /// Seconds left of a stop at a station, and the station it was.
     pub wait: f32,
+    /// Who it is locked to: only they may get in. Empty when open to anyone.
+    pub owner: String,
     last_station: (i32, i32),
+}
+
+/// Horizontal speed (blocks a second) above which a stop is a crash.
+pub const CRASH_SPEED: f32 = 9.0;
+
+/// A vehicle that stopped dead from speed: which one, where, and how fast it was going.
+pub struct Crash {
+    pub index: usize,
+    pub pos: [f64; 3],
+    pub speed: f32,
 }
 
 #[derive(Default)]
@@ -33,6 +45,8 @@ pub struct Vehicles {
     pub list: Vec<Vehicle>,
     /// The one the player is in.
     pub riding: Option<usize>,
+    /// Crashes since the last time they were taken (see the vehicles mod).
+    pub crashes: Vec<Crash>,
 }
 
 /// Unit vector a body faces along the ground (yaw 0 is -z).
@@ -45,7 +59,7 @@ impl Vehicles {
         let d = &defs()[kind];
         let mut body = Player::with_size(pos, d.width as f64, d.height as f64);
         body.yaw = yaw;
-        self.list.push(Vehicle { kind, body, throttle: 0.0, storage: Inventory::new(), phase: 0.0, leader: None, cruise: 0.0, wait: 0.0, last_station: (i32::MIN, 0) });
+        self.list.push(Vehicle { kind, body, throttle: 0.0, storage: Inventory::new(), phase: 0.0, leader: None, cruise: 0.0, wait: 0.0, last_station: (i32::MIN, 0), owner: String::new() });
         self.list.len() - 1
     }
 
@@ -271,7 +285,13 @@ impl Vehicles {
                     }
                 }
             }
+            // A stop from speed (a wall, a post) is a crash: most of the speed is gone in one step.
+            let before = crate::math::sqrtf(v.body.vel[0] * v.body.vel[0] + v.body.vel[2] * v.body.vel[2]);
             v.body.update(dt, &drive, &|x, y, z| world.get_for_physics(x, y, z));
+            let after = crate::math::sqrtf(v.body.vel[0] * v.body.vel[0] + v.body.vel[2] * v.body.vel[2]);
+            if before >= CRASH_SPEED && after < before * 0.3 {
+                self.crashes.push(Crash { index: i, pos: v.body.pos, speed: before });
+            }
             v.phase += v.throttle * dt * 12.0;
             if v.phase > 2.0 * PI {
                 v.phase -= 2.0 * PI;
@@ -320,6 +340,9 @@ impl Vehicles {
             // The id may carry "@n" (chained behind vehicle n) and "~speed"
             // (a locomotive's cruising speed).
             let mut id = defs()[v.kind].id.clone();
+            if !v.owner.is_empty() {
+                id.push_str(&alloc::format!("!{}", v.owner));
+            }
             if let Some(l) = v.leader {
                 id.push_str(&alloc::format!("@{}", l));
             }
@@ -343,6 +366,11 @@ impl Vehicles {
                 Some((t, l)) => (t, l.parse::<usize>().ok()),
                 None => (tag, None),
             };
+            // The owner comes after the id: "buggy!Anna".
+            let (id, owner) = match id.split_once('!') {
+                Some((t, o)) => (t, String::from(o)),
+                None => (id, String::new()),
+            };
             let kind = defs().iter().position(|v| v.id == id);
             let mut n = || w.next().and_then(|v| v.parse::<f64>().ok());
             if let (Some(kind), Some(x), Some(y), Some(z), Some(yaw)) = (kind, n(), n(), n(), n()) {
@@ -350,6 +378,7 @@ impl Vehicles {
                 self.list[i].storage = Inventory::load(w.next().unwrap_or(""));
                 self.list[i].leader = leader;
                 self.list[i].cruise = cruise;
+                self.list[i].owner = owner;
             }
         }
         // A chain to something that is not there is no chain.
@@ -418,6 +447,44 @@ mod tests {
         for _ in 0..(seconds * 60.0) as i32 {
             v.update(1.0 / 60.0, w, &input, (0.0, pitch));
         }
+    }
+
+    #[test]
+    fn a_lock_is_kept_with_the_vehicle_when_it_is_saved() {
+        let mut v = Vehicles::default();
+        let i = v.place(kind("buggy"), [8.5, 121.0, 20.5], 0.0);
+        v.list[i].owner = String::from("Anna");
+        let j = v.place(kind("buggy"), [9.5, 121.0, 20.5], 0.0);
+        v.list[j].leader = Some(i);
+        let text = v.save_text();
+        let mut back = Vehicles::default();
+        back.load_text(&text);
+        assert_eq!(back.list[0].owner, "Anna");
+        assert_eq!(back.list[1].owner, "");
+        assert_eq!(back.list[1].leader, Some(0), "the chain survives next to the owner");
+    }
+
+    #[test]
+    fn a_buggy_driven_hard_into_a_wall_crashes_and_a_gentle_stop_does_not() {
+        let mut w = arena();
+        for x in 0..17 {
+            for y in 121..124 {
+                w.set_block(x, y, 12, reg().wk.stone);
+            }
+        }
+        let mut v = Vehicles::default();
+        let i = v.place(kind("buggy"), [8.5, 121.01, 20.5], 0.0);
+        v.riding = Some(i);
+        drive(&mut v, &w, 1.0, 0.0, 0.0, 3.0);
+        assert_eq!(v.crashes.len(), 1, "a full-speed stop against a wall is a crash");
+        assert_eq!(v.crashes[0].index, i);
+        // A stop from a crawl is not.
+        let mut u = Vehicles::default();
+        let j = u.place(kind("buggy"), [8.5, 121.01, 20.5], 0.0);
+        u.riding = Some(j);
+        drive(&mut u, &w, 0.3, 0.0, 0.0, 0.5);
+        drive(&mut u, &w, 0.0, 0.0, 0.0, 2.0);
+        assert!(u.crashes.is_empty());
     }
 
     #[test]

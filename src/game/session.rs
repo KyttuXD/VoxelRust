@@ -67,6 +67,8 @@ pub struct NewWorld {
 
 pub struct Session {
     pub name: String,
+    /// The name this player goes by (for things that belong to a player, such as a locked vehicle).
+    pub who: String,
     pub world: World,
     pub pool: Pool,
     pub store: RegionStore<DiskIo>,
@@ -416,6 +418,7 @@ impl Session {
         }
         let mut session = Session {
             name: String::from(name),
+            who: String::from("Player"),
             world: World::new(seed),
             pool: Pool::new(threads, seed),
             store: RegionStore::new(DiskIo, alloc::format!("{}{}.", world_dir(base), name)),

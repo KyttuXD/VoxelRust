@@ -625,6 +625,8 @@ impl App {
         let s = Session::open(&self.base, name, new, self.threads);
         logf!("voxelrust: world `{}` (seed {}), {} worker threads", s.name, s.world.seed, s.pool.thread_count());
         self.help_timer = if s.is_new { 12.0 } else { 0.0 };
+        let mut s = s;
+        s.who = crate::settings::clean_name(&self.settings.player_name, 16);
         self.session = Some(s);
         self.distance = self.settings.distance;
         self.set_screen(Screen::Game);
@@ -684,6 +686,8 @@ impl App {
                 let address = sys::net::local_address().unwrap_or_else(|| String::from("YOUR ADDRESS"));
                 g.push_chat(alloc::format!("HOSTING. OTHERS JOIN WITH  {}:{}", address, port));
                 g.push_chat(String::from("FROM OUTSIDE YOUR NETWORK, FORWARD THAT PORT ON YOUR ROUTER."));
+                let mut g = g;
+                g.who = crate::settings::clean_name(&self.settings.player_name, 16);
                 self.session = Some(g);
                 self.distance = self.settings.distance;
                 self.set_screen(Screen::Game);
@@ -2070,6 +2074,8 @@ impl App {
         match Session::join(&self.base, address, if name.is_empty() { "Player" } else { &name }, self.threads) {
             Ok(g) => {
                 self.close_world(r);
+                let mut g = g;
+                g.who = crate::settings::clean_name(&self.settings.player_name, 16);
                 self.session = Some(g);
                 self.distance = self.settings.distance;
                 self.set_screen(Screen::Game);

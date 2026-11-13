@@ -10,7 +10,7 @@
 //! What the game calls is the table at the end, [`NATIVE`].
 
 mod physics;
-pub use physics::{Vehicle, Vehicles};
+pub use physics::{Crash, Vehicle, Vehicles};
 
 use crate::audio::{Audio, Sound};
 use crate::block::reg;
@@ -181,7 +181,7 @@ fn reload(g: &mut Session, before: bool) {
 }
 
 /// Move everything; the one being ridden carries the player.
-fn update(g: &mut Session, dt: f32, c: &Controls, _audio: &mut Audio) {
+fn update(g: &mut Session, dt: f32, c: &Controls, audio: &mut Audio) {
     let mut st = g.take_ext::<State>(NAME);
     if st.v.riding.is_some() && (c.leave || g.dead) {
         st.v.riding = None;
@@ -191,7 +191,31 @@ fn update(g: &mut Session, dt: f32, c: &Controls, _audio: &mut Audio) {
     if let Some(eye) = st.v.update(dt, &g.world, &c.input, (g.player.yaw, g.player.pitch)) {
         g.seat = Some(eye);
     }
+    // Hard crashes wreck the vehicle. Highest index first, so that removing one
+    // does not move the others (see Vehicles::remove).
+    let mut crashes = core::mem::take(&mut st.v.crashes);
+    crashes.sort_by(|a, b| b.index.cmp(&a.index));
+    for crash in crashes {
+        explode(g, &mut st.v, crash, audio);
+    }
     g.put_ext(NAME, st);
+}
+
+/// A wreck: the vehicle is gone, whoever was inside is thrown clear, and anyone
+/// close by is hurt, more the faster it was going.
+fn explode(g: &mut Session, v: &mut Vehicles, crash: Crash, audio: &mut Audio) {
+    let riding = v.riding == Some(crash.index);
+    v.remove(crash.index);
+    let (dx, dy, dz) = (g.player.pos[0] - crash.pos[0], g.player.pos[1] - crash.pos[1], g.player.pos[2] - crash.pos[2]);
+    let near = dx * dx + dy * dy + dz * dz < 16.0;
+    if riding {
+        g.player.pos = [crash.pos[0], crash.pos[1] + 1.0, crash.pos[2]];
+        g.player.vel = [0.0; 3];
+    }
+    if riding || near {
+        g.damage(2 + (crash.speed / 3.0) as i32, audio);
+    }
+    audio.play_named("thunder", 1.0);
 }
 
 /// Left click picks a vehicle up, right click gets in, and a vehicle item
@@ -201,6 +225,11 @@ fn interact(g: &mut Session, c: &Controls, reach: f32, audio: &mut Audio) -> boo
     let used = hands(g, &mut st, c, reach, audio);
     g.put_ext(NAME, st);
     used
+}
+
+/// Whether a vehicle locked to someone other than the player here may not be used.
+fn locked_to_other(g: &Session, owner: &str) -> bool {
+    !owner.is_empty() && owner != g.who
 }
 
 fn ask(g: &mut Session, text: &str) {
@@ -253,8 +282,10 @@ fn hands(g: &mut Session, st: &mut State, c: &Controls, reach: f32, audio: &mut 
             g.cooldown[1] = 0.4;
             if c.input.descend && all[st.v.list[i].kind].storage {
                 g.opened_ext = Some((NAME, i));
-            } else {
+            } else if !locked_to_other(g, &st.v.list[i].owner) {
                 st.v.riding = Some(i);
+            } else {
+                g.say("LOCKED TO ANOTHER PLAYER");
             }
             return true;
         }
@@ -425,6 +456,24 @@ fn command(g: &mut Session, words: &[&str]) -> Option<String> {
                 ask(g, &alloc::format!("place {} {} {} {} {}", defs()[kind].id, pos[0], pos[1], pos[2], g.player.yaw));
             }
             Some(String::from("set down"))
+        }
+        // /lock and /unlock: the vehicle you are in, or the one you are looking at.
+        Some(w @ ("/lock" | "/unlock")) => {
+            let mut st = g.take_ext::<State>(NAME);
+            let aimed = match st.v.riding {
+                Some(i) => Some((i, 0.0)),
+                None => st.v.hit_test(g.player.eye(), forward(g.player.yaw, g.player.pitch), 6.0),
+            };
+            let reply = match aimed {
+                None => String::from("NO VEHICLE HERE"),
+                Some((i, _)) if locked_to_other(g, &st.v.list[i].owner) => String::from("THAT ONE IS LOCKED TO ANOTHER PLAYER"),
+                Some((i, _)) => {
+                    st.v.list[i].owner = if w == "/lock" { g.who.clone() } else { String::new() };
+                    String::from(if w == "/lock" { "LOCKED TO YOU" } else { "UNLOCKED" })
+                }
+            };
+            g.put_ext(NAME, st);
+            Some(reply)
         }
         Some("/vehicles") => Some(alloc::format!("{} here", g.ext_ref::<State>(NAME).map_or(0, |st| st.v.list.len()))),
         Some("/board") => {
