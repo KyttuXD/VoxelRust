@@ -106,7 +106,7 @@ block <id>
   skyloss <0..15>                sunlight lost passing down through it
   solid yes|no                   whether the player collides with it
   box x0 y0 z0 x1 y1 z1          a custom shape (see below)
-  prop <model> [<height>]        draw it as this model instead of its boxes (see Props)
+  prop <model> [<height>] [<lift>]        draw it as this model instead of its boxes (see Props)
   rotate                         four facings
   flip                           also upside-down
   hardness <seconds>             time to break by hand in survival, 0..600
@@ -263,7 +263,7 @@ a plain block uses one, a `slab` two, a `rotate` block four, `stairs` eight).
 ### Props
 
 ```
-  prop <model> [<height>]
+  prop <model> [<height>] [<lift>]
 ```
 
 A block with `prop` is drawn as a model (see [Models](#models)) instead of
