@@ -415,6 +415,32 @@ w("item mushroom\n  name Mushroom\n  icon mushroom\n  category Food\n  food 2")
 w("item string\n  name String\n  icon string\n  category Materials")
 w("craft white_wool 1 string 4")
 
+# ---- Sounds ----
+w("""
+# ---- Sounds ----
+# Every sound is made on the spot from a burst of noise and a gliding tone.
+#   sound <id> <effects|steps|ui> <seconds> <noise 0..1> <hz from> <hz to> <low-pass 0..1> <loudness> [caption]
+# The caption is what subtitles show. Redefine an id to retune a sound; give
+# blocks `sound <id>` (breaking and placing) and creatures `sound <id>` (their call).""")
+for line in ["step steps 0.09 0.95 90 60 0.10 0.55 Footsteps", "break effects 0.22 0.90 160 70 0.30 0.80 Block breaks",
+             "place effects 0.10 0.70 220 140 0.22 0.70 Block placed", "hurt effects 0.25 0.25 420 180 0.50 0.80 Something is hurt",
+             "click ui 0.05 0.20 900 700 0.80 0.45", "pop effects 0.08 0.10 500 900 0.80 0.50 Item picked up",
+             "splash effects 0.35 1.00 100 100 0.45 0.60 Splash", "thunder effects 1.80 1.00 60 40 0.04 1.00 Thunder",
+             "rain effects 0.45 1.00 100 100 0.60 0.22 Rain", "rumble effects 0.60 0.90 46 34 0.03 0.90 The ground rumbles",
+             "wave effects 1.60 1.00 80 60 0.07 0.30 Waves",
+             "glass effects 0.18 0.55 1800 900 0.90 0.60 Glass breaks", "wood effects 0.14 0.75 240 150 0.25 0.75 Wood knocks",
+             "door effects 0.16 0.60 180 120 0.20 0.70 Door", "bow effects 0.20 0.30 240 520 0.60 0.60 Bowstring",
+             "moo effects 0.70 0.05 150 110 0.30 0.50 Cow lows", "baa effects 0.45 0.10 420 340 0.40 0.45 Sheep bleats",
+             "oink effects 0.25 0.35 260 180 0.30 0.50 Pig grunts", "cluck effects 0.12 0.15 700 500 0.60 0.40 Hen clucks",
+             "bark effects 0.14 0.30 420 260 0.50 0.60 Dog barks", "meow effects 0.40 0.05 700 520 0.60 0.40 Cat meows",
+             "howl effects 1.40 0.05 320 520 0.50 0.55 Wolf howls", "growl effects 0.60 0.60 110 80 0.15 0.70 Growling",
+             "hiss effects 0.50 1.00 100 100 0.95 0.35 Hissing", "chirp effects 0.10 0.02 2400 3200 0.90 0.30 Bird chirps",
+             "buzz effects 0.40 0.20 210 230 0.70 0.20 Buzzing", "groan effects 0.90 0.30 120 80 0.20 0.60 Groaning",
+             "rattle effects 0.30 0.85 900 700 0.85 0.45 Bones rattle", "roar effects 1.20 0.70 140 60 0.12 1.00 A roar",
+             "chime effects 0.60 0.02 1200 1180 0.90 0.40 Chime", "rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails",
+             "whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh", "sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling"]:
+    w("sound " + line)
+
 # ---- Doors, gates and hatches ----
 w("""
 # ---- Things that open ----
@@ -443,6 +469,163 @@ for id, name, _ in COLOURS:
     block(f"{id}_bed", f"{name} Bed", f"{id}_wool planks planks", cat="Doors", hardness=0.6, tool="axe", use="bed",
           box=["0 0 0 16 9 16"])
     w(f"craft {id}_bed 1 {id}_wool 3 planks 3")
+
+# More doors: set in the middle of the block, glazed, sliding, revolving.
+w("""
+# Doors come hung on the edge of their block (the plain ones above), set in
+# its middle (`_mid`), glazed, sliding (it slides into the wall beside it)
+# and revolving (walk through; it never shuts).""")
+for wid, wname, (r, g, b), planks in DOOR_WOODS:
+    tex(f"{wid}_glass_door", f"paint glassdoor {r} {g} {b}")
+    for kind, kname, t, shut, opened in (
+            ("door_mid", "Door (Centred)", f"{wid}_door", ["0 0 7 16 16 9"], ["7 0 0 9 16 16"]),
+            ("glass_door", "Glazed Door", f"{wid}_glass_door", ["0 0 13 16 16 16"], ["0 0 0 3 16 16"]),
+            ("sliding_door", "Sliding Door", f"{wid}_glass_door", ["0 0 7 16 16 9"], ["13 0 7 16 16 9"])):
+        block(f"{wid}_{kind}", f"{wname} {kname}", t, cat="Doors", hardness=1.2, tool="axe", rotate=True, tall=True,
+              box=shut, toggle=f"{wid}_{kind}_open", sound="door")
+        block(f"{wid}_{kind}_open", f"{wname} {kname}", t, hardness=1.2, tool="axe", rotate=True, tall=True, hidden=True,
+              box=opened, toggle=f"{wid}_{kind}", drops=f"{wid}_{kind}", sound="door")
+    block(f"{wid}_revolving_door", f"{wname} Revolving Door", f"{wid}_glass_door", cat="Doors", hardness=1.2, tool="axe",
+          tall=True, solid="no", box=["7 0 0 9 16 16", "0 0 7 16 16 9"], sound="door")
+    w(f"craft {wid}_door_mid 1 {wid}_door 1")
+    w(f"craft {wid}_glass_door 1 {wid}_door 1 glass 2")
+    w(f"craft {wid}_sliding_door 1 {wid}_glass_door 1 iron_ore 1")
+    w(f"craft {wid}_revolving_door 1 {wid}_glass_door 2")
+# Painted trapdoors, gates and fences in every colour.
+for cid, cname, (r, g, b) in COLOURS:
+    tex(f"{cid}_boards", f"paint planks {r} {g} {b}")
+    block(f"{cid}_fence", f"{cname} Fence", f"{cid}_boards", shape="fence", cat="Doors", hardness=1.2, tool="axe")
+    for kind, kname, shut, opened in (
+            ("trapdoor", "Trapdoor", ["0 0 0 16 3 16"], ["0 0 13 16 16 16"]),
+            ("gate", "Gate", ["0 5 7 16 16 9", "0 0 7 2 16 9", "14 0 7 16 16 9"], ["0 0 7 2 16 9", "14 0 7 16 16 9"])):
+        block(f"{cid}_{kind}", f"{cname} {kname}", f"{cid}_boards", cat="Doors", hardness=1.2, tool="axe", rotate=True,
+              box=shut, toggle=f"{cid}_{kind}_open", sound="door")
+        block(f"{cid}_{kind}_open", f"{cname} {kname}", f"{cid}_boards", hardness=1.2, tool="axe", rotate=True, hidden=True,
+              box=opened, toggle=f"{cid}_{kind}", drops=f"{cid}_{kind}", sound="door")
+    w(f"craft {cid}_fence 3 planks_fence 3 {cid}_wool 1")
+    w(f"craft {cid}_trapdoor 2 oak_trapdoor 2 {cid}_wool 1")
+    w(f"craft {cid}_gate 1 oak_gate 1 {cid}_wool 1")
+
+# ---- Furniture ----
+w("""
+# ---- Furniture and things for the house ----
+#   seat <sixteenths>   right click sits on it, that high; jump to get up
+#   eat <points>        food set out: right click eats it where it stands
+# Shapes are described as seen when the player faces north while placing.""")
+tex("ceramic", "flat 240 240 236 noise 4")
+tex("steel", "flat 176 180 190 noise 6")
+tex("counter_top", "paint polished 208 204 196")
+tex("screen", "flat 24 28 40 noise 3")
+tex("books", "paint bricks 150 70 60")
+tex("cardboard", "flat 196 160 110 noise 7")
+tex("pizza_top", "paint pizza 214 60 44")
+tex("cake_top", "paint cookie 250 240 244")
+tex("bread_crust", "paint loaf 196 136 70")
+block("chair", "Chair", "planks", cat="Furniture", hardness=0.8, tool="axe", rotate=True, seat=8,
+      box=["2 6 2 14 8 14", "2 8 12 14 16 14", "2 0 2 4 6 4", "12 0 2 14 6 4", "2 0 12 4 6 14", "12 0 12 14 6 14"])
+block("stool", "Stool", "planks", cat="Furniture", hardness=0.6, tool="axe", seat=8,
+      box=["3 6 3 13 8 13", "4 0 4 6 6 6", "10 0 4 12 6 6", "4 0 10 6 6 12", "10 0 10 12 6 12"])
+block("park_bench", "Bench", "planks", cat="Furniture", hardness=0.8, tool="axe", rotate=True, seat=7,
+      box=["0 5 3 16 7 13", "0 7 11 16 14 13", "1 0 4 3 5 12", "13 0 4 15 5 12"])
+block("desk", "Desk", "planks", cat="Furniture", hardness=0.8, tool="axe", rotate=True,
+      box=["0 12 0 16 14 16", "0 0 0 2 12 16", "14 0 0 16 12 16", "2 6 13 14 12 15"])
+block("shelf", "Shelf", "planks", cat="Furniture", hardness=0.6, tool="axe", rotate=True,
+      box=["0 12 10 16 14 16", "0 4 10 16 6 16"])
+block("bookshelf", "Bookshelf", "planks books planks", cat="Furniture", hardness=1.2, tool="axe")
+block("cupboard", "Cupboard", "oak_chest", cat="Furniture", hardness=1.2, tool="axe", rotate=True, use="chest",
+      box=["0 0 4 16 16 16"])
+block("wardrobe", "Wardrobe", "oak_door", cat="Furniture", hardness=1.2, tool="axe", rotate=True, use="chest", tall=True,
+      box=["0 0 4 16 16 16"])
+block("counter", "Kitchen Counter", "counter_top planks planks", cat="Furniture", hardness=1.2, tool="axe", use="chest")
+block("sink_counter", "Kitchen Sink", "steel planks planks", cat="Furniture", hardness=1.2, tool="axe",
+      box=["0 0 0 16 12 16", "0 12 0 16 16 3", "0 12 13 16 16 16", "0 12 3 3 16 13", "13 12 3 16 16 13"])
+block("stove", "Stove", "steel oven_front steel", cat="Furniture", hardness=1.6, tool="pick", use="oven", light=4)
+block("fridge", "Fridge", "steel", cat="Furniture", hardness=1.6, tool="pick", use="chest", tall=True, rotate=True,
+      box=["1 0 2 15 16 16"])
+block("television", "Television", "screen steel steel", cat="Furniture", hardness=0.8, rotate=True, light=5,
+      box=["1 3 9 15 13 11", "6 0 8 10 3 12"])
+block("floor_lamp", "Floor Lamp", "lamp", cat="Furniture", hardness=0.4, light=14, tall=False,
+      box=["7 0 7 9 12 9", "5 12 5 11 16 11"])
+block("toilet", "Toilet", "ceramic", cat="Furniture", hardness=1.0, tool="pick", rotate=True, seat=7,
+      box=["4 0 4 12 6 14", "3 6 3 13 7 14", "3 7 11 13 15 14"])
+block("bathtub", "Bathtub", "ceramic", cat="Furniture", hardness=1.4, tool="pick", rotate=True, seat=3,
+      box=["0 0 0 16 3 16", "0 3 0 2 9 16", "14 3 0 16 9 16", "2 3 0 14 9 2", "2 3 14 14 9 16"])
+block("bathroom_sink", "Wash Basin", "ceramic", cat="Furniture", hardness=1.0, tool="pick", rotate=True,
+      box=["3 9 8 13 12 16", "7 0 12 9 9 14"])
+block("towel_rail", "Towel Rail", "white_wool", cat="Furniture", hardness=0.3, rotate=True, solid="no",
+      box=["2 6 14 14 13 16"])
+for cid, cname, _ in COLOURS:
+    block(f"{cid}_couch", f"{cname} Couch", f"{cid}_wool", cat="Furniture", hardness=0.8, tool="axe", rotate=True, seat=7,
+          box=["0 0 2 16 7 14", "0 7 11 16 14 14", "0 7 2 2 11 11", "14 7 2 16 11 11"])
+    block(f"{cid}_armchair", f"{cname} Armchair", f"{cid}_wool", cat="Furniture", hardness=0.8, tool="axe", rotate=True, seat=7,
+          box=["2 0 2 14 7 14", "2 7 11 14 15 14", "1 7 2 3 11 11", "13 7 2 15 11 11"])
+    w(f"craft {cid}_couch 1 {cid}_wool 3 planks 2")
+    w(f"craft {cid}_armchair 1 {cid}_wool 2 planks 2")
+for line in ["chair 2 planks 3 stick 2", "stool 2 planks 1 stick 2", "park_bench 1 planks 3", "desk 1 planks 4",
+             "shelf 2 planks 1", "bookshelf 1 planks 6", "cupboard 1 oak_chest 1 planks 2", "wardrobe 1 oak_chest 1 oak_door 1",
+             "counter 1 oak_chest 1 stone 1", "sink_counter 1 counter 1 iron_ingot 2", "stove 1 oven 1 iron_ingot 3",
+             "fridge 1 iron_ingot 6 ice 1", "television 1 glass 2 iron_ingot 2 crystal 1", "floor_lamp 1 lamp 1 stick 2",
+             "toilet 1 marble 3", "bathtub 1 marble 5", "bathroom_sink 1 marble 2", "towel_rail 1 white_wool 1 stick 1"]:
+    w("craft " + line)
+
+# Plates, and food set out on them.
+block("plate", "Plate", "ceramic", cat="Furniture", hardness=0.1, solid="no", box=["3 0 3 13 1 13"], sound="glass")
+block("plated_pizza", "Pizza on a Plate", "pizza_top ceramic ceramic", cat="Food", hardness=0.1, solid="no", eat=12, drops="plate",
+      box=["3 0 3 13 1 13", "4 1 4 12 2 12"])
+block("pizza_box", "Pizza Box", "cardboard", cat="Food", hardness=0.1, rotate=True, toggle="pizza_box_open",
+      box=["1 0 1 15 3 15"])
+block("pizza_box_open", "Pizza Box", "pizza_top cardboard cardboard", hardness=0.1, rotate=True, hidden=True, toggle="pizza_box",
+      eat=12, drops="pizza_box", box=["1 0 1 15 2 15", "1 2 14 15 15 15"])
+block("cake_block", "Cake", "cake_top", cat="Food", hardness=0.1, eat=12, drops="nothing", box=["2 0 2 14 7 14"])
+block("bread_block", "Loaf of Bread", "bread_crust", cat="Food", hardness=0.1, eat=6, drops="nothing", rotate=True,
+      box=["4 0 2 12 5 14"])
+block("fruit_bowl", "Fruit Bowl", "apple ceramic ceramic", cat="Food", hardness=0.1, eat=6, drops="plate",
+      box=["4 0 4 12 2 12", "5 2 5 11 4 11"])
+for line in ["plate 4 clay 2", "plated_pizza 1 plate 1 pizza 1", "pizza_box 1 pizza 1 planks 1", "cake_block 1 cake 1",
+             "bread_block 1 bread 1", "fruit_bowl 1 plate 1 apple 3"]:
+    w("craft " + line)
+
+# ---- Furnaces and metal ----
+w("""
+# ---- Furnaces ----
+#   smelt <item> <count> <ingredient> <count> ...   a recipe that needs a furnace
+#   block ... use furnace                           right click opens the smelting list""")
+tex("furnace_front", "paint door 60 60 66")
+tex("blast_front", "paint door 90 70 60")
+block("furnace", "Furnace", "cobble furnace_front cobble", cat="Farming", hardness=2.5, tool="pick", use="furnace", light=8)
+block("blast_furnace", "Blast Furnace", "stone_bricks blast_front stone_bricks", cat="Farming", hardness=3.0, tool="pick",
+      use="furnace", light=10)
+block("kiln", "Kiln", "brick furnace_front brick", cat="Farming", hardness=2.0, tool="pick", use="furnace", light=6)
+block("smoker", "Smoker", "planks oven_front planks", cat="Farming", hardness=1.6, tool="axe", use="oven", light=5)
+block("campfire", "Campfire", "log_side", cat="Farming", hardness=0.6, tool="axe", use="oven", light=13, hurts=1,
+      box=["1 0 6 15 3 10", "6 0 1 10 3 15", "5 3 5 11 7 11"], sound="sizzle")
+for mid, mname, (r, g, b) in (("iron", "Iron", (214, 214, 220)), ("copper", "Copper", (206, 124, 80))):
+    tex(f"{mid}_ingot", f"paint ingot {r} {g} {b}")
+    w(f"item {mid}_ingot\n  name {mname} Ingot\n  icon {mid}_ingot\n  category Materials")
+    w(f"smelt {mid}_ingot 1 {mid}_ore 1 coal 1")
+    w(f"smelt {mid}_ingot 3 {mid}_ore 2 coal 2")
+for line in ["craft furnace 1 cobble 8", "craft blast_furnace 1 furnace 1 iron_ingot 5 stone_bricks 3", "craft kiln 1 brick 8",
+             "craft smoker 1 oven 1 log 4", "craft campfire 1 log 3 stick 3 coal 1",
+             "smelt glass 4 sand 4 coal 1", "smelt stone 4 cobble 4 coal 1", "smelt brick 4 clay 4 coal 1",
+             "smelt crystal 2 crystal_ore 1 coal 1", "smelt ruby 2 ruby_ore 1 coal 1", "smelt coal 2 log 2",
+             "smelt cooked_meat 2 raw_meat 2 coal 1", "smelt cooked_fish 2 raw_fish 2 coal 1"]:
+    w(line)
+
+# ---- Bows ----
+w("""
+# ---- Bows ----
+#   item ... shoots <damage> [speed] [seconds between shots] [ammunition item]""")
+tex("bow", "paint bow 150 110 70")
+tex("crossbow", "paint crossbow 130 96 60")
+tex("longbow", "paint bow 110 80 56")
+tex("arrow", "paint arrow 200 200 210")
+w("item arrow\n  name Arrow\n  icon arrow\n  category Tools")
+w("item bow\n  name Bow\n  icon bow\n  category Tools\n  stack 1\n  shoots 6 34 0.7 arrow")
+w("item longbow\n  name Longbow\n  icon longbow\n  category Tools\n  stack 1\n  shoots 9 46 1.1 arrow")
+w("item crossbow\n  name Crossbow\n  icon crossbow\n  category Tools\n  stack 1\n  shoots 13 54 1.8 arrow")
+for line in ["arrow 4 stick 1 gravel 1", "bow 1 stick 3 string 3", "longbow 1 bow 1 stick 2 string 2",
+             "crossbow 1 bow 1 iron_ingot 2 planks 2"]:
+    w("craft " + line)
 
 # ---- Farming ----
 w("""

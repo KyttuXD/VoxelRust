@@ -76,6 +76,8 @@ pub struct Settings {
     pub effects_volume: i32,
     pub steps_volume: i32,
     pub ui_volume: i32,
+    /// Show in words what is heard.
+    pub subtitles: bool,
     // Controls
     pub sens: i32,
     pub invert_y: bool,
@@ -126,6 +128,7 @@ impl Default for Settings {
             effects_volume: 8,
             steps_volume: 6,
             ui_volume: 6,
+            subtitles: false,
             sens: 5,
             invert_y: false,
             keys,
@@ -192,6 +195,7 @@ impl Settings {
             effects_volume: int("effects_volume", d.effects_volume, 0, 10),
             steps_volume: int("steps_volume", d.steps_volume, 0, 10),
             ui_volume: int("ui_volume", d.ui_volume, 0, 10),
+            subtitles: flag("subtitles", false),
             sens: int("sens", d.sens, 1, 20),
             invert_y: flag("invert_y", d.invert_y),
             keys,
@@ -234,7 +238,7 @@ impl Settings {
             self.relay,
         );
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\ndisasters={}\nplace_notices={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.disasters as i32, self.place_notices));
-        s.push_str(&alloc::format!("auto_tuned={}\n", self.auto_tuned as i32));
+        s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\n", self.auto_tuned as i32, self.subtitles as i32));
         for (i, a) in ACTIONS.iter().enumerate() {
             s.push_str(&alloc::format!("key_{}={}\n", a.1, self.keys[i]));
         }

@@ -621,6 +621,65 @@ pub fn painted(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 CLEAR_PX
             }
         }
+        "glassdoor" => {
+            // A framed door whose upper half is panes of glass.
+            let frame = x == 0 || x == 15 || y == 0 || y == 15 || y == 8 || x == 7 || x == 8;
+            if x == 12 && (y == 10 || y == 11) {
+                [222, 200, 110, 255]
+            } else if frame {
+                grain(dark(rgb, 62), 4, x, y, salt)
+            } else if y < 8 {
+                // Clear, with a glint.
+                if (x + y) % 7 == 0 { [220, 240, 250, 255] } else { CLEAR_PX }
+            } else {
+                grain(rgb, 6, x, y, salt + 2)
+            }
+        }
+        "bow" | "crossbow" => {
+            // A curved stave and its string; the crossbow adds a stock.
+            let (dx, dy) = (x - 3, y - 12);
+            let d2 = dx * dx + dy * dy;
+            let stave = (100..=130).contains(&d2) && x >= 3 && y <= 12;
+            let string = x + y == 15 && (3..=12).contains(&x);
+            let stock = style == "crossbow" && (x - y).abs() <= 1 && (3..14).contains(&x);
+            if stock {
+                grain(dark(rgb, 70), 6, x, y, salt)
+            } else if stave {
+                grain(rgb, 8, x, y, salt)
+            } else if string {
+                [236, 236, 230, 255]
+            } else {
+                CLEAR_PX
+            }
+        }
+        "arrow" => {
+            // A shaft from bottom-left to a head at top-right, fletched.
+            let shaft = x + y == 15 && (2..14).contains(&x);
+            let head = (12..15).contains(&x) && (1..4).contains(&y) && x + y >= 14;
+            let feather = (1..4).contains(&x) && (11..15).contains(&y) && (x + y - 15).abs() <= 2;
+            if head {
+                grain(rgb, 8, x, y, salt)
+            } else if shaft {
+                grain([150, 112, 70], 6, x, y, salt)
+            } else if feather {
+                [236, 236, 240, 255]
+            } else {
+                CLEAR_PX
+            }
+        }
+        "ingot" => {
+            // A bar seen from a corner: lit top, shaded front.
+            if (5..9).contains(&y) && (2 + (8 - y)..12 + (8 - y)).contains(&x) {
+                let p = shade(rgb, 34);
+                grain([p[0], p[1], p[2]], 4, x, y, salt)
+            } else if (9..12).contains(&y) && (2..12).contains(&x) {
+                grain(dark(rgb, 78), 5, x, y, salt)
+            } else if (9..12).contains(&y) && (12..12 + (12 - y)).contains(&x) {
+                grain(dark(rgb, 60), 4, x, y, salt)
+            } else {
+                CLEAR_PX
+            }
+        }
         "door" => {
             // A framed door of two panels with a small handle.
             let frame = x == 0 || x == 15 || y == 0 || y == 15 || y == 8;

@@ -109,6 +109,37 @@ pub struct BlockDef {
     pub x: BlockExtra,
 }
 
+/// How a sound is made: a burst of filtered noise and a sweeping tone.
+#[derive(Clone, Debug)]
+pub struct SoundDef {
+    pub id: String,
+    /// Which volume slider it follows: 0 effects, 1 footsteps, 2 interface.
+    pub bus: u8,
+    pub seconds: f32,
+    /// Share of noise against tone, 0..1.
+    pub noise: f32,
+    /// The tone glides from the first pitch to the second.
+    pub hz: [f32; 2],
+    /// 1 leaves the noise bright; small values make it a dull rumble.
+    pub low_pass: f32,
+    pub loudness: f32,
+    /// What to show for it when subtitles are on (empty = nothing).
+    pub caption: String,
+}
+
+/// Something a pack makes happen: when `event` occurs (to `what`, if
+/// given), the chat commands in `actions` are carried out.
+#[derive(Clone, Debug)]
+pub struct Script {
+    pub event: String,
+    pub what: String,
+    pub actions: Vec<String>,
+}
+
+fn split_actions(text: &str) -> Vec<String> {
+    text.split(';').map(|c| String::from(c.trim())).filter(|c| !c.is_empty()).collect()
+}
+
 /// A pack's ore: found in stone between two heights, about one block in N.
 #[derive(Clone, Debug)]
 pub struct OreRule {
@@ -147,6 +178,12 @@ pub struct BlockExtra {
     pub hurts: u8,
     /// Slows whoever walks through it (percent of normal speed, 0 = no change).
     pub slow: u8,
+    /// The sound of breaking or placing it, if not the usual ones.
+    pub sound: String,
+    /// What sitting on it lifts the player to, in sixteenths (0 = not a seat).
+    pub seat: u8,
+    /// Food: right click eats it where it stands, for this many points.
+    pub eat: u8,
 }
 
 /// What an item does besides being placed or eaten.
@@ -156,6 +193,9 @@ pub struct ItemExtra {
     pub turns: Vec<(Block, Block)>,
     /// Damage dealt to creatures (0 = a bare hand's).
     pub damage: i32,
+    /// A bow: damage, speed, seconds between shots, and the item each
+    /// shot uses up (none = needs no ammunition).
+    pub shoots: Option<(i32, f32, f32, Option<usize>)>,
 }
 
 #[derive(Clone, Debug)]
@@ -269,6 +309,12 @@ pub struct EntityExtra {
     pub likes: Option<usize>,
     /// Light it gives off, for glow in the dark (0..=15).
     pub glow: u8,
+    /// The call it makes now and then (a sound's name).
+    pub sound: String,
+    /// Feeding it what it likes makes it yours.
+    pub tamable: bool,
+    /// What it shoots at its quarry, and how hard that hits (0 = nothing).
+    pub shoots: i32,
 }
 
 /// What a vehicle travels on.
@@ -339,6 +385,8 @@ pub enum Usable {
     Oven,
     /// Sleep through the night; wake up here after dying.
     Bed,
+    /// Opens the smelting recipes.
+    Furnace,
 }
 
 pub const TOOLS: [&str; 5] = ["none", "pick", "axe", "shovel", "hoe"];
@@ -371,6 +419,8 @@ pub struct Recipe {
     pub table: bool,
     /// Needs an oven instead (`bake` recipes).
     pub oven: bool,
+    /// Needs a furnace instead (`smelt` recipes).
+    pub furnace: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -469,6 +519,11 @@ pub struct Registry {
     pub categories: Vec<String>,
     /// Things packs ask the terrain generator to add.
     pub ores: Vec<OreRule>,
+    /// Every sound the game can make, by name; packs may retune or add.
+    pub sounds: Vec<SoundDef>,
+    /// Commands packs add to the chat, and things they make happen.
+    pub commands: Vec<(String, Vec<String>)>,
+    pub scripts: Vec<Script>,
     pub plants: Vec<PlantRule>,
     /// Per-state lookup tables for the hot loops.
     pub opaque: Vec<u8>,
@@ -864,13 +919,14 @@ impl Parser<'_> {
                     };
                     cur = Cur::Vehicle(i);
                 }
-                "ore" | "plant" => {
+                // (Inside a block or creature, `sound <id>` names the sound it makes.)
+                "ore" | "plant" | "sound" | "command" | "when" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
                     cur = Cur::None;
                     let mut words: Vec<String> = args.iter().map(|a| a.to_string()).collect();
                     words.insert(0, key.to_string());
                     self.rules.push((alloc::format!("{}:{}", file, line_no), words));
                 }
-                "recipe" | "craft" | "bake" => {
+                "recipe" | "craft" | "bake" | "smelt" => {
                     cur = Cur::None;
                     // `craft` recipes need a crafting table; the marker is
                     // carried as a first word and removed when resolving.
@@ -1036,7 +1092,7 @@ impl Parser<'_> {
                     Some(t) => b.tool = t as u8,
                     None => bad = Some("tool must be none, pick, axe, shovel or hoe"),
                 },
-                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" => {
+                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" | "sound" | "seat" | "eat" => {
                     b.extra.retain(|e| e.0 != key);
                     b.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
@@ -1044,8 +1100,9 @@ impl Parser<'_> {
                     Some(&"craft") => b.usable = Usable::Craft,
                     Some(&"chest") => b.usable = Usable::Chest,
                     Some(&"oven") => b.usable = Usable::Oven,
+                    Some(&"furnace") => b.usable = Usable::Furnace,
                     Some(&"bed") => b.usable = Usable::Bed,
-                    _ => bad = Some("use must be craft, chest, oven or bed"),
+                    _ => bad = Some("use must be craft, chest, oven, furnace or bed"),
                 },
                 "category" => b.category = rest.to_string(),
                 "box" => {
@@ -1111,7 +1168,7 @@ impl Parser<'_> {
                     Some(&"villager") => e.behavior = Behavior::Villager,
                     _ => bad = Some("behavior must be wander, npc, hostile, swim, fly or villager"),
                 },
-                "trait" | "anim" | "variant" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" => {
+                "trait" | "anim" | "variant" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" => {
                     e.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "tint" => {
@@ -1168,7 +1225,7 @@ impl Parser<'_> {
                     _ => bad = Some("stack must be 1..999"),
                 },
                 "category" => it.category = rest.to_string(),
-                "turns" | "damage" => it.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect())),
+                "turns" | "damage" | "shoots" => it.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect())),
                 _ => bad = Some("unknown item property"),
             }
         }
@@ -1496,6 +1553,9 @@ impl Registry {
                     },
                     "hurts" => x.hurts = word(0).parse::<u8>().unwrap_or(1),
                     "slow" => x.slow = word(0).parse::<u8>().unwrap_or(50).clamp(5, 100),
+                    "sound" => x.sound = word(0).to_string(),
+                    "seat" => x.seat = word(0).parse::<u8>().unwrap_or(8).clamp(1, 16),
+                    "eat" => x.eat = word(0).parse::<u8>().unwrap_or(4).clamp(1, 40),
                     _ => {}
                 }
                 if !ok {
@@ -1517,6 +1577,14 @@ impl Registry {
                         _ => warnings.push(alloc::format!("item {}: `turns {}` names an unknown block", items[ri.0].id, a.join(" "))),
                     },
                     "damage" => items[ri.0].x.damage = word(0).parse::<i32>().unwrap_or(0).clamp(0, 1000),
+                    // shoots <damage> [speed] [seconds between shots] [ammunition item]
+                    "shoots" => {
+                        let ammo = if word(3).is_empty() { None } else { items.iter().position(|it| it.id == word(3)) };
+                        if !word(3).is_empty() && ammo.is_none() {
+                            warnings.push(alloc::format!("item {}: shoots unknown ammunition `{}`", items[ri.0].id, word(3)));
+                        }
+                        items[ri.0].x.shoots = Some((word(0).parse::<i32>().unwrap_or(4).clamp(0, 500), word(1).parse::<f32>().unwrap_or(32.0).clamp(4.0, 80.0), word(2).parse::<f32>().unwrap_or(0.6).clamp(0.1, 10.0), ammo));
+                    }
                     _ => {}
                 }
             }
@@ -1527,6 +1595,7 @@ impl Registry {
         for (at, words) in &raw_recipes {
             let table = words[0] == "craft";
             let oven = words[0] == "bake";
+            let furnace = words[0] == "smelt";
             let words = &words[1..];
             let mut parts = Vec::new();
             let mut ok = words.len() >= 4 && words.len() % 2 == 0;
@@ -1541,7 +1610,7 @@ impl Registry {
                 }
             }
             if ok {
-                recipes.push(Recipe { out: parts[0], inputs: parts[1..].to_vec(), table, oven });
+                recipes.push(Recipe { out: parts[0], inputs: parts[1..].to_vec(), table, oven, furnace });
             } else {
                 warnings.push(alloc::format!("{}: recipe needs `<item> <count>` pairs of known items", at));
             }
@@ -1624,6 +1693,9 @@ impl Registry {
                                     ok = x.likes.is_some();
                                 }
                                 "glow" => x.glow = word(0).parse::<u8>().unwrap_or(8).min(15),
+                                "sound" => x.sound = word(0).to_string(),
+                                "tamable" => x.tamable = word(0) != "no",
+                                "shoots" => x.shoots = word(0).parse::<i32>().unwrap_or(3).clamp(0, 100),
                                 _ => {}
                             }
                             if !ok {
@@ -1636,6 +1708,58 @@ impl Registry {
                 None => warnings.push(alloc::format!("entity {}: unknown model `{}`", e.id, e.model)),
             }
         }
+        // Sounds, chat commands and scripts are plain lists.
+        let mut sounds: Vec<SoundDef> = Vec::new();
+        let mut commands: Vec<(String, Vec<String>)> = Vec::new();
+        let mut scripts: Vec<Script> = Vec::new();
+        for (at, w) in &raw_rules {
+            let f = |k: usize| w.get(k).and_then(|v| v.parse::<f32>().ok());
+            match w[0].as_str() {
+                // sound <id> <effects|steps|ui> <seconds> <noise> <hz from> <hz to> <low-pass> <loudness> [caption...]
+                "sound" => match (w.get(1), w.get(2).map(|s| s.as_str()), f(3), f(4), f(5), f(6), f(7), f(8)) {
+                    (Some(id), Some(bus @ ("effects" | "steps" | "ui")), Some(secs), Some(noise), Some(f0), Some(f1), Some(lp), Some(loud)) => {
+                        let def = SoundDef {
+                            id: id.clone(),
+                            bus: match bus {
+                                "steps" => 1,
+                                "ui" => 2,
+                                _ => 0,
+                            },
+                            seconds: secs.clamp(0.01, 6.0),
+                            noise: noise.clamp(0.0, 1.0),
+                            hz: [f0.clamp(10.0, 8000.0), f1.clamp(10.0, 8000.0)],
+                            low_pass: lp.clamp(0.005, 1.0),
+                            loudness: loud.clamp(0.0, 2.0),
+                            caption: w[9.min(w.len())..].join(" "),
+                        };
+                        match sounds.iter().position(|s| s.id == def.id) {
+                            Some(i) => sounds[i] = def,
+                            None => sounds.push(def),
+                        }
+                    }
+                    _ => warnings.push(alloc::format!("{}: sound needs <id> <effects|steps|ui> <seconds> <noise> <hz> <hz> <low-pass> <loudness> [caption]", at)),
+                },
+                // command <name> <chat commands separated by ;>
+                "command" if w.len() >= 3 => {
+                    let name = alloc::format!("/{}", w[1].trim_start_matches('/').to_ascii_lowercase());
+                    let actions = split_actions(&w[2..].join(" "));
+                    commands.retain(|c| c.0 != name);
+                    commands.push((name, actions));
+                }
+                // when <event> [<what>] do <chat commands separated by ;>
+                "when" => match w.iter().position(|x| x == "do") {
+                    Some(d) if d >= 2 && d + 1 < w.len() => scripts.push(Script {
+                        event: w[1].to_ascii_lowercase(),
+                        what: w[2..d].join(" ").to_ascii_lowercase(),
+                        actions: split_actions(&w[d + 1..].join(" ")),
+                    }),
+                    _ => warnings.push(alloc::format!("{}: when needs <event> [what] do <commands>", at)),
+                },
+                "command" => warnings.push(alloc::format!("{}: command needs <name> <what it does>", at)),
+                _ => {}
+            }
+        }
+        let raw_rules: Vec<(String, Vec<String>)> = raw_rules.into_iter().filter(|r| r.1[0] == "ore" || r.1[0] == "plant").collect();
         // What packs add to the terrain.
         let (mut ores, mut plants) = (Vec::new(), Vec::new());
         for (at, w) in &raw_rules {
@@ -1786,6 +1910,9 @@ impl Registry {
             vehicles,
             categories,
             ores,
+            sounds,
+            commands,
+            scripts,
             plants,
             by_id,
             warnings,

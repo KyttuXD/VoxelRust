@@ -93,6 +93,18 @@ pub struct Session {
     held_events: Vec<crate::netplay::Event>,
     tick_timer: f32,
     touch_timer: f32,
+    /// Sounds asked for by commands, played when the sound system is at hand.
+    pub sound_queue: Vec<String>,
+    /// Damage asked for by commands, dealt likewise.
+    pending_hurt: i32,
+    /// Things in flight: arrows, bolts, spells.
+    pub shots: Vec<Shot>,
+    /// Seconds each `when every N` script has left.
+    script_timers: Vec<f32>,
+    started: bool,
+    call_timer: f32,
+    /// The seat the player is sitting on.
+    pub sitting: Option<[i32; 3]>,
     /// Rain set by `/weather` (0 clear ..= 1 storm), overriding the sky.
     pub forced_sky: Option<f32>,
     /// Skin images that arrived from other players, for the renderer.
@@ -135,6 +147,18 @@ pub struct Session {
     autosave: f32,
     meta_path: String,
     pub is_new: bool,
+}
+
+/// Something flying through the air: an arrow, a bolt, a spell.
+pub struct Shot {
+    pub pos: [f64; 3],
+    pub vel: [f32; 3],
+    pub damage: i32,
+    /// Seconds before it fizzles out.
+    pub life: f32,
+    /// Block left where it lands (AIR = none).
+    pub leaves: block::Block,
+    pub colour: [u8; 3],
 }
 
 /// Size of the squares in which explored ground is remembered.
@@ -269,6 +293,13 @@ impl Session {
             held_events: Vec::new(),
             tick_timer: 0.0,
             touch_timer: 0.0,
+            sound_queue: Vec::new(),
+            pending_hurt: 0,
+            shots: Vec::new(),
+            script_timers: Vec::new(),
+            started: false,
+            call_timer: 3.0,
+            sitting: None,
             forced_sky: None,
             skin_events: Vec::new(),
             inv,
@@ -335,18 +366,138 @@ impl Session {
         if let Some(n) = self.net.as_mut() {
             n.send_chat(text);
         }
-        self.push_chat(alloc::format!("<{}> {}", name, text).to_ascii_uppercase());
+        // The speaker's name in a colour of its own (the same every time).
+        let hue = name.bytes().fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
+        let code = [b'9', b'A', b'B', b'C', b'D', b'E', b'6', b'3'][(hue % 8) as usize] as char;
+        self.push_chat(alloc::format!("&{}<{}>&F {}", code, name, text).to_ascii_uppercase());
     }
 
     /// A typed command (`/give`, `/time`...), for testing and for making
     /// packs. Returns what to tell the player; `None` if `line` is not a
     /// command this knows.
     pub fn command(&mut self, line: &str) -> Option<String> {
+        self.run(line, 0)
+    }
+
+    /// Something happened that packs may have a `when` line for: carry out
+    /// what they ask. `what` is the id of the thing it happened to.
+    pub fn fire(&mut self, event: &str, what: &str) {
+        let r = reg();
+        if r.scripts.is_empty() {
+            return;
+        }
+        for s in r.scripts.iter().filter(|s| s.event == event && (s.what.is_empty() || s.what == what)) {
+            for a in &s.actions {
+                self.run(&a.to_ascii_lowercase(), 1);
+            }
+        }
+    }
+
+    /// Whether any pack script listens for this.
+    pub fn listens(&self, event: &str, what: &str) -> bool {
+        reg().scripts.iter().any(|s| s.event == event && s.what == what)
+    }
+
+    fn run(&mut self, line: &str, depth: u32) -> Option<String> {
         let words: Vec<&str> = line.split_whitespace().collect();
         let r = reg();
         let arg = |k: usize| words.get(k).copied().unwrap_or("");
         let online = self.net.is_some();
+        // Commands that packs define: their own list of commands, with
+        // $1, $2... standing for what was typed after the name.
+        if let Some((_, actions)) = r.commands.iter().find(|c| c.0 == arg(0)) {
+            if depth >= 6 {
+                return Some(String::from("COMMANDS NESTED TOO DEEPLY"));
+            }
+            let mut last = String::new();
+            for a in actions {
+                let mut filled = a.to_ascii_lowercase();
+                for k in (1..=9).rev() {
+                    filled = filled.replace(&alloc::format!("${}", k), arg(k));
+                }
+                filled = filled.replace("$*", &words[1.min(words.len())..].join(" "));
+                if let Some(reply) = self.run(&filled, depth + 1) {
+                    last = reply;
+                }
+            }
+            return Some(last);
+        }
+        // "~" is where the player stands, "~3" three blocks further.
+        let here = [floord(self.player.pos[0]), floord(self.player.pos[1]), floord(self.player.pos[2])];
+        let coord = |k: usize, axis: usize| -> Option<f64> {
+            let a = arg(k);
+            match a.strip_prefix('~') {
+                Some(rest) => Some(here[axis] as f64 + if rest.is_empty() { 0.0 } else { rest.parse::<f64>().ok()? }),
+                None => a.parse::<f64>().ok(),
+            }
+        };
         Some(match arg(0) {
+            // ---- For scripts mostly: things that happen to the player.
+            "/say" => {
+                self.push_chat(words[1.min(words.len())..].join(" ").to_ascii_uppercase());
+                String::new()
+            }
+            "/sound" => {
+                self.sound_queue.push(String::from(arg(1)));
+                String::new()
+            }
+            "/heal" => {
+                self.health = (self.health + arg(1).parse::<i32>().unwrap_or(4)).clamp(1, MAX_HEALTH);
+                String::new()
+            }
+            "/feed" => {
+                self.hunger = (self.hunger + arg(1).parse::<i32>().unwrap_or(4)).clamp(0, MAX_HUNGER);
+                String::new()
+            }
+            "/hurt" => {
+                self.pending_hurt += arg(1).parse::<i32>().unwrap_or(1).clamp(0, 100);
+                String::new()
+            }
+            // /launch UP [FORWARD]: throw the player (a jump pad, a gust).
+            "/launch" => {
+                let up = arg(1).parse::<f32>().unwrap_or(8.0).clamp(-40.0, 40.0);
+                let ahead = arg(2).parse::<f32>().unwrap_or(0.0).clamp(-40.0, 40.0);
+                let f = forward(self.player.yaw, 0.0);
+                self.player.vel = [f.x * ahead, up, f.z * ahead];
+                self.player.on_ground = false;
+                self.peak_y = self.player.pos[1];
+                String::new()
+            }
+            // /shoot DAMAGE [SPEED] [BLOCK]: loose something the way the
+            // player looks; BLOCK is left where it lands (fire, ice, web).
+            "/shoot" if !online => {
+                let damage = arg(1).parse::<i32>().unwrap_or(4).clamp(0, 200);
+                let speed = arg(2).parse::<f32>().unwrap_or(30.0).clamp(4.0, 80.0);
+                let leaves = r.block(arg(3)).unwrap_or(AIR);
+                self.loose(damage, speed, leaves, [255, 240, 200]);
+                String::new()
+            }
+            // /aim BLOCK: put a block where the player is pointing.
+            "/aim" if !online => match (r.block(arg(1)), self.target.as_ref().map(|h| h.prev)) {
+                (Some(b), Some(c)) => {
+                    self.world.set_block(c[0], c[1], c[2], b);
+                    String::new()
+                }
+                _ => String::new(),
+            },
+            // /strike: lightning where the player is pointing.
+            "/strike" if !online => {
+                if let Some(c) = self.target.as_ref().map(|h| h.cell) {
+                    self.flash = 0.3;
+                    self.sound_queue.push(String::from("thunder"));
+                    let at = [c[0] as f64 + 0.5, c[1] as f64 + 1.0, c[2] as f64 + 0.5];
+                    let hit: Vec<usize> = (0..self.mobs.list.len())
+                        .filter(|&i| {
+                            let p = self.mobs.list[i].body.pos;
+                            (p[0] - at[0]) * (p[0] - at[0]) + (p[2] - at[2]) * (p[2] - at[2]) < 16.0
+                        })
+                        .collect();
+                    for i in hit {
+                        self.mobs.hurt(i, arg(1).parse::<i32>().unwrap_or(12), at);
+                    }
+                }
+                String::new()
+            }
             "/give" => match r.items.iter().position(|it| it.id == arg(1)) {
                 Some(item) => {
                     let n = arg(2).parse::<u16>().unwrap_or(1).clamp(1, 999);
@@ -370,7 +521,7 @@ impl Session {
                     String::from("USE  /TIME DAY, NIGHT, DAWN, DUSK  OR A NUMBER FROM 0 TO 1")
                 }
             }
-            "/tp" => match (arg(1).parse::<f64>(), arg(2).parse::<f64>(), arg(3).parse::<f64>()) {
+            "/tp" => match (coord(1, 0).ok_or(()), coord(2, 1).ok_or(()), coord(3, 2).ok_or(())) {
                 // Real numbers only, and not off the edge of what
                 // whole-number block positions can hold.
                 (Ok(x), Ok(y), Ok(z)) if x.is_finite() && y.is_finite() && z.is_finite() => {
@@ -420,7 +571,7 @@ impl Session {
             }
             // /set X Y Z BLOCK [TURNS]: put a block somewhere (for building
             // test scenes); TURNS 0..3 picks which way it faces.
-            "/set" if !online => match (arg(1).parse::<i32>(), arg(2).parse::<i32>(), arg(3).parse::<i32>(), r.block(arg(4))) {
+            "/set" if !online => match (coord(1, 0).map(|v| v as i32).ok_or(()), coord(2, 1).map(|v| v as i32).ok_or(()), coord(3, 2).map(|v| v as i32).ok_or(()), r.block(arg(4))) {
                 (Ok(x), Ok(y), Ok(z), Some(b)) if (0..crate::chunk::CH).contains(&y) => {
                     let d = block::def(b);
                     let turn = arg(5).parse::<u16>().unwrap_or(0) % d.rotations.max(1) as u16;
@@ -436,6 +587,80 @@ impl Session {
             "/time" | "/spawn" | "/mode" | "/weather" | "/set" => String::from("NOT ON A SERVER"),
             _ => return None,
         })
+    }
+
+    /// Send something flying from the player's eye the way they look.
+    pub fn loose(&mut self, damage: i32, speed: f32, leaves: block::Block, colour: [u8; 3]) {
+        if self.shots.len() >= 64 {
+            self.shots.remove(0);
+        }
+        let dir = forward(self.player.yaw, self.player.pitch);
+        let eye = self.player.eye();
+        self.shots.push(Shot {
+            pos: [eye[0] + (dir.x * 0.6) as f64, eye[1] - 0.1 + (dir.y * 0.6) as f64, eye[2] + (dir.z * 0.6) as f64],
+            vel: [dir.x * speed, dir.y * speed, dir.z * speed],
+            damage,
+            life: 5.0,
+            leaves,
+            colour,
+        });
+    }
+
+    /// Move everything in flight; arrows drop, hit creatures and stop at blocks.
+    fn fly_shots(&mut self, dt: f32) {
+        let mut i = 0;
+        while i < self.shots.len() {
+            let (mut done, mut landed) = (false, None);
+            {
+                let s = &mut self.shots[i];
+                s.life -= dt;
+                s.vel[1] -= 12.0 * dt;
+                // Short steps, so nothing thin is flown through.
+                let steps = 4;
+                for _ in 0..steps {
+                    let before = s.pos;
+                    for a in 0..3 {
+                        s.pos[a] += (s.vel[a] * dt / steps as f32) as f64;
+                    }
+                    let c = [floord(s.pos[0]), floord(s.pos[1]), floord(s.pos[2])];
+                    if block::is_solid(self.world.get(c[0], c[1], c[2])) {
+                        landed = Some([floord(before[0]), floord(before[1]), floord(before[2])]);
+                        done = true;
+                        break;
+                    }
+                }
+                done |= s.life <= 0.0 || s.pos[1] < -4.0;
+            }
+            let (pos, damage, leaves) = (self.shots[i].pos, self.shots[i].damage, self.shots[i].leaves);
+            // A creature in the way takes the hit.
+            let struck = self.mobs.list.iter().position(|m| {
+                let (lo, hi) = m.body.aabb();
+                (0..3).all(|a| pos[a] > lo[a] - 0.25 && pos[a] < hi[a] + 0.25)
+            });
+            if let Some(k) = struck {
+                let kind = self.mobs.list[k].kind;
+                if self.mobs.hurt(k, damage, self.player.pos) {
+                    if let (GameMode::Survival, Some((drop, n))) = (self.mode, reg().entities[kind].drop) {
+                        self.inv.add(drop as u16, n);
+                    }
+                    let id = reg().entities[kind].id.clone();
+                    self.fire("kill", &id);
+                }
+                self.sound_queue.push(String::from("hurt"));
+                done = true;
+                landed = None;
+            }
+            if let (Some(c), true) = (landed, leaves != AIR) {
+                if interact::replaceable(self.world.get(c[0], c[1], c[2])) {
+                    self.world.set_block(c[0], c[1], c[2], leaves);
+                }
+            }
+            if done {
+                self.shots.swap_remove(i);
+            } else {
+                i += 1;
+            }
+        }
     }
 
     /// Switch to new content while playing. Everything that refers to
@@ -858,6 +1083,34 @@ impl Session {
         }
 
         self.block_updates(dt);
+        self.fly_shots(dt);
+        // Scripts: once at the start, and those that run on a clock.
+        if !self.started {
+            self.started = true;
+            self.fire("start", "");
+        }
+        let scripts = &reg().scripts;
+        if self.script_timers.len() != scripts.len() {
+            self.script_timers = scripts.iter().map(|s| s.what.parse::<f32>().unwrap_or(0.0)).collect();
+        }
+        for k in 0..scripts.len() {
+            if scripts[k].event == "every" {
+                self.script_timers[k] -= dt;
+                if self.script_timers[k] <= 0.0 {
+                    self.script_timers[k] = scripts[k].what.parse::<f32>().unwrap_or(60.0).max(0.5);
+                    for a in &scripts[k].actions {
+                        self.run(&a.to_ascii_lowercase(), 1);
+                    }
+                }
+            }
+        }
+        for name in core::mem::take(&mut self.sound_queue) {
+            audio.play_named(&name, 1.0);
+        }
+        if self.pending_hurt > 0 {
+            let n = core::mem::take(&mut self.pending_hurt);
+            self.damage(n, audio);
+        }
         // Remember what has been seen, for the minimap.
         self.explore_timer -= dt;
         if self.explore_timer <= 0.0 {
@@ -886,7 +1139,24 @@ impl Session {
             self.player.vel = [0.0; 3];
         }
         let seat = self.vehicles.update(dt, &self.world, &c.input, (self.player.yaw, self.player.pitch));
-        if let Some(eye) = seat {
+        // Seated: held in place on the chair until getting up (jump, or
+        // the leave key), or until the chair is gone.
+        if let Some(at) = self.sitting {
+            let seat_height = block::def(self.world.get(at[0], at[1], at[2])).x.seat;
+            if seat_height == 0 || c.input.jump || c.leave || self.dead || self.vehicles.riding.is_some() {
+                self.sitting = None;
+                self.player.pos[1] = at[1] as f64 + 1.05;
+            }
+        }
+        if let Some(at) = self.sitting {
+            let seat_height = block::def(self.world.get(at[0], at[1], at[2])).x.seat as f64 / 16.0;
+            // Eyes about 0.75 above the seat.
+            self.player.pos = [at[0] as f64 + 0.5, at[1] as f64 + seat_height + 0.75 - crate::player::EYE, at[2] as f64 + 0.5];
+            self.player.vel = [0.0; 3];
+            self.player.on_ground = true;
+            self.peak_y = self.player.pos[1];
+            self.was_airborne = false;
+        } else if let Some(eye) = seat {
             self.player.pos = [eye[0], eye[1] - crate::player::EYE, eye[2]];
             self.player.vel = [0.0; 3];
             self.player.on_ground = false;
@@ -915,6 +1185,22 @@ impl Session {
         let hunted = self.mode == GameMode::Survival && !self.dead;
         let held_item = self.held().map(|h| h.0);
         let bitten = self.mobs.update(dt, &self.world, self.player.pos, self.time, hunted, held_item);
+        // Now and then a creature nearby makes its call.
+        self.call_timer -= dt;
+        if self.call_timer <= 0.0 && dt > 0.0 {
+            self.rng = self.rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            self.call_timer = 1.5 + ((self.rng >> 8) % 300) as f32 / 100.0;
+            let n = self.mobs.list.len();
+            if n > 0 {
+                let m = &self.mobs.list[(self.rng >> 16) as usize % n];
+                let name = &reg().entities[m.kind].x.sound;
+                let (dx, dz) = ((m.body.pos[0] - self.player.pos[0]) as f32, (m.body.pos[2] - self.player.pos[2]) as f32);
+                let far = crate::math::sqrtf(dx * dx + dz * dz);
+                if !name.is_empty() && far < 24.0 {
+                    audio.play_named(name, (1.0 - far / 24.0).max(0.1));
+                }
+            }
+        }
         for a in core::mem::take(&mut self.mobs.actions) {
             // On a server each player has their own villagers, so their
             // building stays imaginary there.
@@ -1148,6 +1434,9 @@ impl Session {
                         self.inv.add(drop as u16, n);
                     }
                     audio.play(if killed { Sound::Pop } else { Sound::Hurt }, 0.8);
+                    if killed {
+                        self.fire("kill", &reg().entities[kind].id);
+                    }
                 }
             }
         }
@@ -1164,7 +1453,8 @@ impl Session {
                         // What was inside goes with it.
                         self.chests.remove(&hit.cell);
                         interact::break_at(&mut self.world, item, hit);
-                        audio.play(Sound::Break, 1.0);
+                        audio.play_named(if d.x.sound.is_empty() { "break" } else { &d.x.sound }, 1.0);
+                        self.fire("break", &d.id);
                     }
                 } else {
                     let progress = match self.mining {
@@ -1179,7 +1469,8 @@ impl Session {
                             self.cooldown[0] = 0.12;
                             let cell = hit.cell;
                             interact::remove(&mut self.world, cell);
-                            audio.play(Sound::Break, 1.0);
+                            audio.play_named(if d.x.sound.is_empty() { "break" } else { &d.x.sound }, 1.0);
+                            self.fire("break", &d.id);
                             // A broken chest hands over what was inside.
                             if let Some(inside) = self.chests.remove(&cell) {
                                 for s in inside.slots.iter().flatten() {
@@ -1231,11 +1522,31 @@ impl Session {
                     self.opened = Some((u, hit.cell));
                     return;
                 }
+                // Chairs and couches: sit down.
+                if aimed.x.seat > 0 && self.vehicles.riding.is_none() {
+                    self.cooldown[1] = 0.4;
+                    self.sitting = Some(hit.cell);
+                    return;
+                }
+                // Food set out on a table: eat it there.
+                if aimed.x.eat > 0 && (creative || self.hunger < MAX_HUNGER || self.health < MAX_HEALTH) {
+                    self.cooldown[1] = 0.5;
+                    self.hunger = (self.hunger + aimed.x.eat as i32).min(MAX_HUNGER);
+                    self.health = (self.health + aimed.x.eat as i32 / 2).min(MAX_HEALTH);
+                    interact::remove(&mut self.world, hit.cell);
+                    audio.play(Sound::Pop, 0.8);
+                    return;
+                }
+                if self.listens("use", &aimed.id) {
+                    self.cooldown[1] = 0.4;
+                    self.fire("use", &aimed.id);
+                    return;
+                }
                 // Doors, gates and the like open and shut.
                 if aimed.x.toggle.is_some() {
                     self.cooldown[1] = 0.3;
                     interact::toggle(&mut self.world, hit.cell);
-                    audio.play(Sound::Place, 0.8);
+                    audio.play_named(if aimed.x.sound.is_empty() { "door" } else { &aimed.x.sound }, 0.8);
                     return;
                 }
                 // Tools that work the block they touch (a hoe on soil).
@@ -1252,6 +1563,25 @@ impl Session {
                 self.health = (self.health + item.food / 2).min(MAX_HEALTH);
                 self.inv.take_one(self.selected);
                 audio.play(Sound::Pop, 0.8);
+                self.fire("eat", &item.id);
+                return;
+            }
+            // Bows and the like.
+            if let Some((damage, speed, wait, ammo)) = item.x.shoots {
+                let loaded = creative || ammo.map_or(true, |a| self.inv.remove(a as u16, 1));
+                self.cooldown[1] = wait;
+                if loaded {
+                    self.loose(damage, speed, AIR, [230, 220, 200]);
+                    audio.play_named("bow", 0.9);
+                } else {
+                    self.say("OUT OF AMMUNITION");
+                }
+                return;
+            }
+            // Items packs have given a use of their own (wands, horns...).
+            if !item.id.is_empty() && self.listens("useitem", &item.id) {
+                self.cooldown[1] = 0.4;
+                self.fire("useitem", &item.id);
                 return;
             }
         }
@@ -1263,7 +1593,11 @@ impl Session {
                 if creative || it.brush == 0 {
                     self.cooldown[1] = 0.2;
                     if interact::place_at(&mut self.world, &self.player, it, hit) {
-                        audio.play(Sound::Place, 1.0);
+                        let placed = it.place.map(|b| block::def(b).x.sound.as_str()).filter(|n| !n.is_empty()).unwrap_or("place");
+                        audio.play_named(placed, 1.0);
+                        if let Some(b) = it.place {
+                            self.fire("place", &block::def(b).id);
+                        }
                         if !creative {
                             debug_assert_eq!(self.inv.slots[self.selected].map(|s| s.item as usize), Some(index));
                             self.inv.take_one(self.selected);

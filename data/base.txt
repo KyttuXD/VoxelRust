@@ -2316,6 +2316,45 @@ item string
   category Materials
 craft white_wool 1 string 4
 
+# ---- Sounds ----
+# Every sound is made on the spot from a burst of noise and a gliding tone.
+#   sound <id> <effects|steps|ui> <seconds> <noise 0..1> <hz from> <hz to> <low-pass 0..1> <loudness> [caption]
+# The caption is what subtitles show. Redefine an id to retune a sound; give
+# blocks `sound <id>` (breaking and placing) and creatures `sound <id>` (their call).
+sound step steps 0.09 0.95 90 60 0.10 0.55 Footsteps
+sound break effects 0.22 0.90 160 70 0.30 0.80 Block breaks
+sound place effects 0.10 0.70 220 140 0.22 0.70 Block placed
+sound hurt effects 0.25 0.25 420 180 0.50 0.80 Something is hurt
+sound click ui 0.05 0.20 900 700 0.80 0.45
+sound pop effects 0.08 0.10 500 900 0.80 0.50 Item picked up
+sound splash effects 0.35 1.00 100 100 0.45 0.60 Splash
+sound thunder effects 1.80 1.00 60 40 0.04 1.00 Thunder
+sound rain effects 0.45 1.00 100 100 0.60 0.22 Rain
+sound rumble effects 0.60 0.90 46 34 0.03 0.90 The ground rumbles
+sound wave effects 1.60 1.00 80 60 0.07 0.30 Waves
+sound glass effects 0.18 0.55 1800 900 0.90 0.60 Glass breaks
+sound wood effects 0.14 0.75 240 150 0.25 0.75 Wood knocks
+sound door effects 0.16 0.60 180 120 0.20 0.70 Door
+sound bow effects 0.20 0.30 240 520 0.60 0.60 Bowstring
+sound moo effects 0.70 0.05 150 110 0.30 0.50 Cow lows
+sound baa effects 0.45 0.10 420 340 0.40 0.45 Sheep bleats
+sound oink effects 0.25 0.35 260 180 0.30 0.50 Pig grunts
+sound cluck effects 0.12 0.15 700 500 0.60 0.40 Hen clucks
+sound bark effects 0.14 0.30 420 260 0.50 0.60 Dog barks
+sound meow effects 0.40 0.05 700 520 0.60 0.40 Cat meows
+sound howl effects 1.40 0.05 320 520 0.50 0.55 Wolf howls
+sound growl effects 0.60 0.60 110 80 0.15 0.70 Growling
+sound hiss effects 0.50 1.00 100 100 0.95 0.35 Hissing
+sound chirp effects 0.10 0.02 2400 3200 0.90 0.30 Bird chirps
+sound buzz effects 0.40 0.20 210 230 0.70 0.20 Buzzing
+sound groan effects 0.90 0.30 120 80 0.20 0.60 Groaning
+sound rattle effects 0.30 0.85 900 700 0.85 0.45 Bones rattle
+sound roar effects 1.20 0.70 140 60 0.12 1.00 A roar
+sound chime effects 0.60 0.02 1200 1180 0.90 0.40 Chime
+sound rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails
+sound whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh
+sound sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling
+
 # ---- Things that open ----
 #   toggle <block>   right click swaps the block for another (and back)
 #   tall             two blocks high: placed, broken and toggled together
@@ -2860,6 +2899,2222 @@ block pink_bed
   use bed
   box 0 0 0 16 9 16
 craft pink_bed 1 pink_wool 3 planks 3
+
+# Doors come hung on the edge of their block (the plain ones above), set in
+# its middle (`_mid`), glazed, sliding (it slides into the wall beside it)
+# and revolving (walk through; it never shuts).
+texture oak_glass_door paint glassdoor 176 136 84
+block oak_door_mid
+  name Oak Door (Centred)
+  tex oak_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle oak_door_mid_open
+  sound door
+block oak_door_mid_open
+  name Oak Door (Centred)
+  tex oak_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 7 0 0 9 16 16
+  toggle oak_door_mid
+  drops oak_door_mid
+  sound door
+block oak_glass_door
+  name Oak Glazed Door
+  tex oak_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 13 16 16 16
+  toggle oak_glass_door_open
+  sound door
+block oak_glass_door_open
+  name Oak Glazed Door
+  tex oak_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 0 0 0 3 16 16
+  toggle oak_glass_door
+  drops oak_glass_door
+  sound door
+block oak_sliding_door
+  name Oak Sliding Door
+  tex oak_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle oak_sliding_door_open
+  sound door
+block oak_sliding_door_open
+  name Oak Sliding Door
+  tex oak_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 13 0 7 16 16 9
+  toggle oak_sliding_door
+  drops oak_sliding_door
+  sound door
+block oak_revolving_door
+  name Oak Revolving Door
+  tex oak_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  tall
+  solid no
+  box 7 0 0 9 16 16
+  box 0 0 7 16 16 9
+  sound door
+craft oak_door_mid 1 oak_door 1
+craft oak_glass_door 1 oak_door 1 glass 2
+craft oak_sliding_door 1 oak_glass_door 1 iron_ore 1
+craft oak_revolving_door 1 oak_glass_door 2
+texture pine_glass_door paint glassdoor 122 88 56
+block pine_door_mid
+  name Pine Door (Centred)
+  tex pine_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle pine_door_mid_open
+  sound door
+block pine_door_mid_open
+  name Pine Door (Centred)
+  tex pine_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 7 0 0 9 16 16
+  toggle pine_door_mid
+  drops pine_door_mid
+  sound door
+block pine_glass_door
+  name Pine Glazed Door
+  tex pine_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 13 16 16 16
+  toggle pine_glass_door_open
+  sound door
+block pine_glass_door_open
+  name Pine Glazed Door
+  tex pine_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 0 0 0 3 16 16
+  toggle pine_glass_door
+  drops pine_glass_door
+  sound door
+block pine_sliding_door
+  name Pine Sliding Door
+  tex pine_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle pine_sliding_door_open
+  sound door
+block pine_sliding_door_open
+  name Pine Sliding Door
+  tex pine_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 13 0 7 16 16 9
+  toggle pine_sliding_door
+  drops pine_sliding_door
+  sound door
+block pine_revolving_door
+  name Pine Revolving Door
+  tex pine_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  tall
+  solid no
+  box 7 0 0 9 16 16
+  box 0 0 7 16 16 9
+  sound door
+craft pine_door_mid 1 pine_door 1
+craft pine_glass_door 1 pine_door 1 glass 2
+craft pine_sliding_door 1 pine_glass_door 1 iron_ore 1
+craft pine_revolving_door 1 pine_glass_door 2
+texture birch_glass_door paint glassdoor 214 196 150
+block birch_door_mid
+  name Birch Door (Centred)
+  tex birch_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle birch_door_mid_open
+  sound door
+block birch_door_mid_open
+  name Birch Door (Centred)
+  tex birch_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 7 0 0 9 16 16
+  toggle birch_door_mid
+  drops birch_door_mid
+  sound door
+block birch_glass_door
+  name Birch Glazed Door
+  tex birch_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 13 16 16 16
+  toggle birch_glass_door_open
+  sound door
+block birch_glass_door_open
+  name Birch Glazed Door
+  tex birch_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 0 0 0 3 16 16
+  toggle birch_glass_door
+  drops birch_glass_door
+  sound door
+block birch_sliding_door
+  name Birch Sliding Door
+  tex birch_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle birch_sliding_door_open
+  sound door
+block birch_sliding_door_open
+  name Birch Sliding Door
+  tex birch_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 13 0 7 16 16 9
+  toggle birch_sliding_door
+  drops birch_sliding_door
+  sound door
+block birch_revolving_door
+  name Birch Revolving Door
+  tex birch_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  tall
+  solid no
+  box 7 0 0 9 16 16
+  box 0 0 7 16 16 9
+  sound door
+craft birch_door_mid 1 birch_door 1
+craft birch_glass_door 1 birch_door 1 glass 2
+craft birch_sliding_door 1 birch_glass_door 1 iron_ore 1
+craft birch_revolving_door 1 birch_glass_door 2
+texture maple_glass_door paint glassdoor 190 140 96
+block maple_door_mid
+  name Maple Door (Centred)
+  tex maple_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle maple_door_mid_open
+  sound door
+block maple_door_mid_open
+  name Maple Door (Centred)
+  tex maple_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 7 0 0 9 16 16
+  toggle maple_door_mid
+  drops maple_door_mid
+  sound door
+block maple_glass_door
+  name Maple Glazed Door
+  tex maple_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 13 16 16 16
+  toggle maple_glass_door_open
+  sound door
+block maple_glass_door_open
+  name Maple Glazed Door
+  tex maple_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 0 0 0 3 16 16
+  toggle maple_glass_door
+  drops maple_glass_door
+  sound door
+block maple_sliding_door
+  name Maple Sliding Door
+  tex maple_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle maple_sliding_door_open
+  sound door
+block maple_sliding_door_open
+  name Maple Sliding Door
+  tex maple_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 13 0 7 16 16 9
+  toggle maple_sliding_door
+  drops maple_sliding_door
+  sound door
+block maple_revolving_door
+  name Maple Revolving Door
+  tex maple_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  tall
+  solid no
+  box 7 0 0 9 16 16
+  box 0 0 7 16 16 9
+  sound door
+craft maple_door_mid 1 maple_door 1
+craft maple_glass_door 1 maple_door 1 glass 2
+craft maple_sliding_door 1 maple_glass_door 1 iron_ore 1
+craft maple_revolving_door 1 maple_glass_door 2
+texture palm_glass_door paint glassdoor 196 170 120
+block palm_door_mid
+  name Palm Door (Centred)
+  tex palm_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle palm_door_mid_open
+  sound door
+block palm_door_mid_open
+  name Palm Door (Centred)
+  tex palm_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 7 0 0 9 16 16
+  toggle palm_door_mid
+  drops palm_door_mid
+  sound door
+block palm_glass_door
+  name Palm Glazed Door
+  tex palm_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 13 16 16 16
+  toggle palm_glass_door_open
+  sound door
+block palm_glass_door_open
+  name Palm Glazed Door
+  tex palm_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 0 0 0 3 16 16
+  toggle palm_glass_door
+  drops palm_glass_door
+  sound door
+block palm_sliding_door
+  name Palm Sliding Door
+  tex palm_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle palm_sliding_door_open
+  sound door
+block palm_sliding_door_open
+  name Palm Sliding Door
+  tex palm_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 13 0 7 16 16 9
+  toggle palm_sliding_door
+  drops palm_sliding_door
+  sound door
+block palm_revolving_door
+  name Palm Revolving Door
+  tex palm_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  tall
+  solid no
+  box 7 0 0 9 16 16
+  box 0 0 7 16 16 9
+  sound door
+craft palm_door_mid 1 palm_door 1
+craft palm_glass_door 1 palm_door 1 glass 2
+craft palm_sliding_door 1 palm_glass_door 1 iron_ore 1
+craft palm_revolving_door 1 palm_glass_door 2
+texture blossom_glass_door paint glassdoor 214 150 150
+block blossom_door_mid
+  name Blossom Door (Centred)
+  tex blossom_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle blossom_door_mid_open
+  sound door
+block blossom_door_mid_open
+  name Blossom Door (Centred)
+  tex blossom_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 7 0 0 9 16 16
+  toggle blossom_door_mid
+  drops blossom_door_mid
+  sound door
+block blossom_glass_door
+  name Blossom Glazed Door
+  tex blossom_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 13 16 16 16
+  toggle blossom_glass_door_open
+  sound door
+block blossom_glass_door_open
+  name Blossom Glazed Door
+  tex blossom_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 0 0 0 3 16 16
+  toggle blossom_glass_door
+  drops blossom_glass_door
+  sound door
+block blossom_sliding_door
+  name Blossom Sliding Door
+  tex blossom_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  box 0 0 7 16 16 9
+  toggle blossom_sliding_door_open
+  sound door
+block blossom_sliding_door_open
+  name Blossom Sliding Door
+  tex blossom_glass_door
+  hardness 1.2
+  tool axe
+  rotate
+  tall
+  hidden
+  box 13 0 7 16 16 9
+  toggle blossom_sliding_door
+  drops blossom_sliding_door
+  sound door
+block blossom_revolving_door
+  name Blossom Revolving Door
+  tex blossom_glass_door
+  category Doors
+  hardness 1.2
+  tool axe
+  tall
+  solid no
+  box 7 0 0 9 16 16
+  box 0 0 7 16 16 9
+  sound door
+craft blossom_door_mid 1 blossom_door 1
+craft blossom_glass_door 1 blossom_door 1 glass 2
+craft blossom_sliding_door 1 blossom_glass_door 1 iron_ore 1
+craft blossom_revolving_door 1 blossom_glass_door 2
+texture white_boards paint planks 236 238 238
+block white_fence
+  name White Fence
+  shape fence
+  tex white_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block white_trapdoor
+  name White Trapdoor
+  tex white_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle white_trapdoor_open
+  sound door
+block white_trapdoor_open
+  name White Trapdoor
+  tex white_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle white_trapdoor
+  drops white_trapdoor
+  sound door
+block white_gate
+  name White Gate
+  tex white_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle white_gate_open
+  sound door
+block white_gate_open
+  name White Gate
+  tex white_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle white_gate
+  drops white_gate
+  sound door
+craft white_fence 3 planks_fence 3 white_wool 1
+craft white_trapdoor 2 oak_trapdoor 2 white_wool 1
+craft white_gate 1 oak_gate 1 white_wool 1
+texture light_gray_boards paint planks 158 158 152
+block light_gray_fence
+  name Light Gray Fence
+  shape fence
+  tex light_gray_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block light_gray_trapdoor
+  name Light Gray Trapdoor
+  tex light_gray_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle light_gray_trapdoor_open
+  sound door
+block light_gray_trapdoor_open
+  name Light Gray Trapdoor
+  tex light_gray_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle light_gray_trapdoor
+  drops light_gray_trapdoor
+  sound door
+block light_gray_gate
+  name Light Gray Gate
+  tex light_gray_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle light_gray_gate_open
+  sound door
+block light_gray_gate_open
+  name Light Gray Gate
+  tex light_gray_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle light_gray_gate
+  drops light_gray_gate
+  sound door
+craft light_gray_fence 3 planks_fence 3 light_gray_wool 1
+craft light_gray_trapdoor 2 oak_trapdoor 2 light_gray_wool 1
+craft light_gray_gate 1 oak_gate 1 light_gray_wool 1
+texture gray_boards paint planks 78 82 86
+block gray_fence
+  name Gray Fence
+  shape fence
+  tex gray_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block gray_trapdoor
+  name Gray Trapdoor
+  tex gray_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle gray_trapdoor_open
+  sound door
+block gray_trapdoor_open
+  name Gray Trapdoor
+  tex gray_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle gray_trapdoor
+  drops gray_trapdoor
+  sound door
+block gray_gate
+  name Gray Gate
+  tex gray_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle gray_gate_open
+  sound door
+block gray_gate_open
+  name Gray Gate
+  tex gray_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle gray_gate
+  drops gray_gate
+  sound door
+craft gray_fence 3 planks_fence 3 gray_wool 1
+craft gray_trapdoor 2 oak_trapdoor 2 gray_wool 1
+craft gray_gate 1 oak_gate 1 gray_wool 1
+texture black_boards paint planks 26 26 32
+block black_fence
+  name Black Fence
+  shape fence
+  tex black_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block black_trapdoor
+  name Black Trapdoor
+  tex black_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle black_trapdoor_open
+  sound door
+block black_trapdoor_open
+  name Black Trapdoor
+  tex black_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle black_trapdoor
+  drops black_trapdoor
+  sound door
+block black_gate
+  name Black Gate
+  tex black_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle black_gate_open
+  sound door
+block black_gate_open
+  name Black Gate
+  tex black_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle black_gate
+  drops black_gate
+  sound door
+craft black_fence 3 planks_fence 3 black_wool 1
+craft black_trapdoor 2 oak_trapdoor 2 black_wool 1
+craft black_gate 1 oak_gate 1 black_wool 1
+texture brown_boards paint planks 114 72 42
+block brown_fence
+  name Brown Fence
+  shape fence
+  tex brown_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block brown_trapdoor
+  name Brown Trapdoor
+  tex brown_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle brown_trapdoor_open
+  sound door
+block brown_trapdoor_open
+  name Brown Trapdoor
+  tex brown_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle brown_trapdoor
+  drops brown_trapdoor
+  sound door
+block brown_gate
+  name Brown Gate
+  tex brown_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle brown_gate_open
+  sound door
+block brown_gate_open
+  name Brown Gate
+  tex brown_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle brown_gate
+  drops brown_gate
+  sound door
+craft brown_fence 3 planks_fence 3 brown_wool 1
+craft brown_trapdoor 2 oak_trapdoor 2 brown_wool 1
+craft brown_gate 1 oak_gate 1 brown_wool 1
+texture red_boards paint planks 168 44 40
+block red_fence
+  name Red Fence
+  shape fence
+  tex red_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block red_trapdoor
+  name Red Trapdoor
+  tex red_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle red_trapdoor_open
+  sound door
+block red_trapdoor_open
+  name Red Trapdoor
+  tex red_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle red_trapdoor
+  drops red_trapdoor
+  sound door
+block red_gate
+  name Red Gate
+  tex red_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle red_gate_open
+  sound door
+block red_gate_open
+  name Red Gate
+  tex red_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle red_gate
+  drops red_gate
+  sound door
+craft red_fence 3 planks_fence 3 red_wool 1
+craft red_trapdoor 2 oak_trapdoor 2 red_wool 1
+craft red_gate 1 oak_gate 1 red_wool 1
+texture orange_boards paint planks 236 118 20
+block orange_fence
+  name Orange Fence
+  shape fence
+  tex orange_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block orange_trapdoor
+  name Orange Trapdoor
+  tex orange_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle orange_trapdoor_open
+  sound door
+block orange_trapdoor_open
+  name Orange Trapdoor
+  tex orange_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle orange_trapdoor
+  drops orange_trapdoor
+  sound door
+block orange_gate
+  name Orange Gate
+  tex orange_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle orange_gate_open
+  sound door
+block orange_gate_open
+  name Orange Gate
+  tex orange_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle orange_gate
+  drops orange_gate
+  sound door
+craft orange_fence 3 planks_fence 3 orange_wool 1
+craft orange_trapdoor 2 oak_trapdoor 2 orange_wool 1
+craft orange_gate 1 oak_gate 1 orange_wool 1
+texture yellow_boards paint planks 246 200 42
+block yellow_fence
+  name Yellow Fence
+  shape fence
+  tex yellow_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block yellow_trapdoor
+  name Yellow Trapdoor
+  tex yellow_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle yellow_trapdoor_open
+  sound door
+block yellow_trapdoor_open
+  name Yellow Trapdoor
+  tex yellow_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle yellow_trapdoor
+  drops yellow_trapdoor
+  sound door
+block yellow_gate
+  name Yellow Gate
+  tex yellow_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle yellow_gate_open
+  sound door
+block yellow_gate_open
+  name Yellow Gate
+  tex yellow_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle yellow_gate
+  drops yellow_gate
+  sound door
+craft yellow_fence 3 planks_fence 3 yellow_wool 1
+craft yellow_trapdoor 2 oak_trapdoor 2 yellow_wool 1
+craft yellow_gate 1 oak_gate 1 yellow_wool 1
+texture lime_boards paint planks 112 186 26
+block lime_fence
+  name Lime Fence
+  shape fence
+  tex lime_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block lime_trapdoor
+  name Lime Trapdoor
+  tex lime_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle lime_trapdoor_open
+  sound door
+block lime_trapdoor_open
+  name Lime Trapdoor
+  tex lime_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle lime_trapdoor
+  drops lime_trapdoor
+  sound door
+block lime_gate
+  name Lime Gate
+  tex lime_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle lime_gate_open
+  sound door
+block lime_gate_open
+  name Lime Gate
+  tex lime_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle lime_gate
+  drops lime_gate
+  sound door
+craft lime_fence 3 planks_fence 3 lime_wool 1
+craft lime_trapdoor 2 oak_trapdoor 2 lime_wool 1
+craft lime_gate 1 oak_gate 1 lime_wool 1
+texture green_boards paint planks 84 110 28
+block green_fence
+  name Green Fence
+  shape fence
+  tex green_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block green_trapdoor
+  name Green Trapdoor
+  tex green_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle green_trapdoor_open
+  sound door
+block green_trapdoor_open
+  name Green Trapdoor
+  tex green_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle green_trapdoor
+  drops green_trapdoor
+  sound door
+block green_gate
+  name Green Gate
+  tex green_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle green_gate_open
+  sound door
+block green_gate_open
+  name Green Gate
+  tex green_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle green_gate
+  drops green_gate
+  sound door
+craft green_fence 3 planks_fence 3 green_wool 1
+craft green_trapdoor 2 oak_trapdoor 2 green_wool 1
+craft green_gate 1 oak_gate 1 green_wool 1
+texture cyan_boards paint planks 22 140 146
+block cyan_fence
+  name Cyan Fence
+  shape fence
+  tex cyan_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block cyan_trapdoor
+  name Cyan Trapdoor
+  tex cyan_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle cyan_trapdoor_open
+  sound door
+block cyan_trapdoor_open
+  name Cyan Trapdoor
+  tex cyan_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle cyan_trapdoor
+  drops cyan_trapdoor
+  sound door
+block cyan_gate
+  name Cyan Gate
+  tex cyan_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle cyan_gate_open
+  sound door
+block cyan_gate_open
+  name Cyan Gate
+  tex cyan_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle cyan_gate
+  drops cyan_gate
+  sound door
+craft cyan_fence 3 planks_fence 3 cyan_wool 1
+craft cyan_trapdoor 2 oak_trapdoor 2 cyan_wool 1
+craft cyan_gate 1 oak_gate 1 cyan_wool 1
+texture light_blue_boards paint planks 62 176 220
+block light_blue_fence
+  name Light Blue Fence
+  shape fence
+  tex light_blue_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block light_blue_trapdoor
+  name Light Blue Trapdoor
+  tex light_blue_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle light_blue_trapdoor_open
+  sound door
+block light_blue_trapdoor_open
+  name Light Blue Trapdoor
+  tex light_blue_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle light_blue_trapdoor
+  drops light_blue_trapdoor
+  sound door
+block light_blue_gate
+  name Light Blue Gate
+  tex light_blue_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle light_blue_gate_open
+  sound door
+block light_blue_gate_open
+  name Light Blue Gate
+  tex light_blue_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle light_blue_gate
+  drops light_blue_gate
+  sound door
+craft light_blue_fence 3 planks_fence 3 light_blue_wool 1
+craft light_blue_trapdoor 2 oak_trapdoor 2 light_blue_wool 1
+craft light_blue_gate 1 oak_gate 1 light_blue_wool 1
+texture blue_boards paint planks 52 58 162
+block blue_fence
+  name Blue Fence
+  shape fence
+  tex blue_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block blue_trapdoor
+  name Blue Trapdoor
+  tex blue_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle blue_trapdoor_open
+  sound door
+block blue_trapdoor_open
+  name Blue Trapdoor
+  tex blue_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle blue_trapdoor
+  drops blue_trapdoor
+  sound door
+block blue_gate
+  name Blue Gate
+  tex blue_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle blue_gate_open
+  sound door
+block blue_gate_open
+  name Blue Gate
+  tex blue_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle blue_gate
+  drops blue_gate
+  sound door
+craft blue_fence 3 planks_fence 3 blue_wool 1
+craft blue_trapdoor 2 oak_trapdoor 2 blue_wool 1
+craft blue_gate 1 oak_gate 1 blue_wool 1
+texture purple_boards paint planks 124 44 174
+block purple_fence
+  name Purple Fence
+  shape fence
+  tex purple_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block purple_trapdoor
+  name Purple Trapdoor
+  tex purple_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle purple_trapdoor_open
+  sound door
+block purple_trapdoor_open
+  name Purple Trapdoor
+  tex purple_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle purple_trapdoor
+  drops purple_trapdoor
+  sound door
+block purple_gate
+  name Purple Gate
+  tex purple_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle purple_gate_open
+  sound door
+block purple_gate_open
+  name Purple Gate
+  tex purple_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle purple_gate
+  drops purple_gate
+  sound door
+craft purple_fence 3 planks_fence 3 purple_wool 1
+craft purple_trapdoor 2 oak_trapdoor 2 purple_wool 1
+craft purple_gate 1 oak_gate 1 purple_wool 1
+texture magenta_boards paint planks 192 72 184
+block magenta_fence
+  name Magenta Fence
+  shape fence
+  tex magenta_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block magenta_trapdoor
+  name Magenta Trapdoor
+  tex magenta_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle magenta_trapdoor_open
+  sound door
+block magenta_trapdoor_open
+  name Magenta Trapdoor
+  tex magenta_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle magenta_trapdoor
+  drops magenta_trapdoor
+  sound door
+block magenta_gate
+  name Magenta Gate
+  tex magenta_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle magenta_gate_open
+  sound door
+block magenta_gate_open
+  name Magenta Gate
+  tex magenta_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle magenta_gate
+  drops magenta_gate
+  sound door
+craft magenta_fence 3 planks_fence 3 magenta_wool 1
+craft magenta_trapdoor 2 oak_trapdoor 2 magenta_wool 1
+craft magenta_gate 1 oak_gate 1 magenta_wool 1
+texture pink_boards paint planks 240 142 172
+block pink_fence
+  name Pink Fence
+  shape fence
+  tex pink_boards
+  category Doors
+  hardness 1.2
+  tool axe
+block pink_trapdoor
+  name Pink Trapdoor
+  tex pink_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 0 0 16 3 16
+  toggle pink_trapdoor_open
+  sound door
+block pink_trapdoor_open
+  name Pink Trapdoor
+  tex pink_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 13 16 16 16
+  toggle pink_trapdoor
+  drops pink_trapdoor
+  sound door
+block pink_gate
+  name Pink Gate
+  tex pink_boards
+  category Doors
+  hardness 1.2
+  tool axe
+  rotate
+  box 0 5 7 16 16 9
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle pink_gate_open
+  sound door
+block pink_gate_open
+  name Pink Gate
+  tex pink_boards
+  hardness 1.2
+  tool axe
+  rotate
+  hidden
+  box 0 0 7 2 16 9
+  box 14 0 7 16 16 9
+  toggle pink_gate
+  drops pink_gate
+  sound door
+craft pink_fence 3 planks_fence 3 pink_wool 1
+craft pink_trapdoor 2 oak_trapdoor 2 pink_wool 1
+craft pink_gate 1 oak_gate 1 pink_wool 1
+
+# ---- Furniture and things for the house ----
+#   seat <sixteenths>   right click sits on it, that high; jump to get up
+#   eat <points>        food set out: right click eats it where it stands
+# Shapes are described as seen when the player faces north while placing.
+texture ceramic flat 240 240 236 noise 4
+texture steel flat 176 180 190 noise 6
+texture counter_top paint polished 208 204 196
+texture screen flat 24 28 40 noise 3
+texture books paint bricks 150 70 60
+texture cardboard flat 196 160 110 noise 7
+texture pizza_top paint pizza 214 60 44
+texture cake_top paint cookie 250 240 244
+texture bread_crust paint loaf 196 136 70
+block chair
+  name Chair
+  tex planks
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 8
+  box 2 6 2 14 8 14
+  box 2 8 12 14 16 14
+  box 2 0 2 4 6 4
+  box 12 0 2 14 6 4
+  box 2 0 12 4 6 14
+  box 12 0 12 14 6 14
+block stool
+  name Stool
+  tex planks
+  category Furniture
+  hardness 0.6
+  tool axe
+  seat 8
+  box 3 6 3 13 8 13
+  box 4 0 4 6 6 6
+  box 10 0 4 12 6 6
+  box 4 0 10 6 6 12
+  box 10 0 10 12 6 12
+block park_bench
+  name Bench
+  tex planks
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 5 3 16 7 13
+  box 0 7 11 16 14 13
+  box 1 0 4 3 5 12
+  box 13 0 4 15 5 12
+block desk
+  name Desk
+  tex planks
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  box 0 12 0 16 14 16
+  box 0 0 0 2 12 16
+  box 14 0 0 16 12 16
+  box 2 6 13 14 12 15
+block shelf
+  name Shelf
+  tex planks
+  category Furniture
+  hardness 0.6
+  tool axe
+  rotate
+  box 0 12 10 16 14 16
+  box 0 4 10 16 6 16
+block bookshelf
+  name Bookshelf
+  tex planks books planks
+  category Furniture
+  hardness 1.2
+  tool axe
+block cupboard
+  name Cupboard
+  tex oak_chest
+  category Furniture
+  hardness 1.2
+  tool axe
+  rotate
+  use chest
+  box 0 0 4 16 16 16
+block wardrobe
+  name Wardrobe
+  tex oak_door
+  category Furniture
+  hardness 1.2
+  tool axe
+  rotate
+  use chest
+  tall
+  box 0 0 4 16 16 16
+block counter
+  name Kitchen Counter
+  tex counter_top planks planks
+  category Furniture
+  hardness 1.2
+  tool axe
+  use chest
+block sink_counter
+  name Kitchen Sink
+  tex steel planks planks
+  category Furniture
+  hardness 1.2
+  tool axe
+  box 0 0 0 16 12 16
+  box 0 12 0 16 16 3
+  box 0 12 13 16 16 16
+  box 0 12 3 3 16 13
+  box 13 12 3 16 16 13
+block stove
+  name Stove
+  tex steel oven_front steel
+  category Furniture
+  hardness 1.6
+  tool pick
+  use oven
+  light 4
+block fridge
+  name Fridge
+  tex steel
+  category Furniture
+  hardness 1.6
+  tool pick
+  use chest
+  tall
+  rotate
+  box 1 0 2 15 16 16
+block television
+  name Television
+  tex screen steel steel
+  category Furniture
+  hardness 0.8
+  rotate
+  light 5
+  box 1 3 9 15 13 11
+  box 6 0 8 10 3 12
+block floor_lamp
+  name Floor Lamp
+  tex lamp
+  category Furniture
+  hardness 0.4
+  light 14
+  tall False
+  box 7 0 7 9 12 9
+  box 5 12 5 11 16 11
+block toilet
+  name Toilet
+  tex ceramic
+  category Furniture
+  hardness 1.0
+  tool pick
+  rotate
+  seat 7
+  box 4 0 4 12 6 14
+  box 3 6 3 13 7 14
+  box 3 7 11 13 15 14
+block bathtub
+  name Bathtub
+  tex ceramic
+  category Furniture
+  hardness 1.4
+  tool pick
+  rotate
+  seat 3
+  box 0 0 0 16 3 16
+  box 0 3 0 2 9 16
+  box 14 3 0 16 9 16
+  box 2 3 0 14 9 2
+  box 2 3 14 14 9 16
+block bathroom_sink
+  name Wash Basin
+  tex ceramic
+  category Furniture
+  hardness 1.0
+  tool pick
+  rotate
+  box 3 9 8 13 12 16
+  box 7 0 12 9 9 14
+block towel_rail
+  name Towel Rail
+  tex white_wool
+  category Furniture
+  hardness 0.3
+  rotate
+  solid no
+  box 2 6 14 14 13 16
+block white_couch
+  name White Couch
+  tex white_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block white_armchair
+  name White Armchair
+  tex white_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft white_couch 1 white_wool 3 planks 2
+craft white_armchair 1 white_wool 2 planks 2
+block light_gray_couch
+  name Light Gray Couch
+  tex light_gray_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block light_gray_armchair
+  name Light Gray Armchair
+  tex light_gray_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft light_gray_couch 1 light_gray_wool 3 planks 2
+craft light_gray_armchair 1 light_gray_wool 2 planks 2
+block gray_couch
+  name Gray Couch
+  tex gray_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block gray_armchair
+  name Gray Armchair
+  tex gray_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft gray_couch 1 gray_wool 3 planks 2
+craft gray_armchair 1 gray_wool 2 planks 2
+block black_couch
+  name Black Couch
+  tex black_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block black_armchair
+  name Black Armchair
+  tex black_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft black_couch 1 black_wool 3 planks 2
+craft black_armchair 1 black_wool 2 planks 2
+block brown_couch
+  name Brown Couch
+  tex brown_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block brown_armchair
+  name Brown Armchair
+  tex brown_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft brown_couch 1 brown_wool 3 planks 2
+craft brown_armchair 1 brown_wool 2 planks 2
+block red_couch
+  name Red Couch
+  tex red_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block red_armchair
+  name Red Armchair
+  tex red_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft red_couch 1 red_wool 3 planks 2
+craft red_armchair 1 red_wool 2 planks 2
+block orange_couch
+  name Orange Couch
+  tex orange_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block orange_armchair
+  name Orange Armchair
+  tex orange_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft orange_couch 1 orange_wool 3 planks 2
+craft orange_armchair 1 orange_wool 2 planks 2
+block yellow_couch
+  name Yellow Couch
+  tex yellow_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block yellow_armchair
+  name Yellow Armchair
+  tex yellow_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft yellow_couch 1 yellow_wool 3 planks 2
+craft yellow_armchair 1 yellow_wool 2 planks 2
+block lime_couch
+  name Lime Couch
+  tex lime_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block lime_armchair
+  name Lime Armchair
+  tex lime_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft lime_couch 1 lime_wool 3 planks 2
+craft lime_armchair 1 lime_wool 2 planks 2
+block green_couch
+  name Green Couch
+  tex green_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block green_armchair
+  name Green Armchair
+  tex green_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft green_couch 1 green_wool 3 planks 2
+craft green_armchair 1 green_wool 2 planks 2
+block cyan_couch
+  name Cyan Couch
+  tex cyan_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block cyan_armchair
+  name Cyan Armchair
+  tex cyan_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft cyan_couch 1 cyan_wool 3 planks 2
+craft cyan_armchair 1 cyan_wool 2 planks 2
+block light_blue_couch
+  name Light Blue Couch
+  tex light_blue_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block light_blue_armchair
+  name Light Blue Armchair
+  tex light_blue_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft light_blue_couch 1 light_blue_wool 3 planks 2
+craft light_blue_armchair 1 light_blue_wool 2 planks 2
+block blue_couch
+  name Blue Couch
+  tex blue_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block blue_armchair
+  name Blue Armchair
+  tex blue_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft blue_couch 1 blue_wool 3 planks 2
+craft blue_armchair 1 blue_wool 2 planks 2
+block purple_couch
+  name Purple Couch
+  tex purple_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block purple_armchair
+  name Purple Armchair
+  tex purple_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft purple_couch 1 purple_wool 3 planks 2
+craft purple_armchair 1 purple_wool 2 planks 2
+block magenta_couch
+  name Magenta Couch
+  tex magenta_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block magenta_armchair
+  name Magenta Armchair
+  tex magenta_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft magenta_couch 1 magenta_wool 3 planks 2
+craft magenta_armchair 1 magenta_wool 2 planks 2
+block pink_couch
+  name Pink Couch
+  tex pink_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 0 0 2 16 7 14
+  box 0 7 11 16 14 14
+  box 0 7 2 2 11 11
+  box 14 7 2 16 11 11
+block pink_armchair
+  name Pink Armchair
+  tex pink_wool
+  category Furniture
+  hardness 0.8
+  tool axe
+  rotate
+  seat 7
+  box 2 0 2 14 7 14
+  box 2 7 11 14 15 14
+  box 1 7 2 3 11 11
+  box 13 7 2 15 11 11
+craft pink_couch 1 pink_wool 3 planks 2
+craft pink_armchair 1 pink_wool 2 planks 2
+craft chair 2 planks 3 stick 2
+craft stool 2 planks 1 stick 2
+craft park_bench 1 planks 3
+craft desk 1 planks 4
+craft shelf 2 planks 1
+craft bookshelf 1 planks 6
+craft cupboard 1 oak_chest 1 planks 2
+craft wardrobe 1 oak_chest 1 oak_door 1
+craft counter 1 oak_chest 1 stone 1
+craft sink_counter 1 counter 1 iron_ingot 2
+craft stove 1 oven 1 iron_ingot 3
+craft fridge 1 iron_ingot 6 ice 1
+craft television 1 glass 2 iron_ingot 2 crystal 1
+craft floor_lamp 1 lamp 1 stick 2
+craft toilet 1 marble 3
+craft bathtub 1 marble 5
+craft bathroom_sink 1 marble 2
+craft towel_rail 1 white_wool 1 stick 1
+block plate
+  name Plate
+  tex ceramic
+  category Furniture
+  hardness 0.1
+  solid no
+  box 3 0 3 13 1 13
+  sound glass
+block plated_pizza
+  name Pizza on a Plate
+  tex pizza_top ceramic ceramic
+  category Food
+  hardness 0.1
+  solid no
+  eat 12
+  drops plate
+  box 3 0 3 13 1 13
+  box 4 1 4 12 2 12
+block pizza_box
+  name Pizza Box
+  tex cardboard
+  category Food
+  hardness 0.1
+  rotate
+  toggle pizza_box_open
+  box 1 0 1 15 3 15
+block pizza_box_open
+  name Pizza Box
+  tex pizza_top cardboard cardboard
+  hardness 0.1
+  rotate
+  hidden
+  toggle pizza_box
+  eat 12
+  drops pizza_box
+  box 1 0 1 15 2 15
+  box 1 2 14 15 15 15
+block cake_block
+  name Cake
+  tex cake_top
+  category Food
+  hardness 0.1
+  eat 12
+  drops nothing
+  box 2 0 2 14 7 14
+block bread_block
+  name Loaf of Bread
+  tex bread_crust
+  category Food
+  hardness 0.1
+  eat 6
+  drops nothing
+  rotate
+  box 4 0 2 12 5 14
+block fruit_bowl
+  name Fruit Bowl
+  tex apple ceramic ceramic
+  category Food
+  hardness 0.1
+  eat 6
+  drops plate
+  box 4 0 4 12 2 12
+  box 5 2 5 11 4 11
+craft plate 4 clay 2
+craft plated_pizza 1 plate 1 pizza 1
+craft pizza_box 1 pizza 1 planks 1
+craft cake_block 1 cake 1
+craft bread_block 1 bread 1
+craft fruit_bowl 1 plate 1 apple 3
+
+# ---- Furnaces ----
+#   smelt <item> <count> <ingredient> <count> ...   a recipe that needs a furnace
+#   block ... use furnace                           right click opens the smelting list
+texture furnace_front paint door 60 60 66
+texture blast_front paint door 90 70 60
+block furnace
+  name Furnace
+  tex cobble furnace_front cobble
+  category Farming
+  hardness 2.5
+  tool pick
+  use furnace
+  light 8
+block blast_furnace
+  name Blast Furnace
+  tex stone_bricks blast_front stone_bricks
+  category Farming
+  hardness 3.0
+  tool pick
+  use furnace
+  light 10
+block kiln
+  name Kiln
+  tex brick furnace_front brick
+  category Farming
+  hardness 2.0
+  tool pick
+  use furnace
+  light 6
+block smoker
+  name Smoker
+  tex planks oven_front planks
+  category Farming
+  hardness 1.6
+  tool axe
+  use oven
+  light 5
+block campfire
+  name Campfire
+  tex log_side
+  category Farming
+  hardness 0.6
+  tool axe
+  use oven
+  light 13
+  hurts 1
+  box 1 0 6 15 3 10
+  box 6 0 1 10 3 15
+  box 5 3 5 11 7 11
+  sound sizzle
+texture iron_ingot paint ingot 214 214 220
+item iron_ingot
+  name Iron Ingot
+  icon iron_ingot
+  category Materials
+smelt iron_ingot 1 iron_ore 1 coal 1
+smelt iron_ingot 3 iron_ore 2 coal 2
+texture copper_ingot paint ingot 206 124 80
+item copper_ingot
+  name Copper Ingot
+  icon copper_ingot
+  category Materials
+smelt copper_ingot 1 copper_ore 1 coal 1
+smelt copper_ingot 3 copper_ore 2 coal 2
+craft furnace 1 cobble 8
+craft blast_furnace 1 furnace 1 iron_ingot 5 stone_bricks 3
+craft kiln 1 brick 8
+craft smoker 1 oven 1 log 4
+craft campfire 1 log 3 stick 3 coal 1
+smelt glass 4 sand 4 coal 1
+smelt stone 4 cobble 4 coal 1
+smelt brick 4 clay 4 coal 1
+smelt crystal 2 crystal_ore 1 coal 1
+smelt ruby 2 ruby_ore 1 coal 1
+smelt coal 2 log 2
+smelt cooked_meat 2 raw_meat 2 coal 1
+smelt cooked_fish 2 raw_fish 2 coal 1
+
+# ---- Bows ----
+#   item ... shoots <damage> [speed] [seconds between shots] [ammunition item]
+texture bow paint bow 150 110 70
+texture crossbow paint crossbow 130 96 60
+texture longbow paint bow 110 80 56
+texture arrow paint arrow 200 200 210
+item arrow
+  name Arrow
+  icon arrow
+  category Tools
+item bow
+  name Bow
+  icon bow
+  category Tools
+  stack 1
+  shoots 6 34 0.7 arrow
+item longbow
+  name Longbow
+  icon longbow
+  category Tools
+  stack 1
+  shoots 9 46 1.1 arrow
+item crossbow
+  name Crossbow
+  icon crossbow
+  category Tools
+  stack 1
+  shoots 13 54 1.8 arrow
+craft arrow 4 stick 1 gravel 1
+craft bow 1 stick 3 string 3
+craft longbow 1 bow 1 stick 2 string 2
+craft crossbow 1 bow 1 iron_ingot 2 planks 2
 
 # ---- Farming ----
 #   item ... turns <block> <block>   right click turns one block into another

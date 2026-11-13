@@ -714,6 +714,33 @@ impl Renderer {
     }
 
     /// A tornado's funnel, `at` relative to the camera (its foot).
+    /// Small bright things in flight (arrows, spells): each a little
+    /// three-way cross, so it shows from any side. Positions are relative
+    /// to the camera.
+    pub fn draw_sparks(&mut self, sparks: &[([f32; 3], [u8; 3])]) {
+        if sparks.is_empty() {
+            return;
+        }
+        let g = gl();
+        unsafe {
+            (g.Disable)(gl::BLEND);
+            (g.Enable)(gl::DEPTH_TEST);
+            (g.Disable)(gl::ALPHA_TEST);
+            (g.Disable)(gl::CULL_FACE);
+        }
+        self.flush(gl::QUADS);
+        self.batch_tex = 0;
+        let k = 0.09;
+        for &(p, c) in sparks {
+            let col = [c[0], c[1], c[2], 255];
+            let v = |dx: f32, dy: f32, dz: f32| [p[0] + dx, p[1] + dy, p[2] + dz];
+            self.quad([v(-k, -k, 0.0), v(k, -k, 0.0), v(k, k, 0.0), v(-k, k, 0.0)], [[0.0; 2]; 4], col);
+            self.quad([v(0.0, -k, -k), v(0.0, -k, k), v(0.0, k, k), v(0.0, k, -k)], [[0.0; 2]; 4], col);
+            self.quad([v(-k, 0.0, -k), v(k, 0.0, -k), v(k, 0.0, k), v(-k, 0.0, k)], [[0.0; 2]; 4], col);
+        }
+        self.flush(gl::QUADS);
+    }
+
     pub fn draw_funnel(&mut self, at: [f32; 3], clock: f32) {
         let g = gl();
         unsafe {

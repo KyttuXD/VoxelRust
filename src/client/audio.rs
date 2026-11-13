@@ -5,6 +5,7 @@
 //! the main thread only adds voices while holding SDL's audio lock.
 
 use crate::sys::sdl::sdl;
+use alloc::vec::Vec;
 use core::ffi::{c_int, c_void};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -122,6 +123,8 @@ pub struct Audio {
     pub effects: f32,
     pub steps: f32,
     pub ui: f32,
+    /// What was heard lately, for subtitles: text and seconds left to show.
+    pub captions: Vec<(alloc::string::String, f32)>,
 }
 
 impl Audio {
@@ -129,7 +132,7 @@ impl Audio {
     /// stays silent.
     pub fn new() -> Audio {
         let mixer = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Mixer { voices: [SILENT; VOICES] }));
-        let mut audio = Audio { device: 0, mixer, seed: 0x1234_5678, effects: 0.5, steps: 0.4, ui: 0.4 };
+        let mut audio = Audio { device: 0, mixer, seed: 0x1234_5678, effects: 0.5, steps: 0.4, ui: 0.4, captions: Vec::new() };
         let api = sdl();
         unsafe {
             if (api.SDL_InitSubSystem)(0x10) != 0 {
@@ -164,7 +167,7 @@ impl Audio {
     /// An audio system that plays nothing (for scripted runs).
     pub fn silent() -> Audio {
         let mixer = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Mixer { voices: [SILENT; VOICES] }));
-        Audio { device: 0, mixer, seed: 1, effects: 0.0, steps: 0.0, ui: 0.0 }
+        Audio { device: 0, mixer, seed: 1, effects: 0.0, steps: 0.0, ui: 0.0, captions: Vec::new() }
     }
 
     pub fn available(&self) -> bool {
@@ -179,27 +182,81 @@ impl Audio {
         self.ui = m * ui as f32 / 10.0;
     }
 
+    /// The name a built-in sound goes by in the data files.
+    fn name(sound: Sound) -> &'static str {
+        match sound {
+            Sound::Step => "step",
+            Sound::Break => "break",
+            Sound::Place => "place",
+            Sound::Hurt => "hurt",
+            Sound::Click => "click",
+            Sound::Pop => "pop",
+            Sound::Splash => "splash",
+            Sound::Thunder => "thunder",
+            Sound::Rain => "rain",
+            Sound::Rumble => "rumble",
+            Sound::Wave => "wave",
+        }
+    }
+
+    /// Stop everything at once (leaving a world must not leave its rain
+    /// playing over the menu).
+    pub fn silence(&mut self) {
+        self.captions.clear();
+        if self.device == 0 {
+            return;
+        }
+        let api = sdl();
+        unsafe {
+            (api.SDL_LockAudioDevice)(self.device);
+            (*self.mixer).voices = [SILENT; VOICES];
+            (api.SDL_UnlockAudioDevice)(self.device);
+        }
+    }
+
+    /// Count the captions down; call once a frame.
+    pub fn tick(&mut self, dt: f32) {
+        for c in self.captions.iter_mut() {
+            c.1 -= dt;
+        }
+        self.captions.retain(|c| c.1 > 0.0);
+    }
+
     /// Play a sound. `volume` scales it further (distance, for example).
     pub fn play(&mut self, sound: Sound, volume: f32) {
+        self.play_named(Self::name(sound), volume);
+    }
+
+    /// Play a sound by the name the data files give it. Unknown names are
+    /// silently nothing: a pack may name sounds another pack provides.
+    pub fn play_named(&mut self, name: &str, volume: f32) {
+        let def = match crate::block::reg().sounds.iter().find(|s| s.id == name) {
+            Some(d) => d,
+            None => return,
+        };
+        // Subtitles are kept whether or not there is a sound device.
+        if !def.caption.is_empty() && volume > 0.05 {
+            match self.captions.iter_mut().find(|c| c.0 == def.caption) {
+                Some(c) => c.1 = 2.5,
+                None => {
+                    if self.captions.len() >= 5 {
+                        self.captions.remove(0);
+                    }
+                    self.captions.push((def.caption.clone(), 2.5));
+                }
+            }
+        }
         if self.device == 0 {
             return;
         }
         self.seed = self.seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
         let jitter = 0.9 + ((self.seed >> 16) & 255) as f32 / 1275.0; // 0.9..1.1
-        // (bus, seconds, noise share, tone Hz start, tone Hz end, low-pass, loudness)
-        let (bus, secs, noise, f0, f1, lp, loud) = match sound {
-            Sound::Step => (Bus::Steps, 0.09, 0.95, 90.0, 60.0, 0.10, 0.55),
-            Sound::Break => (Bus::Effects, 0.22, 0.90, 160.0, 70.0, 0.30, 0.80),
-            Sound::Place => (Bus::Effects, 0.10, 0.70, 220.0, 140.0, 0.22, 0.70),
-            Sound::Hurt => (Bus::Effects, 0.25, 0.25, 420.0, 180.0, 0.50, 0.80),
-            Sound::Click => (Bus::Ui, 0.05, 0.20, 900.0, 700.0, 0.80, 0.45),
-            Sound::Pop => (Bus::Effects, 0.08, 0.10, 500.0, 900.0, 0.80, 0.50),
-            Sound::Splash => (Bus::Effects, 0.35, 1.00, 100.0, 100.0, 0.45, 0.60),
-            Sound::Thunder => (Bus::Effects, 1.80, 1.00, 60.0, 40.0, 0.04, 1.00),
-            Sound::Rain => (Bus::Effects, 0.45, 1.00, 100.0, 100.0, 0.60, 0.22),
-            Sound::Rumble => (Bus::Effects, 0.60, 0.90, 46.0, 34.0, 0.03, 0.90),
-            Sound::Wave => (Bus::Effects, 1.60, 1.00, 80.0, 60.0, 0.07, 0.30),
+        let bus = match def.bus {
+            1 => Bus::Steps,
+            2 => Bus::Ui,
+            _ => Bus::Effects,
         };
+        let (secs, noise, f0, f1, lp, loud) = (def.seconds, def.noise, def.hz[0], def.hz[1], def.low_pass, def.loudness);
         let gain = loud * volume * match bus {
             Bus::Effects => self.effects,
             Bus::Steps => self.steps,

@@ -366,6 +366,7 @@ struct App {
     want_reload: bool,
     /// The crafting screen was opened at an oven, not a table.
     at_oven: bool,
+    at_furnace: bool,
     /// Seconds and frames counted while timing full screen.
     tune: (f32, u32),
     worlds_scroll: i32,
@@ -542,6 +543,8 @@ impl App {
             drop(pool);
             world.free_meshes(r);
         }
+        // Nothing of the world left may go on sounding.
+        self.audio.silence();
         // A game hosted from the menu ends when its host leaves.
         if let Some(t) = self.host.take() {
             HOST_STOP.store(true, core::sync::atomic::Ordering::Relaxed);
@@ -866,6 +869,7 @@ impl App {
                 }
             }
         }
+        self.audio.tick(real_dt);
         self.paint_minimap(r);
         if core::mem::take(&mut self.want_reload) {
             self.reload_packs(r);
@@ -882,6 +886,7 @@ impl App {
             self.chest_at = at;
             self.inv_scroll = 0;
             self.at_oven = what == block::Usable::Oven;
+            self.at_furnace = what == block::Usable::Furnace;
             self.set_screen(if what == block::Usable::Chest { Screen::Chest } else { Screen::Craft });
         }
         if self.session.as_ref().map_or(false, |g| g.lost) {
@@ -1051,6 +1056,8 @@ impl App {
             let pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, ..Default::default() };
             r.draw_model(model, &pose, p, m.body.yaw, height, tint);
         }
+        let sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
+        r.draw_sparks(&sparks);
         for (i, v) in g.vehicles.list.iter().enumerate() {
             let p = rel(v.body.pos);
             if p[0] * p[0] + p[2] * p[2] > 96.0 * 96.0 {
@@ -1168,12 +1175,25 @@ impl App {
         for (i, (line, left)) in lines.iter().rev().enumerate() {
             let a = if self.screen == Screen::Chat { 255 } else { (left * 255.0).clamp(0.0, 255.0) as u8 };
             let y = h - 52.0 * s - i as f32 * 10.0 * s;
-            r.rect(2.0 * s, y - s, Renderer::text_width(line, s) + 4.0 * s, 10.0 * s, [0, 0, 0, a / 3]);
-            r.label(4.0 * s, y, s, line, [255, 255, 255, a]);
+            // "&c" and the like change colour and are not shown themselves.
+            let plain: String = strip_colours(line);
+            r.rect(2.0 * s, y - s, Renderer::text_width(&plain, s) + 4.0 * s, 10.0 * s, [0, 0, 0, a / 3]);
+            label_coloured(r, 4.0 * s, y, s, line, a);
         }
         if g.note.1 > 0.0 {
             let tw = Renderer::text_width(&g.note.0, s * 2.0);
             r.label((w - tw) * 0.5, h * 0.3, s * 2.0, &g.note.0, [255, 240, 170, 255]);
+        }
+        // Subtitles: what was just heard, newest lowest, fading out.
+        if self.settings.subtitles {
+            for (i, (text, left)) in self.audio.captions.iter().rev().enumerate() {
+                let t = text.to_ascii_uppercase();
+                let tw = Renderer::text_width(&t, s);
+                let a = (left * 200.0).clamp(0.0, 255.0) as u8;
+                let y = h - 60.0 * s - i as f32 * 11.0 * s;
+                r.rect(w - tw - 10.0 * s, y - 2.0 * s, tw + 6.0 * s, 10.0 * s, [0, 0, 0, a / 2]);
+                r.label(w - tw - 7.0 * s, y, s, &t, [255, 255, 255, a]);
+            }
         }
         // The minimap: north up, the player a dot with a nose.
         if self.settings.minimap && self.minimap_tex != 0 && matches!(self.screen, Screen::Game | Screen::Chat) {
@@ -1501,6 +1521,7 @@ impl App {
                     changed |= ui.stepper(x, row(1), bw, bh, "EFFECTS", &mut st.effects_volume, 0, 10, 1);
                     changed |= ui.stepper(x, row(2), bw, bh, "FOOTSTEPS", &mut st.steps_volume, 0, 10, 1);
                     changed |= ui.stepper(x, row(3), bw, bh, "INTERFACE", &mut st.ui_volume, 0, 10, 1);
+                    changed |= ui.toggle(x, row(5), bw, bh, "SUBTITLES FOR SOUNDS", &mut st.subtitles);
                     if !self.audio.available() {
                         ui.centered(ui.w() * 0.5, row(4) + 4.0 * s, 1.0, "NO SOUND DEVICE IS IN USE", ui::ACCENT);
                     }
@@ -1764,6 +1785,7 @@ impl App {
             } else if let Some(g) = self.session.as_mut() {
                 // Commands are typed in lower case ids; anything else is talk.
                 match if command.starts_with('/') { g.command(&command) } else { None } {
+                    Some(reply) if reply.is_empty() => {}
                     Some(reply) => g.push_chat(reply),
                     None if command.starts_with('/') => g.push_chat(String::from("NO SUCH COMMAND. TRY /HELP")),
                     None => g.send_chat(&name, &text),
@@ -2003,7 +2025,8 @@ impl App {
             }
         } else {
             let at_oven = at_table && self.at_oven;
-            ui.text(gx, py + 6.0 * s, if at_oven { "OVEN (CLICK SOMETHING TO BAKE IT)" } else if at_table { "CRAFTING TABLE (CLICK A RECIPE)" } else { "MAKE BY HAND - A CRAFTING TABLE MAKES MORE" }, ui::DIM);
+            let at_furnace = at_table && self.at_furnace;
+            ui.text(gx, py + 6.0 * s, if at_furnace { "FURNACE (CLICK SOMETHING TO SMELT IT)" } else if at_oven { "OVEN (CLICK SOMETHING TO BAKE IT)" } else if at_table { "CRAFTING TABLE (CLICK A RECIPE)" } else { "MAKE BY HAND - A CRAFTING TABLE MAKES MORE" }, ui::DIM);
             // Recipes you can make now come first.
             let can = |rc: &block::Recipe| rc.inputs.iter().all(|&(i, n)| g.inv.count(i as u16) >= n as u32);
             // By hand only the simplest things; a table offers everything.
@@ -2011,7 +2034,13 @@ impl App {
                 .filter(|&i| {
                     let rc = &r.recipes[i];
                     // An oven bakes; a table makes everything else.
-                    if at_oven { rc.oven } else { !rc.oven && (at_table || !rc.table) }
+                    if at_furnace {
+                        rc.furnace
+                    } else if at_oven {
+                        rc.oven
+                    } else {
+                        !rc.oven && !rc.furnace && (at_table || !rc.table)
+                    }
                 })
                 .collect();
             list.sort_by_key(|&i| !can(&r.recipes[i]));
@@ -2194,6 +2223,62 @@ fn step_list(ui: &mut Ui, x: f32, y: f32, w: f32, h: f32, shown: &str, v: &mut i
     let changed = ui.stepper_text(x, y, w, h, shown, &mut i, 0, list.len() as i32 - 1, 1);
     *v = list[i as usize];
     changed
+}
+
+/// The sixteen chat colours: `&0`..`&9`, `&a`..`&f`.
+const CHAT_COLOURS: [[u8; 3]; 16] = [
+    [0, 0, 0], [0, 0, 170], [0, 170, 0], [0, 170, 170], [170, 0, 0], [170, 0, 170], [255, 170, 0], [170, 170, 170],
+    [85, 85, 85], [85, 85, 255], [85, 255, 85], [85, 255, 255], [255, 85, 85], [255, 85, 255], [255, 255, 85], [255, 255, 255],
+];
+
+fn colour_code(c: char) -> Option<usize> {
+    c.to_digit(16).map(|d| d as usize)
+}
+
+/// A chat line without its colour codes.
+fn strip_colours(line: &str) -> String {
+    let mut out = String::new();
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '&' && chars.peek().copied().and_then(colour_code).is_some() {
+            chars.next();
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Draw a chat line, switching colour at each `&` code.
+fn label_coloured(r: &mut Renderer, x: f32, y: f32, s: f32, line: &str, alpha: u8) {
+    let mut col = [255u8, 255, 255];
+    let mut at = x;
+    let mut run = String::new();
+    let mut chars = line.chars().peekable();
+    loop {
+        let c = chars.next();
+        let code = match c {
+            Some('&') => chars.peek().copied().and_then(colour_code),
+            _ => None,
+        };
+        if code.is_some() || c.is_none() {
+            if !run.is_empty() {
+                r.label(at, y, s, &run, [col[0], col[1], col[2], alpha]);
+                at += Renderer::text_width(&run, s);
+                run.clear();
+            }
+            match (c, code) {
+                (None, _) => break,
+                (_, Some(k)) => {
+                    col = CHAT_COLOURS[k];
+                    chars.next();
+                }
+                _ => {}
+            }
+        } else if let Some(c) = c {
+            run.push(c);
+        }
+    }
 }
 
 fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Color) {
@@ -2454,6 +2539,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         server_content: false,
         want_reload: false,
         at_oven: false,
+        at_furnace: false,
         tune: (0.0, 0),
         worlds_scroll: 0,
         minimap_tex: 0,
