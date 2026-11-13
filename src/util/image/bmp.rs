@@ -1,7 +1,6 @@
 //! BMP (1, 4, 8, 24 and 32 bits).
 
 use super::{Image, MAX_SIDE};
-use alloc::vec::Vec;
 
 pub(super) fn le16(d: &[u8], at: usize) -> Option<u32> {
     Some(u16::from_le_bytes([*d.get(at)?, *d.get(at + 1)?]) as u32)

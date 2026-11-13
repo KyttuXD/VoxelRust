@@ -82,7 +82,6 @@ mod vorbis;
 mod mp3;
 mod wav;
 
-use adpcm::{ima_adpcm, ms_adpcm};
 use aiff::aiff;
 use flac::flac;
 use ogg::ogg;

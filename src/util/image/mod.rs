@@ -110,7 +110,7 @@ mod tests {
             for i in 0..want.w * want.h {
                 for c in 0..3 {
                     let a = got.rgba[i * 4 + c] as f64;
-                    let b = if name == "gray" { (want.rgba[i * 4] as f64 * 0.299 + want.rgba[i * 4 + 1] as f64 * 0.587 + want.rgba[i * 4 + 2] as f64 * 0.114) } else { want.rgba[i * 4 + c] as f64 };
+                    let b = if name == "gray" { want.rgba[i * 4] as f64 * 0.299 + want.rgba[i * 4 + 1] as f64 * 0.587 + want.rgba[i * 4 + 2] as f64 * 0.114 } else { want.rgba[i * 4 + c] as f64 };
                     err += (a - b) * (a - b);
                 }
             }

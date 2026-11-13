@@ -81,7 +81,7 @@ mod tests {
     fn archive() -> Vec<u8> {
         let mut z = Vec::new();
         let mut central = Vec::new();
-        let mut add = |z: &mut Vec<u8>, central: &mut Vec<u8>, name: &str, method: u16, body: &[u8], raw: &[u8], size: usize| {
+        let add = |z: &mut Vec<u8>, central: &mut Vec<u8>, name: &str, method: u16, body: &[u8], raw: &[u8], size: usize| {
             let offset = z.len() as u32;
             z.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
             z.extend_from_slice(&[20, 0, 0, 0]);
