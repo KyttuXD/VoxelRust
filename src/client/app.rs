@@ -67,8 +67,10 @@ Run it with no options for the title screen. Options:
   --showcase          with --screenshot: lay out every block in front of the
                       camera first (handy for checking a pack)
   --show LIST         with --screenshot: also draw hud, debug, pause, items,
-                      title, worlds, newworld, dead, map, settings:TAB, third
-                      (camera behind the player) or creatures (one of each)
+                      title, worlds, newworld, multiplayer, dead, map,
+                      settings:TAB, items:TAB (the creative list at that
+                      tab), third (camera behind the player), creatures
+                      (one of each) or walking (the same, mid-stride)
 
 Controls (all can be changed in Settings): WASD move, mouse look, Space jump,
 Ctrl sprint, Space twice to fly (creative), left click break, right click place, middle click pick,
@@ -1111,11 +1113,11 @@ impl App {
                 };
                 for &(at, b) in &chunk.props {
                     let d = block::def(b);
-                    let (model, height) = match d.x.prop {
+                    let (model, height, lift) = match d.x.prop {
                         Some(p) => p,
                         None => continue,
                     };
-                    let pos = [(cx * 16 + at[0] as i32) as f64 + 0.5, at[1] as f64, (cz * 16 + at[2] as i32) as f64 + 0.5];
+                    let pos = [(cx * 16 + at[0] as i32) as f64 + 0.5, at[1] as f64 + lift as f64, (cz * 16 + at[2] as i32) as f64 + 0.5];
                     let p = rel(pos);
                     if p[0] * p[0] + p[2] * p[2] > 44.0 * 44.0 || behind(p, 3.0) {
                         continue;
@@ -2424,7 +2426,7 @@ fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Co
         return;
     }
     // A prop shows as its model.
-    if let Some((model, _)) = it.place.and_then(|b| block::def(b).x.prop) {
+    if let Some((model, _, _)) = it.place.and_then(|b| block::def(b).x.prop) {
         let (tall, wide) = r.model_extent(model);
         let height = (size * 0.9).min(size * 0.95 * tall / wide);
         r.tint_2d = [tint[0], tint[1], tint[2]];

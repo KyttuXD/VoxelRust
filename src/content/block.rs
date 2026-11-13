@@ -190,7 +190,8 @@ pub struct BlockExtra {
     pub station: u8,
     /// Drawn as a model (a prop) instead of as boxes: the model, and how
     /// tall to draw it in blocks. Its `box` lines still say where it is solid.
-    pub prop: Option<(usize, f32)>,
+    /// The third number lifts it off the floor (a lamp hung from above).
+    pub prop: Option<(usize, f32, f32)>,
 }
 
 /// What an item does besides being placed or eaten.
@@ -1595,9 +1596,9 @@ impl Registry {
                     "sound" => x.sound = word(0).to_string(),
                     "seat" => x.seat = word(0).parse::<u8>().unwrap_or(8).clamp(1, 16),
                     "eat" => x.eat = word(0).parse::<u8>().unwrap_or(4).clamp(1, 40),
-                    // prop <model> [height in blocks]
+                    // prop <model> [height in blocks] [lift off the floor]
                     "prop" => match models.iter().position(|m| m.id == word(0)) {
-                        Some(m) => x.prop = Some((m, word(1).parse::<f32>().unwrap_or(1.0).clamp(0.1, 8.0))),
+                        Some(m) => x.prop = Some((m, word(1).parse::<f32>().unwrap_or(1.0).clamp(0.1, 8.0), word(2).parse::<f32>().unwrap_or(0.0).clamp(-1.0, 4.0))),
                         None => ok = false,
                     },
                     "track" => x.track = word(0).parse::<u16>().unwrap_or(100).clamp(10, 400),
