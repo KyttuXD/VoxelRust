@@ -1,8 +1,9 @@
 # Modding
 
 Everything in the game world is declared in text files: textures, blocks
-and what they do (doors, crops, falling blocks), shapes, items, tools, food,
-recipes, ores and wild plants, models, creatures and vehicles. The game's own
+and what they do (doors, crops, seats, falling blocks), shapes, items, tools,
+weapons, food, recipes, ores and wild plants, models, creatures, vehicles,
+sounds, dimensions, chat commands and small scripts. The game's own
 content is [data/base.txt](../data/base.txt) with
 [data/wildlife.txt](../data/wildlife.txt) (built into the program). A **pack** is a file in the same format that is read after it and
 may add new things or redefine anything by reusing its id.
@@ -62,6 +63,75 @@ moment are removed and new ones appear in time.
 
 This does not work while connected to a server: there the server decides the
 content.
+
+## Scripts and commands
+
+A pack can make things happen with two kinds of line. Both are lists of
+chat commands separated by `;`, the same commands a player can type (see
+[PLAYING.md](PLAYING.md#chat-and-commands)).
+
+```
+when <event> [what] do <commands separated by ;>
+command <name> <commands separated by ;>
+```
+
+**`when`** runs its commands each time the event happens to the player:
+
+| Event | Happens when | `what` |
+| --- | --- | --- |
+| `start` | a world is opened | none |
+| `every <seconds>` | that many seconds have passed, over and over (half a second at least) | the number of seconds |
+| `break <block>` | you break that block | block id |
+| `place <block>` | you place that block | block id |
+| `use <block>` | you right click that block | block id |
+| `useitem <item>` | you right click with that item in hand | item id |
+| `eat <item>` | you eat that food from your hand, in survival | item id |
+| `kill <entity>` | you kill that creature, by hand or with a shot | entity id |
+| `tame <entity>` | you tame that creature | entity id |
+| `dimension <name>` | you arrive in that dimension | dimension name |
+
+Leave `what` out and the line runs for every block, item, creature or
+dimension (`when break do /sound chime`). `use` and `useitem` need a `what`.
+A block with a `use` script does that instead of opening and shutting
+(`toggle`); a block that already opens a screen (`use chest` and so on), a
+seat, and food set out keep their own behaviour and the script is not run.
+`useitem` is not run for food or for an item that `shoots`.
+
+```
+when use arcane_portal do /sound portal; /dim arcane; /say &dYOU STEP THROUGH
+when useitem fire_wand do /sound spell; /shoot 10 38 hot_coals
+when eat healing_potion do /heal 14
+when kill dragon do /give dragon_scale 3
+when every 300 do /say &7FIVE MINUTES HAVE PASSED
+```
+
+**`command`** adds a chat command. In its list, `$1` to `$9` stand for the
+words typed after the name and `$*` for all of them:
+
+```
+command heal /heal 20; /feed 20; /sound sparkle
+command summon /spawn $1 $2
+```
+
+`/summon wolf 3` then runs `/spawn wolf 3`. The player sees the reply of the
+last command in the list. A pack command may call other pack commands, six
+deep at most, and one with the name of a built-in command replaces it.
+
+The commands meant for scripts are `/say`, `/sound`, `/heal`, `/feed`,
+`/hurt`, `/launch`, `/shoot`, `/aim`, `/strike` and `/dim`, beside `/give`,
+`/tp`, `/set`, `/spawn`, `/time`, `/mode` and `/weather`. Text is lowered
+before it is run, so ids match; `/say` shows its text in capitals, with
+`&0` to `&f` colour codes.
+
+**What this is not.** It is a small event-and-command system: a fixed list
+of events, each tied to a list of commands. There are no variables,
+conditions, loops or arithmetic, and a script cannot ask about the world.
+It is not a general programming language. Rust code cannot be loaded as a
+mod either: the game has no plug-in interface, and a pack is only ever data.
+
+On a server the scripts of the server's packs run in each player's own
+game, and the commands that are refused on a server (`/time`, `/set`,
+`/dim`, `/shoot`, `/aim`, `/strike` and so on) are refused there too.
 
 ## Worlds survive content changes
 
@@ -172,6 +242,9 @@ It shows:
   food it likes;
 - a villager with a made-up job who trades.
 
+It does not use sounds, scripts, commands or dimensions; for those see the
+examples in [DATA.md](DATA.md) and the pack below.
+
 To load it every time, copy `pack.txt` and `amethyst.tga` into the data
 folder, or into a folder of their own under `mods/`:
 
@@ -179,6 +252,16 @@ folder, or into a folder of their own under `mods/`:
 <data folder>/mods/amethyst/pack.txt
 <data folder>/mods/amethyst/amethyst.tga
 ```
+
+### A larger example: Spells & Magic
+
+A bigger pack, "Spells & Magic", lives in `mods/spellsNmagic/` on the
+author's machine. That folder is ignored by git, so it is **not in the
+repository**. If you have the folder, its `pack.txt` is a worked example of
+the newer features together: its own sounds, wands and potions driven by
+`when` scripts, chat commands, a dimension reached through portal blocks,
+and creatures (a dragon that shoots, a unicorn to tame) with their own
+Blockbench models.
 
 ## Checking a pack
 

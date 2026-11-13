@@ -291,7 +291,7 @@ creative.
   basin, towel rail.
 - **The rest**: desk, shelf, bookshelf, television and floor lamp (both give
   light).
-- **Food set out**: a Plate (2 clay make 4), Pizza on a Plate, Cake, Loaf of
+- **Food set out** (Food tab): a Plate (2 clay make 4), Pizza on a Plate, Cake, Loaf of
   Bread and Fruit Bowl are blocks. Right click one to eat it where it
   stands: it restores its points like other food and the block is gone. A
   Pizza Box opens and shuts.
