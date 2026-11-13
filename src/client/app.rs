@@ -2576,6 +2576,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
     // Content: the built-in data, then pack.txt from the data folder, then
     // any --pack files.
     let auto_pack = alloc::format!("{}pack.txt", base);
+    // A data folder named on the command line may not be there yet.
+    #[cfg(not(target_arch = "wasm32"))]
+    if opts.data.is_some() && !base.is_empty() && !base.contains('"') && sys::list_dir(&base).is_empty() {
+        let dir = base.trim_end_matches(|c| c == '/' || c == '\\');
+        sys::run_command(&if cfg!(windows) { alloc::format!("mkdir \"{}\" 2>nul", dir) } else { alloc::format!("mkdir -p \"{}\"", dir) });
+    }
     // Then every mod in the data folder's `mods`, and in a `mods` folder
     // beside where the game was started (handy while making one).
     // Mods are looked for beside the program (where the ones that come
