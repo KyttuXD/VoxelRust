@@ -58,6 +58,7 @@ Run it with no options for the title screen. Options:
   --write-icon FILE   save the game's emblem as a PNG and exit
   --icon-size N       with --write-icon: its size in pixels (default 256)
   --version           print the version and which build this is, and exit
+  --no-update         do not look for a newer version this time
   --export FILE       with --world NAME: write that world as one file, and exit
   --import FILE       with --world NAME: add a world from such a file, and exit
   --pos X Y Z         start position      --look YAW PITCH   in degrees
@@ -115,6 +116,7 @@ struct Opts {
     /// Chat commands to carry out once the world has loaded.
     run: Option<String>,
     write_icon: Option<String>,
+    no_update: bool,
     icon_size: usize,
     version: bool,
     export: Option<String>,
@@ -200,6 +202,7 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--write-icon" => o.write_icon = Some(next(&mut i, a)?),
             "--icon-size" => o.icon_size = num::<usize>(&next(&mut i, a)?, a)?.clamp(8, 1024),
             "--version" => o.version = true,
+            "--no-update" => o.no_update = true,
             "--export" => o.export = Some(next(&mut i, a)?),
             "--import" => o.import = Some(next(&mut i, a)?),
             "--bench" => o.bench = Some(num::<u32>(&next(&mut i, a)?, a)?.max(1)),
@@ -1354,7 +1357,10 @@ impl App {
         if ui.button(x, y + step * 3.0, bw, bh, "QUIT") {
             self.quit = true;
         }
-        ui.centered(cx, ui.h() - 12.0 * s, 1.0, concat!("VERSION ", env!("CARGO_PKG_VERSION")), ui::DIM);
+        let version = alloc::format!("VERSION {}  {}  {}", env!("CARGO_PKG_VERSION"), BUILD.to_ascii_uppercase(), crate::update::COMMIT.to_ascii_uppercase());
+        ui.centered(cx, ui.h() - 12.0 * s, 1.0, &version, ui::DIM);
+        // What the look for a newer version found.
+        ui.centered(cx, ui.h() - 23.0 * s, 1.0, crate::update::message(), ui::ACCENT);
     }
 
     fn screen_worlds(&mut self, ui: &mut Ui) {
@@ -1668,6 +1674,7 @@ impl App {
                     if hidden > 0 {
                         ui.text(x, row(8) + 4.0 * s, "SCROLL FOR MORE", ui::DIM);
                     }
+                    changed |= ui.toggle(x, row(9), bw, bh, "UPDATE THE GAME AUTOMATICALLY", &mut st.auto_update);
                 }
                 _ => {
                     ui.text(x, row(0) + 4.0 * s, "PLAYER NAME", ui::DIM);
@@ -2479,7 +2486,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         return Ok(());
     }
     if opts.version {
-        sys::log(&alloc::format!("voxelrust {} ({})", env!("CARGO_PKG_VERSION"), BUILD));
+        sys::log(&alloc::format!("voxelrust {} ({}, commit {})", env!("CARGO_PKG_VERSION"), BUILD, crate::update::COMMIT));
         return Ok(());
     }
     sdl::load()?;
@@ -2612,6 +2619,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mut settings = Settings::parse(&sys::read_file(&settings_path).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default());
     if let Some(d) = opts.distance {
         settings.distance = d;
+    }
+    // Look for a newer version in the background (never in scripted runs,
+    // nor in a browser, where the page is the program).
+    #[cfg(not(target_arch = "wasm32"))]
+    if !scripted_early && !opts.server && !opts.no_update {
+        let (scratch, install) = (base.clone(), settings.auto_update);
+        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::run(BUILD, &scratch, install)));
     }
     if let Some(f) = opts.far {
         settings.far_distance = f;

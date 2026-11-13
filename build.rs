@@ -38,6 +38,16 @@ fn embed_data() {
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    // Which commit this is, for the updater to compare with the release.
+    // (VOXELRUST_COMMIT wins when set, as the release build does.)
+    println!("cargo:rerun-if-env-changed=VOXELRUST_COMMIT");
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    if std::env::var("VOXELRUST_COMMIT").is_err() {
+        let commit = std::process::Command::new("git").args(["rev-parse", "--short=12", "HEAD"]).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+        if let Some(c) = commit.filter(|c| !c.is_empty()) {
+            println!("cargo:rustc-env=VOXELRUST_COMMIT={c}");
+        }
+    }
     embed_data();
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     if var("CARGO_CFG_TARGET_OS") != "windows" {

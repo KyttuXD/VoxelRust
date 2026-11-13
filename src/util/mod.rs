@@ -5,3 +5,4 @@ pub mod noise;
 pub mod json;
 pub mod png;
 pub mod settings;
+pub mod sha256;
