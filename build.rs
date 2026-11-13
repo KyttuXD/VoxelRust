@@ -96,6 +96,9 @@ fn main() {
     // Which commit this is, for the updater to compare with the release.
     // (VOXELRUST_COMMIT wins when set, as the release build does.)
     println!("cargo:rerun-if-env-changed=VOXELRUST_COMMIT");
+    // The release number, when the release script sets one (see client::update).
+    println!("cargo:rerun-if-env-changed=VOXELRUST_SEQ");
+    println!("cargo:rerun-if-env-changed=VOXELRUST_RELEASE");
     // HEAD names the branch; the branch file is what moves with each commit.
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs/heads");

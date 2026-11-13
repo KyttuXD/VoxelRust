@@ -291,6 +291,61 @@ pub fn sleep_ms(ms: u32) {
     }
 }
 
+/// Pause the calling thread for real, SDL or not (for the updater).
+pub fn sleep_real_ms(ms: u32) {
+    #[cfg(all(unix, not(target_arch = "wasm32")))]
+    unsafe {
+        usleep(ms.saturating_mul(1000));
+    }
+    #[cfg(windows)]
+    unsafe {
+        Sleep(ms);
+    }
+    #[cfg(not(any(all(unix, not(target_arch = "wasm32")), windows)))]
+    let _ = ms;
+}
+
+/// `text` as one word for [`run_command`]: quoted so that the shell reads it
+/// as exactly `text`. None where the shell (or cmd on Windows) cannot be
+/// made to read it that way: quotes, percent signs and line breaks.
+pub fn shell_arg(text: &str) -> Option<String> {
+    #[cfg(windows)]
+    {
+        if text.contains(|c| c == '"' || c == '%' || c == '\r' || c == '\n') {
+            return None;
+        }
+        Some(alloc::format!("\"{}\"", text))
+    }
+    #[cfg(not(windows))]
+    {
+        let mut out = String::from("'");
+        for c in text.chars() {
+            if c == '\'' {
+                out.push_str("'\\''");
+            } else {
+                out.push(c);
+            }
+        }
+        out.push('\'');
+        Some(out)
+    }
+}
+
+/// Start the program at `exe` with the given arguments (already quoted) as a
+/// separate process, and return at once; the caller is expected to exit
+/// straight after. Returns whether it started.
+pub fn start_program(exe: &str, args: &str) -> bool {
+    let Some(q) = shell_arg(exe) else { return false };
+    #[cfg(windows)]
+    {
+        run_command(&alloc::format!("start \"\" {} {}", q, args)) == 0
+    }
+    #[cfg(not(windows))]
+    {
+        run_command(&alloc::format!("{} {} </dev/null >/dev/null 2>&1 &", q, args)) == 0
+    }
+}
+
 pub fn exit_abort() -> ! {
     unsafe { abort() }
 }
@@ -376,6 +431,7 @@ extern "C" {
 extern "C" {
     fn rename(from: *const c_char, to: *const c_char) -> c_int;
     fn chmod(path: *const c_char, mode: u32) -> c_int;
+    fn usleep(usec: u32) -> c_int;
 }
 
 #[cfg(windows)]
@@ -383,6 +439,7 @@ extern "C" {
 extern "system" {
     fn GetModuleFileNameA(module: *mut c_void, buf: *mut u8, size: u32) -> u32;
     fn MoveFileExA(from: *const c_char, to: *const c_char, flags: u32) -> c_int;
+    fn Sleep(ms: u32);
 }
 
 /// The full path of the running program; empty if it cannot be told.
@@ -433,7 +490,13 @@ pub fn replace_file(from: &str, to: &str) -> bool {
         let (f, t, old) = (cstr(from), cstr(to), cstr(&alloc::format!("{}.old", to)));
         // 1 = replace an existing file.
         MoveFileExA(t.as_ptr() as *const c_char, old.as_ptr() as *const c_char, 1);
-        return MoveFileExA(f.as_ptr() as *const c_char, t.as_ptr() as *const c_char, 1) != 0;
+        if MoveFileExA(f.as_ptr() as *const c_char, t.as_ptr() as *const c_char, 1) != 0 {
+            return true;
+        }
+        // The new file did not go in: put the old program back, so that a
+        // program is always at the path.
+        MoveFileExA(old.as_ptr() as *const c_char, t.as_ptr() as *const c_char, 1);
+        return false;
     }
     #[allow(unreachable_code)]
     {

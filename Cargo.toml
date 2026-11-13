@@ -12,6 +12,11 @@ license = "MIT"
 # lets it run on Mac OS X 10.6 and older, where Rust's own standard library
 # cannot start. See docs/PORTING.md.
 
+# Test-only switches for the updater (see scripts/test-update.sh). Off in
+# every shipped build.
+[features]
+update-test = []
+
 [lib]
 name = "voxelrust"
 path = "src/lib.rs"

@@ -120,6 +120,12 @@ struct Opts {
     import_mod: Option<String>,
     icon_size: usize,
     version: bool,
+    /// `--stamp FILE`: write which build this is to FILE, and exit (the
+    /// updater runs a new program this way before installing it).
+    stamp: Option<String>,
+    /// `--update-now` (only in the update-test build): check and install at once.
+    #[cfg_attr(not(feature = "update-test"), allow(dead_code))]
+    update_now: bool,
     export: Option<String>,
     /// `--world-op delete|copy|rename NAME [TO]`: change a world's files, and exit.
     world_op: Option<(String, String, String)>,
@@ -192,6 +198,9 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--write-icon" => o.write_icon = Some(next(&mut i, a)?),
             "--icon-size" => o.icon_size = num::<usize>(&next(&mut i, a)?, a)?.clamp(8, 1024),
             "--version" => o.version = true,
+            "--stamp" => o.stamp = Some(next(&mut i, a)?),
+            #[cfg(feature = "update-test")]
+            "--update-now" => o.update_now = true,
             "--no-update" => o.no_update = true,
             "--add-mod" => o.import_mod = Some(next(&mut i, a)?),
             "--export" => o.export = Some(next(&mut i, a)?),
@@ -2836,6 +2845,14 @@ fn run(args: Vec<String>) -> Result<(), String> {
         sys::log(&alloc::format!("voxelrust {} ({}, commit {})", env!("CARGO_PKG_VERSION"), BUILD, crate::update::COMMIT));
         return Ok(());
     }
+    if let Some(path) = &opts.stamp {
+        // Files go through SDL. Loading it opens no window.
+        sdl::load()?;
+        if !sys::write_file(path, crate::update::stamp_text(BUILD).as_bytes()) {
+            return Err(alloc::format!("could not write {}", path));
+        }
+        return Ok(());
+    }
     sdl::load()?;
     if let Some(path) = &opts.log {
         sys::log_to_file(path);
@@ -3013,6 +3030,25 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mut settings = Settings::parse(&sys::read_file(&settings_path).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default());
     if let Some(d) = opts.distance {
         settings.distance = d;
+    }
+    // Where the program is, for a restart after an update; and whether this
+    // copy was itself started by one (then it does not restart in turn).
+    #[cfg(not(target_arch = "wasm32"))]
+    let (restart_exe, restart_folder) = (sys::exe_path(), base.clone());
+    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg_attr(not(feature = "update-test"), allow(unused_variables))]
+    let restarted = crate::update::consume_restart_marker(&base);
+    #[cfg(feature = "update-test")]
+    if opts.update_now {
+        crate::update::run_now(BUILD, &base);
+        crate::update::restart(&restart_exe, &restart_folder);
+        return Ok(());
+    }
+    #[cfg(feature = "update-test")]
+    if restarted {
+        // The copy an update started: say so in the log, then stop.
+        sys::write_file(&alloc::format!("{}update-child.txt", base), BUILD.as_bytes());
+        return Ok(());
     }
     // Look for a newer version in the background (never in scripted runs,
     // nor in a browser, where the page is the program).
@@ -3419,6 +3455,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
         (api.SDL_DestroyWindow)(window);
         (api.SDL_Quit)();
     }
+    // An update installed during play starts now, with everything saved and closed.
+    #[cfg(not(target_arch = "wasm32"))]
+    crate::update::restart(&restart_exe, &restart_folder);
     Ok(false)
     };
     #[cfg(target_arch = "wasm32")]

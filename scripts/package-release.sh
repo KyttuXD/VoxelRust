@@ -21,6 +21,39 @@ TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
 COMMIT="${VOXELRUST_COMMIT:-$(git rev-parse --short=12 HEAD)}"
 export VOXELRUST_COMMIT="$COMMIT"
+# The release number: how many commits the release branch has. It only ever
+# goes up, so that programs can tell a newer release from an older one.
+if [ -z "${VOXELRUST_SEQ:-}" ]; then
+  if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+    echo "refusing: this is a shallow clone, so the release number would be wrong." >&2
+    echo "Fetch the full history, or set VOXELRUST_SEQ." >&2
+    exit 1
+  fi
+  VOXELRUST_SEQ="$(git rev-list --count HEAD)"
+fi
+SEQ="$VOXELRUST_SEQ"
+export VOXELRUST_SEQ
+# Never publish a release older than the one already out (or a different
+# build with the same number). VOXELRUST_ALLOW_SEQ_DECREASE=1 overrides this,
+# for a deliberate rollback.
+published="$(mktemp)"
+code="$(curl -sS -o "$published" -w '%{http_code}' "https://github.com/KyttuXD/VoxelRust/releases/download/nightly/nightly.txt" || echo 000)"
+case "$code" in
+  404) echo "no release is published yet; this will be the first" ;;
+  200)
+    pub_commit="$(sed -n 's/^commit //p' "$published" | head -1)"
+    pub_seq="$(sed -n 's/^seq //p' "$published" | head -1)"
+    case "$pub_seq" in ''|*[!0-9]*) echo "refusing: the published list has no release number." >&2; exit 1 ;; esac
+    if [ "$SEQ" -lt "$pub_seq" ] || { [ "$SEQ" -eq "$pub_seq" ] && [ "$COMMIT" != "$pub_commit" ]; }; then
+      if [ "${VOXELRUST_ALLOW_SEQ_DECREASE:-}" != 1 ]; then
+        echo "refusing: release $SEQ ($COMMIT) is not newer than the published $pub_seq ($pub_commit)." >&2
+        echo "Set VOXELRUST_ALLOW_SEQ_DECREASE=1 for a deliberate rollback." >&2
+        rm -f "$published"; exit 1
+      fi
+    fi ;;
+  *) echo "refusing: could not read the published release list (HTTP $code)." >&2; rm -f "$published"; exit 1 ;;
+esac
+rm -f "$published"
 out="$PWD/dist/nightly"
 stage="$PWD/dist/stage"
 rm -rf "$out" "$stage"
@@ -70,14 +103,7 @@ cp target/release/voxelrust       "$out/voxelrust-linux-x86_64.bin"
 cp dist/windows/voxelrust.exe     "$out/voxelrust-windows-x86_64.exe"
 cp dist/macos/voxelrust           "$out/voxelrust-macos-x86_64.bin"
 cp dist/macos-legacy/voxelrust    "$out/voxelrust-macos-legacy-x86_64.bin"
-{
-  echo "commit $COMMIT"
-  for pair in linux-x86_64:voxelrust-linux-x86_64.bin windows-x86_64:voxelrust-windows-x86_64.exe \
-              macos-x86_64:voxelrust-macos-x86_64.bin macos-legacy-x86_64:voxelrust-macos-legacy-x86_64.bin; do
-    build="${pair%%:*}"; file="${pair##*:}"
-    echo "$build $file $(sha256sum "$out/$file" | cut -d' ' -f1) $(wc -c < "$out/$file" | tr -d ' ')"
-  done
-} > "$out/nightly.txt"
+sh scripts/write-nightly-list.sh "$out" "$COMMIT" "$SEQ"
 {
   echo "# build                 file                                   runs on"
   echo "linux-x86_64            voxelrust-linux-x86_64.tar.gz          Linux, 64-bit Intel/AMD"
@@ -85,7 +111,7 @@ cp dist/macos-legacy/voxelrust    "$out/voxelrust-macos-legacy-x86_64.bin"
   echo "macos-x86_64            voxelrust-macos-x86_64.zip             macOS 10.12 and later (Intel; Apple silicon through Rosetta)"
   echo "macos-legacy-x86_64     voxelrust-macos-legacy-x86_64.zip      Mac OS X 10.6 to 10.11 (64-bit Intel)"
   echo "web                     voxelrust-web.zip                      a modern browser (unzip onto any web server)"
-  echo "# commit $COMMIT"
+  echo "# commit $COMMIT, release $SEQ"
   echo "# SDL2 comes inside the Windows and Mac files; on Linux install your system's SDL2 package."
 } > "$out/BUILDS.txt"
 (cd "$out" && sha256sum voxelrust-* > SHA256SUMS.txt)
