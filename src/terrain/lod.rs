@@ -101,7 +101,9 @@ pub fn build(seed: u32, tx: i32, tz: i32, step: i32) -> MeshData {
             } else {
                 colour(col.height, col.biome)
             };
-            if dry && step <= 8 && !col.paved && col.building == 0 && !col.farm {
+            // (Only the world's own terrain has woods: flat land and the other
+            // dimensions are drawn without far-off trees.)
+            if dry && step <= 8 && !col.paved && col.building == 0 && !col.farm && worldgen::shape() == 0 {
                 let roll = crate::noise::hash2(seed ^ 0x7EE5, x, z);
                 // Denser cover in forest and jungle than at their edges.
                 let chance = match col.biome {

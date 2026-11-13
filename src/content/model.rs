@@ -244,7 +244,7 @@ impl ModelDef {
                 // it pushes back; elbows keep a slight bend and swing a little.
                 Swing::Shin(sign) => {
                     let lift = if a == Anim::Hop { sinf(ph) } else { sign * sinf(if a == Anim::Scuttle { ph * 2.0 } else { ph } + 0.9) };
-                    rot[0] += lift.max(0.0) * reach * 1.25 * st;
+                    rot[0] += lift.max(0.0) * reach * 0.95 * st;
                 }
                 Swing::Forearm(sign) => {
                     rot[0] -= (8.0 + (sign * sinf(ph)).max(0.0) * reach * 0.8) * st.max(0.15);

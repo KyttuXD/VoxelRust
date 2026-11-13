@@ -367,6 +367,7 @@ struct App {
     want_reload: bool,
     /// The crafting screen was opened at an oven, not a table.
     at_oven: bool,
+    show_walking: bool,
     mods_scroll: i32,
     at_furnace: bool,
     /// Seconds and frames counted while timing full screen.
@@ -2226,6 +2227,12 @@ impl App {
             let at = [c[0] as f64 + 0.5, c[1] as f64 + 0.01, c[2] as f64 + 0.5];
             if n < kinds.len() {
                 let i = g.mobs.spawn(kinds[n], at);
+                // "walking" shows them mid-stride, each at its own point.
+                if self.show_walking {
+                    g.mobs.list[i].stride = 1.0;
+                    g.mobs.list[i].phase = 0.9 + n as f32 * 0.7;
+                    g.mobs.list[i].clock = n as f32 * 0.37;
+                }
                 // Turned a little, so shape and face both show.
                 g.mobs.list[i].body.yaw = g.player.yaw + PI - 0.6;
                 g.mobs.list[i].phase = 1.2;
@@ -2416,13 +2423,36 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mut base = match &opts.data {
         Some(d) => d.clone(),
         None => match api.SDL_GetPrefPath {
+            // The per-user place for program data, under KYTTU/VoxelRust:
+            // AppData\Roaming on Windows, Library/Application Support on a
+            // Mac, ~/.local/share on Linux.
             Some(f) => unsafe {
-                let p = f(b"VoxelRust\0".as_ptr() as *const c_char, b"VoxelRust\0".as_ptr() as *const c_char);
-                let s = sys::from_cstr(p);
-                if !p.is_null() {
-                    (api.SDL_free)(p as *mut c_void);
+                let folder = |org: &[u8]| {
+                    let p = f(org.as_ptr() as *const c_char, b"VoxelRust\0".as_ptr() as *const c_char);
+                    let s = sys::from_cstr(p);
+                    if !p.is_null() {
+                        (api.SDL_free)(p as *mut c_void);
+                    }
+                    s
+                };
+                let new = folder(b"KYTTU\0");
+                // Worlds and settings kept where earlier versions put them
+                // come along, once.
+                if !new.is_empty() && sys::read_file(&alloc::format!("{}settings.txt", new)).is_none() && sys::read_file(&alloc::format!("{}worlds.txt", new)).is_none() {
+                    let old = new.replace("KYTTU", "VoxelRust");
+                    if old != new {
+                        let mut moved = 0;
+                        for name in sys::list_dir(&old) {
+                            if let Some(bytes) = sys::read_file(&alloc::format!("{}{}", old, name)) {
+                                moved += sys::write_file(&alloc::format!("{}{}", new, name), &bytes) as u32;
+                            }
+                        }
+                        if moved > 0 {
+                            logf!("voxelrust: brought {} files over from {}", moved, old);
+                        }
+                    }
                 }
-                s
+                new
             },
             None => String::new(),
         },
@@ -2611,6 +2641,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         server_content: false,
         want_reload: false,
         at_oven: false,
+        show_walking: opts.show.contains("walking"),
         mods_scroll: 0,
         at_furnace: false,
         tune: (0.0, 0),
