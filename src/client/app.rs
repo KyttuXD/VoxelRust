@@ -1163,19 +1163,19 @@ impl App {
             // The hand and what it holds, in their own close-up pass.
             if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried {
                 if let Some(hand) = reg().models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).1) {
-                    let swing = hand_swing(g);
                     let v = g.player.vel;
                     let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
-                    let bob = if g.player.on_ground { sinf(g.clock * 9.0) * 0.014 * (speed / 4.4).min(1.0) } else { 0.0 };
-                    let mut items = Vec::new();
                     let held = crate::client::hand::held_of(g.held().map(|h| h.0));
-                    crate::client::hand::first_person(held, crate::client::hand::white_tile(), swing, bob, &mut items);
-                    let to_view = |p: [f32; 3]| crate::client::hand::arm_point(p, swing, bob, held);
+                    let view = hand_view_of(g, held, speed);
+                    let mut items = Vec::new();
+                    crate::client::hand::first_person_view(held, &view, &mut items);
+                    let to_view = |p: [f32; 3]| crate::client::hand::arm_point_view(p, &view, held);
                     r.draw_first_person(hand, self.skin_tex, cam.fov, 0.12, &to_view, &items);
                 }
             }
         } else {
             r.clear([0.36, 0.56, 0.86]);
+            crate::game::bow::show(None);
         }
 
         self.tags = new_tags;
@@ -1409,6 +1409,12 @@ impl App {
                 r.rect(w * 0.5 - bw * 0.5 - s, h * 0.5 + 11.0 * s, bw + 2.0 * s, 5.0 * s, [0, 0, 0, 150]);
                 r.rect(w * 0.5 - bw * 0.5, h * 0.5 + 12.0 * s, bw * p.clamp(0.0, 1.0), 3.0 * s, [250, 250, 250, 230]);
             }
+        }
+        // A bow being drawn shows its drawn picture in the hotbar and the inventory too.
+        {
+            let held = g.held().map(|h| h.0);
+            let draw = held.map_or(0.0, |i| g.bow.shown(i as u16));
+            crate::game::bow::show(crate::game::bow::pull_frame(draw).and_then(|f| held.map(|i| (i, f))));
         }
         // Hotbar. Empty slots stay empty: an empty hand is a valid choice.
         let slot = 22.0 * s;
@@ -2827,6 +2833,28 @@ fn hand_swing(g: &session::Session) -> f32 {
     (g.cooldown[0] / 0.35).max(g.cooldown[1] / 0.5).clamp(0.0, 1.0)
 }
 
+/// What the first-person hand is doing: the swing of a blow or use (from its
+/// start, as LastRoute's tweens run), the walking bob, a bow's draw and eating.
+fn hand_view_of(g: &session::Session, held: crate::client::hand::Held, speed: f32) -> crate::client::hand::View {
+    use crate::client::hand::Held;
+    let index = g.held().map(|h| h.0);
+    let id = index.map_or(0, |i| i as u16);
+    // The cooldowns count down from a blow's or a use's start; the swing runs up from it.
+    let left = (g.cooldown[0] / 0.35).max(g.cooldown[1] / 0.5).clamp(0.0, 1.0);
+    let swing = if left > 0.0 { (1.0 - left).max(0.001) } else { 0.0 };
+    let draw = if matches!(held, Held::Bow(_)) { g.bow.shown(id) } else { 0.0 };
+    let eat = g.eating.shown(id);
+    // The bow's own motion is its draw; eating is not a blow.
+    let swing = if matches!(held, Held::Bow(_)) || eat > 0.0 { 0.0 } else { swing };
+    crate::client::hand::View {
+        swing,
+        bob: crate::client::hand::walk_bob(g.clock, speed, g.player.on_ground),
+        draw,
+        eat,
+        drink: index.map_or(false, |i| crate::game::eating::is_drink(&reg().items[i].id)),
+    }
+}
+
 fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Color) {
     let it = &reg().items[index];
     // A spawn egg shows the creature itself, standing in half an eggshell.
@@ -2863,7 +2891,8 @@ fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Co
             r.icon_block(x, y, size, d.tex, &shape, tint)
         }
         Some(d) if matches!(d.kind, Kind::Cube | Kind::Cutout | Kind::Translucent) && d.first != block::AIR => r.icon_block(x, y, size, d.tex, &[], tint),
-        _ => r.icon(x, y, size, it.icon, tint),
+        // A bow being drawn shows the picture of it drawn.
+        _ => r.icon(x, y, size, crate::game::bow::icon_for(index, it.icon), tint),
     }
 }
 

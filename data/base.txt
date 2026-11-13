@@ -2411,6 +2411,10 @@ sound glass effects 0.18 0.55 1800 900 0.90 0.60 Glass breaks
 sound wood effects 0.14 0.75 240 150 0.25 0.75 Wood knocks
 sound door effects 0.16 0.60 180 120 0.20 0.70 Door
 sound bow effects 0.20 0.30 240 520 0.60 0.60 Bowstring
+sound bow_draw effects 0.50 0.25 120 300 0.45 0.40 Bowstring creaks
+sound bow_load effects 0.09 0.60 1400 700 0.80 0.50 Crossbow clicks
+sound munch effects 0.06 0.85 320 200 0.35 0.45 Biting
+sound gulp effects 0.14 0.35 200 110 0.30 0.45 Drinking
 sound moo effects 0.70 0.05 150 110 0.30 0.50 Cow lows
 sound baa effects 0.45 0.10 420 340 0.40 0.45 Sheep bleats
 sound oink effects 0.25 0.35 260 180 0.30 0.50 Pig grunts
@@ -5827,6 +5831,15 @@ smelt cooked_fish 2 raw_fish 2 coal 1
 texture bow paint bow 150 110 70
 texture crossbow paint crossbow 130 96 60
 texture longbow paint bow 110 80 56
+texture bow_pulling_0 paint bow_pull0 150 110 70
+texture bow_pulling_1 paint bow_pull1 150 110 70
+texture bow_pulling_2 paint bow_pull2 150 110 70
+texture crossbow_pulling_0 paint crossbow_pull0 130 96 60
+texture crossbow_pulling_1 paint crossbow_pull1 130 96 60
+texture crossbow_pulling_2 paint crossbow_pull2 130 96 60
+texture longbow_pulling_0 paint bow_pull0 110 80 56
+texture longbow_pulling_1 paint bow_pull1 110 80 56
+texture longbow_pulling_2 paint bow_pull2 110 80 56
 texture arrow paint arrow 200 200 210
 item arrow
   name Arrow

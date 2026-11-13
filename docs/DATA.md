@@ -384,10 +384,19 @@ Left click breaks, right click places.
 - `damage`: 0..1000. Anything below 3 hits like a bare hand.
 - `turns`: may be given several times. The base hoes have
   `turns dirt farmland` and `turns grass farmland`.
-- `shoots`: right click looses a shot the way the player looks. Damage is
+- `shoots`: holding right click draws the item back and letting go looses a
+  shot the way the player looks, with speed and damage that grow with the
+  draw (a full draw gives the numbers below; the weakest shot a fifth of the
+  power). Damage is
   0..500; speed is in blocks per second, 4..80 (32 if left out); the wait
-  between shots is 0.1..10 seconds (0.6 if left out). With an ammunition
-  item, each shot uses one in survival and the item says `OUT OF AMMUNITION`
+  between shots is 0.1..10 seconds (0.6 if left out), and sets how long a
+  full draw takes (the wait x 1.4, between 0.5 and 2 seconds; a crossbow, whose
+  id contains `crossbow`, loads in the wait x 0.6 and fires on the next click).
+  The three pictures of it drawn back are the textures `<icon>_pulling_0`,
+  `_1` and `_2` (the item keeps its own picture if it has none; a texture pack's
+  `bow_pulling_0..2` and `crossbow_pulling_0..2` are used). Sounds `bow_draw`,
+  `bow_load` and `bow` are played as it is drawn, loaded and shot. With an ammunition
+  item, each shot uses one in survival, when the string is let go and the item says `OUT OF AMMUNITION`
   when there are none; without one it never runs out. Shots fall as they
   fly, last five seconds at most, stop at solid blocks and hurt the first
   creature they meet. The base data has:
@@ -718,7 +727,7 @@ sound chirp effects 0.10 0.02 2400 3200 0.90 0.30 Bird chirps
 
 Declaring an id again retunes that sound. The game itself plays these ids,
 so a pack may restyle them: `step break place hurt click pop splash thunder
-rain rumble wave door bow rail`. The base data also defines `glass wood moo
+rain rumble wave door bow bow_draw bow_load munch gulp rail`. The base data also defines `glass wood moo
 baa oink cluck bark meow howl growl hiss chirp buzz groan rattle roar chime
 whoosh sizzle` for blocks, creatures and packs to use. The Natural Disasters
 mod (`mods/disasters`) defines `quake` and `twister`.

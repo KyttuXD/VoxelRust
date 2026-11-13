@@ -199,6 +199,9 @@ pub struct Session {
     pub mining: Option<([i32; 3], f32)>,
     pub note: (String, f32),
     pub cooldown: [f32; 2],
+    /// A bow being drawn (see game/bow.rs) and food being eaten (game/eating.rs).
+    pub bow: crate::game::bow::Bow,
+    pub eating: crate::game::eating::Eating,
     peak_y: f64,
     was_airborne: bool,
     step_distance: f32,
@@ -545,6 +548,8 @@ impl Session {
             mining: None,
             note: (String::new(), 0.0),
             cooldown: [0.0; 2],
+            bow: Default::default(),
+            eating: Default::default(),
             was_airborne: false,
             step_distance: 0.0,
             since_damage: 100.0,
@@ -2150,6 +2155,9 @@ impl Session {
         }
         if !self.dead {
             self.use_items(dt, c, audio);
+        } else {
+            self.bow.reset();
+            self.eating.reset();
         }
 
         self.autosave += dt;
@@ -2237,6 +2245,55 @@ impl Session {
         }
     }
 
+    /// A bow being drawn or a crossbow loaded: the draw grows while the use
+    /// button is held, and letting go (a click, for a loaded crossbow) looses
+    /// the arrow with a speed and damage that follow the draw. Returns whether
+    /// it took this frame's input.
+    fn bow_step(&mut self, dt: f32, c: &Controls, held: Option<(usize, &'static ItemDef)>, audio: &mut Audio) -> bool {
+        use crate::game::bow::{Event, Phase};
+        if self.bow.phase == Phase::Idle {
+            return false;
+        }
+        let same = held.map_or(false, |h| h.0 as u16 == self.bow.item) && self.selected == self.bow.slot;
+        let cancel = !same || c.break_held;
+        match self.bow.step(dt, c.place_held, cancel) {
+            Event::Ready => {
+                audio.play_named("bow_load", 0.8);
+                true
+            }
+            Event::Release(power) => {
+                self.loose_arrow(held, power, audio);
+                true
+            }
+            Event::Fire => {
+                self.loose_arrow(held, 1.0, audio);
+                true
+            }
+            Event::Cancelled => {
+                self.cooldown[1] = self.cooldown[1].max(0.2);
+                false
+            }
+            Event::Nothing => self.bow.phase != Phase::Idle,
+        }
+    }
+
+    /// Send the arrow of the bow in hand on its way, `power` (0..1) of the
+    /// way drawn, and use up the ammunition. Replicates as any shot does.
+    fn loose_arrow(&mut self, held: Option<(usize, &'static ItemDef)>, power: f32, audio: &mut Audio) {
+        let creative = self.mode == GameMode::Creative;
+        self.cooldown[1] = 0.25;
+        let Some((_, item)) = held else { return };
+        let Some((damage, speed, _, ammo)) = item.x.shoots else { return };
+        let loaded = creative || ammo.map_or(true, |a| self.inv.remove(a as u16, 1));
+        if loaded {
+            let (damage, speed) = crate::game::bow::scaled(damage, speed, power);
+            self.loose(damage, speed, AIR, [230, 220, 200]);
+            audio.play_named("bow", 0.4 + 0.5 * power);
+        } else {
+            self.say("OUT OF AMMUNITION");
+        }
+    }
+
     fn use_items(&mut self, dt: f32, c: &Controls, audio: &mut Audio) {
         let creative = self.mode == GameMode::Creative;
         let none = ItemDef {
@@ -2268,7 +2325,20 @@ impl Session {
             }
         });
         if used || self.carried {
+            self.bow.reset();
+            self.eating.reset();
             return;
+        }
+        if !c.place_held {
+            self.bow.lockout = false;
+        }
+        // A bow being drawn, or a crossbow loaded, holds the use button.
+        if self.bow_step(dt, c, held, audio) {
+            return;
+        }
+        // Eating is only going on while the button is held on food.
+        if !c.place_held || c.break_held || item.food <= 0 {
+            self.eating.reset();
         }
 
         // Right click on a creature: collect what it gives, or trade.
@@ -2469,13 +2539,23 @@ impl Session {
                     return;
                 }
             }
-            if item.food > 0 && !creative && (self.hunger < MAX_HUNGER || self.health < MAX_HEALTH) {
-                self.cooldown[1] = 0.6;
-                self.hunger = (self.hunger + item.food).min(MAX_HUNGER);
-                self.health = (self.health + item.food / 2).min(MAX_HEALTH);
-                self.inv.take_one(self.selected);
-                audio.play(Sound::Pop, 0.8);
-                self.fire("eat", &item.id);
+            if item.food > 0 && !creative && (self.hunger < MAX_HUNGER || self.health < MAX_HEALTH) && !c.break_held {
+                // Eating takes a moment, with the button held (game/eating.rs).
+                let index = held.map_or(0, |h| h.0) as u16;
+                let drink = crate::game::eating::is_drink(&item.id);
+                match self.eating.step(dt, true, index, self.selected) {
+                    crate::game::eating::Bite::Done => {
+                        self.cooldown[1] = 0.4;
+                        self.hunger = (self.hunger + item.food).min(MAX_HUNGER);
+                        self.health = (self.health + item.food / 2).min(MAX_HEALTH);
+                        self.inv.take_one(self.selected);
+                        audio.play(Sound::Pop, 0.8);
+                        self.fire("eat", &item.id);
+                    }
+                    crate::game::eating::Bite::Bite => audio.play_named(if drink { "gulp" } else { "munch" }, 0.7),
+                    crate::game::eating::Bite::Nothing => {}
+                }
+                // Nothing else is done while eating, even when the bite is the last.
                 return;
             }
             // Spawn eggs hatch where they are pointed.
@@ -2491,16 +2571,20 @@ impl Session {
                 }
                 return;
             }
-            // Bows and the like.
-            if let Some((damage, speed, wait, ammo)) = item.x.shoots {
-                let loaded = creative || ammo.map_or(true, |a| self.inv.remove(a as u16, 1));
-                self.cooldown[1] = wait;
-                if loaded {
-                    self.loose(damage, speed, AIR, [230, 220, 200]);
-                    audio.play_named("bow", 0.9);
-                } else {
-                    self.say("OUT OF AMMUNITION");
+            // Bows and the like: the button draws the string back (see bow_step), and
+            // letting go looses the arrow.
+            if let (Some((_, _, wait, ammo)), Some((index, _))) = (item.x.shoots, held) {
+                if self.bow.lockout {
+                    return;
                 }
+                if !creative && ammo.map_or(false, |a| self.inv.count(a as u16) == 0) {
+                    self.cooldown[1] = 0.5;
+                    self.say("OUT OF AMMUNITION");
+                    return;
+                }
+                let crossbow = crate::game::bow::is_crossbow(&item.id);
+                self.bow.start(index as u16, self.selected, wait, crossbow);
+                audio.play_named("bow_draw", 0.7);
                 return;
             }
             // Items packs have given a use of their own (wands, horns...).

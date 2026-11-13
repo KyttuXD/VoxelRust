@@ -64,6 +64,11 @@ separate pictures only when they differ.
 - **Food and gems:** a bright main colour with a darker lower edge and one
   lighter highlight; keep the outline.
 - **Bows and crossbows** are drawn upright too, with the grip in the middle.
+  Each also has three pictures of it drawn back, `<bow>_pulling_0`, `_1` and
+  `_2` (the string pulled further and an arrow nocked; the OCD pack's
+  `bow_pulling_*` and `crossbow_pulling_*` are used for them). The base game
+  paints its own in `src/content/art/bow.rs` (styles `bow_pull0..2`,
+  `crossbow_pull0..2`). The held bow and its hotbar picture switch between them.
 
 ## Using the pack
 

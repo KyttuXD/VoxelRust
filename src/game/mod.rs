@@ -8,3 +8,5 @@ pub mod path;
 pub mod session;
 pub mod waypoints;
 pub mod fluid;
+pub mod bow;
+pub mod eating;

@@ -310,6 +310,10 @@ pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
 pub fn painted(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
     let salt = 200 + (rgb[0] as u32) * 3 + (rgb[1] as u32) * 5 + (rgb[2] as u32) * 7;
     let dark = |c: [u8; 3], pct: i32| -> [u8; 3] { [0, 1, 2].map(|i| (c[i] as i32 * pct / 100).clamp(0, 255) as u8) };
+    // Bows and crossbows, at rest and drawn, are in the OCD style (content/art/bow.rs).
+    if let Some(p) = crate::content::art::bow::painted(style, rgb, x, y) {
+        return Some(p);
+    }
     Some(match style {
         "concrete" => grain(rgb, 4, x, y, salt),
         "wool" => {
@@ -1024,6 +1028,10 @@ pub fn pack_names(id: &str) -> Vec<alloc::string::String> {
         }
     };
     add(id);
+    // A longbow is drawn back in the pack's bow pictures.
+    if let Some(n) = id.strip_prefix("longbow_pulling_").or_else(|| id.strip_prefix("magic_bow_pulling_")) {
+        add(&alloc::format!("bow_pulling_{}", n));
+    }
     // Wood: `<wood>_side` and `_top` are the log's sides and ends; our pine is the spruce.
     fn wood(w: &str) -> &str {
         match w {

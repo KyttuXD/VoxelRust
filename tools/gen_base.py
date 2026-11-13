@@ -408,6 +408,8 @@ for line in ["step steps 0.09 0.95 90 60 0.10 0.55 Footsteps", "break effects 0.
              "wave effects 1.60 1.00 80 60 0.07 0.30 Waves",
              "glass effects 0.18 0.55 1800 900 0.90 0.60 Glass breaks", "wood effects 0.14 0.75 240 150 0.25 0.75 Wood knocks",
              "door effects 0.16 0.60 180 120 0.20 0.70 Door", "bow effects 0.20 0.30 240 520 0.60 0.60 Bowstring",
+             "bow_draw effects 0.50 0.25 120 300 0.45 0.40 Bowstring creaks", "bow_load effects 0.09 0.60 1400 700 0.80 0.50 Crossbow clicks",
+             "munch effects 0.06 0.85 320 200 0.35 0.45 Biting", "gulp effects 0.14 0.35 200 110 0.30 0.45 Drinking",
              "moo effects 0.70 0.05 150 110 0.30 0.50 Cow lows", "baa effects 0.45 0.10 420 340 0.40 0.45 Sheep bleats",
              "oink effects 0.25 0.35 260 180 0.30 0.50 Pig grunts", "cluck effects 0.12 0.15 700 500 0.60 0.40 Hen clucks",
              "bark effects 0.14 0.30 420 260 0.50 0.60 Dog barks", "meow effects 0.40 0.05 700 520 0.60 0.40 Cat meows",
@@ -614,6 +616,10 @@ w("""
 tex("bow", "paint bow 150 110 70")
 tex("crossbow", "paint crossbow 130 96 60")
 tex("longbow", "paint bow 110 80 56")
+# Each bow also has three pictures of it drawn back (shown in the hand and the hotbar while the use button is held).
+for bid, style, rgbs in [("bow", "bow", "150 110 70"), ("crossbow", "crossbow", "130 96 60"), ("longbow", "bow", "110 80 56")]:
+    for k in range(3):
+        tex(f"{bid}_pulling_{k}", f"paint {style}_pull{k} {rgbs}")
 tex("arrow", "paint arrow 200 200 210")
 w("item arrow\n  name Arrow\n  icon arrow\n  category Tools")
 w("item bow\n  name Bow\n  icon bow\n  category Tools\n  stack 1\n  shoots 6 34 0.7 arrow")
