@@ -1,0 +1,250 @@
+//! Distant terrain. Beyond the fully detailed chunks the world is drawn as
+//! coarse height-field tiles made straight from the terrain function, with
+//! no block data at all. A tile covers 64 x 64 blocks in a few dozen quads,
+//! so the view can reach kilometres at a small cost.
+
+use crate::block::reg;
+use crate::mesh::{MeshData, Vertex};
+use crate::worldgen::{self, Biome, SEA};
+use alloc::vec::Vec;
+
+/// Tile edge in blocks (four chunks).
+pub const TILE: i32 = 64;
+/// Chunks per tile edge.
+pub const TILE_CHUNKS: i32 = 4;
+
+pub fn colour(height: i32, biome: Biome) -> [u8; 3] {
+    if height < SEA {
+        return [44, 104, 198];
+    }
+    if worldgen::earth_proj().is_none() && height <= SEA + 1 && biome != Biome::Tundra && biome != Biome::Taiga {
+        return [220, 204, 152];
+    }
+    match biome {
+        Biome::Plains => [74, 150, 70],
+        Biome::Forest => [52, 122, 54],
+        Biome::Desert => [220, 204, 152],
+        Biome::Tundra => [236, 241, 248],
+        Biome::Taiga => [150, 176, 160],
+        Biome::Swamp => [70, 112, 70],
+        Biome::Savanna => [150, 160, 76],
+        Biome::Jungle => [40, 130, 52],
+        Biome::Badlands => [196, 110, 66],
+        Biome::Mountain => {
+            if height > SEA + 54 {
+                [236, 241, 248]
+            } else {
+                [126, 130, 138]
+            }
+        }
+    }
+}
+
+/// Leaf colour of the trees that grow in a biome, or `None` for open country.
+fn tree_colour(biome: Biome, roll: u32) -> Option<[u8; 3]> {
+    Some(match biome {
+        Biome::Forest => match roll % 10 {
+            0..=2 => [96, 160, 70],   // birch
+            3..=4 => [204, 96, 40],   // maple
+            _ => [48, 124, 54],       // oak
+        },
+        Biome::Taiga => [30, 92, 66],
+        Biome::Jungle => [58, 140, 52],
+        Biome::Swamp => [58, 108, 58],
+        Biome::Savanna if roll % 5 == 0 => [86, 132, 52],
+        Biome::Plains if roll % 60 == 0 => [240, 150, 190],
+        _ => return None,
+    })
+}
+
+/// Build the mesh of tile (tx, tz), sampling the terrain every `step`
+/// blocks (4, 8 or 16).
+///
+/// The tile is drawn the way the world is built: as flat-topped columns
+/// with vertical sides, not as a smooth sheet, so distant land keeps the
+/// same blocky look as the land nearby. Wooded country gets a blocky tree
+/// on each column that would have trees.
+pub fn build(seed: u32, tx: i32, tz: i32, step: i32) -> MeshData {
+    let step = step.clamp(2, 32);
+    let n = (TILE / step) as usize;
+    let (ox, oz) = (tx * TILE, tz * TILE);
+    // One sample per cell, taken at its middle.
+    let mut h = alloc::vec![0i32; n * n];
+    let mut c = alloc::vec![[0u8; 3]; n * n];
+    let mut trees: Vec<(usize, usize, [u8; 3])> = Vec::new();
+    for i in 0..n {
+        for j in 0..n {
+            let (x, z) = (ox + i as i32 * step + step / 2, oz + j as i32 * step + step / 2);
+            let col = worldgen::column(seed, x, z);
+            let dry = col.height >= SEA && !col.river;
+            // Water is drawn as a flat sheet at sea level.
+            h[i * n + j] = col.height.max(SEA) + 1 + col.building as i32;
+            c[i * n + j] = if col.river {
+                [44, 104, 198]
+            } else if col.building > 0 {
+                [170, 168, 164]
+            } else if col.road && col.height >= SEA {
+                [86, 88, 94]
+            } else if col.farm && col.height >= SEA {
+                // Fields in a patchwork of ripe and green.
+                match crate::noise::hash2(seed ^ 0xFA53, x >> 4, z >> 4) % 7 {
+                    0 | 2 => [206, 184, 96],
+                    5 | 6 => [112, 168, 72],
+                    _ => [128, 150, 70],
+                }
+            } else if col.paved && col.height >= SEA {
+                [128, 124, 122]
+            } else {
+                colour(col.height, col.biome)
+            };
+            if dry && step <= 8 && !col.paved && col.building == 0 && !col.farm {
+                let roll = crate::noise::hash2(seed ^ 0x7EE5, x, z);
+                // Denser cover in forest and jungle than at their edges.
+                let chance = match col.biome {
+                    Biome::Forest | Biome::Jungle => 70,
+                    Biome::Taiga | Biome::Swamp => 50,
+                    _ => 100,
+                };
+                if roll % 100 < chance {
+                    if let Some(leaf) = tree_colour(col.biome, roll >> 8) {
+                        trees.push((i, j, leaf));
+                    }
+                }
+            }
+        }
+    }
+    // Plain white texel, full sky light: colour comes from the vertices and
+    // brightness from the time of day, like everything else.
+    let r = reg();
+    let white = r.tiles.iter().position(|t| t.id == "white").unwrap_or(0) as i32;
+    let uv = [((white % 16) * 256 + 128) as i16, ((white / 16) * 256 + 128) as i16];
+    let luv = [8i16, 15 * 16 + 8];
+    let mut out = MeshData { opaque: Vec::with_capacity(n * n * 12), water: Vec::new(), ymin: i32::MAX, ymax: 0 };
+    // A vertex at block offset (x, z) within the tile, in 1/16ths.
+    let vert = |x: i32, y: i32, z: i32, col: [u8; 3], shade: i32| Vertex {
+        pos: [x as i16, (y * 16) as i16, z as i16, 0],
+        col: [
+            (col[0] as i32 * shade / 256).clamp(0, 255) as u8,
+            (col[1] as i32 * shade / 256).clamp(0, 255) as u8,
+            (col[2] as i32 * shade / 256).clamp(0, 255) as u8,
+            255,
+        ],
+        uv,
+        luv,
+    };
+    // An upright box from y0 to y1 over the square (x0, z0)..(x1, z1), in
+    // 1/16ths: its top, and each side down to `floor(side)`.
+    let pillar = |x0: i32, z0: i32, x1: i32, z1: i32, y1: i32, col: [u8; 3], sides: [i32; 4], out: &mut MeshData| {
+        out.opaque.push(vert(x0, y1, z1, col, 256));
+        out.opaque.push(vert(x1, y1, z1, col, 256));
+        out.opaque.push(vert(x1, y1, z0, col, 256));
+        out.opaque.push(vert(x0, y1, z0, col, 256));
+        // Sides in the order -x, +x, -z, +z, with the same shading as blocks.
+        let faces = [
+            ([x0, z0, x0, z1], 160),
+            ([x1, z1, x1, z0], 160),
+            ([x1, z0, x0, z0], 205),
+            ([x0, z1, x1, z1], 205),
+        ];
+        for (k, (e, shade)) in faces.iter().enumerate() {
+            let y0 = sides[k];
+            if y0 < y1 {
+                out.opaque.push(vert(e[0], y0, e[1], col, *shade));
+                out.opaque.push(vert(e[2], y0, e[3], col, *shade));
+                out.opaque.push(vert(e[2], y1, e[3], col, *shade));
+                out.opaque.push(vert(e[0], y1, e[1], col, *shade));
+                out.ymin = out.ymin.min(y0);
+            }
+        }
+        out.ymax = out.ymax.max(y1);
+        out.ymin = out.ymin.min(y1);
+    };
+    let s16 = step * 16;
+    // At the tile's edge a curtain hangs down, hiding cracks against the
+    // neighbouring tile (which may be sampled more coarsely).
+    let drop = 12;
+    for i in 0..n {
+        for j in 0..n {
+            let here = h[i * n + j];
+            let side = |di: i32, dj: i32| -> i32 {
+                let (a, b) = (i as i32 + di, j as i32 + dj);
+                if a < 0 || b < 0 || a >= n as i32 || b >= n as i32 {
+                    here - drop
+                } else {
+                    h[a as usize * n + b as usize]
+                }
+            };
+            let (x0, z0) = (i as i32 * s16, j as i32 * s16);
+            pillar(x0, z0, x0 + s16, z0 + s16, here, c[i * n + j], [side(-1, 0), side(1, 0), side(0, -1), side(0, 1)], &mut out);
+        }
+    }
+    for (i, j, leaf) in trees {
+        // A crown on a short gap of trunk, sized to the sampling step.
+        let ground = h[i * n + j];
+        let (cx, cz) = (i as i32 * s16 + s16 / 2, j as i32 * s16 + s16 / 2);
+        let half = (s16 * 3 / 8).min(40);
+        let top = ground + 4 + (leaf[0] as i32 + i as i32) % 3;
+        let base = ground + 2;
+        pillar(cx - half, cz - half, cx + half, cz + half, top, leaf, [base; 4], &mut out);
+    }
+    if out.ymin > out.ymax {
+        out.ymin = 0;
+    }
+    out
+}
+
+/// How coarsely to sample a tile `dist` tiles away.
+pub fn step_for(dist: i32) -> i32 {
+    if dist <= 6 {
+        4
+    } else if dist <= 16 {
+        8
+    } else {
+        16
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tiles_are_blocky_and_get_cheaper_with_distance() {
+        let fine = build(7, 3, -2, 4);
+        let coarse = build(7, 3, -2, 16);
+        assert!(fine.opaque.len() % 4 == 0 && coarse.opaque.len() % 4 == 0);
+        // At least a top per cell, and far fewer quads when sampled coarsely.
+        assert!(fine.opaque.len() >= 16 * 16 * 4);
+        assert!(coarse.opaque.len() >= 4 * 4 * 4 && coarse.opaque.len() * 6 < fine.opaque.len());
+        // Every quad is flat or upright: all four corners share x, y or z.
+        for q in fine.opaque.chunks(4) {
+            let same = |k: usize| q.iter().all(|v| v.pos[k] == q[0].pos[k]);
+            assert!(same(0) || same(1) || same(2), "a slanted quad: {q:?}");
+        }
+        // The first cell's top is at the terrain height there (never below the sea).
+        let want = worldgen::column(7, 3 * TILE + 2, -2 * TILE + 2).height.max(SEA) + 1;
+        assert!(fine.opaque[..4].iter().all(|v| v.pos[1] as i32 == want * 16));
+        assert!(fine.ymin < fine.ymax);
+        assert_eq!((step_for(1), step_for(11), step_for(40)), (4, 8, 16));
+    }
+
+    #[test]
+    fn forests_show_trees_in_the_distance() {
+        // Find a wooded tile and an open one; the wooded one has more boxes
+        // than its cells alone account for, standing above the ground.
+        let mut found = false;
+        for t in 0..60 {
+            let (tx, tz) = (t * 3, t * 5 - 40);
+            let col = worldgen::column(7, tx * TILE + 32, tz * TILE + 32);
+            if col.biome == Biome::Forest && col.height > SEA + 2 {
+                let m = build(7, tx, tz, 4);
+                // More top faces than cells: the extra ones are tree crowns.
+                let tops = m.opaque.chunks(4).filter(|q| q.iter().all(|v| v.pos[1] == q[0].pos[1])).count();
+                assert!(tops > 16 * 16, "no trees on a forest tile");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "no forest tile found to test");
+    }
+}

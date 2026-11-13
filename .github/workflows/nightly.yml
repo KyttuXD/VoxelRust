@@ -1,0 +1,147 @@
+# Builds VoxelRust for Linux, Windows and macOS (Intel, 10.6+ and 10.12+) and publishes the files to the rolling
+# pre-release "nightly" in Releases (not Actions artifacts). The release is created on first use, its tag is moved to
+# the commit that was built, and the files are replaced in place, so it always holds the latest build.
+#
+# Everything is built on one Linux runner: the Windows and macOS programs are cross-built with the linker that ships
+# inside the Rust toolchain (rust-lld), without Visual Studio, a Windows SDK, Xcode or an Apple SDK
+# (scripts/build-windows.sh, scripts/build-macos-legacy.sh, docs/PORTING.md).
+#
+# Runs every night (03:00 UTC) and by hand from the Actions tab ("nightly", Run workflow). The nightly run is skipped
+# when the "nightly" tag already points at the newest commit; a run started by hand always builds.
+name: nightly
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  RUST_TOOLCHAIN: stable
+  NIGHTLY_TAG: nightly
+  NIGHTLY_TITLE: Nightly build
+  NIGHTLY_NOTES: Rebuilt every night when the code has changed. The files are replaced in place. SDL2 is not included, see README.md.
+
+jobs:
+  # Is there anything new to build? Compares the commit the "nightly" tag points at with the commit of this run.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$NIGHTLY_TAG" --jq .object.sha 2>/dev/null || true)
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$last" = "$GITHUB_SHA" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing new since the last nightly ($GITHUB_SHA): skipped." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-pc-windows-msvc,x86_64-apple-darwin
+
+      - name: cargo test --lib
+        run: cargo test --lib
+
+      - name: Linux (cargo build --release)
+        run: cargo build --release
+
+      - name: Windows x64 (scripts/build-windows.sh)
+        run: sh scripts/build-windows.sh
+
+      - name: macOS Intel, 10.6+ and 10.12+ (scripts/build-macos-legacy.sh)
+        run: sh scripts/build-macos-legacy.sh
+
+      # File names are voxelrust-<build>, where <build> is what `voxelrust --version` prints in brackets. Each build is
+      # for one kind of machine and must only ever replace the same build: the one for old Macs (macos-legacy-x86_64,
+      # Mac OS X 10.6+) is a different file from the one for new Macs (macos-x86_64, macOS 10.12+), and each Mac app
+      # declares its own minimum system, so macOS refuses to start the wrong one. BUILDS.txt lists them.
+      - name: Package
+        run: |
+          out="$PWD/dist/nightly"
+          stage="$RUNNER_TEMP/voxelrust-stage"
+          rm -rf "$out" "$stage"
+          mkdir -p "$out" "$stage"
+          package() { # package NAME PROGRAM-OR-APP FORMAT
+            dir="$stage/$1"
+            mkdir -p "$dir"
+            cp -R "$2" "$dir/"
+            for extra in README.md LICENSE LICENSE.md LICENSE.txt docs examples; do
+              if [ -e "$extra" ]; then cp -R "$extra" "$dir/"; fi
+            done
+            if [ "$3" = "tar.gz" ]; then
+              mkdir -p "$dir/share"
+              cp -R assets/hicolor "$dir/share/icons-hicolor"
+              cp assets/voxelrust.desktop assets/icon.png "$dir/"
+              tar -czf "$out/$1.tar.gz" -C "$stage" "$1"
+            else
+              (cd "$stage" && zip -qry "$out/$1.zip" "$1")
+            fi
+          }
+          sh scripts/package-macos-app.sh
+          VARIANT=modern sh scripts/package-macos-app.sh
+          package voxelrust-linux-x86_64         target/release/voxelrust     tar.gz
+          package voxelrust-windows-x86_64       dist/windows/voxelrust.exe   zip
+          package voxelrust-macos-x86_64         dist/macos/VoxelRust.app     zip
+          package voxelrust-macos-legacy-x86_64  dist/VoxelRust.app           zip
+          {
+            echo "# build                 file                                   runs on"
+            echo "linux-x86_64            voxelrust-linux-x86_64.tar.gz          Linux, 64-bit Intel/AMD"
+            echo "windows-x86_64          voxelrust-windows-x86_64.zip           Windows 7 to 11, 64-bit"
+            echo "macos-x86_64            voxelrust-macos-x86_64.zip             macOS 10.12 and later (Intel; Apple silicon through Rosetta)"
+            echo "macos-legacy-x86_64     voxelrust-macos-legacy-x86_64.zip      Mac OS X 10.6 to 10.11 (64-bit Intel)"
+            echo "# commit $GITHUB_SHA"
+          } > "$out/BUILDS.txt"
+          (cd "$out" && sha256sum voxelrust-* > SHA256SUMS.txt)
+          ls -l "$out"
+          {
+            echo "### Nightly files ($GITHUB_SHA)"
+            echo
+            echo '```'
+            cat "$out/SHA256SUMS.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only the default branch is published; a run started by hand on another branch builds and stops here.
+      - name: Publish to nightly
+        if: github.event_name == 'schedule' || github.ref_name == github.event.repository.default_branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          i=0
+          until gh release view "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; do
+            i=$((i + 1))
+            if [ "$i" -gt 6 ]; then
+              echo "could not create the $NIGHTLY_TAG release" >&2
+              exit 1
+            fi
+            gh release create "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+              --title "$NIGHTLY_TITLE" --notes "$NIGHTLY_NOTES" >/dev/null 2>&1 || sleep 5
+          done
+          # Point the tag at this commit, so the release matches the files uploaded below.
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$NIGHTLY_TAG" -f sha="$GITHUB_SHA" -F force=true >/dev/null 2>&1 || true
+          gh release upload "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/nightly/*
+          echo "uploaded the nightly files to the $NIGHTLY_TAG release ($GITHUB_SHA)"
+          echo "- release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$NIGHTLY_TAG (commit $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"

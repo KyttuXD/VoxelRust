@@ -1,0 +1,34 @@
+[package]
+name = "voxelrust"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.71"
+build = "build.rs"
+description = "A voxel sandbox for old and new machines: no_std Rust, SDL2, fixed-function OpenGL 1.5"
+license = "MIT"
+
+# No dependencies, on purpose. The game is `no_std` so that the binary needs
+# nothing from the operating system beyond the C library and SDL2. That is what
+# lets it run on Mac OS X 10.6 and older, where Rust's own standard library
+# cannot start. See docs/PORTING.md.
+
+[lib]
+name = "voxelrust"
+path = "src/lib.rs"
+doctest = false
+
+[[bin]]
+name = "voxelrust"
+path = "src/main.rs"
+test = false
+bench = false
+
+[profile.dev]
+panic = "abort"
+opt-level = 1
+
+[profile.release]
+panic = "abort"
+opt-level = 3
+lto = true
+codegen-units = 1

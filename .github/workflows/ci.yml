@@ -1,0 +1,40 @@
+# Runs the library tests and a release build on Linux, with the current stable Rust and with Rust 1.77.0
+# (the oldest toolchain the code is tested with). Nothing is published.
+# Neither step needs SDL2: the tests never open a window and the game loads SDL2 when it starts, not when it links.
+name: ci
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: test (rust ${{ matrix.toolchain }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: ["stable", "1.77.0"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - name: cargo test --lib
+        run: cargo test --lib
+      - name: cargo build --release
+        run: cargo build --release

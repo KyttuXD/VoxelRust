@@ -1,0 +1,7 @@
+//! Small self-contained helpers: maths, noise, JSON, PNG, settings.
+
+pub mod math;
+pub mod noise;
+pub mod json;
+pub mod png;
+pub mod settings;

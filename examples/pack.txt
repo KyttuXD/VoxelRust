@@ -1,0 +1,189 @@
+# An example content pack. Run the game with:
+#
+#   voxelrust --pack examples/pack.txt
+#
+# or copy it (and amethyst.tga) into the game's data folder as pack.txt to
+# have it loaded every time. Format: docs/DATA.md.
+
+# A texture from an image file, and two made from plain colours.
+texture amethyst file amethyst.tga
+texture copper_sheet flat 196 112 70 noise 9
+texture neon flat 80 255 190 noise 2
+
+block amethyst
+  name Amethyst Block
+  tex amethyst
+  light 5
+
+block amethyst_stairs
+  name Amethyst Stairs
+  shape stairs
+  tex amethyst
+
+block copper_slab
+  name Copper Slab
+  shape slab
+  tex copper_sheet
+
+# A custom shape: a bench with a back rest, placed facing the player.
+block bench
+  name Bench
+  tex planks
+  box 0 6 2 16 8 14
+  box 0 8 12 16 16 14
+  box 1 0 3 3 6 13
+  box 13 0 3 15 6 13
+  rotate
+
+# Glowing see-through panel.
+block neon_panel
+  name Neon Panel
+  tex neon
+  light 13
+  box 0 0 7 16 16 9
+  rotate
+
+# Redefining an id from the base data changes that block everywhere.
+block lamp
+  name Bright Lamp
+  tex lamp
+  light 15
+
+# Items that do more than place one block.
+item amethyst_brush
+  name Amethyst Brush
+  icon amethyst
+  place amethyst
+  brush 1
+  reach 16
+
+# ---- Things that do something ----
+
+# A hatch that opens and shuts with a right click: two blocks that turn
+# into each other. The open one is hidden (no item) and drops the shut one.
+block amethyst_hatch
+  name Amethyst Hatch
+  tex amethyst
+  box 0 0 0 16 3 16
+  toggle amethyst_hatch_open
+block amethyst_hatch_open
+  name Amethyst Hatch
+  tex amethyst
+  box 0 0 13 16 16 16
+  toggle amethyst_hatch
+  drops amethyst_hatch
+  hidden
+
+# Loose rubble falls like sand; hot coals burn whoever stands on them;
+# tar slows you down.
+block rubble
+  name Rubble
+  tex gravel
+  falls
+block hot_coals
+  name Hot Coals
+  tex coal_ore
+  light 8
+  hurts 2
+block tar
+  name Tar
+  tex deepstone
+  shape cross
+  slow 30
+
+# A crop in three stages. It only stands on farmland, grows by itself
+# (about 40 seconds a stage, under open sky), and when ripe gives a berry
+# and a seed or two. The hoes from the base data till the soil for it.
+texture glowberry_1 paint crop1 120 230 220
+texture glowberry_2 paint crop3 120 230 220
+texture glowberry_3 paint crop4 120 230 220
+texture glowberry paint fruit 120 230 220
+texture glowberry_seeds paint seeds 120 230 220
+block glowberry_1
+  tex glowberry_1
+  shape cross
+  on farmland
+  grows glowberry_2 40
+  drops glowberry_seeds
+  hidden
+block glowberry_2
+  tex glowberry_2
+  shape cross
+  on farmland
+  grows glowberry_3 40
+  drops glowberry_seeds
+  hidden
+block glowberry_3
+  tex glowberry_3
+  shape cross
+  light 7
+  on farmland
+  drops glowberry
+  also glowberry_seeds 100 2
+  hidden
+item glowberry
+  name Glowberry
+  icon glowberry
+  food 4
+  category Food
+item glowberry_seeds
+  name Glowberry Seeds
+  icon glowberry_seeds
+  place glowberry_1
+  category Farming
+
+# A tool that changes blocks it is used on, and a weapon.
+texture amethyst_wand paint sword 190 120 240
+item amethyst_wand
+  name Amethyst Wand
+  icon amethyst_wand
+  stack 1
+  damage 9
+  turns stone amethyst
+  turns cobble stone
+
+# Recipes: by hand, at a crafting table, and in an oven.
+recipe glowberry_seeds 2 glowberry 1
+craft amethyst_hatch 2 amethyst 3
+bake hot_coals 1 coal 4
+
+# The terrain: amethyst in deep stone (about one block in 400 between
+# heights 5 and 40), and wild glowberries here and there in the jungle.
+ore amethyst 5 40 400
+plant glowberry_3 300 jungle swamp
+
+# ---- A creature ----
+# It uses a model that comes with the game; `model <id> file <name>.bbmodel`
+# would bring in your own from Blockbench.
+entity crystal_fox
+  name Crystal Fox
+  model fox
+  tint 200 150 255
+  height 0.6
+  width 0.45
+  speed 4
+  health 10
+  behavior wander
+  biomes forest taiga
+  weight 6
+  trait flees hunter
+  anim walk
+  glow 8
+  baby 0.5 300
+  variant Pale 240 220 255
+  variant Big 170 110 230 size 1.4
+  drops amethyst 1
+  gives glowberry 240
+  likes glowberry
+
+# A villager with a made-up job, who trades.
+entity gem_trader
+  name Gem Trader
+  model player
+  tint 210 170 255
+  behavior villager
+  job jeweller
+  biomes plains forest
+  weight 2
+  trade ruby 1 amethyst 4
+  trade amethyst 8 ruby 1

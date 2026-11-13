@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=VoxelRust
+Comment=A voxel sandbox for old and new machines
+Exec=voxelrust
+Icon=voxelrust
+Categories=Game;
+Terminal=false

@@ -1,0 +1,33 @@
+# Models for creatures and vehicles (tools/gen_models.py makes the files).
+# The creatures themselves are in wildlife.txt (tools/gen_creatures.py).
+#
+# model <id> file <path relative to this file>
+# entity <id> ... see base.txt for the properties.
+
+# --- animal models
+model cow file models/cow.bbmodel
+model pig file models/pig.bbmodel
+model chicken file models/chicken.bbmodel
+model cat file models/cat.bbmodel
+model dog file models/dog.bbmodel
+model tiger file models/tiger.bbmodel
+model elephant file models/elephant.bbmodel
+model bear file models/bear.bbmodel
+model gator file models/gator.bbmodel
+model snake file models/snake.bbmodel
+model fish file models/fish.bbmodel
+model squid file models/squid.bbmodel
+model worm file models/worm.bbmodel
+model ant file models/ant.bbmodel
+model sheep file models/sheep.bbmodel
+model horse file models/horse.bbmodel
+model frog file models/frog.bbmodel
+model duck file models/duck.bbmodel
+
+# --- vehicle models (the vehicles themselves are declared elsewhere)
+model boat file models/boat.bbmodel
+model cargo_boat file models/cargo_boat.bbmodel
+model cart file models/cart.bbmodel
+model chest_cart file models/chest_cart.bbmodel
+model plane file models/plane.bbmodel
+model car file models/car.bbmodel

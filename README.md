@@ -1,0 +1,201 @@
+# VoxelRust
+
+A voxel sandbox written in Rust that runs on old machines as well as new
+ones. It has been run on a 2008 Mac Pro under Mac OS X 10.6.8, on Linux, and
+(under Wine) as a Windows program.
+
+It is an original game, not a clone of an existing one: its own blocks, its
+own procedurally painted textures and its own terrain generator.
+
+## What is in it
+
+- **Worlds.** Endless invented terrain from a seed: ten biomes (plains,
+  forest, desert, tundra, taiga, mountain, swamp, savanna, jungle, badlands),
+  six kinds of tree, oceans, ores, and seven kinds of cave (mushroom,
+  crystal, lush, frozen, magma, webbed and plain) each with its own blocks
+  and creatures. Or **the real Earth**: heights from public elevation tiles;
+  water, forests, sand, ice, asphalt roads with painted lines, hollow
+  buildings with floors, stairs and furniture, and fields of crops from
+  OpenStreetMap; and an in-game map (M) to look around and travel anywhere.
+- **Survival and creative modes.** Survival has health, hunger, falling,
+  drowning, mining times with cracks spreading over the block, tools, hoes
+  and swords in six materials, drops, crafting by hand and at a crafting
+  table, chests, and monsters at night and in caves. Creative has flying
+  (F, or jump twice), instant building, area tools, and an item list with
+  picture tabs and 3D block icons.
+- **Farming and cooking.** Hoes till soil; wheat, carrots, potatoes and
+  tomatoes grow in four stages; an oven bakes bread, pies, stew and three
+  kinds of pizza.
+- **About 270 blocks.** Sixteen colours of concrete, wool, terracotta,
+  glass and beds; six woods with doors, trapdoors and gates that open;
+  stone kinds; stairs, slabs, walls and fences that join up; lamps; chests;
+  rails; sand and gravel that fall; animated water; custom shapes.
+- **Creatures.** 58 kinds: farm animals that give milk, wool and eggs and
+  have young, pets that follow you for food, hunters and prey, birds and
+  fish, night monsters, cave dwellers, and villagers who trade, farm, build
+  and stand guard. See [docs/CREATURES.md](docs/CREATURES.md).
+- **Vehicles.** Boats, rail carts, a buggy and a plane, some with storage.
+- **Weather.** Regional rain, snow and thunderstorms; optional earthquakes,
+  tsunamis and tornadoes.
+- **Multiplayer.** HOST A GAME from the menu runs a server inside the game
+  while you play; `voxelrust --server` runs one on its own. Players join
+  from the title screen. Positions, edits, chat, time and skins are shared,
+  and the server sends its content packs to every player.
+- **Modding.** Textures, blocks (including doors, crops and falling
+  blocks), shapes, items, tools, food, recipes, ores, plants, models,
+  creatures and vehicles are declared in text files. Drop a mod into the
+  `mods` folder and it loads; `/reload` picks up changes without
+  restarting. Blockbench `.bbmodel` files are read directly. Player skins
+  are 64 x 64 PNGs. The default player model is the LastRoute mannequin.
+- **Long views.** Detailed chunks near you, simplified terrain beyond (tested
+  out to 2 km).
+- **A minimap** in the corner showing the ground you have explored.
+- **Settings** for video (including a 3D detail scale that speeds up old
+  graphics cards), audio, controls (every key can be changed), game and skin.
+- **Worlds as files.** Export a world to one `.vxworld` file and import it on
+  another machine.
+
+## Documentation
+
+| | |
+| --- | --- |
+| [docs/PLAYING.md](docs/PLAYING.md) | controls, game modes, crafting, farming, baking, caves, vehicles, chat commands, settings, command-line options |
+| [docs/CREATURES.md](docs/CREATURES.md) | wildlife, monsters and villagers: what lives where, milk, wool and eggs, trading |
+| [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | hosting and joining, what is shared |
+| [docs/EARTH.md](docs/EARTH.md) | real-world terrain, the map, data sources |
+| [docs/MODDING.md](docs/MODDING.md) | packs, the mods folder, models, skins |
+| [docs/DATA.md](docs/DATA.md) | the content file format |
+| [docs/BUILDING.md](docs/BUILDING.md) | building for each platform, build names and updating, tests, CI, icons |
+| [docs/PORTING.md](docs/PORTING.md) | how it stays portable, old Macs, PowerPC, measurements |
+
+## How it stays portable
+
+The program is `no_std` Rust with **no dependencies**: about 22,000 lines,
+and a Linux binary of about 2 MB. It needs the C library and SDL2 (opened at run
+time); graphics are fixed-function OpenGL 1.5 with no shaders. JSON, PNG,
+sockets, sound synthesis and the map projection are all written here. Why,
+and how each platform is built: [docs/PORTING.md](docs/PORTING.md).
+
+## Build and run
+
+Rust (1.77 is the oldest version tested), and SDL2 where the system can find
+it (`libsdl2-2.0-0` on Debian/Ubuntu, `brew install sdl2` on macOS,
+`SDL2.dll` beside the program on Windows).
+
+```sh
+cargo run --release
+```
+
+```sh
+cargo test --lib
+```
+
+Cross-builds from any machine, with no Apple or Microsoft SDK:
+
+```sh
+scripts/build-macos-legacy.sh
+```
+
+```sh
+scripts/build-windows.sh
+```
+
+Details: [docs/BUILDING.md](docs/BUILDING.md). `voxelrust --help` lists the
+command-line options.
+
+## Builds and updating
+
+Each build has a name that says what machine it is for: `linux-x86_64`,
+`windows-x86_64`, `macos-x86_64` (macOS 10.12 and later) or
+`macos-legacy-x86_64` (Mac OS X 10.6 and later). `voxelrust --version` prints
+it, and so does the F3 screen. The nightly files are named after it and
+listed in `BUILDS.txt`. The two Mac apps declare their minimum system, so
+macOS refuses to start the 10.12 one on an older system.
+
+The game does not update itself. To update, replace the program with a newer
+file of the same build name; worlds and settings live in the data folder and
+are not touched.
+
+## What has actually been run
+
+| Platform | State |
+| --- | --- |
+| Linux x86-64 | Built, unit tests pass, run and benchmarked |
+| Mac OS X 10.6.8 (2008 Mac Pro, Radeon HD 2600) | **Run on the real machine**: the game, a benchmark, and hosting a server that a Linux client joined |
+| Windows x64 | Run under Wine 10 with the official `SDL2.dll`: the game, and hosting a server. Not run on real Windows |
+| macOS 10.12+ (Intel) | Cross-built (`dist/macos/`); **not run on any modern Mac**. The 10.6 build is expected to work there too |
+| Apple Silicon | Not built |
+| PowerPC (Linux) | Compiles (`cargo check`); never run |
+| Mac OS X 10.5 and older | Not supported (see docs/PORTING.md) |
+
+## Known limits
+
+- The world is 128 blocks high.
+- There are no moving ships built from blocks: vehicles are items you place.
+- In multiplayer, creatures, vehicles, chest contents and inventories are
+  not synchronised. Every player has their own animals, monsters and
+  villagers; inventories are per player and not kept by the server; and
+  villagers' farming and building is not applied to a shared world.
+- Creatures and villagers are not saved with the world: new ones appear
+  when you come back. (Vehicles and chests are saved.)
+- There are no generated villages, and no breeding: villagers and young
+  animals simply turn up.
+- Servers have no accounts, passwords or encryption, and **the project hosts
+  no public server**. You play with people you give an address to.
+- There is no in-game updater.
+- The Windows build has only been tested under Wine, not on real Windows.
+- Modern macOS is untested: the 10.12 build has never been run.
+- PowerPC is only compile-checked (`cargo check`); it has never been run.
+- The GitHub workflows (CI and nightly builds) have not been run yet, so
+  there are no nightly files until they have.
+- In Earth worlds, building heights are guesses from the size of the
+  footprint: the map tiles carry no heights.
+
+## Multiplayer in one minute
+
+On the title screen choose MULTIPLAYER, then HOST A GAME: a server runs
+inside your game and the screen shows the address to give your friends. It
+ends when you leave. Or, from the command line:
+
+```sh
+voxelrust --host myworld
+```
+
+For a server on its own, with no window:
+
+```sh
+voxelrust --server --world myworld
+```
+
+Others choose MULTIPLAYER on the title screen and type the host's address, or
+run `voxelrust --join host`. There is no public server: someone has to host. The port is 25590 (TCP); forward it on your
+router to let people outside your network in.
+[docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) has the rest.
+
+## Earth worlds
+
+Choose TERRAIN: EARTH when creating a world, pick a starting place and a
+scale. This needs the internet and the system's `curl`.
+[docs/EARTH.md](docs/EARTH.md) has the rest.
+
+Map data (c) OpenStreetMap contributors. Elevation: Mapzen / AWS Terrain
+Tiles.
+
+## Controls
+
+| | |
+| --- | --- |
+| W A S D, mouse | move, look |
+| Space, Ctrl | jump, sprint |
+| F, or Space twice | fly, in creative (Space / Shift go up / down). F also gets you out of a vehicle |
+| Left / right / middle click | break or hit / place, use, open, trade / pick |
+| 1-9, mouse wheel | choose a hotbar slot |
+| E | inventory |
+| M | world map (Earth worlds); bigger minimap (other worlds) |
+| T | chat and commands (`/help` lists them) |
+| Esc | menu |
+| F1, F2, F3, F5, F11 | hide the HUD, screenshot, details, third-person view, full screen |
+
+## Licence
+
+MIT; see [LICENSE](LICENSE).
