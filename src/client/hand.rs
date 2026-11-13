@@ -62,10 +62,15 @@ fn shade(tint: [u8; 3], k: u32) -> [u8; 4] {
     [(tint[0] as u32 * k / 255) as u8, (tint[1] as u32 * k / 255) as u8, (tint[2] as u32 * k / 255) as u8, 255]
 }
 
+/// A whole tile, corners in order round the face.
 const FULL: [[f32; 2]; 4] = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+/// A whole tile on an upright face: the corners at the bottom of the face
+/// take the bottom of the tile, as the world mesh does (its v runs down the
+/// tile). Without this, textures come out upside down.
+const UPRIGHT: [[f32; 2]; 4] = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
 
-fn quad(out: &mut Vec<Quad>, p: [[f32; 3]; 4], tile: u16, col: [u8; 4]) {
-    let uv = FULL.map(|c| atlas(tile, c[0], c[1]));
+fn quad(out: &mut Vec<Quad>, p: [[f32; 3]; 4], tile: u16, col: [u8; 4], corners: [[f32; 2]; 4]) {
+    let uv = corners.map(|c| atlas(tile, c[0], c[1]));
     out.push(Quad { p, uv, col });
 }
 
@@ -83,7 +88,9 @@ fn boxq(out: &mut Vec<Quad>, lo: [f32; 3], hi: [f32; 3], tiles: [u16; 6], tint: 
         ([[x0, y0, z1], [x1, y0, z1], [x1, y0, z0], [x0, y0, z0]], 140), // bottom
     ];
     for (i, (p, k)) in faces.into_iter().enumerate() {
-        quad(out, p, tiles[i], shade(tint, k));
+        // The four sides are upright; the top and bottom lie flat.
+        let corners = if i < 4 { UPRIGHT } else { FULL };
+        quad(out, p, tiles[i], shade(tint, k), corners);
     }
 }
 
@@ -100,7 +107,7 @@ fn item_geometry(held: Held, white: u16, out: &mut Vec<Quad>) {
             // picture mirrored behind it, which reads as a cross.
             let (lo, hi, z) = ([-0.08, -0.08], [0.08, 0.08], 0.0);
             let front = [[lo[0], lo[1], z], [hi[0], lo[1], z], [hi[0], hi[1], z], [lo[0], hi[1], z]];
-            quad(out, front, tile, [255, 255, 255, 255]);
+            quad(out, front, tile, [255, 255, 255, 255], UPRIGHT);
         }
     }
     let _ = white;
