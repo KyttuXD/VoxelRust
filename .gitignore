@@ -16,3 +16,4 @@
 # Libraries shipped beside the game are fetched, not kept (see vendor/README.md).
 /vendor/*
 !/vendor/README.md
+.claude/
