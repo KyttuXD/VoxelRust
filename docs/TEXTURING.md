@@ -2,9 +2,11 @@
 
 VoxelRust's pictures are drawn in the **OCD style**: flat, bold and simple,
 like the OCD texture pack. The game's older look (noisy, shaded, painted by
-code with `builtin` and `paint`) is not wanted any more. New blocks and items
-are drawn by hand in the OCD style, and the older pictures are replaced by
-pack pictures wherever one exists (see [Using the pack](#using-the-pack)).
+code with `builtin` and `paint`) is gone: the painters now draw in the OCD
+style too (see [The painters](#the-painters)), so the game looks the same with
+and without the pack. New blocks and items are drawn by hand in the OCD style,
+and the painted pictures are replaced by pack pictures wherever one exists
+(see [Using the pack](#using-the-pack)).
 
 ## The style in short
 
@@ -69,6 +71,69 @@ separate pictures only when they differ.
   `bow_pulling_*` and `crossbow_pulling_*` are used for them). The base game
   paints its own in `src/content/art/bow.rs` (styles `bow_pull0..2`,
   `crossbow_pull0..2`). The held bow and its hotbar picture switch between them.
+
+## The painters
+
+The pictures the game draws itself live in `src/content/painters/`, one file
+for each subject, and follow the rules above with no random numbers at all:
+the same pixel is always the same colour. `texture <id> builtin <name>` picks
+a fixed picture; `texture <id> paint <style> r g b` picks a pattern in your
+colour. The dark, light and pale tones are made from the colour by fixed
+ratios (frame 73%, light a fifth of the way to white, pale halfway), so a
+metal, wood or stone recolours consistently.
+
+| File | Builtin names | Paint styles |
+| --- | --- | --- |
+| `blocks.rs` | `dirt sand gravel clay snow snow_side sandstone lamp` | `concrete wool terracotta farmland magma chest workbench` |
+| `stone.rs` | `stone deepstone cobble brick stone_bricks` | `rock polished bricks tiles` |
+| `wood.rs` | `log_side pine_side log_top planks` | `planks bark rings door` |
+| `ores.rs` | `coal_ore iron_ore copper_ore crystal_ore ruby_ore` | `cluster` |
+| `plants.rs` | `grass_top grass_side leaves pine_leaves flower_red flower_yellow tall_grass cactus_side cactus_top` | `leaves blossom crop1 crop2 crop3 crop4 mushroom vine` |
+| `glass.rs` | `glass ice` | `glass glassdoor icicle web` |
+| `liquids.rs` | `water lava` | |
+| `sky.rs` | `sun moon` | |
+| `tools.rs` | `wand` | `stick pick axe shovel hoe sword bow crossbow arrow` |
+| `food.rs` | | `meat fruit fishfood loaf pizza wedge root tuber jar egg sack cookie pie bowl seeds sheaf` |
+| `gear.rs` | | `gem ingot rail machine hull wings` |
+
+`painters/mod.rs` holds the registry of names (`BUILTINS`, `STYLES`) and the
+helpers: `framed` (fill and frame), `outlined` (an item's shape with its dark
+outline), `dark`, `lift`, `pale`, `rect`, `disc`. To add a picture, write it in
+the right file, add its name to the lists, and run the tests: they check that
+every name is painted, that every picture has at most eight colours, and that
+block faces (`FRAMED_BUILTINS`, `FRAMED_STYLES`) have the frame.
+
+What each one looks like:
+
+- **Block faces** are a fill with a frame (`dirt`, `sand`, `concrete` 92%,
+  `wool` 85%, `terracotta` 73%). `rock` adds two flatter patches, `polished`
+  a three-pixel shine, `farmland` furrows every fourth row, `magma` a dark
+  crust with four glowing blobs, `chest` a lid line and a latch, `workbench`
+  a grid, `door` two panels and a handle.
+- **Ores** are stone with four 2 x 2 blobs of the ore's colour, each with a
+  lighter pixel on top. `cobble` is four stones with a light corner on each.
+- **Planks** are lighter slats in the colour, four rows, with the darker base
+  tone as gap and a staggered joint. **Bark** is a dark base with lighter
+  vertical bars; **rings** the cut end: a dark rim, then two tones in turn.
+- **Glass** is a white frame (alpha 235 for stained, solid for plain) round a
+  see-through fill (stained: your colour at alpha 105). **Leaves** are two
+  greens in a 2 x 2 check with some see-through cells (alpha 0, never half).
+  **Ice** stays solid; **water** is two blues at alpha 168 with a one-pixel
+  ripple that travels down the tile over eight frames.
+- **Grass and leaves are green here**, not grey: the game only tints the
+  grey pictures of a *pack* (see below), so the painted ones carry the green
+  they should have. A picture of your own in grey needs no change.
+- **Tools** are upright with a dark outline: head on top, a two-pixel wooden
+  handle in columns 7 and 8; the colour you give is the metal (lit, mid and
+  shaded tone). The sword has a guard, grip and pommel; the bow's string is
+  on the right.
+- **Food and gems** have a main colour, a lighter highlight at the top left,
+  a darker lower edge and the outline. **Rails** are left without an outline.
+- **Plants** (flowers, tall grass, crops, mushrooms, vines, icicles, cobwebs,
+  crystal clusters) have no outline and no frame, one flat colour for each
+  part. Cobwebs and icicles keep their one alpha (220, 215).
+- **Plain colours** (`texture <id> flat r g b`) are solid; with `noise` given
+  (the number no longer does anything) they get the frame.
 
 ## Using the pack
 
