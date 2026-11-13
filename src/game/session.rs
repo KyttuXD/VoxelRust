@@ -225,12 +225,50 @@ pub struct Shot {
 pub const EXPLORE: i32 = 32;
 
 fn meta_path(base: &str, name: &str) -> String {
-    alloc::format!("{}{}.meta.txt", base, name)
+    alloc::format!("{}{}.meta.txt", world_dir(base), name)
+}
+
+/// The folder holding every world's files and the world index. Worlds used
+/// to sit loose in the data folder; `migrate_worlds` moves them here once.
+pub fn world_dir(base: &str) -> String {
+    alloc::format!("{}worlds/", base)
+}
+
+/// Files in the data folder that are not part of any world.
+const ROOT_FILES: [&str; 4] = ["settings.txt", "servers.txt", "skin.png", "worlds.txt"];
+
+/// Move worlds that sit loose in the data folder (from before `worlds/`
+/// existed) into `worlds/`. Done once: afterwards the index is in `worlds/`.
+pub fn migrate_worlds(base: &str) {
+    let old = match sys::read_file(&alloc::format!("{}worlds.txt", base)) {
+        Some(b) => b,
+        None => return,
+    };
+    if sys::read_file(&alloc::format!("{}index.txt", world_dir(base))).is_some() {
+        return;
+    }
+    sys::make_dir(&world_dir(base));
+    let names: Vec<String> = String::from_utf8_lossy(&old).lines().map(|l| crate::settings::clean_world_name(l.trim(), 24)).filter(|n| !n.is_empty()).collect();
+    for name in &names {
+        let prefix = alloc::format!("{}.", name);
+        for f in sys::list_dir(base) {
+            if !f.starts_with(&prefix) || ROOT_FILES.contains(&f.as_str()) {
+                continue;
+            }
+            if let Some(data) = sys::read_file(&alloc::format!("{}{}", base, f)) {
+                if sys::write_file(&alloc::format!("{}{}", world_dir(base), f), &data) {
+                    sys::remove_file(&alloc::format!("{}{}", base, f));
+                }
+            }
+        }
+    }
+    sys::write_file(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
+    sys::remove_file(&alloc::format!("{}worlds.txt", base));
 }
 
 /// Names of the worlds that exist, from the index file.
 pub fn list_worlds(base: &str) -> Vec<String> {
-    let text = sys::read_file(&alloc::format!("{}worlds.txt", base)).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+    let text = sys::read_file(&alloc::format!("{}index.txt", world_dir(base))).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
     let mut names: Vec<String> = Vec::new();
     for l in text.lines() {
         let n = crate::settings::clean_world_name(l.trim(), 24);
@@ -242,10 +280,13 @@ pub fn list_worlds(base: &str) -> Vec<String> {
 }
 
 pub fn remember_world(base: &str, name: &str) {
+    sys::make_dir(&world_dir(base));
     let mut names = list_worlds(base);
     if !names.iter().any(|n| n == name) {
         names.push(String::from(name));
-        sys::write_file(&alloc::format!("{}worlds.txt", base), names.join("\n").as_bytes());
+        sys::make_dir(&world_dir(base));
+        sys::make_dir(&world_dir(base));
+        sys::write_file(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
     }
 }
 
@@ -254,13 +295,14 @@ pub fn remember_world(base: &str, name: &str) {
 /// files). Names cannot hold dots, so no other world's files match.
 pub fn world_files(base: &str, name: &str) -> Vec<String> {
     let prefix = alloc::format!("{}.", name);
-    sys::list_dir(base).into_iter().filter(|f| f.starts_with(&prefix)).collect()
+    sys::list_dir(&world_dir(base)).into_iter().filter(|f| f.starts_with(&prefix)).collect()
 }
 
 /// Take a world out of the index (its files are left alone).
 pub fn forget_world(base: &str, name: &str) {
     let names: Vec<String> = list_worlds(base).into_iter().filter(|n| n != name).collect();
-    sys::write_file(&alloc::format!("{}worlds.txt", base), names.join("\n").as_bytes());
+    sys::make_dir(&world_dir(base));
+    sys::write_file(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
 }
 
 /// Delete a world: every file it is made of, and its place in the index.
@@ -271,7 +313,7 @@ pub fn delete_world(base: &str, name: &str) -> bool {
     }
     let mut all = true;
     for f in world_files(base, name) {
-        all &= sys::remove_file(&alloc::format!("{}{}", base, f));
+        all &= sys::remove_file(&alloc::format!("{}{}", world_dir(base), f));
     }
     forget_world(base, name);
     all
@@ -284,12 +326,12 @@ pub fn copy_world(base: &str, name: &str, to: &str) -> bool {
     }
     let from_prefix = alloc::format!("{}.", name);
     for f in world_files(base, name) {
-        let data = match sys::read_file(&alloc::format!("{}{}", base, f)) {
+        let data = match sys::read_file(&alloc::format!("{}{}", world_dir(base), f)) {
             Some(d) => d,
             None => return false,
         };
         let new_name = alloc::format!("{}.{}", to, &f[from_prefix.len()..]);
-        if !sys::write_file(&alloc::format!("{}{}", base, new_name), &data) {
+        if !sys::write_file(&alloc::format!("{}{}", world_dir(base), new_name), &data) {
             return false;
         }
     }
@@ -303,7 +345,7 @@ pub fn rename_world(base: &str, name: &str, to: &str) -> bool {
         return false;
     }
     for f in world_files(base, name) {
-        sys::remove_file(&alloc::format!("{}{}", base, f));
+        sys::remove_file(&alloc::format!("{}{}", world_dir(base), f));
     }
     forget_world(base, name);
     true
@@ -317,6 +359,7 @@ impl Session {
     /// Open the world called `name`, creating it from `new` if it does not
     /// exist yet. `threads` is the number of worker threads.
     pub fn open(base: &str, name: &str, new: &NewWorld, threads: usize) -> Session {
+        sys::make_dir(&world_dir(base));
         let path = meta_path(base, name);
         let meta = sys::read_file(&path).map(|b| String::from_utf8_lossy(&b).into_owned());
         let is_new = meta.is_none();
@@ -355,7 +398,7 @@ impl Session {
             remember_world(base, name);
         }
         // Chest contents: one line per chest, `x y z <slots>`.
-        let chests_path = alloc::format!("{}{}.chests.txt", base, name);
+        let chests_path = alloc::format!("{}{}.chests.txt", world_dir(base), name);
         let mut chests = BTreeMap::new();
         if let Some(text) = sys::read_file(&chests_path) {
             for line in String::from_utf8_lossy(&text).lines() {
@@ -370,12 +413,12 @@ impl Session {
             name: String::from(name),
             world: World::new(seed),
             pool: Pool::new(threads, seed),
-            store: RegionStore::new(DiskIo, alloc::format!("{}{}.", base, name)),
+            store: RegionStore::new(DiskIo, alloc::format!("{}{}.", world_dir(base), name)),
             peak_y: player.pos[1],
             player,
             mobs: {
                 let mut m = Mobs::new(seed ^ 0xA5A5_1234);
-                if let Some(text) = sys::read_file(&alloc::format!("{}{}.pets.txt", base, name)) {
+                if let Some(text) = sys::read_file(&alloc::format!("{}{}.pets.txt", world_dir(base), name)) {
                     m.load_pets(&String::from_utf8_lossy(&text));
                 }
                 m
@@ -383,8 +426,8 @@ impl Session {
             ext: Vec::new(),
             seat: None,
             carried: false,
-            prefix: alloc::format!("{}{}.", base, name),
-            explored: sys::read_file(&alloc::format!("{}{}.explored.txt", base, name))
+            prefix: alloc::format!("{}{}.", world_dir(base), name),
+            explored: sys::read_file(&alloc::format!("{}{}.explored.txt", world_dir(base), name))
                 .map(|b| {
                     String::from_utf8_lossy(&b)
                         .lines()
@@ -395,8 +438,8 @@ impl Session {
                         .collect()
                 })
                 .unwrap_or_default(),
-            explored_path: alloc::format!("{}{}.explored.txt", base, name),
-            pets_path: alloc::format!("{}{}.pets.txt", base, name),
+            explored_path: alloc::format!("{}{}.explored.txt", world_dir(base), name),
+            pets_path: alloc::format!("{}{}.pets.txt", world_dir(base), name),
             explore_timer: 0.0,
             opened: None,
             net: None,
@@ -424,10 +467,10 @@ impl Session {
             call_timer: 3.0,
             sitting: None,
             riding_mob: None,
-            vars: sys::read_file(&alloc::format!("{}{}.vars.txt", base, name))
+            vars: sys::read_file(&alloc::format!("{}{}.vars.txt", world_dir(base), name))
                 .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.split_once('=').and_then(|(k, v)| Some((String::from(k), v.parse::<i64>().ok()?)))).collect())
                 .unwrap_or_default(),
-            vars_path: alloc::format!("{}{}.vars.txt", base, name),
+            vars_path: alloc::format!("{}{}.vars.txt", world_dir(base), name),
             later: Vec::new(),
             was_night: false,
             death_told: false,
@@ -438,7 +481,7 @@ impl Session {
             dim: String::new(),
             pending_dim: crate::settings::kv(&meta, "dim").filter(|d| !d.is_empty()).map(String::from),
             base_seed: seed,
-            file_prefix: alloc::format!("{}{}.", base, name),
+            file_prefix: alloc::format!("{}{}.", world_dir(base), name),
             forced_sky: None,
             skin_events: Vec::new(),
             inv,

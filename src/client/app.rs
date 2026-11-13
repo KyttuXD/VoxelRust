@@ -618,7 +618,8 @@ impl App {
     }
 
     fn save_screenshot(&mut self, r: &Renderer) {
-        let path = alloc::format!("{}screenshot-{}.bmp", self.base, (sys::now() * 1000.0) as u64);
+        sys::make_dir(&alloc::format!("{}screenshots/", self.base));
+        let path = alloc::format!("{}screenshots/screenshot-{}.bmp", self.base, (sys::now() * 1000.0) as u64);
         let ok = sys::write_file(&path, &r.screenshot());
         if let Some(s) = self.session.as_mut() {
             s.say(if ok { "SCREENSHOT SAVED" } else { "COULD NOT SAVE SCREENSHOT" });
@@ -1475,7 +1476,8 @@ impl App {
         ui.centered(ui.w() * 0.5, y - 26.0 * s, 2.0, &name.to_ascii_uppercase(), WHITE);
         if ui.button(x, y, bw, bh, "EXPORT TO A FILE") {
             // One file holding the whole world, to copy to another machine.
-            let path = alloc::format!("{}{}.vxworld", self.base, name);
+            sys::make_dir(&alloc::format!("{}exports/", self.base));
+            let path = alloc::format!("{}exports/{}.vxworld", self.base, name);
             self.status = match crate::save::export_world(&mut crate::save::DiskIo, &self.base, &name) {
                 Some(data) if sys::write_file(&path, &data) => alloc::format!("WROTE {}", path.to_ascii_uppercase()),
                 _ => String::from("COULD NOT EXPORT THAT WORLD"),
@@ -2761,7 +2763,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let new = folder(b"KYTTU\0");
                 // Worlds and settings kept where earlier versions put them
                 // come along, once.
-                if !new.is_empty() && sys::read_file(&alloc::format!("{}settings.txt", new)).is_none() && sys::read_file(&alloc::format!("{}worlds.txt", new)).is_none() {
+                if !new.is_empty() && sys::read_file(&alloc::format!("{}settings.txt", new)).is_none() && sys::read_file(&alloc::format!("{}index.txt", crate::session::world_dir(&new))).is_none() {
                     let old = new.replace("KYTTU", "VoxelRust");
                     if old != new {
                         let mut moved = 0;
@@ -2784,6 +2786,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
         base.push('/');
     }
 
+    // Worlds live in worlds/, exports in exports/, pictures in screenshots/.
+    for dir in ["worlds/", "exports/", "screenshots/"] {
+        sys::make_dir(&alloc::format!("{}{}", base, dir));
+    }
+    crate::session::migrate_worlds(&base);
     if let Some(from) = &opts.import_mod {
         let said = import_mod(&base, from);
         logf!("voxelrust: {}", said.to_ascii_lowercase());
@@ -3237,7 +3244,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     }
                     let done = total - *left;
                     if done > 0 && done % (total / 4).max(1) == 0 && done / (total / 4).max(1) <= 4 {
-                        let path = alloc::format!("{}flypass-{}.bmp", app.base, done / (total / 4).max(1));
+                        sys::make_dir(&alloc::format!("{}screenshots/", app.base));
+                        let path = alloc::format!("{}screenshots/flypass-{}.bmp", app.base, done / (total / 4).max(1));
                         sys::write_file(&path, &r.screenshot());
                     }
                 } else if let Some(g) = app.session.as_mut() {
@@ -3539,8 +3547,8 @@ fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u1
     if name.is_empty() || name != crate::settings::clean_world_name(name, 24) {
         return Err(String::from("world names use only letters, digits, spaces, - and _ (24 at most)"));
     }
-    let meta_path = alloc::format!("{}{}.server.txt", base, name);
-    let edits_path = alloc::format!("{}{}.server-edits.txt", base, name);
+    let meta_path = alloc::format!("{}{}.server.txt", crate::session::world_dir(base), name);
+    let edits_path = alloc::format!("{}{}.server-edits.txt", crate::session::world_dir(base), name);
     let meta = sys::read_file(&meta_path).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
     let seed = crate::settings::kv(&meta, "seed").and_then(|v| v.parse().ok()).unwrap_or_else(|| seed.unwrap_or(sys::now().to_bits() as u32 ^ 0x5EED_1234));
     let kind = crate::settings::kv(&meta, "kind").map(String::from).unwrap_or_else(|| new_kind.unwrap_or_else(|| WorldKind::Normal.to_text()));
@@ -3556,7 +3564,7 @@ fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u1
     };
     let mut server = Server::bind(cfg).map_err(|e| alloc::format!("could not listen on port {}: {:?}", port, e))?;
     // Operators and bans are kept beside the world: "op NAME" / "ban NAME".
-    if let Some(text) = sys::read_file(&alloc::format!("{}{}.server-ops.txt", base, name)) {
+    if let Some(text) = sys::read_file(&alloc::format!("{}{}.server-ops.txt", crate::session::world_dir(base), name)) {
         for line in String::from_utf8_lossy(&text).lines() {
             match line.split_once(' ') {
                 Some(("op", n)) => server.ops.push(String::from(n)),

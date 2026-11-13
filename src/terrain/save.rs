@@ -208,7 +208,7 @@ fn world_files() -> Vec<&'static str> {
 pub fn export_world(io: &mut dyn FileIo, base: &str, name: &str) -> Option<Vec<u8>> {
     let mut files = Vec::new();
     for suffix in world_files() {
-        if let Some(data) = io.read(&alloc::format!("{}{}.{}", base, name, suffix)) {
+        if let Some(data) = io.read(&alloc::format!("{}{}.{}", crate::session::world_dir(base), name, suffix)) {
             files.push((String::from(suffix), data));
         }
     }
@@ -221,7 +221,7 @@ pub fn export_world(io: &mut dyn FileIo, base: &str, name: &str) -> Option<Vec<u
         let mut w = line.split(' ');
         if let (Some(Ok(rx)), Some(Ok(rz))) = (w.next().map(|v| v.parse::<i32>()), w.next().map(|v| v.parse::<i32>())) {
             let suffix = alloc::format!("r.{}.{}.vxr", rx, rz);
-            if let Some(data) = io.read(&alloc::format!("{}{}.{}", base, name, suffix)) {
+            if let Some(data) = io.read(&alloc::format!("{}{}.{}", crate::session::world_dir(base), name, suffix)) {
                 files.push((suffix, data));
             }
         }
@@ -232,13 +232,13 @@ pub fn export_world(io: &mut dyn FileIo, base: &str, name: &str) -> Option<Vec<u
     for (dim, _) in &reg().dimensions {
         for &suffix in &per_dimension {
             let name_in = alloc::format!("{}.{}", dim, suffix);
-            if let Some(data) = io.read(&alloc::format!("{}{}.{}", base, name, name_in)) {
+            if let Some(data) = io.read(&alloc::format!("{}{}.{}", crate::session::world_dir(base), name, name_in)) {
                 if suffix == "regions.txt" {
                     for line in String::from_utf8_lossy(&data).lines() {
                         let mut w = line.split(' ');
                         if let (Some(Ok(rx)), Some(Ok(rz))) = (w.next().map(|v| v.parse::<i32>()), w.next().map(|v| v.parse::<i32>())) {
                             let region = alloc::format!("{}.r.{}.{}.vxr", dim, rx, rz);
-                            if let Some(bytes) = io.read(&alloc::format!("{}{}.{}", base, name, region)) {
+                            if let Some(bytes) = io.read(&alloc::format!("{}{}.{}", crate::session::world_dir(base), name, region)) {
                                 files.push((region, bytes));
                             }
                         }
@@ -258,7 +258,7 @@ pub fn import_world(io: &mut dyn FileIo, base: &str, name: &str, data: &[u8]) ->
         Some(f) if f.iter().any(|f| f.0 == "meta.txt") => f,
         _ => return false,
     };
-    files.iter().all(|(suffix, bytes)| io.write(&alloc::format!("{}{}.{}", base, name, suffix), bytes))
+    files.iter().all(|(suffix, bytes)| io.write(&alloc::format!("{}{}.{}", crate::session::world_dir(base), name, suffix), bytes))
 }
 
 pub trait FileIo {
@@ -438,20 +438,20 @@ mod tests {
     fn worlds_export_and_import_as_one_file() {
         let a = worldgen::generate(5, -1, -17);
         let b = worldgen::generate(5, 40, 3);
-        let mut s = RegionStore::new(MemIo::default(), String::from("data/old."));
+        let mut s = RegionStore::new(MemIo::default(), String::from("data/worlds/old."));
         s.save(-1, -17, &a);
         s.save(40, 3, &b);
         s.flush();
-        s.io.write("data/old.meta.txt", b"seed=5\n");
-        s.io.write("data/old.chests.txt", b"1 2 3 stone:4\n");
+        s.io.write("data/worlds/old.meta.txt", b"seed=5\n");
+        s.io.write("data/worlds/old.chests.txt", b"1 2 3 stone:4\n");
         let bundle = export_world(&mut s.io, "data/", "old").expect("export failed");
         assert!(export_world(&mut s.io, "data/", "missing").is_none());
 
         let mut other = MemIo::default();
         assert!(import_world(&mut other, "elsewhere/", "copy", &bundle));
-        assert_eq!(other.0.get("elsewhere/copy.meta.txt").map(|v| v.as_slice()), Some(&b"seed=5\n"[..]));
+        assert_eq!(other.0.get("elsewhere/worlds/copy.meta.txt").map(|v| v.as_slice()), Some(&b"seed=5\n"[..]));
         assert_eq!(other.0.len(), 5, "{:?}", other.0.keys());
-        let mut s2 = RegionStore::new(other, String::from("elsewhere/copy."));
+        let mut s2 = RegionStore::new(other, String::from("elsewhere/worlds/copy."));
         assert_eq!(s2.load(-1, -17).unwrap(), a);
         assert_eq!(s2.load(40, 3).unwrap(), b);
 

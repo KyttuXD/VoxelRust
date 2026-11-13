@@ -343,6 +343,7 @@ impl Lib {
 #[cfg(unix)]
 extern "C" {
     fn unlink(path: *const c_char) -> c_int;
+    fn mkdir(path: *const c_char, mode: u32) -> c_int;
     fn opendir(path: *const c_char) -> *mut c_void;
     fn closedir(dir: *mut c_void) -> c_int;
     // On Linux the 64-bit form has one layout on every processor; on Intel
@@ -358,6 +359,7 @@ extern "system" {
     fn FindNextFileA(handle: *mut c_void, data: *mut u8) -> c_int;
     fn FindClose(handle: *mut c_void) -> c_int;
     fn DeleteFileA(name: *const c_char) -> c_int;
+    fn CreateDirectoryA(name: *const c_char, security: *mut c_void) -> c_int;
 }
 
 #[cfg(target_os = "linux")]
@@ -510,6 +512,46 @@ pub fn read_file(path: &str) -> Option<Vec<u8>> {
         }
         ((*rw).close)(rw);
         Some(out)
+    }
+}
+
+/// Make a folder, if it is not there already. `true` if it is there now.
+pub fn make_dir(path: &str) -> bool {
+    let p = cstr(path);
+    #[cfg(unix)]
+    unsafe {
+        // EEXIST is not a failure: the folder is there.
+        return mkdir(p.as_ptr() as *const c_char, 0o755) == 0 || read_dir_exists(path);
+    }
+    #[cfg(windows)]
+    unsafe {
+        return CreateDirectoryA(p.as_ptr() as *const c_char, core::ptr::null_mut()) != 0 || read_dir_exists(path);
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = p;
+        false
+    }
+}
+
+/// Whether a folder is there (by listing it).
+#[cfg(not(target_arch = "wasm32"))]
+fn read_dir_exists(path: &str) -> bool {
+    let p = cstr(path);
+    #[cfg(unix)]
+    unsafe {
+        let d = opendir(p.as_ptr() as *const c_char);
+        if d.is_null() {
+            return false;
+        }
+        closedir(d);
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        let _ = p;
+        let _ = path;
+        return true;
     }
 }
 
