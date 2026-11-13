@@ -110,3 +110,33 @@ fn every_mod_folder_offers_all_its_items_in_a_tab() {
     let mut u = missing.clone(); u.sort(); u.dedup();
     eprintln!("ALLMODS blocks without an item: {:?}", u);
 }
+
+#[test]
+fn the_wildlife_mod_has_its_species_with_looks_and_working_models() {
+    let r = load(&["wildlife"]);
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    let base = load(&[]);
+    let new: Vec<&crate::block::EntityDef> = r.entities.iter().filter(|e| !base.entities.iter().any(|b| b.id == e.id)).collect();
+    assert!(new.len() >= 14, "only {} new species", new.len());
+    for id in ["tree_frog", "dart_frog", "toad", "tadpole", "newt", "sea_turtle", "gecko", "garter_snake", "barn_owl", "horseshoe_bat", "roe_deer", "cottontail", "hedgehog", "mallard", "fiddler_crab", "seagull", "dragonfly", "meadow_butterfly", "bumblebee", "otter", "beaver", "warthog", "squirrel"] {
+        assert!(new.iter().any(|e| e.id == id), "{id} is missing");
+    }
+    for e in &new {
+        assert!(e.x.variants.len() >= 2 && e.x.variants.len() <= 4, "{} has {} variants", e.id, e.x.variants.len());
+        let mut models: Vec<usize> = e.x.variants.iter().map(|v| v.model).collect();
+        models.push(e.model);
+        models.sort();
+        models.dedup();
+        assert_eq!(models.len(), e.x.variants.len() + 1, "{}: every look has its own model", e.id);
+        for m in models {
+            let spec = &r.models[m];
+            let def = crate::model::ModelDef::from_bbmodel(&spec.id, &spec.text).unwrap_or_else(|err| panic!("{}: {err}", spec.id));
+            assert!(def.model.texture.is_some(), "{} has no texture", spec.id);
+        }
+        assert!(e.height > 0.05 && e.height <= 6.0, "{}", e.id);
+        if !e.x.sound.is_empty() {
+            assert!(r.sounds.iter().any(|s| s.id == e.x.sound), "{} calls an unknown sound {}", e.id, e.x.sound);
+        }
+    }
+    assert!(new.iter().filter(|e| e.x.baby.is_some()).count() >= 8);
+}

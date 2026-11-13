@@ -238,6 +238,39 @@ In the water:
 | Fish | seas and lakes at sea level | drops 1 Raw Fish |
 | Squid | seas and lakes at sea level | drops 1 Raw Fish |
 
+## The Wildlife mod
+
+`mods/wildlife` comes with the game and adds 32 more kinds of creature, most
+in two to four looks (a blue tree frog, a black cottontail, a ginger bat).
+Each look has its own model and texture, drawn in the OCD style
+([TEXTURING.md](TEXTURING.md)); limbs, tails, ears and wings are separate
+bones, so they move. Switch the mod off in Settings > MODS to get rid of them.
+They are placed by biome like the others; the numbers are small, so the base
+animals stay the most common.
+
+| Group | Creatures (looks) | Lives in |
+| --- | --- | --- |
+| Frogs and toads | Tree Frog (green, blue, red-eyed, grey), Dart Frog (blue, strawberry, golden, green and black), Pond Frog (green, brown, olive), Toad (brown, green, red, natterjack), Tadpole (in water) | swamp, jungle, forest, plains, taiga; they hop and croak |
+| Newts, turtles | Newt (olive, fire, crested, alpine), Pond Turtle (green, painted, snapping, box), Sea Turtle (open water; green, hawksbill, loggerhead, leatherback) | swamp, forest, taiga, jungle |
+| Lizards, snakes | Gecko, Lizard, Garter Snake (harmless, flees), Viper (territorial, 2 damage) | desert, badlands, savanna, plains, forest, taiga, mountain |
+| Birds | Barn Owl (night), Mallard (drake, hen, white, mandarin), Canada Goose, Seagull | forest, plains, swamp, tundra, taiga |
+| Flyers | Horseshoe Bat (caves), Dragonfly, Meadow Butterfly (monarch, swallowtail, morpho, cabbage white, emperor), Bumblebee (does not sting), Ladybird | caves, swamp, jungle, forest, plains |
+| Mammals | Roe Deer, Arctic Fox, Fennec Fox, Cottontail (brown, grey, black, white, spotted), Hedgehog, Otter (open water), Beaver, Warthog, Squirrel, Badger | forest, taiga, tundra, desert, savanna, plains, swamp, mountain |
+| Shore | Fiddler Crab | desert, swamp |
+
+Young animals arrive with adults for the kinds that have them (deer, foxes,
+cottontails, hedgehogs, turtles, ducks, geese, otters, beavers, warthogs,
+squirrels and badgers); ducks and geese give eggs; deer, warthogs, badgers
+and sea turtles drop raw meat, beavers sticks. Each has its own call (croak,
+quack, hoot, ...) with a subtitle. Foxes, vipers and others hunt smaller
+creatures of the mod (see [MODDING.md](MODDING.md#the-food-chain)).
+
+The pictures are made by `python3 tools/wildlife_textures.py`: one table
+of named colours per species, with the colours each variant changes, drives
+every model, every PNG in `mods/wildlife/textures/` and `pack.txt`; change a
+colour, run it again and everything follows. `--sheet out.png` writes a
+contact sheet to look at.
+
 ## Night monsters
 
 These appear on the surface after dark, hunt survival players, and are gone
