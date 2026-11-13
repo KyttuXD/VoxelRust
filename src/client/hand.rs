@@ -87,19 +87,18 @@ fn boxq(out: &mut Vec<Quad>, lo: [f32; 3], hi: [f32; 3], tiles: [u16; 6], tint: 
     }
 }
 
-/// The held item around the grip at the origin: stood up just above it, so
-/// that it rests on the knuckles.
+/// The held item, centred on the origin, facing forward (-z).
 fn item_geometry(held: Held, white: u16, out: &mut Vec<Quad>) {
     match held {
         Held::Nothing => {}
         Held::Cube(tiles) => {
             // A block the size of a die, a little forward of the grip.
-            boxq(out, [-0.07, 0.01, -0.13], [0.07, 0.15, 0.01], tiles, [255, 255, 255]);
+            boxq(out, [-0.05, -0.05, -0.05], [0.05, 0.05, 0.05], tiles, [255, 255, 255]);
         }
         Held::Card(tile) => {
             // One flat card, facing forward. A second face would show the
             // picture mirrored behind it, which reads as a cross.
-            let (lo, hi, z) = ([-0.12, -0.04], [0.12, 0.20], -0.06);
+            let (lo, hi, z) = ([-0.08, -0.08], [0.08, 0.08], 0.0);
             let front = [[lo[0], lo[1], z], [hi[0], lo[1], z], [hi[0], hi[1], z], [lo[0], hi[1], z]];
             quad(out, front, tile, [255, 255, 255, 255]);
         }
@@ -134,23 +133,35 @@ fn swing_angle(swing: f32) -> f32 {
     -sinf(PI * swing.clamp(0.0, 1.0)) * 0.9
 }
 
-/// Where a point of the hand model goes, for the first-person view. The
-/// model is drawn with its hand at the origin and its arm hanging down from
-/// it (`hand` model, flipped); this tilts the arm so it comes in from the
-/// lower right, swings it for a blow or a use, and lifts it a little as the
-/// player walks. The grip is at (0.32, -0.30, -0.48) in view space.
+/// The first-person hand is LastRoute's (data/render/fp_hands.json): the
+/// mannequin's arm, its hand at the origin and the forearm running up from
+/// it, is tilted 118 degrees about X and placed with the hand at `BARE_VIEW`.
+const TILT_DEG: f32 = 118.0;
+const BARE_VIEW: [f32; 3] = [0.27, -0.24, -0.52];
+
+/// Where a point of the hand model goes, for the first-person view: a swing
+/// (a blow or a use) turns it about the wrist first, then the tilt and the
+/// place. `bob` lifts it as the player walks.
 pub fn arm_point(p: [f32; 3], swing: f32, bob: f32) -> [f32; 3] {
     let p = rot_x(p, swing_angle(swing));
-    let p = rot_z(p, 0.45);
-    [p[0] + 0.32, p[1] - 0.3 + bob, p[2] - 0.48]
+    let p = rot_x(p, TILT_DEG.to_radians());
+    [p[0] + BARE_VIEW[0], p[1] + BARE_VIEW[1] + bob, p[2] + BARE_VIEW[2]]
 }
 
-/// The held item for the first-person view: it sits on the knuckles, so it
-/// follows the same motion as the arm. Put in `out`.
+/// Where the held item goes: in the fist, at the end of the fingers. The
+/// fingers point along the hand's -y, which the tilt turns up and away.
+pub fn item_point(p: [f32; 3], swing: f32, bob: f32) -> [f32; 3] {
+    let fingers = rot_x([0.0, -0.05, 0.0], TILT_DEG.to_radians());
+    let q = [p[0] + fingers[0], p[1] + fingers[1], p[2] + fingers[2]];
+    let q = rot_x(q, swing_angle(swing));
+    [q[0] + BARE_VIEW[0], q[1] + BARE_VIEW[1] + bob, q[2] + BARE_VIEW[2]]
+}
+
+/// The held item for the first-person view, put in `out`.
 pub fn first_person(held: Held, white: u16, swing: f32, bob: f32, out: &mut Vec<Quad>) {
     let start = out.len();
     item_geometry(held, white, out);
-    map(&mut out[start..], |p| arm_point(p, swing, bob));
+    map(&mut out[start..], |p| item_point(p, swing, bob));
 }
 
 /// The held item on a body, seen from outside: `feet` is where the body
@@ -184,13 +195,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_arm_comes_in_from_the_lower_right() {
-        // The hand end of the model (the origin) is the grip, and the arm
-        // hangs down from it: a point below it lands lower and to the right.
-        let grip = arm_point([0.0, 0.0, 0.0], 0.0, 0.0);
-        let elbow = arm_point([0.0, -0.5, 0.0], 0.0, 0.0);
-        assert!(elbow[0] > grip[0] + 0.1 && elbow[1] < grip[1] - 0.3, "{grip:?} {elbow:?}");
-        assert!((grip[0] - 0.32).abs() < 1e-5 && (grip[1] + 0.3).abs() < 1e-5);
+    fn the_hand_is_placed_as_last_route_places_it() {
+        // The hand (the model origin) is at LastRoute's bare view, and the
+        // forearm (up the model) comes down from it and toward the viewer.
+        let wrist = arm_point([0.0, 0.0, 0.0], 0.0, 0.0);
+        assert!(wrist.iter().zip(BARE_VIEW).all(|(a, b)| (a - b).abs() < 1e-5), "{wrist:?}");
+        let elbow = arm_point([0.0, 0.5, 0.0], 0.0, 0.0);
+        assert!(elbow[1] < wrist[1] - 0.2 && elbow[2] > wrist[2] + 0.2, "{wrist:?} {elbow:?}");
     }
 
     #[test]

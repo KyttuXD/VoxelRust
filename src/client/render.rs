@@ -831,7 +831,7 @@ impl Renderer {
         self.flush(gl::QUADS);
         self.model_verts.clear();
         if let Some(def) = self.models.get(model) {
-            def.quads(&crate::model::Pose::default(), [0.0, 0.0, 0.0], 0.0, height, true, &mut self.model_verts);
+            def.quads(&crate::model::Pose::default(), [0.0, 0.0, 0.0], 0.0, height, false, &mut self.model_verts);
         }
         let aspect = self.w as f32 / self.h.max(1) as f32;
         Self::load_matrices(&math::perspective(fov, aspect, 0.03, 8.0), &math::IDENTITY);

@@ -1033,7 +1033,7 @@ impl App {
                     let held = crate::client::hand::held_of(g.held().map(|h| h.0));
                     crate::client::hand::first_person(held, crate::client::hand::white_tile(), swing, bob, &mut items);
                     let to_view = |p: [f32; 3]| crate::client::hand::arm_point(p, swing, bob);
-                    r.draw_first_person(hand, self.skin_tex, cam.fov, 0.7, &to_view, &items);
+                    r.draw_first_person(hand, self.skin_tex, cam.fov, 0.12, &to_view, &items);
                 }
             }
         } else {
