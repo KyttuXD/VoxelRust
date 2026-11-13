@@ -61,6 +61,8 @@ pub struct VehicleDef {
     pub storage: bool,
     /// Where the rider's eyes are, above the vehicle's base.
     pub seat: f32,
+    /// How many can ride: one drives, the others join with `/passenger`.
+    pub seats: u8,
     /// Keeps going by itself once set moving (a locomotive).
     pub powered: bool,
 }
@@ -93,7 +95,7 @@ fn read(r: &crate::block::Registry) -> (Vec<VehicleDef>, Vec<String>) {
             }
         };
         for (key, _) in &sec.props {
-            if !["name", "model", "icon", "category", "medium", "speed", "height", "width", "seat", "storage", "powered"].contains(&key.as_str()) {
+            if !["name", "model", "icon", "category", "medium", "speed", "height", "width", "seat", "seats", "storage", "powered"].contains(&key.as_str()) {
                 wrong.push(alloc::format!("{}: vehicle {}: unknown property `{}`", sec.at, sec.id, key));
             }
         }
@@ -107,6 +109,7 @@ fn read(r: &crate::block::Registry) -> (Vec<VehicleDef>, Vec<String>) {
             width: sec.num("width", 1.2, 0.2, 3.0),
             storage: sec.flag("storage"),
             seat: sec.num("seat", 0.9, 0.0, 5.0),
+            seats: sec.num("seats", 1.0, 1.0, 16.0) as u8,
             powered: sec.flag("powered"),
         });
     }
@@ -190,6 +193,19 @@ fn update(g: &mut Session, dt: f32, c: &Controls, audio: &mut Audio) {
     }
     if let Some(eye) = st.v.update(dt, &g.world, &c.input, (g.player.yaw, g.player.pitch)) {
         g.seat = Some(eye);
+    }
+    // A passenger rides along: placed at the seat, beside the driver's, without steering.
+    if let Some(i) = st.v.passenger {
+        if c.leave || g.dead || st.v.riding.is_some() || i >= st.v.list.len() {
+            st.v.passenger = None;
+            g.player.pos[1] += 0.6;
+            g.player.vel = [0.0; 3];
+        } else {
+            let v = &st.v.list[i];
+            let (fx, fz) = (-crate::math::sinf(v.body.yaw), -crate::math::cosf(v.body.yaw));
+            let seat = defs()[v.kind].seat as f64;
+            g.seat = Some([v.body.pos[0] + (-fz * 0.6) as f64, v.body.pos[1] + seat, v.body.pos[2] + (fx * 0.6) as f64]);
+        }
     }
     // Hard crashes wreck the vehicle. Highest index first, so that removing one
     // does not move the others (see Vehicles::remove).
@@ -470,6 +486,26 @@ fn command(g: &mut Session, words: &[&str]) -> Option<String> {
                 Some((i, _)) => {
                     st.v.list[i].owner = if w == "/lock" { g.who.clone() } else { String::new() };
                     String::from(if w == "/lock" { "LOCKED TO YOU" } else { "UNLOCKED" })
+                }
+            };
+            g.put_ext(NAME, st);
+            Some(reply)
+        }
+        // /passenger: ride along in the nearest vehicle that has a seat to spare. /leave gets out.
+        Some("/passenger") => {
+            let p = g.player.pos;
+            let mut st = g.take_ext::<State>(NAME);
+            let near = (0..st.v.list.len()).filter(|&i| {
+                let b = st.v.list[i].body.pos;
+                defs()[st.v.list[i].kind].seats > 1 && (b[0] - p[0]) * (b[0] - p[0]) + (b[1] - p[1]) * (b[1] - p[1]) + (b[2] - p[2]) * (b[2] - p[2]) < 36.0
+            }).next();
+            let reply = match near {
+                None => String::from("NO VEHICLE WITH A FREE SEAT NEARBY"),
+                Some(i) if locked_to_other(g, &st.v.list[i].owner) => String::from("LOCKED TO ANOTHER PLAYER"),
+                Some(i) => {
+                    st.v.riding = None;
+                    st.v.passenger = Some(i);
+                    String::from("RIDING ALONG")
                 }
             };
             g.put_ext(NAME, st);

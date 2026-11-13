@@ -38,3 +38,33 @@ vehicle cargo_boat
 
 craft boat 1 planks 5
 craft cargo_boat 1 boat 1 oak_chest 1
+
+texture icon_speedboat paint hull 220 220 230
+texture icon_ferry paint hull 90 110 150
+
+vehicle speedboat
+  name Speedboat
+  category Travel
+  model boat
+  icon icon_speedboat
+  medium water
+  speed 13
+  height 0.6
+  width 1.3
+  seat 0.8
+  seats 2
+vehicle ferry
+  name Ferry
+  category Travel
+  model cargo_boat
+  icon icon_ferry
+  medium water
+  speed 4
+  height 1.0
+  width 2.0
+  seat 1.1
+  seats 8
+  storage
+
+craft speedboat 1 boat 1 iron_ingot 3
+craft ferry 1 cargo_boat 1 planks 8 iron_ingot 4

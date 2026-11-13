@@ -56,6 +56,8 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | Left Shift * | fly down when flying |
 | Left Ctrl * | sprint |
 | F * | get out of a vehicle; get off a creature; get up from a seat |
+| (chat) /passenger | ride along in a nearby vehicle with a free seat (buses, ferries, jeeps...) |
+| (chat) /lock, /unlock | lock the vehicle you are in or looking at to you, or release it |
 | Left click | break a block, hit a creature, pick up a vehicle |
 | Right click | place a block; use a crafting table, chest, oven, furnace or bed; open or shut a door; sit on a chair; till soil with a hoe; eat; shoot a bow; get into a vehicle; collect from, trade with, tame or ride a creature; hatch a spawn egg |
 | Middle click | pick the block you are looking at |

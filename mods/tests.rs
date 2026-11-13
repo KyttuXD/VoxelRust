@@ -46,6 +46,16 @@ fn the_disasters_mod_defines_its_disasters_itself() {
 }
 
 #[test]
+fn the_new_vehicles_are_defined_and_the_big_ones_seat_several() {
+    let r = load(&["vehicles", "landvehicles", "boats", "planes"]);
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+    let seats = |id: &str| r.sections.iter().find(|s| s.kind == "vehicle" && s.id == id).map(|s| s.num("seats", 1.0, 1.0, 16.0) as i32);
+    for (id, n) in [("buggy", 1), ("jeep", 2), ("bus", 6), ("tractor", 1), ("quad", 1), ("speedboat", 2), ("ferry", 8), ("biplane", 2)] {
+        assert_eq!(seats(id), Some(n), "vehicle {id}");
+    }
+}
+
+#[test]
 fn vehicles_need_the_vehicles_mod() {
     let alone = load(&["boats"]);
     assert!(alone.warnings.iter().any(|w| w.contains("needs the mod `vehicles`")), "{:?}", alone.warnings);

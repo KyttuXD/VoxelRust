@@ -45,6 +45,8 @@ pub struct Vehicles {
     pub list: Vec<Vehicle>,
     /// The one the player is in.
     pub riding: Option<usize>,
+    /// The one the player rides along in without steering (see `/passenger`).
+    pub passenger: Option<usize>,
     /// Crashes since the last time they were taken (see the vehicles mod).
     pub crashes: Vec<Crash>,
 }
@@ -100,6 +102,11 @@ impl Vehicles {
         }
         let last = self.list.len() - 1;
         self.riding = match self.riding {
+            Some(r) if r == i => None,
+            Some(r) if r == last => Some(i),
+            other => other,
+        };
+        self.passenger = match self.passenger {
             Some(r) if r == i => None,
             Some(r) if r == last => Some(i),
             other => other,

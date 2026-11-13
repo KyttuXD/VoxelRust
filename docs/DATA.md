@@ -633,6 +633,8 @@ vehicle <id>
   height <0.2..6>           blocks; the model is scaled to this (default 1)
   width <0.2..3>            blocks, for collision (default 1.2)
   seat <0..5>               height of the rider's eyes above its base (default 0.9)
+  seats <1..16>             how many can ride (default 1). One drives; the others get in with
+                            /passenger when close, and get out with the get-out key
   storage                   it carries 27 slots of cargo
   powered                   a rail vehicle that keeps going with nobody driving
 ```
