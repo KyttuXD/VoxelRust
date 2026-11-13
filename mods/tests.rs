@@ -31,10 +31,10 @@ fn every_shipped_mod_loads_without_complaint() {
 }
 
 #[test]
-fn the_disasters_mod_defines_its_three_disasters_itself() {
+fn the_disasters_mod_defines_its_disasters_itself() {
     let r = load(&["disasters"]);
     let ids: Vec<&str> = r.episodes.iter().map(|d| d.id.as_str()).collect();
-    assert_eq!(ids, ["earthquake", "tsunami", "tornado"]);
+    assert_eq!(ids, ["earthquake", "tsunami", "tornado", "hailstorm", "blizzard"]);
     let quake = &r.episodes[0];
     assert_eq!((quake.every, quake.lasts, quake.then.as_str()), (1200, 7.0, "tsunami"));
     assert_eq!(quake.actions, ["/shake 0.35", "/sound quake"]);
