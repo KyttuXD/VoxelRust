@@ -106,6 +106,8 @@ pub struct Session {
     call_timer: f32,
     /// The seat the player is sitting on.
     pub sitting: Option<[i32; 3]>,
+    /// The cart a chain has been hooked to, waiting for the second one.
+    coupling: Option<usize>,
     /// Rain set by `/weather` (0 clear ..= 1 storm), overriding the sky.
     pub forced_sky: Option<f32>,
     /// Skin images that arrived from other players, for the renderer.
@@ -310,6 +312,7 @@ impl Session {
             started: false,
             call_timer: 3.0,
             sitting: None,
+            coupling: None,
             forced_sky: None,
             skin_events: Vec::new(),
             inv,
@@ -1359,6 +1362,34 @@ impl Session {
         if self.vehicles.riding.is_none() {
             if let Some((i, t)) = self.vehicles.hit_test(eye, dir, 5.0).filter(|v| v.1 < near_block) {
                 let _ = t;
+                if c.place_held && self.cooldown[1] <= 0.0 && item.id == "chain" {
+                    // A chain joins rail carts into a train: click the one
+                    // in front, then the one to pull behind it.
+                    self.cooldown[1] = 0.4;
+                    let on_rails = |k: usize| reg().vehicles[self.vehicles.list[k].kind].medium == crate::block::Medium::Rail;
+                    if !on_rails(i) {
+                        self.say("CHAINS ARE FOR RAIL CARTS");
+                    } else if self.vehicles.list[i].leader.is_some() {
+                        self.vehicles.list[i].leader = None;
+                        self.say("UNCHAINED");
+                    } else {
+                        match self.coupling.take().filter(|&f| f != i && f < self.vehicles.list.len()) {
+                            Some(front) => {
+                                self.vehicles.list[i].leader = Some(front);
+                                if !creative {
+                                    self.inv.take_one(self.selected);
+                                }
+                                audio.play_named("rail", 1.0);
+                                self.say("CHAINED");
+                            }
+                            None => {
+                                self.coupling = Some(i);
+                                self.say("NOW CLICK THE CART TO PULL BEHIND IT");
+                            }
+                        }
+                    }
+                    return;
+                }
                 if c.place_held && self.cooldown[1] <= 0.0 {
                     self.cooldown[1] = 0.4;
                     if c.input.descend && reg().vehicles[self.vehicles.list[i].kind].storage {

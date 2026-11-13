@@ -19,6 +19,13 @@ pub struct Vehicle {
     pub storage: Inventory,
     /// Wheel / propeller spin, for the model.
     pub phase: f32,
+    /// The vehicle this one is chained behind (rail carts make trains).
+    pub leader: Option<usize>,
+    /// Going by itself: the speed it holds with nobody driving.
+    pub cruise: f32,
+    /// Seconds left of a stop at a station, and the station it was.
+    pub wait: f32,
+    last_station: (i32, i32),
 }
 
 #[derive(Default)]
@@ -38,7 +45,7 @@ impl Vehicles {
         let d = &reg().vehicles[kind];
         let mut body = Player::with_size(pos, d.width as f64, d.height as f64);
         body.yaw = yaw;
-        self.list.push(Vehicle { kind, body, throttle: 0.0, storage: Inventory::new(), phase: 0.0 });
+        self.list.push(Vehicle { kind, body, throttle: 0.0, storage: Inventory::new(), phase: 0.0, leader: None, cruise: 0.0, wait: 0.0, last_station: (i32::MIN, 0) });
         self.list.len() - 1
     }
 
@@ -77,11 +84,24 @@ impl Vehicles {
         if i >= self.list.len() {
             return None;
         }
+        let last = self.list.len() - 1;
         self.riding = match self.riding {
             Some(r) if r == i => None,
-            Some(r) if r == self.list.len() - 1 => Some(i),
+            Some(r) if r == last => Some(i),
             other => other,
         };
+        // Chains to the one removed fall away; chains to the one that
+        // takes its place in the list follow it there.
+        for v in self.list.iter_mut() {
+            v.leader = match v.leader {
+                Some(l) if l == i => None,
+                Some(l) if l == last => Some(i),
+                other => other,
+            };
+        }
+        if self.list[last].leader == Some(i) {
+            self.list[last].leader = None;
+        }
         Some(self.list.swap_remove(i))
     }
 
@@ -91,6 +111,8 @@ impl Vehicles {
         let r = reg();
         let (water, rail) = (r.wk.water, r.wk.rail);
         let riding = self.riding;
+        // Where everything is, so chained carts can follow their leaders.
+        let places: Vec<([f64; 3], f32, f32)> = self.list.iter().map(|v| (v.body.pos, v.throttle, r.vehicles[v.kind].speed)).collect();
         for (i, v) in self.list.iter_mut().enumerate() {
             let d = &r.vehicles[v.kind];
             let driven = riding == Some(i);
@@ -100,7 +122,36 @@ impl Vehicles {
             }
             let at = |dy: f64| world.get(px, floord(v.body.pos[1] + dy), pz);
             // Throttle follows the driver; an empty vehicle coasts to a stop.
-            let want = if driven { input.forward } else { 0.0 };
+            let mut want = if driven { input.forward } else { 0.0 };
+            // A cart in tow goes as fast as whatever pulls it, and a little
+            // faster when it has fallen behind.
+            let mut towed_speed = None;
+            if d.medium == Medium::Rail {
+                if driven {
+                    // A locomotive remembers the speed it was last driven at.
+                    if d.powered && input.forward != 0.0 {
+                        v.cruise = input.forward;
+                    }
+                } else if let Some(&(lead, lead_throttle, lead_speed)) = v.leader.and_then(|l| places.get(l)) {
+                    // Chained: keep a cart's length behind the one in front.
+                    let (gx, gz) = ((lead[0] - v.body.pos[0]) as f32, (lead[2] - v.body.pos[2]) as f32);
+                    let gap = crate::math::sqrtf(gx * gx + gz * gz);
+                    let (hx, hz) = heading(v.body.yaw);
+                    let ahead = if gx * hx + gz * hz >= 0.0 { 1.0 } else { -1.0 };
+                    want = if gap > 1.9 { ahead * 1.0 } else if gap > 1.45 { ahead * lead_throttle.abs_().max(0.3) } else { 0.0 };
+                    towed_speed = Some(lead_speed * if gap > 1.9 { 1.35 } else { 1.0 });
+                    if gap > 12.0 {
+                        v.leader = None; // the chain snapped
+                    }
+                } else if d.powered {
+                    want = v.cruise;
+                }
+                // Pulled up at a station: wait, then carry on.
+                if v.wait > 0.0 {
+                    v.wait -= dt;
+                    want = 0.0;
+                }
+            }
             let ease = if d.medium == Medium::Air { 0.6 } else { 3.0 };
             v.throttle += (want - v.throttle).clamp(-ease * dt, ease * dt);
             if driven && d.medium != Medium::Rail {
@@ -135,10 +186,27 @@ impl Vehicles {
                     // A cart only goes where there is track: ahead if it can,
                     // otherwise round whichever corner the track takes.
                     v.body.flying = true;
-                    v.body.speed_scale = d.speed / 11.0;
                     let cell_y = floord(v.body.pos[1] + 0.3);
-                    let on_track = |x: i32, z: i32| -> Option<i32> { [0, 1, -1].into_iter().map(|dy| cell_y + dy).find(|&y| world.get(x, y, z) == rail) };
+                    // Track is the plain rail, or any block the data calls track.
+                    let is_track = |b: crate::block::Block| b == rail || crate::block::def(b).x.track > 0;
+                    let on_track = |x: i32, z: i32| -> Option<i32> { [0, 1, -1].into_iter().map(|dy| cell_y + dy).find(|&y| is_track(world.get(x, y, z))) };
                     let here = on_track(px, pz);
+                    // Fast track, slow track, and stations.
+                    let under = here.map(|y| &crate::block::def(world.get(px, y, pz)).x);
+                    let pace = under.map_or(100, |x| if x.track > 0 { x.track } else { 100 }) as f32 / 100.0;
+                    v.body.speed_scale = towed_speed.unwrap_or(d.speed) / 11.0 * pace;
+                    if let Some(x) = under.filter(|x| x.station > 0) {
+                        if v.last_station != (px, pz) && !driven && v.leader.is_none() {
+                            v.last_station = (px, pz);
+                            v.wait = x.station as f32;
+                            // Brakes on.
+                            v.throttle = 0.0;
+                            drive.forward = 0.0;
+                            v.body.vel = [0.0; 3];
+                        }
+                    } else if v.wait <= 0.0 {
+                        v.last_station = (i32::MIN, 0);
+                    }
                     let quarter = crate::interact::facing(v.body.yaw) as i32;
                     let dirs = [(0, -1), (-1, 0), (0, 1), (1, 0)];
                     let sign = if v.throttle < 0.0 { 2 } else { 0 };
@@ -171,9 +239,13 @@ impl Vehicles {
                             drive.descend = v.body.pos[1] > target + 0.1;
                         }
                         (Some(y), None) => {
-                            // End of the line.
+                            // End of the line: stop, and a locomotive running
+                            // by itself heads back the way it came.
                             drive.forward = 0.0;
                             v.throttle = 0.0;
+                            if !driven && d.powered && v.leader.is_none() {
+                                v.cruise = -v.cruise;
+                            }
                             drive.descend = v.body.pos[1] > y as f64 + 0.23;
                         }
                         _ => {
@@ -219,7 +291,16 @@ impl Vehicles {
         let mut s = String::new();
         for v in &self.list {
             let p = v.body.pos;
-            s.push_str(&alloc::format!("{} {} {} {} {} {}\n", r.vehicles[v.kind].id, p[0], p[1], p[2], v.body.yaw, v.storage.save()));
+            // The id may carry "@n" (chained behind vehicle n) and "~speed"
+            // (a locomotive's cruising speed).
+            let mut id = r.vehicles[v.kind].id.clone();
+            if let Some(l) = v.leader {
+                id.push_str(&alloc::format!("@{}", l));
+            }
+            if v.cruise != 0.0 {
+                id.push_str(&alloc::format!("~{}", v.cruise));
+            }
+            s.push_str(&alloc::format!("{} {} {} {} {} {}\n", id, p[0], p[1], p[2], v.body.yaw, v.storage.save()));
         }
         s
     }
@@ -228,11 +309,29 @@ impl Vehicles {
         let r = reg();
         for line in text.lines() {
             let mut w = line.splitn(6, ' ');
-            let kind = w.next().and_then(|id| r.vehicles.iter().position(|v| v.id == id));
+            let tag = w.next().unwrap_or("");
+            let (tag, cruise) = match tag.split_once('~') {
+                Some((t, c)) => (t, c.parse::<f32>().ok().filter(|c| c.is_finite()).unwrap_or(0.0).clamp(-1.0, 1.0)),
+                None => (tag, 0.0),
+            };
+            let (id, leader) = match tag.split_once('@') {
+                Some((t, l)) => (t, l.parse::<usize>().ok()),
+                None => (tag, None),
+            };
+            let kind = r.vehicles.iter().position(|v| v.id == id);
             let mut n = || w.next().and_then(|v| v.parse::<f64>().ok());
             if let (Some(kind), Some(x), Some(y), Some(z), Some(yaw)) = (kind, n(), n(), n(), n()) {
                 let i = self.place(kind, [x, y, z], yaw as f32);
                 self.list[i].storage = Inventory::load(w.next().unwrap_or(""));
+                self.list[i].leader = leader;
+                self.list[i].cruise = cruise;
+            }
+        }
+        // A chain to something that is not there is no chain.
+        let n = self.list.len();
+        for (i, v) in self.list.iter_mut().enumerate() {
+            if v.leader.map_or(false, |l| l >= n || l == i) {
+                v.leader = None;
             }
         }
     }
@@ -354,6 +453,44 @@ mod tests {
         // It stops at the end of the line instead of running off.
         drive(&mut v, &w, 1.0, 0.0, 0.0, 4.0);
         assert!(v.list[cart].body.pos[0] > 13.9, "the cart left the track");
+    }
+
+    #[test]
+    fn a_locomotive_runs_itself_pulls_a_cart_stops_at_stations_and_turns_back() {
+        let mut w = arena();
+        let r = reg();
+        let (rail, station) = (r.wk.rail, r.block("station_rail").unwrap());
+        for z in 0..=38 {
+            w.set_block(20, 121, z, if z == 20 { station } else { rail });
+        }
+        let mut v = Vehicles::default();
+        let loco = v.place(kind("locomotive"), [20.5, 121.2, 34.5], 0.0);
+        let cart = v.place(kind("cart"), [20.5, 121.2, 36.5], 0.0);
+        v.list[cart].leader = Some(loco);
+        v.list[loco].cruise = 1.0;
+        // Nobody aboard: it sets off north by itself, the cart behind it.
+        drive(&mut v, &w, 0.0, 0.0, 0.0, 0.8);
+        let (a, b) = (v.list[loco].body.pos[2], v.list[cart].body.pos[2]);
+        assert!(a < 32.0, "the locomotive did not set off: z = {a}");
+        assert!(b < 36.0 && b > a + 0.9 && b < a + 3.5, "the cart is not in tow: loco {a}, cart {b}");
+        // It pulls up at the station and waits there.
+        drive(&mut v, &w, 0.0, 0.0, 0.0, 3.0);
+        let stopped = v.list[loco].body.pos[2];
+        assert!((stopped - 20.5).abs() < 1.6 && v.list[loco].wait > 0.0, "no stop at the station: z = {stopped}, wait {}", v.list[loco].wait);
+        drive(&mut v, &w, 0.0, 0.0, 0.0, 2.0);
+        assert!((v.list[loco].body.pos[2] - stopped).abs() < 0.6, "it left early");
+        // Then on toward the end of the line...
+        drive(&mut v, &w, 0.0, 0.0, 0.0, 2.2);
+        let z = v.list[loco].body.pos[2];
+        assert!(z < 17.0, "it never left the station: z = {z}");
+        // ...where it turns back by itself.
+        drive(&mut v, &w, 0.0, 0.0, 0.0, 4.0);
+        assert!(v.list[loco].cruise < 0.0, "it did not turn back at the end of the line");
+        // Chains and cruising speed survive a save.
+        let mut again = Vehicles::default();
+        again.load_text(&v.save_text());
+        assert_eq!(again.list[cart].leader, Some(loco));
+        assert_eq!(again.list[loco].cruise, v.list[loco].cruise);
     }
 
     #[test]

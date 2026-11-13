@@ -237,6 +237,22 @@ for cid, cname, _ in CHESTS:
 
 w("\n# ---- Rail track ----")
 block("rail", "Rail", "rail", cat="Travel", hardness=0.4, solid="no", box=["0 0 0 16 2 16"])
+# Other track: `track <percent>` is how fast carts run on it, and
+# `station <seconds>` makes carts running by themselves pull up and wait.
+tex("speed_rail", "paint rail 236 196 70")
+tex("slow_rail", "paint rail 200 80 70")
+tex("station_rail", "paint rail 80 150 230")
+tex("depot_rail", "paint rail 90 200 120")
+block("speed_rail", "Speed Rail", "speed_rail", cat="Travel", hardness=0.4, solid="no", box=["0 0 0 16 2 16"], track=220)
+block("slow_rail", "Slow Rail", "slow_rail", cat="Travel", hardness=0.4, solid="no", box=["0 0 0 16 2 16"], track=40)
+block("station_rail", "Station Rail (6 s stop)", "station_rail", cat="Travel", hardness=0.4, solid="no", box=["0 0 0 16 2 16"],
+      track=100, station=6)
+block("depot_rail", "Depot Rail (30 s stop)", "depot_rail", cat="Travel", hardness=0.4, solid="no", box=["0 0 0 16 2 16"],
+      track=100, station=30)
+block("platform", "Station Platform", "stone_bricks", cat="Travel", hardness=1.5, tool="pick", box=["0 0 0 16 10 16"])
+block("buffer_stop", "Buffer Stop", "planks", cat="Travel", hardness=1.0, tool="axe", rotate=True,
+      box=["1 0 6 3 12 10", "13 0 6 15 12 10", "1 8 6 15 12 10"])
+block("signal_post", "Signal Post", "lamp", cat="Travel", hardness=0.6, light=10, box=["7 0 7 9 12 9", "5 12 5 11 16 11"])
 
 w("\n# ---- Custom shapes are just boxes ----")
 block("planks_post", "Oak Post", "planks", cat="Shapes", hardness=1.2, box=["6 0 6 10 16 10"])
@@ -364,10 +380,18 @@ w("""
 #     storage                  carries a chest's worth of items
 # Right click sets one down, right click again gets in, F gets out,
 # left click picks it back up. Carts need `rail` blocks to run on.""")
+tex("chain", "paint web 150 154 164")
+tex("icon_locomotive", "paint vehicle 60 60 70")
+tex("icon_passenger_cart", "paint vehicle 90 130 200")
+tex("icon_hopper_cart", "paint vehicle 150 110 70")
+w("item chain\n  name Chain\n  icon chain\n  category Travel")
 VEHICLES = [("boat", "Boat", "boat", "water", 7, 0.7, 1.4, 0.9, False),
             ("cargo_boat", "Cargo Boat", "cargo_boat", "water", 5.5, 0.8, 1.5, 0.9, True),
             ("cart", "Rail Cart", "cart", "rail", 10, 0.8, 1.0, 0.9, False),
             ("chest_cart", "Chest Cart", "chest_cart", "rail", 8, 1.0, 1.0, 1.0, True),
+            ("locomotive", "Locomotive", "chest_cart", "rail", 12, 1.1, 1.0, 1.1, False),
+            ("passenger_cart", "Passenger Cart", "cart", "rail", 12, 0.8, 1.0, 0.9, False),
+            ("hopper_cart", "Freight Cart", "chest_cart", "rail", 12, 1.0, 1.0, 1.0, True),
             ("buggy", "Buggy", "car", "land", 10, 1.2, 1.6, 1.3, True),
             ("plane", "Plane", "plane", "air", 22, 1.3, 1.8, 1.2, False)]
 MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "models")
@@ -375,8 +399,12 @@ for vid, name, model, medium, speed, height, width, seat, storage in VEHICLES:
     if os.path.exists(os.path.join(MODELS_DIR, model + ".bbmodel")):
         if model not in ("player", "grazer"):
             w(f"model {model} file models/{model}.bbmodel")
-        w(f"vehicle {vid}\n  name {name}\n  model {model}\n  icon icon_{vid}\n  medium {medium}\n  speed {speed}\n  height {height}\n  width {width}\n  seat {seat}" + ("\n  storage" if storage else ""))
+        w(f"vehicle {vid}\n  name {name}\n  model {model}\n  icon icon_{vid}\n  medium {medium}\n  speed {speed}\n  height {height}\n  width {width}\n  seat {seat}" + ("\n  storage" if storage else "") + ("\n  powered" if vid == "locomotive" else ""))
 w("craft rail 16 iron_ore 3 stick 2")
+for line in ["speed_rail 8 rail 8 crystal 1", "slow_rail 8 rail 8 coal 1", "station_rail 2 rail 2 lamp 1", "depot_rail 2 station_rail 2 oak_chest 1",
+             "platform 4 stone_bricks 3", "buffer_stop 1 planks 3", "signal_post 1 lamp 1 stick 2", "chain 2 iron_ingot 1",
+             "locomotive 1 cart 1 furnace 1 iron_ingot 4", "passenger_cart 1 cart 1 chair 1", "hopper_cart 1 chest_cart 1 iron_ingot 2"]:
+    w("craft " + line)
 w("craft boat 1 planks 5")
 w("craft cargo_boat 1 boat 1 oak_chest 1")
 w("craft cart 1 iron_ore 5")

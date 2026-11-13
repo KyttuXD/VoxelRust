@@ -184,6 +184,10 @@ pub struct BlockExtra {
     pub seat: u8,
     /// Food: right click eats it where it stands, for this many points.
     pub eat: u8,
+    /// Rail carts run on it, at this percentage of their speed (0 = not track).
+    pub track: u16,
+    /// Track where carts pull up and wait this many seconds before going on.
+    pub station: u8,
 }
 
 /// What an item does besides being placed or eaten.
@@ -342,6 +346,8 @@ pub struct VehicleDef {
     pub storage: bool,
     /// Where the rider's eyes are, above the vehicle's base.
     pub seat: f32,
+    /// Keeps going by itself once set moving (a locomotive).
+    pub powered: bool,
 }
 
 /// A kind of creature.
@@ -702,6 +708,7 @@ struct RawVehicle {
     height: f32,
     width: f32,
     storage: bool,
+    powered: bool,
     seat: f32,
 }
 
@@ -905,6 +912,7 @@ impl Parser<'_> {
                         height: 1.0,
                         width: 1.2,
                         storage: false,
+                        powered: false,
                         seat: 0.9,
                     };
                     let i = match self.vehicles.iter().position(|v| v.id == id) {
@@ -987,6 +995,7 @@ impl Parser<'_> {
                                 None => bad = Some("seat must be 0..5"),
                             },
                             "storage" => v.storage = !matches!(args.first(), Some(&"no") | Some(&"false") | Some(&"0")),
+                            "powered" => v.powered = !matches!(args.first(), Some(&"no") | Some(&"false") | Some(&"0")),
                             _ => bad = Some("unknown vehicle property"),
                         }
                         if let Some(msg) = bad {
@@ -1092,7 +1101,7 @@ impl Parser<'_> {
                     Some(t) => b.tool = t as u8,
                     None => bad = Some("tool must be none, pick, axe, shovel or hoe"),
                 },
-                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" | "sound" | "seat" | "eat" => {
+                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" | "sound" | "seat" | "eat" | "track" | "station" => {
                     b.extra.retain(|e| e.0 != key);
                     b.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
@@ -1498,6 +1507,7 @@ impl Registry {
                 height: rv.height,
                 width: rv.width,
                 storage: rv.storage,
+                powered: rv.powered,
                 seat: rv.seat,
             });
         }
@@ -1556,6 +1566,13 @@ impl Registry {
                     "sound" => x.sound = word(0).to_string(),
                     "seat" => x.seat = word(0).parse::<u8>().unwrap_or(8).clamp(1, 16),
                     "eat" => x.eat = word(0).parse::<u8>().unwrap_or(4).clamp(1, 40),
+                    "track" => x.track = word(0).parse::<u16>().unwrap_or(100).clamp(10, 400),
+                    "station" => {
+                        x.station = word(0).parse::<u8>().unwrap_or(5).clamp(1, 120);
+                        if x.track == 0 {
+                            x.track = 100;
+                        }
+                    }
                     _ => {}
                 }
                 if !ok {
