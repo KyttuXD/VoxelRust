@@ -83,3 +83,30 @@ fn every_item_is_in_the_creative_list_and_beds_are_there() {
     let missing: Vec<&str> = r.blocks.iter().filter(|b| !b.id.is_empty()).map(|b| b.id.as_str()).filter(|id| !r.items.iter().any(|i| i.id == *id) && !r.items.iter().any(|i| i.place.map_or(false, |p| r.blocks[p as usize].id == *id))).collect();
     let mut u: Vec<&str> = missing.iter().copied().filter(|i| !i.ends_with("_open")).collect(); u.sort(); u.dedup(); eprintln!("blocks without an item: {:?}", u);
 }
+
+#[test]
+fn every_mod_folder_offers_all_its_items_in_a_tab() {
+    // Also the mods that do not ship with the game.
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/mods");
+    let mut texts: Vec<(String, String)> = Vec::new();
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    for e in std::fs::read_dir(dir).unwrap().flatten() {
+        let p = e.path().join("pack.txt");
+        if let Ok(t) = std::fs::read_to_string(&p) {
+            texts.push((format!("mods/{}/pack.txt", e.file_name().to_string_lossy()), t));
+        }
+    }
+    let mut sources: Vec<(&str, &str)> = vec![("base.txt", BASE_DATA)];
+    for (n, t) in &texts {
+        sources.push((n.as_str(), t.as_str()));
+    }
+    let _ = &mut files;
+    let r = Registry::from_sources(&sources, &mut |path| std::fs::read(format!("{}/../{}", dir, path)).ok());
+    eprintln!("ALLMODS {} mods, {} items, {} tabs, {} warnings", texts.len(), r.items.len(), r.categories.len(), r.warnings.len());
+    for it in &r.items {
+        assert!(r.categories.contains(&it.category), "{} is in no tab", it.id);
+    }
+    let missing: Vec<&str> = r.blocks.iter().map(|b| b.id.as_str()).filter(|id| !id.is_empty() && !id.ends_with("_open") && !r.items.iter().any(|i| i.place.map_or(false, |p| r.blocks[p as usize].id == *id) || i.id == *id)).collect();
+    let mut u = missing.clone(); u.sort(); u.dedup();
+    eprintln!("ALLMODS blocks without an item: {:?}", u);
+}
