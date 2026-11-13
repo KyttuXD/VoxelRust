@@ -596,6 +596,8 @@ pub struct Registry {
     pub entities: Vec<EntityDef>,
     /// Sections and lines of the packs kept for the mods' own code.
     pub sections: Vec<Section>,
+    /// Status effects: poison, burning... (see content/effects.rs).
+    pub fx: crate::content::effects::EffectTable,
     pub lines: Vec<(String, String, Vec<String>)>,
     /// Item tabs, in the order they first appear.
     pub categories: Vec<String>,
@@ -824,6 +826,8 @@ enum Cur {
     Item(usize),
     Entity(usize),
     Section(usize),
+    /// An `effect <id>` block (see content/effects.rs).
+    Effect(usize),
 }
 
 struct Parser<'a> {
@@ -833,6 +837,8 @@ struct Parser<'a> {
     models: Vec<ModelSpec>,
     entities: Vec<RawEntity>,
     sections: Vec<Section>,
+    /// The `effect <id>` blocks, read by content/effects.rs.
+    effects: Vec<Section>,
     lines: Vec<(String, String, Vec<String>)>,
     /// `(file:line, words)` for each `recipe` line, resolved once items exist.
     recipes: Vec<(String, Vec<String>)>,
@@ -1014,6 +1020,14 @@ impl Parser<'_> {
                     };
                     cur = Cur::Entity(i);
                 }
+                // A status effect: its lines are read by content/effects.rs.
+                "effect" if indent == 0 => match args.first() {
+                    Some(id) => cur = Cur::Effect(crate::content::effects::begin(&mut self.effects, id, alloc::format!("{}:{}", file, line_no))),
+                    None => {
+                        self.warn(file, line_no, "missing id");
+                        cur = Cur::None;
+                    }
+                },
                 // A section some mod's code has claimed: kept as written.
                 k if indent == 0 && crate::native::reads_section(k) => {
                     let id = match args.first() {
@@ -1095,6 +1109,7 @@ impl Parser<'_> {
                     Cur::Item(i) => self.item_prop(file, line_no, i, key, &args, &rest),
                     Cur::Entity(i) => self.entity_prop(file, line_no, i, key, &args, &rest),
                     Cur::Section(i) => self.sections[i].props.push((String::from(key), args.iter().map(|a| a.to_string()).collect())),
+                    Cur::Effect(i) => self.effects[i].props.push((String::from(key), args.iter().map(|a| a.to_string()).collect())),
                     Cur::None => self.warn(file, line_no, &alloc::format!("unexpected `{}`", key)),
                 },
             }
@@ -1375,6 +1390,7 @@ impl Registry {
             models: Vec::new(),
             entities: Vec::new(),
             sections: Vec::new(),
+            effects: Vec::new(),
             lines: Vec::new(),
             recipes: Vec::new(),
             rules: Vec::new(),
@@ -1386,7 +1402,7 @@ impl Registry {
         for (path, text) in sources {
             p.parse(path, text);
         }
-        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, rules: raw_rules, clips, models, entities: raw_entities, sections, lines, mut warnings, .. } = p;
+        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, rules: raw_rules, clips, models, entities: raw_entities, sections, effects: raw_effects, lines, mut warnings, .. } = p;
 
         let tile_of = |id: &str, warnings: &mut Vec<String>, what: &str| -> u16 {
             match tiles.iter().position(|t| t.id == id) {
@@ -2198,6 +2214,7 @@ impl Registry {
                 flow[*lava as usize][*level as usize] = state as Block;
             }
         }
+        let fx = crate::content::effects::build(&raw_effects, &tiles, &mut warnings);
         let mut registry = Registry {
             fluid,
             flow,
@@ -2216,6 +2233,7 @@ impl Registry {
             models,
             entities,
             sections,
+            fx,
             lines,
             categories,
             ores,

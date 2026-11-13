@@ -110,6 +110,13 @@ pub struct Native {
     /// apply (armour makes it smaller; 0 cancels it). Called in survival
     /// only, and only for damage above zero.
     pub hurt: Option<fn(g: &mut Session, amount: i32, attacker: Option<usize>) -> i32>,
+    /// An effect (poison, burning...) is about to be given to the player:
+    /// its id, seconds and level (both may be changed). Return false to
+    /// refuse it. Not asked when it would change nothing.
+    pub effect_apply: Option<fn(g: &mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool>,
+    /// Every frame an effect of the player's is running: its id, seconds
+    /// left, level, and the time that passed.
+    pub effect_tick: Option<fn(g: &mut Session, id: &str, secs_left: f32, level: i32, dt: f32)>,
     /// A message another player's copy of this code sent with
     /// `Session::send_ext`.
     pub message: Option<fn(g: &mut Session, key: &str, text: &str)>,
@@ -168,6 +175,8 @@ impl Native {
         killed: None,
         hit: None,
         hurt: None,
+        effect_apply: None,
+        effect_tick: None,
         message: None,
         share: None,
         storage: None,

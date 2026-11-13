@@ -1207,6 +1207,7 @@ impl App {
                 far_distance: if self.settings.far_distance > self.distance { self.settings.far_distance } else { 0 },
                 rain: g.sky.rain,
                 flash: g.flash,
+                vision: crate::game::effects::apply::night_vision(&g.fx, &crate::game::effects::apply::lookup),
             };
             r.draw_world(&g.world, &cam, &env);
             let mut tags = Vec::new();
@@ -1512,8 +1513,11 @@ impl App {
         }
         if survival {
             let hy = y0 - 12.0 * s;
-            for i in 0..MAX_HEALTH / 2 {
-                heart(r, x0 + i as f32 * 9.0 * s, hy, s, (g.health - i * 2).clamp(0, 2));
+            // Hearts, drawn from the heart pictures (green, dark, blue by effect).
+            if !crate::client::effects_hud::hearts(r, g, x0, hy, s) {
+                for i in 0..MAX_HEALTH / 2 {
+                    heart(r, x0 + i as f32 * 9.0 * s, hy, s, (g.health - i * 2).clamp(0, 2));
+                }
             }
             // Hunger, as ten drumstick-coloured pips on the right.
             for i in 0..crate::session::MAX_HUNGER / 2 {
@@ -1533,6 +1537,11 @@ impl App {
                     r.rect(x + 2.0 * s, hy + 2.0 * s, 2.0 * s, 2.0 * s, [230, 245, 255, 255]);
                 }
             }
+        }
+        // Active effects, with their icons and the time left, top right (under the minimap).
+        if matches!(self.screen, Screen::Game | Screen::Chat) && !g.fx.list.is_empty() {
+            let under_map = if self.settings.minimap && self.minimap.tex != 0 { 70.0 * s } else { 0.0 };
+            crate::client::effects_hud::list(r, g, w, 4.0 * s + under_map, s);
         }
         for (x, y, name) in &self.tags {
             let tw = Renderer::text_width(name, s);
@@ -2408,6 +2417,7 @@ impl App {
                     g.push_chat(String::from("/SPAWN CREATURE [N] [YOUNG]   /MODE CREATIVE|SURVIVAL   /WEATHER CLEAR|RAIN|STORM   /SEED"));
                     g.push_chat(String::from("/SET X Y Z BLOCK [TURNS]   /DIM NAME|HOME   /SAY   /SOUND   /HEAL   /FEED   /HURT"));
                     g.push_chat(String::from("/LAUNCH UP [AHEAD]   /SHOOT DAMAGE [SPEED] [BLOCK]   /AIM BLOCK   /STRIKE   (~ = WHERE YOU STAND)"));
+                    g.push_chat(String::from("/EFFECT GIVE ID [SECS] [LEVEL]   /EFFECT CLEAR [ID]   /EFFECT LIST   /EFFECT MOB ID"));
                     g.push_chat(String::from("/VAR NAME = N   /IF COND THEN CMD [ELSE CMD]   /AFTER SECS CMD   /REPEAT N CMD   /TAKE ITEM [N]   /TITLE TEXT   /BLAST R"));
                 }
             } else if let Some(g) = self.session.as_mut() {

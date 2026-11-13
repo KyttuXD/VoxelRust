@@ -214,8 +214,8 @@ elephant can then be ridden; see [Taming and pets](#taming-and-pets).
 | Polar Bear | tundra | territorial, hunter (7 damage); drops 3 Raw Meat |
 | Tiger | jungle | **hostile** by day and night (7 damage); drops 2 Raw Meat |
 | Alligator | swamp | territorial (6 damage); drops 2 Raw Meat |
-| Snake | swamp, jungle, desert, badlands | territorial (3 damage) |
-| Spider | forest, jungle, swamp | territorial (2 damage); drops 1 String |
+| Snake | swamp, jungle, desert, badlands | territorial (3 damage); its bite poisons for 10 seconds |
+| Spider | forest, jungle, swamp | territorial (2 damage), its bite poisons for 8 seconds; drops 1 String |
 | Worm | plains, forest, swamp, jungle | prey |
 | Ant | desert, savanna, jungle, badlands, forest | herd |
 | Beetle | forest, jungle, swamp, plains | |
@@ -252,7 +252,7 @@ animals stay the most common.
 | --- | --- | --- |
 | Frogs and toads | Tree Frog (green, blue, red-eyed, grey), Dart Frog (blue, strawberry, golden, green and black), Pond Frog (green, brown, olive), Toad (brown, green, red, natterjack), Tadpole (in water) | swamp, jungle, forest, plains, taiga; they hop and croak |
 | Newts, turtles | Newt (olive, fire, crested, alpine), Pond Turtle (green, painted, snapping, box), Sea Turtle (open water; green, hawksbill, loggerhead, leatherback) | swamp, forest, taiga, jungle |
-| Lizards, snakes | Gecko, Lizard, Garter Snake (harmless, flees), Viper (territorial, 2 damage) | desert, badlands, savanna, plains, forest, taiga, mountain |
+| Lizards, snakes | Gecko, Lizard, Garter Snake (harmless, flees), Viper (territorial, 2 damage; poisons for 12 seconds) | desert, badlands, savanna, plains, forest, taiga, mountain |
 | Birds | Barn Owl (night), Mallard (drake, hen, white, mandarin), Canada Goose, Seagull | forest, plains, swamp, tundra, taiga |
 | Flyers | Horseshoe Bat (caves), Dragonfly, Meadow Butterfly (monarch, swallowtail, morpho, cabbage white, emperor), Bumblebee (does not sting), Ladybird | caves, swamp, jungle, forest, plains |
 | Mammals | Roe Deer, Arctic Fox, Fennec Fox, Cottontail (brown, grey, black, white, spotted), Hedgehog, Otter (open water), Beaver, Warthog, Squirrel, Badger | forest, taiga, tundra, desert, savanna, plains, swamp, mountain |
@@ -308,7 +308,7 @@ monsters are there by day as well as by night, in survival mode.
 | Slime | every kind | hostile, hops, 2 damage; small and big ones |
 | Crawler | every kind | hostile, 4 damage; drops 2 String |
 | Rock Golem | every kind | hostile, 9 damage, 60 health; drops 2 Crystal; uncommon |
-| Cave Spider | webbed caves | hostile, 3 damage; drops 2 String |
+| Cave Spider | webbed caves | hostile, 3 damage, its bite poisons for 6 seconds; drops 2 String |
 | Frost Crawler | frozen caves | hostile, 4 damage |
 | Magma Slime | magma caves | hostile, hops, 4 damage; glows |
 | Glow Beetle | mushroom and lush caves | harmless; glows brightly |

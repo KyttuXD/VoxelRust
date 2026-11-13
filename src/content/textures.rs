@@ -33,6 +33,10 @@ pub fn painted(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
     if let Some(p) = crate::content::art::bow::painted(style, rgb, x, y) {
         return Some(p);
     }
+    // The HUD's hearts and effect icons (content/art/hud.rs).
+    if let Some(p) = crate::content::art::hud::painted(style, x, y) {
+        return Some(p);
+    }
     crate::painters::paint(style, rgb, x, y)
 }
 

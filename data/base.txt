@@ -6513,6 +6513,53 @@ block cactus_joint_nz
   box 11 9 6 12 13 10
   box 6 6 0 10 10 5
 
+# ---- Status effects ----
+#   hearts and icons for the HUD, painted by code (the colours are ignored)
+#   effect <id> ... lives in effects.txt
+texture heart_empty paint heart_empty 0 0 0
+texture heart_full paint heart_full 0 0 0
+texture heart_half paint heart_half 0 0 0
+texture heart_hardcore_full paint heart_hardcore_full 0 0 0
+texture heart_hardcore_half paint heart_hardcore_half 0 0 0
+texture heart_poison_full paint heart_poison_full 0 0 0
+texture heart_poison_half paint heart_poison_half 0 0 0
+texture heart_wither_full paint heart_wither_full 0 0 0
+texture heart_wither_half paint heart_wither_half 0 0 0
+texture heart_frozen_full paint heart_frozen_full 0 0 0
+texture heart_frozen_half paint heart_frozen_half 0 0 0
+texture heart_absorb_full paint heart_absorb_full 0 0 0
+texture heart_absorb_half paint heart_absorb_half 0 0 0
+texture effect_poison paint effect_poison 0 0 0
+texture effect_burning paint effect_burning 0 0 0
+texture effect_regeneration paint effect_regeneration 0 0 0
+texture effect_slowness paint effect_slowness 0 0 0
+texture effect_speed paint effect_speed 0 0 0
+texture effect_hunger paint effect_hunger 0 0 0
+texture effect_weakness paint effect_weakness 0 0 0
+texture effect_strength paint effect_strength 0 0 0
+texture effect_wither paint effect_wither 0 0 0
+texture effect_absorption paint effect_absorption 0 0 0
+texture effect_frozen paint effect_frozen 0 0 0
+texture effect_saturation paint effect_saturation 0 0 0
+texture effect_night_vision paint effect_night_vision 0 0 0
+texture effect_jump_boost paint effect_jump_boost 0 0 0
+texture effect_flame paint effect_flame 0 0 0
+texture golden_apple paint fruit 240 196 52
+texture rotten_flesh paint meat 120 140 72
+item golden_apple
+  name Golden Apple
+  icon golden_apple
+  category Food
+  food 4
+item rotten_flesh
+  name Rotten Flesh
+  icon rotten_flesh
+  category Food
+  food 2
+craft golden_apple 1 apple 1 copper_ingot 4
+
+include effects.txt
+
 # Models, then every creature, live in their own files.
 include creatures.txt
 include wildlife.txt

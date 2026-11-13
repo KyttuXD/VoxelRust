@@ -72,6 +72,25 @@ separate pictures only when they differ.
   paints its own in `src/content/art/bow.rs` (styles `bow_pull0..2`,
   `crossbow_pull0..2`). The held bow and its hotbar picture switch between them.
 
+## Hearts and effect icons
+
+The HUD's hearts and the icons of status effects are textures too, painted by
+`src/content/art/hud.rs` in this style (flat fills, a one-pixel dark outline,
+no grain): a flat red heart, nine pixels wide and eight tall in the middle of
+a 16 x 16 tile, and 16 x 16 badges with a light picture on a flat colour.
+
+| Texture | Picture |
+| --- | --- |
+| `heart_empty`, `heart_full`, `heart_half` | the red heart; the half heart is lit on its left and empty on its right |
+| `heart_poison_*`, `heart_wither_*`, `heart_frozen_*` | the same in green, dark grey and blue, `_full` and `_half` |
+| `heart_absorb_full`, `heart_absorb_half` | the yellow hearts of absorption |
+| `heart_hardcore_full`, `heart_hardcore_half` | a deep red heart (not used by any mode yet) |
+| `effect_<id>` | the icon of an effect: poison, burning, regeneration, slowness, speed, hunger, weakness, strength, wither, absorption, frozen, saturation, night_vision, jump_boost |
+| `effect_flame` | the flame beside the hearts of someone who is burning |
+
+A texture pack replaces any of them by a picture of the same name; an effect
+a pack adds uses `effect_<its id>` or the texture its `icon` line names.
+
 ## The painters
 
 The pictures the game draws itself live in `src/content/painters/`, one file

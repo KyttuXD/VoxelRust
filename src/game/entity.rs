@@ -24,6 +24,8 @@ pub struct Mob {
     pub stride: f32,
     /// Seconds alive, for idle movement (tails, ears, wings).
     pub clock: f32,
+    /// Poison, burning and the like (see game/effects).
+    pub fx: crate::game::effects::Effects,
     /// Which look it has: 0 is the entity's own, n is its n-th variant.
     pub variant: u8,
     /// Seconds left before a young one is grown (0 = adult).
@@ -205,6 +207,7 @@ impl Mobs {
             phase: 0.0,
             stride: 0.0,
             clock: think * 10.0,
+            fx: Default::default(),
             variant,
             young: 0.0,
             home: [floord(pos[0]), floord(pos[1]), floord(pos[2])],
@@ -518,6 +521,15 @@ impl Mobs {
             m.give_timer -= dt;
             m.anger = (m.anger - dt).max(0.0);
             m.clock += dt;
+            if !m.fx.is_empty() || m.fx.changed {
+                let delta = crate::game::effects::apply::tick_mob(&mut m.fx, dt, m.body.in_water, d.speed / 4.4, &mut m.body.speed_scale);
+                if delta < 0 {
+                    m.health += delta;
+                    m.hurt = 0.35;
+                } else if delta > 0 {
+                    m.health = (m.health + delta).min(d.health.max(m.health));
+                }
+            }
             if m.young > 0.0 {
                 m.young -= dt;
                 if m.young <= 0.0 {
