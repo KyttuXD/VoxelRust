@@ -515,7 +515,7 @@ impl Renderer {
         let mut visible: Vec<(i32, Vec3, GpuMesh)> = Vec::new();
         for (&(cx, cz), chunk) in world.chunks.iter() {
             let m = match chunk.mesh {
-                Some(m) if m.opaque_count > 0 || m.water_count > 0 => m,
+                Some(m) if m.opaque_count > 0 || m.water_count > 0 || m.glass_count > 0 => m,
                 _ => continue,
             };
             let (dx, dz) = (cx - ccx, cz - ccz);
@@ -979,6 +979,10 @@ impl Renderer {
         // A slow swell: the whole surface rises and falls a little.
         let swell = math::sinf(env.clock * 1.1) * 0.03 - 0.035;
         for &(_, origin, m) in visible.iter().rev() {
+            if m.glass_count > 0 {
+                Self::draw_chunk(&view, origin, m.glass, m.glass_count);
+                self.stats.quads += m.glass_count as u32 / 4;
+            }
             if m.water_count > 0 {
                 Self::draw_chunk(&view, Vec3::new(origin.x, origin.y + swell, origin.z), m.water, m.water_count);
                 self.stats.quads += m.water_count as u32 / 4;
@@ -1476,6 +1480,8 @@ impl MeshSink for Renderer {
             opaque_count: m.opaque.len() as i32,
             water: make(&m.water),
             water_count: m.water.len() as i32,
+            glass: make(&m.glass),
+            glass_count: m.glass.len() as i32,
             ymin: m.ymin,
             ymax: m.ymax,
         };
@@ -1484,8 +1490,8 @@ impl MeshSink for Renderer {
     }
 
     fn free(&mut self, m: GpuMesh) {
-        let ids = [m.opaque, m.water];
-        self.vbo_bytes = self.vbo_bytes.saturating_sub((m.opaque_count + m.water_count) as usize * core::mem::size_of::<Vertex>());
-        unsafe { (gl().DeleteBuffers)(2, ids.as_ptr()) };
+        let ids = [m.opaque, m.water, m.glass];
+        self.vbo_bytes = self.vbo_bytes.saturating_sub((m.opaque_count + m.water_count + m.glass_count) as usize * core::mem::size_of::<Vertex>());
+        unsafe { (gl().DeleteBuffers)(3, ids.as_ptr()) };
     }
 }

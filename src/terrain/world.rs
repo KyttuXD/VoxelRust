@@ -33,6 +33,8 @@ pub struct GpuMesh {
     pub opaque_count: i32,
     pub water: u32,
     pub water_count: i32,
+    pub glass: u32,
+    pub glass_count: i32,
     pub ymin: i32,
     pub ymax: i32,
 }

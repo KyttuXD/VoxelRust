@@ -27,6 +27,9 @@ pub struct MeshData {
     pub opaque: Vec<Vertex>,
     /// Translucent geometry (water), drawn after everything else.
     pub water: Vec<Vertex>,
+    /// See-through solid blocks (stained glass, ice): drawn with the water,
+    /// but they do not rise and fall with it.
+    pub glass: Vec<Vertex>,
     /// Vertical extent of the geometry in blocks, for culling.
     pub ymin: i32,
     pub ymax: i32,
@@ -248,7 +251,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
     let reg_ = Region { blk, light };
     let opaque = |b: Block| b == u16::MAX || r.opaque[b as usize] != 0;
 
-    let mut out = MeshData { opaque: Vec::new(), water: Vec::new(), ymin: CH, ymax: 0, props: Vec::new() };
+    let mut out = MeshData { opaque: Vec::new(), water: Vec::new(), glass: Vec::new(), ymin: CH, ymax: 0, props: Vec::new() };
     let mut shape: Vec<Bx> = Vec::new();
 
     for lx in 0..CW {
@@ -261,7 +264,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                     continue;
                 }
                 let d = &r.blocks[b as usize];
-                let before = out.opaque.len() + out.water.len();
+                let before = out.opaque.len() + out.water.len() + out.glass.len();
                 let origin = [lx * 16, y * 16, lz * 16];
                 match d.kind {
                     Kind::Air => {}
@@ -323,7 +326,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                             // Split the quad along its brighter diagonal so
                             // shadows in corners come out symmetric.
                             let order = if bright[0] + bright[2] >= bright[1] + bright[3] { [0, 1, 2, 3] } else { [1, 2, 3, 0] };
-                            let dst = if blended { &mut out.water } else { &mut out.opaque };
+                            let dst = if liquid { &mut out.water } else if blended { &mut out.glass } else { &mut out.opaque };
                             for i in order {
                                 dst.push(quad[i]);
                             }
@@ -383,7 +386,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                         }
                     }
                 }
-                if out.opaque.len() + out.water.len() != before {
+                if out.opaque.len() + out.water.len() + out.glass.len() != before {
                     out.ymin = out.ymin.min(y);
                     out.ymax = out.ymax.max(y + 1);
                 }
