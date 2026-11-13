@@ -16,6 +16,10 @@
 #     trade <item> <n> <item> <n>   takes the first from a player, hands over the second
 #     job farmer | builder | guard | <any word>   what a villager does
 #     glow <0..15>               not dimmed by the dark
+#     tamable                    feeding it what it `likes` makes it yours
+#     rideable                   right click with an empty hand to ride (once tamed, if tamable)
+#     shoots <damage>            looses at players from a distance
+#     sound <id>                 the call it makes
 
 model ant file models/ant.bbmodel
 model bat file models/bat.bbmodel
@@ -223,6 +227,7 @@ entity horse
   baby 0.55 720
   tamable
   likes apple
+  rideable
   variant Bay 190 124 84
   variant Black 92 86 90
   variant Palomino 255 214 150
@@ -324,8 +329,11 @@ entity elephant
   behavior wander
   weight 6
   biomes savanna
-  trait herd pack
+  trait herd pack follows
   damage 9
+  likes apple
+  tamable
+  rideable
   baby 0.4 900
 entity monkey
   name Monkey
@@ -682,6 +690,7 @@ entity donkey
   trait herd follows
   likes carrot
   tamable
+  rideable
   baby 0.55 720
   variant Grey 170 170 176
 entity llama
@@ -744,6 +753,7 @@ entity camel
   trait herd follows
   likes wheat
   tamable
+  rideable
   baby 0.5 720
 entity bull
   name Bull
