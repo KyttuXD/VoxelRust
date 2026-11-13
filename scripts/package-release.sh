@@ -41,10 +41,14 @@ package() { # package NAME PROGRAM-OR-APP FORMAT
   for extra in README.md LICENSE docs examples; do
     [ -e "$extra" ] && cp -R "$extra" "$dir/"
   done
+  # SDL2 beside the Windows program, when vendor/sdl2 has it.
   case "$2" in
-    *.app) ;; # the app carries its mods inside
+    *.exe) [ -f vendor/sdl2/SDL2.dll ] && cp vendor/sdl2/SDL2.dll "$dir/" ;;
+  esac
+  case "$2" in
+    *.app) ;; # the app carries its mods (and SDL2) inside
     *) mkdir -p "$dir/mods"
-       for m in disasters earth landvehicles; do cp -R "mods/$m" "$dir/mods/"; done ;;
+       for m in disasters earth landvehicles holidays; do cp -R "mods/$m" "$dir/mods/"; done ;;
   esac
   if [ "$3" = "tar.gz" ]; then
     mkdir -p "$dir/share"
@@ -82,7 +86,7 @@ cp dist/macos-legacy/voxelrust    "$out/voxelrust-macos-legacy-x86_64.bin"
   echo "macos-legacy-x86_64     voxelrust-macos-legacy-x86_64.zip      Mac OS X 10.6 to 10.11 (64-bit Intel)"
   echo "web                     voxelrust-web.zip                      a modern browser (unzip onto any web server)"
   echo "# commit $COMMIT"
-  echo "# SDL2 is not included: see README.md."
+  echo "# SDL2 comes inside the Windows and Mac files; on Linux install your system's SDL2 package."
 } > "$out/BUILDS.txt"
 (cd "$out" && sha256sum voxelrust-* > SHA256SUMS.txt)
 rm -rf "$stage"

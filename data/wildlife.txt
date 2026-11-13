@@ -20,6 +20,7 @@
 #     rideable                   right click with an empty hand to ride (once tamed, if tamable)
 #     shoots <damage>            looses at players from a distance
 #     sound <id>                 the call it makes
+#     hunts <ids...>             the creatures it preys on (its place in the food chain)
 
 model ant file models/ant.bbmodel
 model bat file models/bat.bbmodel
@@ -270,6 +271,7 @@ entity cat
   baby 0.5 360
   tamable
   sound meow
+  hunts mouse beetle
   variant Ginger 255 176 104
   variant Black 84 82 92
   variant Cream 255 236 204
@@ -399,6 +401,8 @@ entity frog
   biomes swamp jungle
   trait jumps
   anim hop
+  hunts worm ant
+  damage 1
   variant Red 230 90 70
   variant Blue 90 150 240
 entity wolf
@@ -417,6 +421,7 @@ entity wolf
   tamable
   likes raw_meat
   sound howl
+  hunts sheep merino rabbit lop_rabbit deer goat chicken turkey
   variant Arctic 250 250 255
   variant Black 70 70 80
 entity fox
@@ -434,6 +439,7 @@ entity fox
   baby 0.5 360
   tamable
   likes berries
+  hunts rabbit lop_rabbit chicken duck mouse
   variant Arctic 245 248 255
   variant Silver 120 124 136
 entity bear
@@ -466,6 +472,7 @@ entity polar_bear
   damage 7
   tint 250 250 255
   baby 0.45 720
+  hunts penguin
 entity tiger
   name Tiger
   model tiger
@@ -494,6 +501,7 @@ entity gator
   damage 6
   anim slither
   baby 0.4 600
+  hunts duck goose frog turtle
 entity snake
   name Snake
   model snake
@@ -507,6 +515,7 @@ entity snake
   trait territorial
   damage 3
   anim slither
+  hunts mouse frog rabbit
   variant Sand 220 190 130
   variant Coral 230 90 70
   variant Black 60 60 70
@@ -524,6 +533,7 @@ entity spider
   damage 2
   anim scuttle
   drops string 1
+  hunts beetle ant worm
 entity bird
   name Songbird
   model bird

@@ -48,7 +48,9 @@ pub fn message() -> &'static str {
         CURRENT => "THIS IS THE NEWEST VERSION",
         UPDATED => "A NEWER VERSION IS INSTALLED - START THE GAME AGAIN TO USE IT",
         AVAILABLE => "A NEWER VERSION IS OUT (AUTOMATIC UPDATES ARE OFF)",
-        FAILED => "COULD NOT CHECK FOR UPDATES",
+        // Not being able to look (no network, or the release is not open to
+        // the public) is nothing the player need be told on every start.
+        FAILED => "",
         _ => "",
     }
 }

@@ -1,8 +1,12 @@
 /target
 /dist
-# Mods are kept out of the repository, except the three that come with
+# Mods are kept out of the repository, except the ones that come with
 # the game.
 /mods/*
 !/mods/disasters/
 !/mods/earth/
 !/mods/landvehicles/
+!/mods/holidays/
+# Libraries shipped beside the game are fetched, not kept (see vendor/README.md).
+/vendor/*
+!/vendor/README.md

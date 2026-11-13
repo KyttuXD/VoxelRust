@@ -50,10 +50,14 @@ PLIST
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 # The mods that come with the game ride inside the app.
 mkdir -p "$APP/Contents/Resources/mods"
-for m in disasters earth landvehicles; do
+for m in disasters earth landvehicles holidays; do
   [ -d "mods/$m" ] && cp -R "mods/$m" "$APP/Contents/Resources/mods/"
 done
+# SDL2 rides inside the app, so nothing else need be installed: the
+# framework named on the command line, or the one in vendor/sdl2.
 if [ -n "${1:-}" ]; then
   cp -R "$1" "$APP/Contents/Frameworks/"
+elif [ -d vendor/sdl2/SDL2.framework ]; then
+  cp -R vendor/sdl2/SDL2.framework "$APP/Contents/Frameworks/"
 fi
 echo "built $APP (for macOS $MIN and later)"
