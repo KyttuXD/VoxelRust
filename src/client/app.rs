@@ -333,9 +333,9 @@ fn arm_models(slim: bool) -> (&'static str, &'static str) {
 /// The player's skin as 64 x 64 RGBA: a tinted copy of the default body, or
 /// `skin.png` from the data folder. `None` if a custom skin cannot be used.
 /// A temporary panel while the chunks around the player are still arriving.
-fn draw_loading(r: &mut Renderer, w: f32, h: f32, s: f32, g: &Session) {
+fn draw_loading(r: &mut Renderer, w: f32, h: f32, s: f32, g: &Session, distance: i32) {
     let (cx, cz) = crate::world::chunk_at(g.player.pos[0], g.player.pos[2]);
-    let (done, total) = g.world.progress(cx, cz, 2);
+    let (done, total) = g.world.progress(cx, cz, 2, distance);
     r.rect(0.0, 0.0, w, h, [12, 14, 20, 170]);
     let title = "LOADING THE WORLD";
     r.label((w - Renderer::text_width(title, 2.0 * s)) * 0.5, h * 0.5 - 52.0 * s, 2.0 * s, title, WHITE);
@@ -974,7 +974,7 @@ impl App {
             // the rest of the world keeps streaming in behind them.
             if !g.playable {
                 let (cx, cz) = crate::world::chunk_at(g.player.pos[0], g.player.pos[2]);
-                let (done, total) = g.world.progress(cx, cz, 2);
+                let (done, total) = g.world.progress(cx, cz, 2, distance);
                 if total > 0 && done == total {
                     g.playable = true;
                     if self.loading_since > 0.0 {
@@ -1213,7 +1213,7 @@ impl App {
         // A loading panel, but only when the wait is long enough to notice.
         if let Some(g) = self.session.as_ref() {
             if !g.playable && self.screen == Screen::Game && self.loading_since > 0.0 && sys::now() - self.loading_since > 0.35 {
-                draw_loading(r, w, h, s, g);
+                draw_loading(r, w, h, s, g, self.distance);
             }
         }
         let before = self.screen;

@@ -137,11 +137,17 @@ impl World {
     }
 
     /// How many of the chunks within `radius` of (ccx, ccz) are loaded and
-    /// meshed, and how many there are in all.
-    pub fn progress(&self, ccx: i32, ccz: i32, radius: i32) -> (usize, usize) {
+    /// meshed, and how many there are in all. Only chunks the world really
+    /// loads count: with a short view `distance` the corners of the square
+    /// are never loaded, and waiting for them would never end.
+    pub fn progress(&self, ccx: i32, ccz: i32, radius: i32, distance: i32) -> (usize, usize) {
+        let reach = distance * distance + distance;
         let (mut done, mut total) = (0, 0);
         for dx in -radius..=radius {
             for dz in -radius..=radius {
+                if dx * dx + dz * dz > reach {
+                    continue;
+                }
                 total += 1;
                 if let Some(c) = self.chunks.get(&(ccx + dx, ccz + dz)) {
                     if c.data.is_some() && !c.dirty && !c.mesh_in_flight && c.mesh.is_some() {
