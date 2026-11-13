@@ -677,8 +677,6 @@ the check for one run.
 
 Things to know:
 
-- While the project's repository is private the download is refused, and
-  the title screen shows no update line at all.
 - On Mac OS X 10.6 the system's `curl` cannot make modern HTTPS
   connections, so the old-Mac build cannot update itself.
 - Only the program is replaced, not the `mods` folder beside it.

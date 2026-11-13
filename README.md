@@ -190,8 +190,6 @@ and the title screen says what happened. `--no-update` skips the check for
 one run; UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS turns the
 replacing off (the game then only says a newer version is out). Limits:
 
-- **While the repository is private, the download fails** (it is made
-  without signing in), and the game says nothing about it.
 - The download is done by the system's `curl`. Mac OS X 10.6's own `curl`
   cannot make modern HTTPS connections, so **the old-Mac build cannot update
   itself**: replace the app by hand.
@@ -247,9 +245,9 @@ Worlds and settings live in the data folder and are not touched. Details:
 - Servers have no accounts, passwords or encryption. The project runs one
   public server; everyone else can host their own (see
   [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md)).
-- The updater cannot work while the repository is private, and never on
-  Mac OS X 10.6 (see [Builds and updating](#builds-and-updating)). It
-  replaces the program only, not the mods that came with it.
+- The updater never works on Mac OS X 10.6 (see
+  [Builds and updating](#builds-and-updating)). It replaces the program only,
+  not the mods that came with it.
 - The Windows build has only been tested under Wine, not on real Windows.
 - Modern macOS has been run on one Intel Mac (macOS 12.7.6). Apple silicon
   is untested.

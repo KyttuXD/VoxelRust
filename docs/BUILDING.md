@@ -224,9 +224,6 @@ Switching it off:
 
 What it cannot do:
 
-- **While the repository is private, it does not work.** The download is
-  anonymous, GitHub refuses it, and the game shows no message: the check
-  fails quietly.
 - **The old-Mac build cannot update itself on Mac OS X 10.6.** The `curl`
   that comes with 10.6 cannot make modern HTTPS connections. Replace the app
   by hand there.
@@ -280,10 +277,9 @@ the tests of the shipped mods (see [Mod code](#mod-code)).
 
 ## GitHub workflows
 
-The repository is on GitHub as `KyttuXD/VoxelRust`, and it is private. Two
+The repository is on GitHub as `KyttuXD/VoxelRust`, and it is public. Two
 workflows are in `.github/workflows`. **Neither has been able to run**:
-the account's GitHub Actions budget blocks runs on private repositories.
-(Public repositories run Actions free of charge.) Treat both workflows as
+the account's GitHub Actions budget blocks them. Treat both workflows as
 untested until a first run has passed. Until then the nightly files are
 built on the author's machine with `scripts/package-release.sh` and uploaded
 by hand (see [Packaging a release](#packaging-a-release)).
