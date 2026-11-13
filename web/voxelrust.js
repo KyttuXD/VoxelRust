@@ -677,14 +677,33 @@
     return document.pointerLockElement === canvas;
   }
 
+  let lockedAt = 0;
+  let requestedAt = -10000;
+  let quickLosses = 0;
+  let looseLook = false;
+
   function lockPointer() {
-    if (!wantPointerLock || pointerLocked() || !canvas.requestPointerLock) return;
+    if (!wantPointerLock || pointerLocked() || !canvas.requestPointerLock || looseLook) return;
     try {
+      requestedAt = performance.now();
       const promise = canvas.requestPointerLock();
       if (promise && promise.catch) promise.catch(() => {});
     } catch (e) {
       // Refused (no click yet, or too soon after Esc): the next click asks again.
     }
+  }
+
+  // A line at the top of the page while the game wants the mouse and the
+  // browser has not handed it over.
+  let mouseHint = null;
+  function showMouseHint(on) {
+    if (!mouseHint) {
+      mouseHint = document.createElement("div");
+      mouseHint.textContent = "Click the game to look around with the mouse";
+      mouseHint.style.cssText = "position:fixed;top:10px;left:50%;transform:translateX(-50%);padding:6px 14px;background:rgba(10,12,20,.82);color:#fff;font:14px sans-serif;border-radius:4px;pointer-events:none;z-index:5;display:none";
+      document.body.appendChild(mouseHint);
+    }
+    mouseHint.style.display = on ? "block" : "none";
   }
 
   function mousePosition(e) {
@@ -715,6 +734,9 @@
       // menu would close again.
       if (code === SCANCODE_ESCAPE && performance.now() - unlockedAt < 300) return;
       events.push({ type: EV_KEYDOWN, code, repeat: e.repeat });
+      // A key press is a gesture too: if the game wants the mouse and the
+      // browser has let go of it, any key takes it back.
+      if (code !== SCANCODE_ESCAPE) lockPointer();
       // What SDL sends as a text event: the character the key types.
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && e.key.charCodeAt(0) < 128) {
         events.push({ type: EV_TEXTINPUT, text: e.key });
@@ -729,7 +751,10 @@
     });
     canvas.addEventListener("mousemove", (e) => {
       mousePosition(e);
-      events.push({ type: EV_MOUSEMOTION, x: mouseX, y: mouseY, dx: e.movementX || 0, dy: e.movementY || 0 });
+      // Mouse-look only while the mouse really is captured: otherwise the
+      // view would swing about as the pointer crosses the page.
+      const held = pointerLocked() || !wantPointerLock || looseLook;
+      events.push({ type: EV_MOUSEMOTION, x: mouseX, y: mouseY, dx: held ? (e.movementX || 0) : 0, dy: held ? (e.movementY || 0) : 0 });
     });
     canvas.addEventListener("mousedown", (e) => {
       e.preventDefault();
@@ -740,7 +765,14 @@
     });
     window.addEventListener("mouseup", (e) => {
       if (e.button <= 2) events.push({ type: EV_MOUSEUP, button: e.button + 1, x: mouseX, y: mouseY });
+      // A click on a menu button (RESUME, CREATE) is what puts the game back
+      // into mouse-look. The game only learns of the press on its next
+      // frame, after the press itself has been handled; by the time the
+      // button comes up it has asked for the mouse, and this is still the
+      // same click as far as the browser is concerned, so it may be taken.
+      lockPointer();
     });
+    canvas.addEventListener("click", () => lockPointer());
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
       if (e.deltaY !== 0) events.push({ type: EV_MOUSEWHEEL, y: e.deltaY < 0 ? 1 : -1 });
@@ -748,6 +780,16 @@
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
     document.addEventListener("pointerlockchange", () => {
+      if (pointerLocked()) lockedAt = performance.now();
+      // Some places (embedded views, some remote desktops) grant the mouse
+      // and take it straight back. After that has happened twice, stop
+      // asking: look around by simply moving the mouse over the game.
+      if (!pointerLocked() && wantPointerLock && performance.now() - Math.max(lockedAt, requestedAt) < 700) {
+        quickLosses += 1;
+        if (quickLosses >= 2) looseLook = true;
+      }
+      showMouseHint(wantPointerLock && !pointerLocked() && !looseLook);
+      if (looseLook) return;
       if (!pointerLocked() && wantPointerLock) {
         // Taken back by the browser (Esc, or another window came forward).
         unlockedAt = performance.now();
@@ -755,8 +797,10 @@
       }
     });
     document.addEventListener("pointerlockerror", () => {
-      // Browsers refuse for a moment after Esc; try once more shortly.
-      setTimeout(lockPointer, 1200);
+      // Refused: browsers only hand over the mouse during a click or key
+      // press, and not for a moment after Esc. The next click or key asks
+      // again (see the mouse and key handlers); the notice says so.
+      showMouseHint(!looseLook);
     });
     window.addEventListener("blur", () => {
       if (running) events.push({ type: EV_WINDOW, event: WINEV_FOCUS_LOST });
@@ -823,8 +867,15 @@
     js_fullscreen(on) { fullscreenRequest = on !== 0; },
     js_pointer_lock(on) {
       wantPointerLock = on !== 0;
-      if (wantPointerLock) lockPointer();
-      else if (pointerLocked()) document.exitPointerLock();
+      if (wantPointerLock) {
+        lockPointer();
+        // If the browser did not hand it over (this was not a click),
+        // say how to; the notice goes when the mouse is taken.
+        setTimeout(() => showMouseHint(wantPointerLock && !pointerLocked() && !looseLook), 400);
+      } else {
+        showMouseHint(false);
+        if (pointerLocked()) document.exitPointerLock();
+      }
     },
     // Lay the next event out as SDL does (see handle_events in app.rs for
     // the fields the game reads).

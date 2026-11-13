@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Generates the creature and vehicle models in data/models/ (and the fantasy
-pack's in mods/spellsNmagic/models/, see OUTPUTS) and data/creatures.txt.
+"""Generates the creature and vehicle models in data/models/ (and the packs'
+in mods/spellsNmagic/models/ and mods/titanlands/models/, see OUTPUTS) and
+data/creatures.txt.
 
     python3 tools/gen_models.py                 # write the models, validate
     python3 tools/gen_models.py --creatures     # also rewrite creatures.txt (it has hand edits)
@@ -5353,13 +5354,13 @@ def banded(base, dark, period=4, axis="z", belly=None, belly_y=-1e9):
     return sh
 
 
-def cracked(seed, rock, dark, seam, glow, scale=3.2):
+def cracked(seed, rock, dark, seam, glow, scale=4.2):
     """Broken rock with glowing seams where a noise field crosses its middle."""
     def sh(p):
         d = abs(vnoise(seed, p.x / scale, p.y / scale, p.z / scale) - 0.5)
-        if d < 0.02:
+        if d < 0.011:
             return glow
-        if d < 0.045:
+        if d < 0.026:
             return seam
         return dark if vnoise(seed + 3, p.x / 1.7, p.y / 1.7, p.z / 1.7) > 0.6 else rock
     return sh
@@ -6384,12 +6385,12 @@ def kraken():
 
     def head_d(c):
         if c.face == "north":
-            c.symrect(0, 1, 3, 3, EYC)
-            c.symrect(0, 2, 3, 1, BLACK)
+            c.symrect(0, 1, 4, 4, EYC)
+            c.symrect(1, 2, 3, 2, BLACK)
             c.sym(0, 1, WHITE)
         elif c.face in ("east", "west"):
-            x = c.fx(2) - (2 if c.face == "east" else 0)
-            c.rect(x, 1, 3, 3, EYC), c.rect(x, 2, 3, 1, BLACK)
+            x = c.fx(3) - (3 if c.face == "east" else 0)
+            c.rect(x, 1, 4, 4, EYC), c.rect(x, 2, 3 if c.face == "west" else 4, 2, BLACK), c.rect(x, 2, 1 if c.face == "east" else 0, 2, EYC)
 
     def fin(p):
         outer = (1 - p.lx) if p.x < 0 else p.lx
@@ -6406,7 +6407,7 @@ def kraken():
     m.box("mantle-tip", "Body", (-2.5, 31.5, -2.5), (2.5, 33.5, 2.5), mantle)
     m.pair("fin", "Body", (-10, 22, -0.5), (-5.8, 31, 0.5), fin, skip=("up", "down", "east", "west"))
     m.bone("Head", (0, 14, 0))
-    m.box("head", "Head", (-5, 9, -5), (5, 14.5, 5), head, head_d)
+    m.box("head", "Head", (-5, 8, -5), (5, 14.5, 5), head, head_d)
     m.box("siphon", "Head", (-1.3, 9.6, -6.6), (1.3, 11.8, -4.8), mix(MN, UN, 0.5), lambda c: c.face == "north" and c.rect(1, 0, 1, 2, MD))
     for k in range(8):
         ang = math.radians(22.5 + 45 * k)
