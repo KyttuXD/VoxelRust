@@ -437,7 +437,35 @@ pub fn download_with_curl(key: TileKey, path: &str) -> bool {
         None => return false,
     };
     let cmd = alloc::format!("curl -fsSL --max-time 25 -A \"VoxelRust/{}\" -o \"{}\" \"{}\"", env!("CARGO_PKG_VERSION"), path, url);
-    sys::run_command(&cmd) == 0
+    let status = sys::run_command(&cmd);
+    if status != 0 {
+        note_failure(&alloc::format!("curl could not fetch {} ({})", url, exit_text(status)));
+    }
+    status == 0
+}
+
+/// The first failed download of a session is written to the log, with what
+/// to do about it. Mac OS X 10.6's curl cannot make HTTPS connections, so
+/// there the map stays blank and terrain comes out as sea unless a relay is
+/// set. Later failures are not logged again.
+static FAILURE_LOGGED: AtomicBool = AtomicBool::new(false);
+
+fn note_failure(what: &str) {
+    if !FAILURE_LOGGED.swap(true, Ordering::Relaxed) {
+        sys::log(&alloc::format!(
+            "earth: {}. Missing map data shows as sea or as a blank map. On Mac OS X 10.6, set SETTINGS > GAME > MAP DATA RELAY to a VoxelRust server (voxelrust --server) that can make HTTPS connections; see docs/EARTH.md.",
+            what
+        ));
+    }
+}
+
+/// What a [`sys::run_command`] status means for curl, in words.
+fn exit_text(status: i32) -> String {
+    match status {
+        s if s < 0 => String::from("the shell could not be started"),
+        s if s & 0x7f == 0 => alloc::format!("exit {}", s >> 8),
+        s => alloc::format!("stopped by signal {}", s & 0x7f),
+    }
 }
 
 /// Ask a VoxelRust server for a tile: one line out, length-prefixed bytes back.
@@ -468,7 +496,13 @@ pub fn fetch_bytes(key: TileKey) -> Option<Vec<u8>> {
         }
     }
     if !conf.relay.is_empty() {
-        let bytes = download_via_relay(&conf.relay, key)?;
+        let bytes = match download_via_relay(&conf.relay, key) {
+            Some(b) => b,
+            None => {
+                note_failure(&alloc::format!("the map relay {} gave no data for tile {:?}", conf.relay, key));
+                return None;
+            }
+        };
         sys::write_file(&path, &bytes);
         return Some(bytes);
     }
@@ -577,7 +611,9 @@ pub fn fetch_place_json(lat: f64, lon: f64, level: i32) -> Option<Vec<u8>> {
     let template = def().map(|d| d.names.as_str()).filter(|t| safe_url(t))?;
     let url = template.replace("{lat}", &alloc::format!("{:.5}", lat)).replace("{lon}", &alloc::format!("{:.5}", lon)).replace("{zoom}", &alloc::format!("{}", zoom));
     let cmd = alloc::format!("curl -fsSL --max-time 15 -A \"VoxelRust/{}\" -o \"{}\" \"{}\"", env!("CARGO_PKG_VERSION"), path, url);
-    if sys::run_command(&cmd) != 0 {
+    let status = sys::run_command(&cmd);
+    if status != 0 {
+        note_failure(&alloc::format!("curl could not fetch {} ({})", url, exit_text(status)));
         return None;
     }
     sys::read_file(&path)
@@ -881,5 +917,14 @@ mod tests {
         assert!(m.apply(&["place", "95", "0", "Nowhere"]).is_err());
         assert!(m.apply(&["place", "51.5", "-0.12", "Some", "Town"]).is_ok());
         assert_eq!(m.places[0].0, "SOME TOWN");
+    }
+
+    #[test]
+    fn curl_status_is_read_for_the_log() {
+        // system() returns a wait status: the exit code is in the high byte.
+        assert_eq!(exit_text(35 << 8), "exit 35");
+        assert_eq!(exit_text(0), "exit 0");
+        assert_eq!(exit_text(9), "stopped by signal 9");
+        assert_eq!(exit_text(-1), "the shell could not be started");
     }
 }
