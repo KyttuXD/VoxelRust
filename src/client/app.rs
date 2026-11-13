@@ -133,6 +133,8 @@ struct Opts {
     pos: Option<[f64; 3]>,
     look: Option<(f32, f32)>,
     time: Option<f32>,
+    /// `--wait-frames N`: with `--screenshot`, wait N more frames after the world settles (for remeshing).
+    wait_frames: u32,
     hidden: bool,
     showcase: bool,
     show: String,
@@ -231,6 +233,7 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
                 o.look = Some((yaw * PI / 180.0, pitch.clamp(-89.0, 89.0) * PI / 180.0));
             }
             "--time" => o.time = Some(num::<f32>(&next(&mut i, a)?, a)?.clamp(0.0, 1.0)),
+            "--wait-frames" => o.wait_frames = num::<u32>(&next(&mut i, a)?, a)?,
             // Finder on old Mac OS X adds a process serial number when an
             // app is double-clicked; it is not for us.
             _ if a.starts_with("-psn_") => {}
@@ -3375,7 +3378,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                         logf!("voxelrust: {} -> {}", c, reply.to_ascii_lowercase());
                     }
                 }
-            } else if settled_frames == 3 && bench.is_none() {
+            } else if settled_frames >= 3 + opts.wait_frames && bench.is_none() {
                 if let Some(g) = &app.session {
                     let ready = g.world.chunks.values().filter(|c| c.mesh.is_some()).count();
                     logf!("voxelrust: {} chunks ready in {:.2} s", ready, sys::now() - load_start);
