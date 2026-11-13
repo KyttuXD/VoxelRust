@@ -32,7 +32,7 @@ exports:
                _bcmp, _bzero, ___bzero, _memset_pattern16, _system,
                _socket, _connect, _bind, _listen, _accept, _send, _recv, _close,
                _getaddrinfo, _freeaddrinfo, _setsockopt, _getsockopt, _getsockname,
-               _fcntl, _poll, ___error, _opendir, _readdir, _closedir, __NSGetExecutablePath, _rename, _unlink, _mkdir, _chmod,
+               _fcntl, _poll, ___error, _opendir, _readdir, _closedir, __NSGetExecutablePath, _rename, _unlink, _mkdir, _chmod, _signal, _usleep,
                dyld_stub_binder ]
 ...
 TBD

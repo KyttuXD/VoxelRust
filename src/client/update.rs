@@ -75,6 +75,33 @@ pub const SWAPPING: u8 = 6;
 static STATE: AtomicU8 = AtomicU8::new(IDLE);
 /// The release number of the program installed by this run.
 static INSTALLED_SEQ: AtomicU32 = AtomicU32::new(0);
+/// The command line the program was started with (see [`remember_args`]).
+static RESTART_ARGS: core::sync::atomic::AtomicPtr<Vec<String>> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+
+/// Keep the command line, so that a restart after an update starts the
+/// same program the same way (a server stays a server, on its port).
+/// `--update-now` is the test switch: never repeated.
+pub fn remember_args(args: &[String]) {
+    let kept: Vec<String> = args.iter().skip(1).filter(|a| a.as_str() != "--update-now").cloned().collect();
+    RESTART_ARGS.store(alloc::boxed::Box::into_raw(alloc::boxed::Box::new(kept)), Ordering::Release);
+}
+
+/// The kept command line, quoted for the shell (None if an argument cannot be quoted).
+fn restart_args() -> Option<String> {
+    let p = RESTART_ARGS.load(Ordering::Acquire);
+    if p.is_null() {
+        return Some(String::new());
+    }
+    // SAFETY: stored once at start-up and never freed.
+    let args = unsafe { &*p };
+    let mut out = String::new();
+    for a in args {
+        out.push(' ');
+        out.push_str(&sys::shell_arg(a)?);
+    }
+    Some(out)
+}
+
 /// Set when this program is the copy the updater just started: it never
 /// restarts again, and says so on the title screen.
 static RESTART_CHILD: AtomicBool = AtomicBool::new(false);
@@ -319,9 +346,13 @@ pub fn restart(exe: &str, folder: &str) {
         log("could not note the restart; the new version starts at the next start");
         return;
     }
-    // The same data folder, so the copy that starts finds the marker.
-    let data_arg = sys::shell_arg(folder).map(|q| alloc::format!("--data {}", q)).unwrap_or_default();
-    if sys::start_program(exe, &data_arg) {
+    // The same command line (and so the same data folder, which the copy that
+    // starts needs in order to find the marker).
+    let args = match restart_args() {
+        Some(a) => a,
+        None => String::new(),
+    };
+    if sys::start_program(exe, &args) {
         logf!("voxelrust: starting the new version");
     } else {
         sys::remove_file(&marker);

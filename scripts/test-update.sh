@@ -15,7 +15,8 @@ cd "$(dirname "$0")/.."
 work="$(mktemp -d)"
 port=8765
 server=0
-trap 'kill "$server" 2>/dev/null || true; rm -rf "$work"' EXIT
+spid=0
+trap 'kill "$server" "$spid" 2>/dev/null || true; pkill -f "$work/bin2/voxelrust" 2>/dev/null || true; [ -n "${KEEP:-}" ] || rm -rf "$work"' EXIT
 rel="http://127.0.0.1:$port/"
 
 build() { # build COMMIT SEQ OUTPUT
@@ -68,4 +69,17 @@ run_updater
 after_gets="$(grep -c 'GET /voxelrust' "$work/http.log" || true)"
 [ "$before_gets" = "$after_gets" ] || fail "a release with an older or equal number was downloaded"
 echo "ok: an older or equal release is not downloaded"
+# 5. A server installs an update and restarts into it once nobody is playing.
+mkdir -p "$work/bin2" "$work/data2"
+cp "$work/target-1/release/voxelrust" "$work/bin2/voxelrust"
+cp "$work/new-program" "$work/serve/voxelrust-linux-x86_64.bin"
+sh scripts/write-nightly-list.sh "$work/serve" bbbbbbbbbbbb 2
+"$work/bin2/voxelrust" --server --port 25599 --data "$work/data2" --log "$work/server.log" >/dev/null 2>&1 &
+spid=$!
+for _ in $(seq 1 40); do grep -q "restarting into the new version" "$work/server.log" 2>/dev/null && break; sleep 1; done
+if ! grep -q "restarting into the new version" "$work/server.log"; then tail -20 "$work/server.log"; cat "$work/http.log" | tail -4; fail "the server did not restart into the update"; fi
+# The new copy is a server too: it serves the same world on the same port.
+for _ in $(seq 1 30); do [ "$(grep -c 'serving world' "$work/server.log")" -ge 2 ] && break; sleep 1; done
+[ "$(grep -c 'serving world' "$work/server.log")" -ge 2 ] || fail "the restarted server did not start serving"
+echo "ok: an empty server restarted into the update"
 echo "all update checks passed"

@@ -291,6 +291,18 @@ pub fn sleep_ms(ms: u32) {
     }
 }
 
+/// Call `handler` when the program is asked to stop (SIGTERM, as `kill` and
+/// service managers send, or SIGINT, Ctrl+C). The handler may only set a flag.
+pub fn handle_termination(handler: extern "C" fn(c_int)) {
+    #[cfg(all(unix, not(target_arch = "wasm32")))]
+    unsafe {
+        signal(2, handler);
+        signal(15, handler);
+    }
+    #[cfg(not(all(unix, not(target_arch = "wasm32"))))]
+    let _ = handler;
+}
+
 /// Pause the calling thread for real, SDL or not (for the updater).
 pub fn sleep_real_ms(ms: u32) {
     #[cfg(all(unix, not(target_arch = "wasm32")))]
@@ -336,13 +348,15 @@ pub fn shell_arg(text: &str) -> Option<String> {
 /// straight after. Returns whether it started.
 pub fn start_program(exe: &str, args: &str) -> bool {
     let Some(q) = shell_arg(exe) else { return false };
+    // The new copy waits about two seconds: this one is still closing, and it
+    // still holds the network port the new copy needs.
     #[cfg(windows)]
     {
-        run_command(&alloc::format!("start \"\" {} {}", q, args)) == 0
+        run_command(&alloc::format!("ping -n 3 127.0.0.1 >NUL & start \"\" {} {}", q, args)) == 0
     }
     #[cfg(not(windows))]
     {
-        run_command(&alloc::format!("{} {} </dev/null >/dev/null 2>&1 &", q, args)) == 0
+        run_command(&alloc::format!("sleep 2 && {} {} </dev/null >/dev/null 2>&1 &", q, args)) == 0
     }
 }
 
@@ -432,6 +446,7 @@ extern "C" {
     fn rename(from: *const c_char, to: *const c_char) -> c_int;
     fn chmod(path: *const c_char, mode: u32) -> c_int;
     fn usleep(usec: u32) -> c_int;
+    fn signal(sig: c_int, handler: extern "C" fn(c_int)) -> *mut c_void;
 }
 
 #[cfg(windows)]

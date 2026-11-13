@@ -674,7 +674,7 @@ impl App {
         let parcel = Parcel(server, edits);
         self.host = sys::thread::spawn(alloc::boxed::Box::new(move || {
             let p = parcel;
-            server_loop(p.0, p.1, true)
+            let _ = server_loop(p.0, p.1, true);
         }));
         if self.host.is_none() {
             self.status = String::from("COULD NOT START THE SERVER");
@@ -2871,6 +2871,7 @@ fn heart(r: &mut Renderer, x: f32, y: f32, s: f32, fill: i32) {
 
 fn run(args: Vec<String>) -> Result<(), String> {
     let opts = parse_args(&args)?;
+    crate::update::remember_args(&args);
     if opts.help {
         sys::log(USAGE);
         for n in crate::native::all().iter().filter(|n| !n.help.is_empty()) {
@@ -3797,11 +3798,13 @@ fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u1
 
 /// Run a server until `HOST_STOP` is set (never, for `--server`). Edits
 /// are written every 20 seconds and once more on the way out.
-fn server_loop(mut server: crate::server::Server, edits_path: String, quiet: bool) {
+/// Returns true when it stops because an update is installed and nobody is
+/// playing: the caller then restarts the server into the new version.
+fn server_loop(mut server: crate::server::Server, edits_path: String, quiet: bool) -> bool {
     use core::sync::atomic::Ordering;
     let mut last = sys::now();
     let mut save_timer = 0.0f32;
-    while !HOST_STOP.load(Ordering::Relaxed) {
+    while !HOST_STOP.load(Ordering::Relaxed) && !update_ready_and_empty(&server) {
         let now = sys::now();
         let dt = ((now - last) as f32).clamp(0.0, 1.0);
         last = now;
@@ -3840,6 +3843,18 @@ fn server_loop(mut server: crate::server::Server, edits_path: String, quiet: boo
     if server.dirty {
         sys::write_file(&edits_path, server.save_text().as_bytes());
     }
+    update_ready_and_empty(&server)
+}
+
+/// An update is installed and no player is connected: time to restart.
+fn update_ready_and_empty(server: &crate::server::Server) -> bool {
+    crate::update::state() == crate::update::UPDATED && server.players() == 0
+}
+
+/// Asked to stop (kill, a service manager, Ctrl+C): leave the server loop,
+/// which saves the world's edits and frees the port.
+extern "C" fn on_terminate(_: c_int) {
+    HOST_STOP.store(true, core::sync::atomic::Ordering::Relaxed);
 }
 
 /// `voxelrust --server`: host a world for others, with no window.
@@ -3847,10 +3862,22 @@ fn run_server(opts: &Opts, base: &str, pack_text: &[u8]) -> Result<(), String> {
     let name = opts.world.clone().unwrap_or_else(|| String::from("server"));
     let new_kind = crate::native::active().filter_map(|(_, n)| n.option_kind).find_map(|kind| kind());
     let port = opts.port.unwrap_or(crate::proto::DEFAULT_PORT);
+    // The server keeps itself up to date too: an update is installed as soon
+    // as it is found, and the server restarts into it once nobody is playing.
+    sys::handle_termination(on_terminate);
+    let restart_exe = sys::exe_path();
+    let _ = crate::update::consume_restart_marker(base);
+    if !opts.no_update {
+        let (scratch, install) = (String::from(base), true);
+        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::run(BUILD, &scratch, install)));
+    }
     let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, &Settings::default())?;
     let address = sys::net::local_address().unwrap_or_else(|| String::from("<this machine's address>"));
     logf!("voxelrust: players join with:  voxelrust --join {}:{}", address, server.port());
-    server_loop(server, edits_path, false);
+    if server_loop(server, edits_path, false) {
+        logf!("voxelrust: restarting into the new version");
+        crate::update::restart(&restart_exe, base);
+    }
     Ok(())
 }
 
