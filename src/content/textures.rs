@@ -84,6 +84,20 @@ pub fn water_px(x: i32, y: i32, phase: i32) -> Px {
     [p[0], p[1], p[2], 168]
 }
 
+/// Lava: molten orange, with darker crust in drifting blobs and a few hot spots.
+pub fn lava_px(x: i32, y: i32) -> Px {
+    let crust = h(x / 3, y / 3, 14) % 4 == 0;
+    let c = if crust {
+        [92, 30, 16]
+    } else if h(x, y, 15) % 5 == 0 {
+        [255, 196, 64]
+    } else {
+        [226, 88, 24]
+    };
+    let p = grain(c, 4, x, y, 16);
+    [p[0], p[1], p[2], 255]
+}
+
 /// A whole frame of [`water_px`], 16 x 16 RGBA.
 pub fn water_frame(phase: i32) -> Vec<u8> {
     let mut out = Vec::with_capacity(TILE * TILE * 4);
@@ -120,6 +134,7 @@ pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
             grain([p[0], p[1], p[2]], 8, x, y, 9)
         }
         "water" => water_px(x, y, 0),
+        "lava" => lava_px(x, y),
         "log_side" | "pine_side" => {
             let base = if name == "log_side" { [106, 80, 48] } else { [76, 54, 38] };
             let stripe = (h(x, 0, 12) % 19) as i32 - 9;

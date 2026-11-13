@@ -1308,6 +1308,8 @@ impl Session {
             // Too much at once (a brush, an explosion): spread it out.
             self.world.changed = pending.split_off(600);
         }
+        // Water and lava move on from whatever just changed (see game::fluid).
+        crate::game::fluid::tick(&mut self.world, &pending);
         for c in pending {
             for cell in [c, [c[0], c[1] + 1, c[2]]] {
                 let b = self.world.get(cell[0], cell[1], cell[2]);
@@ -1389,10 +1391,9 @@ impl Session {
             // Near open water at sea level, waves wash in now and then;
             // louder the more water there is around.
             if roll() % 5 == 0 && (self.player.pos[1] as i32 - crate::worldgen::SEA).abs() < 14 {
-                let water = reg().wk.water;
                 let near = [(-9, 0), (9, 0), (0, -9), (0, 9), (-6, -6), (6, 6), (-6, 6), (6, -6)]
                     .iter()
-                    .filter(|d| self.world.get(px + d.0, crate::worldgen::SEA, pz + d.1) == water)
+                    .filter(|d| crate::block::is_water(self.world.get(px + d.0, crate::worldgen::SEA, pz + d.1)))
                     .count();
                 if near >= 2 {
                     audio.play(Sound::Wave, 0.25 + near as f32 * 0.09);
@@ -1510,11 +1511,10 @@ impl Session {
 
     /// Take back flood water standing above `level`.
     fn drain_flood(&mut self, level: i32) {
-        let water = reg().wk.water;
         let mut kept = Vec::new();
         for c in core::mem::take(&mut self.flood) {
             if c[1] > level {
-                if self.world.get(c[0], c[1], c[2]) == water {
+                if crate::block::is_water(self.world.get(c[0], c[1], c[2])) {
                     self.world.set_block(c[0], c[1], c[2], AIR);
                 }
             } else {

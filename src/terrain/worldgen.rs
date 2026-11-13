@@ -244,6 +244,9 @@ pub fn invented_column(seed: u32, x: i32, z: i32) -> Column {
     Column { height, biome, river: false, paved: false, building: 0, road: false, farm: false }
 }
 
+/// The caves are full of lava up to this height (inclusive).
+pub const LAVA_LEVEL: i32 = 10;
+
 /// Whether a cave passes through this block. `surface` is the ground height
 /// of the column.
 pub fn is_cave(seed: u32, x: i32, y: i32, z: i32, surface: i32) -> bool {
@@ -731,7 +734,12 @@ pub fn generate(seed: u32, cx: i32, cz: i32) -> ChunkData {
                 let b = if y == 0 || (y < 3 && hash3(seed ^ 0xB2, x, y, z) % 2 == 0) {
                     wk.deepstone
                 } else if is_cave(seed, x, y, z, h) {
-                    AIR
+                    // Deep caves hold lava, up to the lava line.
+                    if y <= LAVA_LEVEL {
+                        wk.lava
+                    } else {
+                        AIR
+                    }
                 } else if y == h {
                     top
                 } else if col.biome == Biome::Badlands && y > SEA && y >= h - 20 {
@@ -1066,5 +1074,27 @@ mod tests {
             assert_eq!(column(seed, x, z).height, y);
             assert!(y > SEA, "seed {seed} spawns under water");
         }
+    }
+
+    #[test]
+    fn deep_caves_hold_lava_and_nothing_above_the_lava_line() {
+        let lava = reg().wk.lava;
+        let mut found = 0;
+        for cx in -3..3 {
+            for cz in -3..3 {
+                let c = generate(7, cx, cz);
+                for x in 0..16 {
+                    for z in 0..16 {
+                        for y in 0..CH {
+                            if c.get(x, y, z) == lava {
+                                assert!(y <= LAVA_LEVEL, "lava at height {y}");
+                                found += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(found > 0, "no lava in any cave around the origin");
     }
 }

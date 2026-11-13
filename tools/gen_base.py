@@ -155,7 +155,7 @@ block("dirt", "Dirt", "dirt", cat="Nature", hardness=0.6, also="potato_seeds 4")
 block("grass", "Grass", "grass_top grass_side dirt", cat="Nature", hardness=0.7, drops="dirt")
 block("sand", "Sand", "sand", cat="Nature", hardness=0.6, falls=True)
 block("gravel", "Gravel", "gravel", cat="Nature", hardness=0.7, falls=True)
-block("water", "Water", "water", shape="liquid", cat="Nature", skyloss=2)
+block("water", "Water", "water", shape="liquid", cat="Nature", skyloss=2, fluid="water 8")
 block("log", "Oak Log", "log_top log_side log_top", cat="Wood", hardness=1.6)
 block("leaves", "Oak Leaves", "leaves", shape="cutout", cat="Wood", skyloss=1, hardness=0.25, drops="apple 7")
 block("planks", "Oak Planks", "planks", cat="Wood", hardness=1.4)
@@ -688,6 +688,17 @@ for line in ["recipe flour 1 wheat 2", "recipe dough 1 flour 2", "craft cheese 1
              "bake meat_pie 1 dough 1 cooked_meat 1 potato 1", "bake stew 1 cooked_meat 1 carrot 1 potato 1",
              "bake fish_soup 1 cooked_fish 1 potato 1 milk 1", "bake stew 1 mushroom 3 potato 1", "bake cake 1 flour 2 egg 1 milk 1 berries 1"]:
     w(line)
+
+# ---- Fluids ----
+# Water and lava flow (see src/game/fluid.rs). The source is level 8 (the
+# blocks above); a flow is level 1-7, and a level-7 flow is what falls down a
+# column. Flows are hidden from the creative menu: they only exist while the
+# liquid is moving. They come last so the ids of everything above stay put.
+tex("lava", "builtin lava")
+block("lava", "Lava", "lava", shape="liquid", cat="Nature", hurts=3, light=12, fluid="lava 8")
+for lvl in range(1, 8):
+    block(f"water_{lvl}", "Flowing Water", "water", shape="liquid", hidden=True, skyloss=2, fluid=f"water {lvl}")
+    block(f"lava_{lvl}", "Flowing Lava", "lava", shape="liquid", hidden=True, hurts=3, light=12, fluid=f"lava {lvl}")
 
 if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "creatures.txt")):
     w("\n# Models, then every creature, live in their own files.\ninclude creatures.txt")

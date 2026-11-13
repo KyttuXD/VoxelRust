@@ -4,7 +4,7 @@
 //! shapes, so slabs and stairs can be walked up: a ledge of up to 0.6 blocks
 //! is stepped onto without jumping.
 
-use crate::block::{def, reg, Block, Kind};
+use crate::block::{def, Block, Kind};
 use crate::math::{cosf, floord, sinf, sqrtf};
 
 pub const HALF_WIDTH: f64 = 0.3;
@@ -97,9 +97,9 @@ impl Player {
     }
 
     pub fn update(&mut self, dt: f32, inp: &Input, get: &dyn Fn(i32, i32, i32) -> Block) {
-        let water = reg().wk.water;
         let feet = get(floord(self.pos[0]), floord(self.pos[1] + 0.4), floord(self.pos[2]));
-        self.in_water = feet == water;
+        // Water and lava both hold you up, and swimming is the same in either.
+        self.in_water = crate::block::fluid_of(feet).is_some();
 
         // The direction the player wants to go, on the ground plane.
         let (s, c) = (sinf(self.yaw), cosf(self.yaw));
@@ -264,6 +264,7 @@ fn touching(get: &dyn Fn(i32, i32, i32) -> Block, mn: [f64; 3], mx: [f64; 3], a:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::block::reg;
 
     /// A flat floor at y < 10 with a few extra blocks.
     fn world(extra: &'static [([i32; 3], &'static str)]) -> impl Fn(i32, i32, i32) -> Block {
@@ -347,7 +348,7 @@ mod tests {
         // block higher, with a player swimming toward it.
         let stone = reg().wk.stone;
         let water = reg().wk.water;
-        let w = move |x: i32, y: i32, z: i32| -> Block {
+        let w = move |x: i32, y: i32, _z: i32| -> Block {
             if y < 10 {
                 stone
             } else if y == 10 && x < 10 {

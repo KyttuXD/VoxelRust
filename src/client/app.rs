@@ -1013,7 +1013,7 @@ impl App {
             let (cam_yaw, cam_pitch) = if self.third_person && self.third_front { (g.player.yaw + PI, -g.player.pitch) } else { (g.player.yaw, g.player.pitch) };
             let cam = Camera { pos: eye, yaw: cam_yaw, pitch: cam_pitch, fov: self.settings.fov as f32 };
             let head = g.world.get(floord(eye[0]), floord(eye[1]), floord(eye[2]));
-            underwater = reg().kind[head as usize] == Kind::Liquid;
+            underwater = crate::block::is_water(head);
             let env = Env {
                 time: g.time,
                 distance: self.distance,

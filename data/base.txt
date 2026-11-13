@@ -253,6 +253,7 @@ block water
   tex water
   category Nature
   skyloss 2
+  fluid water 8
 block log
   name Oak Log
   tex log_top log_side log_top
@@ -5976,6 +5977,120 @@ bake stew 1 cooked_meat 1 carrot 1 potato 1
 bake fish_soup 1 cooked_fish 1 potato 1 milk 1
 bake stew 1 mushroom 3 potato 1
 bake cake 1 flour 2 egg 1 milk 1 berries 1
+texture lava builtin lava
+block lava
+  name Lava
+  shape liquid
+  tex lava
+  category Nature
+  hurts 3
+  light 12
+  fluid lava 8
+block water_1
+  name Flowing Water
+  shape liquid
+  tex water
+  hidden
+  skyloss 2
+  fluid water 1
+block lava_1
+  name Flowing Lava
+  shape liquid
+  tex lava
+  hidden
+  hurts 3
+  light 12
+  fluid lava 1
+block water_2
+  name Flowing Water
+  shape liquid
+  tex water
+  hidden
+  skyloss 2
+  fluid water 2
+block lava_2
+  name Flowing Lava
+  shape liquid
+  tex lava
+  hidden
+  hurts 3
+  light 12
+  fluid lava 2
+block water_3
+  name Flowing Water
+  shape liquid
+  tex water
+  hidden
+  skyloss 2
+  fluid water 3
+block lava_3
+  name Flowing Lava
+  shape liquid
+  tex lava
+  hidden
+  hurts 3
+  light 12
+  fluid lava 3
+block water_4
+  name Flowing Water
+  shape liquid
+  tex water
+  hidden
+  skyloss 2
+  fluid water 4
+block lava_4
+  name Flowing Lava
+  shape liquid
+  tex lava
+  hidden
+  hurts 3
+  light 12
+  fluid lava 4
+block water_5
+  name Flowing Water
+  shape liquid
+  tex water
+  hidden
+  skyloss 2
+  fluid water 5
+block lava_5
+  name Flowing Lava
+  shape liquid
+  tex lava
+  hidden
+  hurts 3
+  light 12
+  fluid lava 5
+block water_6
+  name Flowing Water
+  shape liquid
+  tex water
+  hidden
+  skyloss 2
+  fluid water 6
+block lava_6
+  name Flowing Lava
+  shape liquid
+  tex lava
+  hidden
+  hurts 3
+  light 12
+  fluid lava 6
+block water_7
+  name Flowing Water
+  shape liquid
+  tex water
+  hidden
+  skyloss 2
+  fluid water 7
+block lava_7
+  name Flowing Lava
+  shape liquid
+  tex lava
+  hidden
+  hurts 3
+  light 12
+  fluid lava 7
 
 # Models, then every creature, live in their own files.
 include creatures.txt

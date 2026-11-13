@@ -212,6 +212,16 @@ fn light_uv(l: u8) -> [i16; 2] {
 
 /// Build the mesh of the centre chunk. `n` holds the 3 x 3 neighbourhood,
 /// indexed `(dz + 1) * 3 + (dx + 1)`.
+/// How high a liquid's surface stands, in sixteenths of a block: full where
+/// the same liquid is above it, otherwise by how much of it there is.
+fn liquid_top(b: crate::block::Block, above: crate::block::Block) -> i32 {
+    if crate::block::same_fluid(b, above) {
+        16
+    } else {
+        crate::block::fluid_of(b).map_or(14, |(_, level)| 14 * level as i32 / 8)
+    }
+}
+
 pub fn build(n: &[&ChunkData; 9]) -> MeshData {
     let r = reg();
     let mut blk = alloc::vec![0 as Block; R * R * H];
@@ -258,7 +268,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                     Kind::Cube | Kind::Cutout | Kind::Liquid | Kind::Translucent => {
                         let liquid = d.kind == Kind::Liquid;
                         let blended = liquid || d.kind == Kind::Translucent;
-                        let low_top = liquid && reg_.cell(x, y + 1, z).0 != b;
+                        let top = if liquid { liquid_top(b, reg_.cell(x, y + 1, z).0) } else { 16 };
                         for f in &FACES {
                             let (nx, ny, nz) = (x + f.n[0], y + f.n[1], z + f.n[2]);
                             let nb = reg_.cell(nx, ny, nz).0;
@@ -266,7 +276,8 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                             // kind (water, glass, and leaves inside a canopy)
                             // are never seen: skipping them saves a great deal
                             // of drawing in forests.
-                            if opaque(nb) || (nb == b && d.kind != Kind::Cube) {
+                            // A liquid's top and bottom against the same liquid are hidden too.
+                            if opaque(nb) || (nb == b && d.kind != Kind::Cube) || (liquid && f.n[1] != 0 && crate::block::same_fluid(b, nb)) {
                                 continue;
                             }
                             let mut quad = [Vertex { pos: [0; 4], col: [0; 4], uv: [0; 2], luv: [0; 2] }; 4];
@@ -298,8 +309,8 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                                     origin[1] + (f.o[1] + f.u[1] * cu + f.v[1] * cv) * 16,
                                     origin[2] + (f.o[2] + f.u[2] * cu + f.v[2] * cv) * 16,
                                 ];
-                                if low_top && p[1] == origin[1] + 16 {
-                                    p[1] -= 2;
+                                if liquid && p[1] == origin[1] + 16 {
+                                    p[1] = origin[1] + top;
                                 }
                                 quad[k] = Vertex {
                                     pos: [p[0] as i16, p[1] as i16, p[2] as i16, 0],
@@ -572,5 +583,29 @@ mod tests {
         assert!(m.opaque.is_empty());
         // Six faces plus the underside of the surface.
         assert_eq!(m.water.len(), 28);
+    }
+
+    #[test]
+    fn a_flow_is_as_tall_as_its_level_and_a_column_is_full() {
+        let r = reg();
+        let e = ChunkData::new();
+        // A lone flow at level 3 stands 14 * 3 / 8 = 5 sixteenths high.
+        let mut c = ChunkData::new();
+        c.set(8, 60, 8, r.flow[0][3]);
+        let lone = hood(&c, &e);
+        assert!(lone.water.iter().all(|v| v.pos[1] == 60 * 16 || v.pos[1] == 60 * 16 + 5), "{:?}", lone.water.iter().map(|v| v.pos[1]).collect::<Vec<_>>());
+        // A falling column: the cell at the bottom has the same liquid above it,
+        // so its surface is full height and its sides reach the top of the cell
+        // above (61 * 16). The top of the column is a level-7 flow, 12 high.
+        let mut col = ChunkData::new();
+        col.set(8, 60, 8, r.flow[0][7]);
+        col.set(8, 61, 8, r.flow[0][7]);
+        let stacked = hood(&col, &e);
+        let ys: Vec<i16> = stacked.water.iter().map(|v| v.pos[1]).collect();
+        assert!(ys.contains(&(61 * 16)), "the bottom of the column is not full height");
+        assert!(ys.iter().all(|&y| y <= 61 * 16 + 12), "a column is taller than its top: {:?}", ys.iter().max());
+        // No faces between the two cells of the column: fewer than two single cells' worth.
+        let single = hood(&c, &e).water.len();
+        assert!(stacked.water.len() < 2 * single + 4, "{} vs {}", stacked.water.len(), single);
     }
 }

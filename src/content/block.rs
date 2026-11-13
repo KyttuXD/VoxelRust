@@ -196,6 +196,8 @@ pub struct BlockExtra {
     pub also: Option<(usize, u8, u16)>,
     /// Hurts whoever stands in or on it, per second.
     pub hurts: u8,
+    /// A liquid: (lava rather than water, level 1-8 where 8 is the source).
+    pub fluid: Option<(bool, u8)>,
     /// Slows whoever walks through it (percent of normal speed, 0 = no change).
     pub slow: u8,
     /// The sound of breaking or placing it, if not the usual ones.
@@ -502,6 +504,7 @@ pub struct WellKnown {
     pub sand: Block,
     pub gravel: Block,
     pub water: Block,
+    pub lava: Block,
     pub log: Block,
     pub leaves: Block,
     pub coal_ore: Block,
@@ -602,6 +605,10 @@ pub struct Registry {
     pub emit: Vec<u8>,
     pub sky_loss: Vec<u8>,
     pub kind: Vec<Kind>,
+    /// Per state: the liquid it is, if any (see [`fluid_of`]).
+    pub fluid: Vec<Option<(bool, u8)>>,
+    /// The state of each liquid at each level: `flow[lava][level]`.
+    pub flow: [[Block; 9]; 2],
     pub wk: WellKnown,
     /// The hidden filler that big props put in the cells they take up.
     pub part: Block,
@@ -659,6 +666,22 @@ pub fn replace(r: Registry) {
 }
 
 #[inline]
+/// The liquid a block is, if any: (lava rather than water, level 1-8 where 8
+/// is the source). Flows are one block per level; see `src/game/fluid.rs`.
+pub fn fluid_of(b: Block) -> Option<(bool, u8)> {
+    reg().fluid.get(b as usize).copied().flatten()
+}
+
+/// Whether a block is water, at whatever level (lava is not).
+pub fn is_water(b: Block) -> bool {
+    matches!(fluid_of(b), Some((false, _)))
+}
+
+/// Whether two blocks are the same liquid, at whatever levels.
+pub fn same_fluid(a: Block, b: Block) -> bool {
+    matches!((fluid_of(a), fluid_of(b)), (Some((x, _)), Some((y, _))) if x == y)
+}
+
 pub fn def(b: Block) -> &'static BlockDef {
     let r = reg();
     &r.blocks[if (b as usize) < r.blocks.len() { b as usize } else { 0 }]
@@ -1128,7 +1151,7 @@ impl Parser<'_> {
                     Some(t) => b.tool = t as u8,
                     None => bad = Some("tool must be none, pick, axe, shovel or hoe"),
                 },
-                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
+                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "fluid" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
                     // Said twice, the later line wins; except marks, of
                     // which a block may carry several.
                     b.extra.retain(|e| e.0 != key || (key == "tag" && e.1.first().map(|x| x.as_str()) != a.first().copied()));
@@ -1574,6 +1597,7 @@ impl Registry {
                         None => ok = false,
                     },
                     "hurts" => x.hurts = word(0).parse::<u8>().unwrap_or(1),
+                    "fluid" => x.fluid = Some((word(0) == "lava", word(1).parse::<u8>().unwrap_or(8).clamp(1, 8))),
                     "slow" => x.slow = word(0).parse::<u8>().unwrap_or(50).clamp(5, 100),
                     "sound" => x.sound = word(0).to_string(),
                     "seat" => x.seat = word(0).parse::<u8>().unwrap_or(8).clamp(1, 16),
@@ -1936,6 +1960,7 @@ impl Registry {
             sand: get("sand"),
             gravel: get("gravel"),
             water: get("water"),
+            lava: get("lava"),
             log: get("log"),
             leaves: get("leaves"),
             coal_ore: get("coal_ore"),
@@ -2037,7 +2062,16 @@ impl Registry {
         ];
         let find_tile = |id: &str| tiles.iter().position(|t| t.id == id).unwrap_or(0) as u16;
 
+        let fluid: Vec<Option<(bool, u8)>> = blocks.iter().map(|b| b.x.fluid).collect();
+        let mut flow = [[AIR; 9]; 2];
+        for (state, f) in fluid.iter().enumerate() {
+            if let Some((lava, level)) = f {
+                flow[*lava as usize][*level as usize] = state as Block;
+            }
+        }
         let mut registry = Registry {
+            fluid,
+            flow,
             opaque: blocks.iter().map(|b| (b.kind == Kind::Cube) as u8).collect(),
             emit: blocks.iter().map(|b| b.emit).collect(),
             sky_loss: blocks.iter().map(|b| b.sky_loss).collect(),
