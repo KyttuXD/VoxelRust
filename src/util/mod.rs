@@ -6,4 +6,5 @@ pub mod json;
 pub mod png;
 pub mod settings;
 pub mod sha256;
+pub mod wav;
 pub mod zip;

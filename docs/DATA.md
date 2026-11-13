@@ -668,7 +668,8 @@ example of a model, textures, vehicles and recipes.
 ## Sounds
 
 Every sound is made when it is played, from a burst of noise and a tone
-that glides from one pitch to another. There are no sound files.
+that glides from one pitch to another, unless the sound is a recording
+(see [Sound files](#sound-files)).
 
 ```
 sound <id> <effects|steps|ui> <seconds> <noise> <hz from> <hz to> <low-pass> <loudness> [caption]
@@ -699,6 +700,30 @@ rain rumble wave door bow rail`. The base data also defines `glass wood moo
 baa oink cluck bark meow howl growl hiss chirp buzz groan rattle roar chime
 whoosh sizzle` for blocks, creatures and packs to use. The Natural Disasters
 mod (`mods/disasters`) defines `quake` and `twister`.
+
+### Sound files
+
+A sound can be a recording instead of a made noise:
+
+```
+sound <id> <effects|steps|ui> file <path> [loudness] [caption]
+```
+
+`path` is relative to the pack file, as for textures. The file is a WAV: PCM
+of 8, 16, 24 or 32 bits (or 32-bit float), any number of channels, any
+rate, at most 12 seconds. It is turned into one channel at 22050 Hz when the
+pack is read, and its pitch varies a little less than a made sound's.
+`loudness` is 0..2 (default 1). A file that cannot be read is a warning in
+the log, and that sound does not exist. Zip packs may hold the files too.
+
+```
+sound ding ui file sounds/ding.wav 0.8 A ding
+```
+
+Players can also replace any sound, made or recorded, without a pack: put
+`<id>.wav` in the `sounds/` folder inside the game's data folder (next to
+`worlds/`), for example `sounds/step.wav` or `sounds/thunder.wav`. They are
+read when the game starts and the log lists them.
 
 A sound is used by naming it:
 

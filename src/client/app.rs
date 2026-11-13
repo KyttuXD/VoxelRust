@@ -3264,6 +3264,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
     app.apply_settings();
     app.load_skin(&mut r);
     app.status.clear();
+    // Sounds the player has put in the data folder's `sounds/` folder replace the game's own.
+    let own_sounds = app.audio.load_folder(&base);
+    if !own_sounds.is_empty() {
+        logf!("voxelrust: own sounds from {}sounds/: {}", base, own_sounds.join(" "));
+    }
     logf!("voxelrust: data in {}", if base.is_empty() { "." } else { &base });
     for (_, n) in crate::native::active() {
         if let Some(start) = n.start {

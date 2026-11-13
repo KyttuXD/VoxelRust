@@ -127,6 +127,9 @@ pub struct SoundDef {
     pub loudness: f32,
     /// What to show for it when subtitles are on (empty = nothing).
     pub caption: String,
+    /// A recorded sound (read from a sound file) instead of a made one:
+    /// mono, 16-bit, at the mixer's rate.
+    pub clip: Option<Vec<i16>>,
 }
 
 /// Something a pack makes happen: when `event` occurs (to `what`, if
@@ -830,6 +833,8 @@ struct Parser<'a> {
     recipes: Vec<(String, Vec<String>)>,
     /// `ore` and `plant` lines, kept the same way.
     rules: Vec<(String, Vec<String>)>,
+    /// Sound files read while parsing: the sound's id and its samples.
+    clips: Vec<(String, Vec<i16>)>,
     warnings: Vec<String>,
     load: &'a mut dyn FnMut(&str) -> Option<Vec<u8>>,
     depth: u32,
@@ -1037,6 +1042,22 @@ impl Parser<'_> {
                     cur = Cur::None;
                     let mut words: Vec<String> = args.iter().map(|a| a.to_string()).collect();
                     words.insert(0, key.to_string());
+                    // sound <id> <bus> file <path> [loudness] [caption...]: read the file now.
+                    if key == "sound" && words.get(3).map(|s| s.as_str()) == Some("file") {
+                        let path = alloc::format!("{}{}", dir_of(file), words.get(4).map(|s| s.as_str()).unwrap_or(""));
+                        match (self.load)(&path).and_then(|b| crate::wav::decode(&b)) {
+                            Some(samples) => {
+                                self.clips.retain(|c| c.0 != words[1]);
+                                self.clips.push((words[1].clone(), samples));
+                                words.remove(4);
+                                words[3] = String::from("clip");
+                            }
+                            None => {
+                                self.warn(file, line_no, &alloc::format!("cannot read {} as a WAV sound (PCM, up to 12 seconds)", path));
+                                continue;
+                            }
+                        }
+                    }
                     self.rules.push((alloc::format!("{}:{}", file, line_no), words));
                 }
                 "recipe" | "craft" | "bake" | "smelt" => {
@@ -1351,6 +1372,7 @@ impl Registry {
             lines: Vec::new(),
             recipes: Vec::new(),
             rules: Vec::new(),
+            clips: Vec::new(),
             warnings: Vec::new(),
             load,
             depth: 0,
@@ -1358,7 +1380,7 @@ impl Registry {
         for (path, text) in sources {
             p.parse(path, text);
         }
-        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, rules: raw_rules, models, entities: raw_entities, sections, lines, mut warnings, .. } = p;
+        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, rules: raw_rules, clips, models, entities: raw_entities, sections, lines, mut warnings, .. } = p;
 
         let tile_of = |id: &str, warnings: &mut Vec<String>, what: &str| -> u16 {
             match tiles.iter().position(|t| t.id == id) {
@@ -1853,6 +1875,36 @@ impl Registry {
             let f = |k: usize| w.get(k).and_then(|v| v.parse::<f32>().ok());
             match w[0].as_str() {
                 // sound <id> <effects|steps|ui> <seconds> <noise> <hz from> <hz to> <low-pass> <loudness> [caption...]
+                // sound <id> <effects|steps|ui> file <path> [loudness] [caption...]  (read by the parser)
+                "sound" if w.get(3).map(|s| s.as_str()) == Some("clip") => match (w.get(1), w.get(2).map(|s| s.as_str())) {
+                    (Some(id), Some(bus @ ("effects" | "steps" | "ui"))) => {
+                        let samples = clips.iter().find(|c| &c.0 == id).map(|c| c.1.clone());
+                        let (loud, from) = match f(4) {
+                            Some(v) => (v.clamp(0.0, 2.0), 5),
+                            None => (1.0, 4),
+                        };
+                        let def = SoundDef {
+                            id: id.clone(),
+                            bus: match bus {
+                                "steps" => 1,
+                                "ui" => 2,
+                                _ => 0,
+                            },
+                            seconds: samples.as_ref().map_or(0.1, |s| s.len() as f32 / crate::wav::RATE as f32),
+                            noise: 0.0,
+                            hz: [0.0, 0.0],
+                            low_pass: 1.0,
+                            loudness: loud,
+                            caption: w[from.min(w.len())..].join(" "),
+                            clip: samples,
+                        };
+                        match sounds.iter().position(|s| s.id == def.id) {
+                            Some(i) => sounds[i] = def,
+                            None => sounds.push(def),
+                        }
+                    }
+                    _ => warnings.push(alloc::format!("{}: sound needs <id> <effects|steps|ui> file <path> [loudness] [caption]", at)),
+                },
                 "sound" => match (w.get(1), w.get(2).map(|s| s.as_str()), f(3), f(4), f(5), f(6), f(7), f(8)) {
                     (Some(id), Some(bus @ ("effects" | "steps" | "ui")), Some(secs), Some(noise), Some(f0), Some(f1), Some(lp), Some(loud)) => {
                         let def = SoundDef {
@@ -1868,6 +1920,7 @@ impl Registry {
                             low_pass: lp.clamp(0.005, 1.0),
                             loudness: loud.clamp(0.0, 2.0),
                             caption: w[9.min(w.len())..].join(" "),
+                            clip: None,
                         };
                         match sounds.iter().position(|s| s.id == def.id) {
                             Some(i) => sounds[i] = def,
@@ -2344,6 +2397,24 @@ mod tests {
         assert_eq!(out[3], Bx { min: [10, 6, 7], max: [16, 9, 9] });
         shape(stone, 0b1111, &mut out);
         assert_eq!(out, [Bx::FULL]);
+    }
+
+    #[test]
+    fn a_sound_can_come_from_a_wav_file() {
+        let pcm: Vec<u8> = (0..2205i16).flat_map(|i| (i * 10).to_le_bytes()).collect();
+        let wav = crate::wav::make_wav(22050, 1, 16, &pcm);
+        let r = Registry::from_sources(
+            &[("mods/x/pack.txt", "sound ding ui file sounds/ding.wav 0.8 A ding\nsound broken effects file missing.wav\nsound hiss effects 0.2 1 100 100 1 1\n")],
+            &mut |p| if p == "mods/x/sounds/ding.wav" { Some(wav.clone()) } else { None },
+        );
+        let ding = r.sounds.iter().find(|s| s.id == "ding").expect("ding");
+        assert_eq!((ding.bus, ding.loudness, ding.caption.as_str()), (2, 0.8, "A ding"));
+        assert_eq!(ding.clip.as_ref().map(|c| c.len()), Some(2205));
+        assert!((ding.seconds - 0.1).abs() < 0.001);
+        // A file that cannot be read is a warning, not a sound; made sounds are as before.
+        assert!(r.sounds.iter().all(|s| s.id != "broken"));
+        assert!(r.warnings.iter().any(|w| w.contains("missing.wav")), "{:?}", r.warnings);
+        assert!(r.sounds.iter().find(|s| s.id == "hiss").unwrap().clip.is_none());
     }
 
     #[test]
