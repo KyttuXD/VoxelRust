@@ -128,6 +128,10 @@ pub struct Mobs {
     /// The creature a player is riding and how they steer it: its id,
     /// their controls, and where they look (yaw).
     pub rider: Option<(u32, Input, f32)>,
+    /// The kind of creature whose bite is being carried out this step, for
+    /// mod code that wants to know who hurt the player (see `Native::hurt`).
+    /// The session clears it before each step.
+    pub last_biter: Option<usize>,
     spawn_timer: f32,
     rng: u32,
     next_id: u32,
@@ -155,7 +159,7 @@ fn crop_start(b: Block) -> Block {
 
 impl Mobs {
     pub fn new(seed: u32) -> Mobs {
-        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
+        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, last_biter: None, spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
     }
 
     fn rand(&mut self) -> u32 {
@@ -785,6 +789,7 @@ impl Mobs {
             if attacks && dist < 1.3 && dy > -2.0 && dy < 1.6 && m.attack_cooldown <= 0.0 {
                 m.attack_cooldown = 1.0;
                 damage += d.damage;
+                self.last_biter = Some(m.kind);
             }
             // Archers and spell-throwers loose at the player from a distance.
             if attacks && d.x.shoots > 0 && dist > 3.0 && dist < 20.0 && m.attack_cooldown <= 0.0 {

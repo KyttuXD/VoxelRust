@@ -74,10 +74,26 @@ pub fn set_kind(kind: WorldKind) {
     };
     set_shape(home_shape(&kind));
     SOURCE.store(source, Ordering::Release);
+    HOME_SOURCE.store(source, Ordering::Release);
     KIND.store(Box::into_raw(Box::new(kind)), Ordering::Release);
 }
 
 static SOURCE: AtomicPtr<Source> = AtomicPtr::new(core::ptr::null_mut());
+/// What the world's own kind supplied, kept so that a dimension with land of
+/// its own can be left again.
+static HOME_SOURCE: AtomicPtr<Source> = AtomicPtr::new(core::ptr::null_mut());
+
+/// Use `own` as the terrain source for the dimension being entered, or, with
+/// `None`, the one the world's own kind supplied. Like [`set_kind`] this is
+/// process-wide, and the old value is leaked on purpose (workers may still
+/// be reading it); call it with the workers stopped.
+pub fn use_dimension_source(own: Option<Source>) {
+    let p = match own {
+        Some(s) => Box::into_raw(Box::new(s)),
+        None => HOME_SOURCE.load(Ordering::Acquire),
+    };
+    SOURCE.store(p, Ordering::Release);
+}
 
 /// The lie of the land in the dimension being played: 0 the world's own
 /// terrain, 1 flat, 2 empty, 3 islands in the sky.

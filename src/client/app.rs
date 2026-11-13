@@ -991,6 +991,7 @@ impl App {
                 }
             }
             if playing && g.playable {
+                g.set_lod(self.settings.lod_real, self.settings.lod_trees, self.settings.lod_detail);
                 g.update(dt, &controls, distance, self.settings.far_distance, r, &mut self.audio);
                 if g.flags != self.settings.flags {
                     g.flags = self.settings.flags.clone();
@@ -1909,6 +1910,13 @@ impl App {
                     let (mw, mh) = crate::settings::FULLSCREEN_MODES[st.fullscreen_mode as usize];
                     let label = if mw == 0 { String::from("AT  < DESKTOP SIZE >") } else { alloc::format!("AT  < {}X{} >", mw, mh) };
                     mode_changed = ui.stepper_text(x + half + 4.0 * s, row(9), half, bh, &label, &mut st.fullscreen_mode, 0, crate::settings::FULLSCREEN_MODES.len() as i32 - 1, 1);
+                    // Distant terrain, in detail.
+                    let real = if st.lod_real == 0 { String::from("DISTANT BUILDS AND TREES  < OFF >") } else { alloc::format!("DISTANT BUILDS AND TREES  < {} TILES >", st.lod_real) };
+                    changed |= ui.stepper_text(x, row(10), bw, bh, &real, &mut st.lod_real, 0, 8, 1);
+                    let trees = ["NONE", "SOME", "ALL"][st.lod_trees.clamp(0, 2) as usize];
+                    changed |= ui.stepper_text(x, row(11), half, bh, &alloc::format!("TREES  < {} >", trees), &mut st.lod_trees, 0, 2, 1);
+                    let detail = ["COARSE", "MEDIUM", "FINE"][st.lod_detail.clamp(0, 2) as usize];
+                    changed |= ui.stepper_text(x + half + 4.0 * s, row(11), half, bh, &alloc::format!("DETAIL  < {} >", detail), &mut st.lod_detail, 0, 2, 1);
                 }
                 1 => {
                     changed |= ui.stepper(x, row(0), bw, bh, "MASTER VOLUME", &mut st.master_volume, 0, 10, 1);

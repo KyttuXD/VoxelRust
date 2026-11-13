@@ -82,6 +82,12 @@ pub struct World {
     pub far: BTreeMap<(i32, i32), FarTile>,
     /// How far distant terrain reaches, in chunks (0 = off).
     pub far_radius: i32,
+    far_lod: (i32, i32, i32),
+    /// How the distant terrain is made (see `Settings`): tiles within this
+    /// many tiles are made from real blocks; trees 0..=2; sampling detail 0..=2.
+    pub far_real: i32,
+    pub far_trees: i32,
+    pub far_detail: i32,
     far_in_flight: usize,
     far_center: (i32, i32, i32),
     /// Multiplayer: block changes made by others, by chunk, applied to
@@ -110,6 +116,10 @@ impl World {
             chunks: BTreeMap::new(),
             far: BTreeMap::new(),
             far_radius: 0,
+            far_lod: (-1, -1, -1),
+            far_real: 3,
+            far_trees: 2,
+            far_detail: 1,
             far_in_flight: 0,
             far_center: (i32::MIN, 0, 0),
             overlay: BTreeMap::new(),
@@ -399,8 +409,19 @@ impl World {
     /// tiles are only queued while the workers have room. Returns whether
     /// any tile is still missing.
     fn update_far(&mut self, ccx: i32, ccz: i32, pool: &mut Pool, sink: &mut dyn MeshSink, busy: bool) -> bool {
-        use crate::lod::{step_for, TILE_CHUNKS};
+        use crate::lod::{step_with, TILE_CHUNKS};
         let (tcx, tcz) = (ccx.div_euclid(TILE_CHUNKS), ccz.div_euclid(TILE_CHUNKS));
+        // A change of how distant terrain is made: start it afresh.
+        let lod = (self.far_real, self.far_trees, self.far_detail);
+        if lod != self.far_lod {
+            self.far_lod = lod;
+            for (_, t) in core::mem::take(&mut self.far) {
+                if let Some(m) = t.mesh {
+                    sink.free(m);
+                }
+            }
+            self.far_center = (i32::MIN, 0, 0);
+        }
         let reach = (self.far_radius + TILE_CHUNKS - 1) / TILE_CHUNKS;
         let center = (tcx, tcz, reach);
         if center != self.far_center {
@@ -444,7 +465,21 @@ impl World {
                     }
                     t.requested = true;
                     self.far_in_flight += 1;
-                    pool.submit(Job::Far { tx: tcx + dx, tz: tcz + dz, step: step_for(ring) }, false);
+                    let (tx, tz) = (tcx + dx, tcz + dz);
+                    // Near the player: made from the real blocks, with the player's edits.
+                    let real = ring <= self.far_real;
+                    let edits = if real {
+                        let mut v = Vec::with_capacity(16);
+                        for i in 0..TILE_CHUNKS {
+                            for j in 0..TILE_CHUNKS {
+                                v.push(self.overlay.get(&(tx * TILE_CHUNKS + i, tz * TILE_CHUNKS + j)).cloned().unwrap_or_default());
+                            }
+                        }
+                        v
+                    } else {
+                        Vec::new()
+                    };
+                    pool.submit(Job::Far { tx, tz, step: step_with(ring, self.far_detail), real, trees: self.far_trees.clamp(0, 2) as u8, edits }, false);
                 }
             }
         }

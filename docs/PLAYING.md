@@ -626,6 +626,16 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   clouds, 3D DETAIL (draws the 3D view at a lower resolution; a big help on
   old graphics cards), show frame rate, full screen and its resolution.
   Vsync is off unless you turn it on.
+  Three rows set how the distant terrain is made: **DISTANT BUILDS AND TREES**
+  (0-8 tiles; a tile is 4 x 4 chunks), **TREES** (none, some, all) and
+  **DETAIL** (coarse, medium, fine). Within that many tiles of you the far
+  terrain is made from the world's real blocks, so what you have built, and
+  the trees that grow there, show from afar as they are (roofs, walls, trunks
+  and crowns); beyond it the land is made from the terrain function alone, as
+  before. Detail is how finely it is sampled (8, 4 or 2 blocks near you,
+  coarser farther off). Fine detail and many tiles cost time on a slow
+  computer. The settings are `lod_real`, `lod_trees` and `lod_detail` in
+  `settings.txt`.
 - **AUDIO**: master, effects, footsteps and interface volume, and SUBTITLES
   FOR SOUNDS, which names what you hear (`THUNDER`, `DOOR`, `WOLF HOWLS`) at
   the right of the screen for a couple of seconds. All sound stops when you

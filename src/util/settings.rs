@@ -60,6 +60,14 @@ pub struct Settings {
     pub distance: i32,
     /// How far simplified distant terrain is drawn, in chunks (0 = off).
     pub far_distance: i32,
+    /// How many tiles (of 4 x 4 chunks) out the distant terrain is made from
+    /// the world's real blocks (builds and trees as they are), 0..=8; beyond
+    /// that it is made from the terrain function alone. 0 = never from blocks.
+    pub lod_real: i32,
+    /// Trees in the distance: 0 none, 1 some, 2 all.
+    pub lod_trees: i32,
+    /// How finely distant terrain is sampled: 0 coarse, 1 medium, 2 fine.
+    pub lod_detail: i32,
     pub fov: i32,
     pub clouds: bool,
     pub vsync: bool,
@@ -130,6 +138,9 @@ impl Default for Settings {
         Settings {
             distance: 8,
             far_distance: 32,
+            lod_real: 3,
+            lod_trees: 2,
+            lod_detail: 1,
             fov: 70,
             clouds: true,
             vsync: false,
@@ -223,6 +234,9 @@ impl Settings {
         Settings {
             distance: int("distance", d.distance, 2, 48),
             far_distance: int("far_distance", d.far_distance, 0, 256),
+            lod_real: int("lod_real", d.lod_real, 0, 8),
+            lod_trees: int("lod_trees", d.lod_trees, 0, 2),
+            lod_detail: int("lod_detail", d.lod_detail, 0, 2),
             fov: int("fov", d.fov, 50, 110),
             clouds: flag("clouds", d.clouds),
             vsync: flag("vsync", d.vsync),
@@ -273,10 +287,13 @@ impl Settings {
 
     pub fn to_text(&self) -> String {
         let mut s = alloc::format!(
-            "distance={}\nfar_distance={}\nfov={}\nclouds={}\nvsync={}\nfullscreen={}\ngui_scale={}\ntarget_fps={}\nmax_fps={}\nshow_fps={}\n\
+            "distance={}\nfar_distance={}\nlod_real={}\nlod_trees={}\nlod_detail={}\nfov={}\nclouds={}\nvsync={}\nfullscreen={}\ngui_scale={}\ntarget_fps={}\nmax_fps={}\nshow_fps={}\n\
              master_volume={}\neffects_volume={}\nsteps_volume={}\nui_volume={}\nsens={}\ninvert_y={}\nplayer_name={}\nautosave_seconds={}\nview_bobbing={}\n",
             self.distance,
             self.far_distance,
+            self.lod_real,
+            self.lod_trees,
+            self.lod_detail,
             self.fov,
             self.clouds as i32,
             self.vsync as i32,

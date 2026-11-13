@@ -604,6 +604,16 @@ impl Session {
         }
     }
 
+    /// The player killed a creature of this kind at this place: tell the
+    /// mods' code (`Native::killed`).
+    fn mob_killed(&mut self, kind: usize, at: [f64; 3]) {
+        for (_, n) in crate::native::active() {
+            if let Some(killed) = n.killed {
+                killed(self, kind, at);
+            }
+        }
+    }
+
     /// What a mod's code keeps for this world, taken out so that it can be
     /// worked on alongside everything else here; hand it back with
     /// [`Session::put_ext`]. A fresh one if there was none.
@@ -1188,6 +1198,10 @@ impl Session {
         // The old workers finish and go before the land changes under them.
         self.pool = crate::jobs::Pool::new(0, seed);
         worldgen::set_shape(shape);
+        // A mod may have land of its own for this dimension; with none, the
+        // world's own source (if it has one) carries on.
+        let own = if id.is_empty() { None } else { crate::native::active().filter_map(|(_, n)| n.dimension_terrain).find_map(|f| f(id)) };
+        worldgen::use_dimension_source(own);
         self.pool = crate::jobs::Pool::new(threads, seed);
         let far = self.world.far_radius;
         self.world = crate::world::World::new(seed);
@@ -1320,12 +1334,14 @@ impl Session {
             });
             if let Some(k) = struck {
                 let kind = self.mobs.list[k].kind;
+                let at = self.mobs.list[k].body.pos;
                 if self.strike(k, damage, self.player.pos) {
                     if let (GameMode::Survival, Some((drop, n))) = (self.mode, reg().entities[kind].drop) {
                         self.inv.add(drop as u16, n);
                     }
                     let id = reg().entities[kind].id.clone();
                     self.fire("kill", &id);
+                    self.mob_killed(kind, at);
                 }
                 self.sound_queue.push(String::from("hurt"));
                 done = true;
@@ -1728,6 +1744,17 @@ impl Session {
         if self.mode != GameMode::Survival || self.dead || amount <= 0 {
             return;
         }
+        // Mod code may lessen (armour) or cancel the blow, knowing who struck.
+        let attacker = self.mobs.last_biter.take();
+        let mut amount = amount;
+        for (_, n) in crate::native::active() {
+            if let Some(hurt) = n.hurt {
+                amount = hurt(self, amount, attacker);
+            }
+        }
+        if amount <= 0 {
+            return;
+        }
         self.health -= amount;
         self.hurt_flash = 0.4;
         self.since_damage = 0.0;
@@ -1762,6 +1789,13 @@ impl Session {
     /// flag) is for. Always true in a world of your own.
     pub fn may(&self, perm: u8) -> bool {
         self.perms.map_or(true, |f| f & perm != 0)
+    }
+
+    /// How distant terrain is made (the LOD settings).
+    pub fn set_lod(&mut self, real: i32, trees: i32, detail: i32) {
+        self.world.far_real = real;
+        self.world.far_trees = trees;
+        self.world.far_detail = detail;
     }
 
     pub fn set_mode(&mut self, mode: GameMode) {
@@ -2010,6 +2044,7 @@ impl Session {
         // whatever else moves by itself; the others are told where it all is.
         let host = self.runs_the_world();
         self.mobs.rider = self.riding_mob.map(|id| (id, c.input.clone(), self.player.yaw));
+        self.mobs.last_biter = None;
         let bitten = if host {
             self.mobs.update(dt, &self.world, self.player.pos, self.time, hunted, held_item)
         } else {
@@ -2283,6 +2318,7 @@ impl Session {
                     struck = true;
                     self.cooldown[0] = 0.35;
                     let kind = self.mobs.list[i].kind;
+                    let at = self.mobs.list[i].body.pos;
                     let killed = self.strike(i, if creative { 1000 } else { item.x.damage.max(3) }, eye);
                     if let (true, false, Some((drop, n))) = (killed, creative, reg().entities[kind].drop) {
                         self.inv.add(drop as u16, n);
@@ -2291,6 +2327,7 @@ impl Session {
                     self.fire("hit", &reg().entities[kind].id);
                     if killed {
                         self.fire("kill", &reg().entities[kind].id);
+                        self.mob_killed(kind, at);
                     }
                 }
             }

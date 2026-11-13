@@ -74,6 +74,10 @@ pub struct Native {
     pub terrain_form: Option<fn(ui: &mut Ui, x: f32, y: f32, w: f32, h: f32, step: f32) -> f32>,
     /// The world kind the form now describes.
     pub terrain_chosen: Option<fn() -> String>,
+    /// A dimension other than the world's own is being entered: the land of
+    /// its own, if this code has one for that name. `None` leaves the
+    /// dimension to the game (its declared kind) and to the world's source.
+    pub dimension_terrain: Option<fn(id: &str) -> Option<crate::worldgen::Source>>,
 
     // ---- a world being played
     /// A world (or another dimension of it) was opened: load what this
@@ -94,6 +98,15 @@ pub struct Native {
     pub command: Option<fn(g: &mut Session, words: &[&str]) -> Option<String>>,
     /// An `/if` condition the game does not know.
     pub condition: Option<fn(g: &mut Session, words: &[&str]) -> Option<bool>>,
+    /// The player killed a creature: its kind (an index into the registry's
+    /// entities) and where it was. Not called for creatures that die some
+    /// other way.
+    pub killed: Option<fn(g: &mut Session, kind: usize, at: [f64; 3])>,
+    /// The player is about to be hurt by `amount`. `attacker` is the kind of
+    /// creature that bit them, when a creature did. Returns the amount to
+    /// apply (armour makes it smaller; 0 cancels it). Called in survival
+    /// only, and only for damage above zero.
+    pub hurt: Option<fn(g: &mut Session, amount: i32, attacker: Option<usize>) -> i32>,
     /// A message another player's copy of this code sent with
     /// `Session::send_ext`.
     pub message: Option<fn(g: &mut Session, key: &str, text: &str)>,
@@ -141,6 +154,7 @@ impl Native {
         terrain_label: None,
         terrain_form: None,
         terrain_chosen: None,
+        dimension_terrain: None,
         open: None,
         save: None,
         reload: None,
@@ -148,6 +162,8 @@ impl Native {
         interact: None,
         command: None,
         condition: None,
+        killed: None,
+        hurt: None,
         message: None,
         share: None,
         storage: None,
