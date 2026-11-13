@@ -429,6 +429,7 @@ extern "system" {
     fn FindClose(handle: *mut c_void) -> c_int;
     fn DeleteFileA(name: *const c_char) -> c_int;
     fn CreateDirectoryA(name: *const c_char, security: *mut c_void) -> c_int;
+    fn GetFileAttributesA(name: *const c_char) -> u32;
 }
 
 #[cfg(target_os = "linux")]
@@ -608,6 +609,25 @@ pub fn make_dir(path: &str) -> bool {
     #[cfg(target_arch = "wasm32")]
     {
         let _ = p;
+        false
+    }
+}
+
+/// Whether `path` is a folder that can be opened.
+pub fn is_dir(path: &str) -> bool {
+    #[cfg(unix)]
+    {
+        return read_dir_exists(if path.is_empty() { "." } else { path });
+    }
+    #[cfg(windows)]
+    unsafe {
+        let p = cstr(if path.is_empty() { "." } else { path });
+        let a = GetFileAttributesA(p.as_ptr() as *const c_char);
+        return a != 0xFFFF_FFFF && a & 0x10 != 0;
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = path;
         false
     }
 }
