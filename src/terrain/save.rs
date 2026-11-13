@@ -45,6 +45,17 @@ pub fn decode(d: &[u8], remap: &[Block]) -> Option<ChunkData> {
         let b = remap.get(saved).copied().unwrap_or(0);
         blocks.resize(blocks.len() + n, b);
     }
+    // A chunk saved when worlds were half as high: each of its columns
+    // becomes the lower half of a column now.
+    let old_height = crate::chunk::OLD_CH as usize;
+    let height = crate::chunk::CH as usize;
+    if blocks.len() == VOLUME / height * old_height {
+        let mut tall = alloc::vec![0 as Block; VOLUME];
+        for (column, saved) in blocks.chunks_exact(old_height).enumerate() {
+            tall[column * height..column * height + old_height].copy_from_slice(saved);
+        }
+        return Some(ChunkData { blocks: tall });
+    }
     if blocks.len() != VOLUME {
         return None;
     }
@@ -341,6 +352,7 @@ impl<F: FileIo> ChunkStore for RegionStore<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::block::AIR;
     use crate::worldgen;
     use std::collections::HashMap;
 
@@ -390,6 +402,27 @@ mod tests {
         assert_eq!(s2.load(-1, -17).unwrap(), a);
         assert_eq!(s2.load(15, 0).unwrap(), b);
         assert!(s2.load(14, 0).is_none());
+    }
+
+    #[test]
+    fn chunks_saved_at_the_old_height_are_read_into_the_bottom_of_tall_ones() {
+        use crate::chunk::{CH, CW, OLD_CH};
+        // An old chunk: stone up to y = 60 in every column, a lamp on top
+        // of one of them, written the way the old game wrote it.
+        let (stone, lamp) = (reg().wk.stone, reg().block("lamp").unwrap());
+        let mut old = alloc::vec![0 as Block; (CW * CW * OLD_CH) as usize];
+        for column in 0..(CW * CW) as usize {
+            for y in 0..=60 {
+                old[column * OLD_CH as usize + y] = stone;
+            }
+        }
+        old[(3 * CW + 5) as usize * OLD_CH as usize + 61] = lamp;
+        let bytes = encode(&ChunkData { blocks: old });
+        let identity: Vec<Block> = (0..reg().blocks.len() as Block).collect();
+        let c = decode(&bytes, &identity).expect("an old chunk must still load");
+        assert_eq!(c.blocks.len(), VOLUME);
+        assert_eq!((c.get(3, 60, 5), c.get(3, 61, 5), c.get(3, 62, 5)), (stone, lamp, AIR));
+        assert_eq!((c.get(15, 0, 15), c.get(15, 60, 15), c.get(15, 61, 15), c.get(15, CH - 1, 15)), (stone, stone, AIR, AIR));
     }
 
     #[test]

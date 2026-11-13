@@ -191,7 +191,7 @@ pub fn invented_column(seed: u32, x: i32, z: i32) -> Column {
     // Hills flatten out near the shore so beaches stay gentle.
     h += hill * 16.0 * clampf(0.35 + cont * 2.0, 0.25, 1.0);
     h += peak * (12.0 + rough * 62.0) * clampf(cont * 3.0 + 0.4, 0.0, 1.0);
-    let mut height = (h as i32).clamp(4, CH - 14);
+    let mut height = (h as i32).clamp(4, LAND_TOP);
 
     let temp = stretch(fbm2(seed ^ 0x55, x, z, 512, 2), 3.2) - (height - SEA).max(0) as f32 * 0.004;
     let wet = stretch(fbm2(seed ^ 0x66, x, z, 384, 2), 3.0);
@@ -236,7 +236,7 @@ pub fn invented_column(seed: u32, x: i32, z: i32) -> Column {
         // Badlands rise in terraces.
         Biome::Badlands => {
             let lift = (rough * 26.0) as i32;
-            height = (height + lift - lift % 4).min(CH - 14);
+            height = (height + lift - lift % 4).min(LAND_TOP);
         }
         _ => {}
     }
@@ -291,6 +291,10 @@ pub fn is_cave(seed: u32, x: i32, y: i32, z: i32, surface: i32) -> bool {
     // Rare large caverns deep down.
     y < 34 && noise3(seed ^ 0x99, x, y, z, 36, 20) > 0.80
 }
+
+/// The highest invented ground goes. (Worlds are taller than this: the
+/// room above is for building, and for the real mountains of Earth worlds.)
+const LAND_TOP: i32 = 114;
 
 /// What a stretch of cave is like. Caves change character from region to
 /// region and with depth, as the surface does.

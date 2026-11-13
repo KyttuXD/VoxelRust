@@ -1,4 +1,4 @@
-//! A chunk: a 16 x 128 x 16 column of blocks.
+//! A chunk: a 16 x 256 x 16 column of blocks.
 
 use crate::block::Block;
 use alloc::vec::Vec;
@@ -6,12 +6,15 @@ use alloc::vec::Vec;
 /// Chunk width and depth in blocks.
 pub const CW: i32 = 16;
 /// World height in blocks.
-pub const CH: i32 = 128;
+pub const CH: i32 = 256;
+/// The height worlds had before they were made taller; chunks saved then
+/// are that high and are stood in the bottom of a new one when read.
+pub const OLD_CH: i32 = 128;
 pub const VOLUME: usize = (CW * CW * CH) as usize;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ChunkData {
-    /// Indexed `(x * 16 + z) * 128 + y`, so each vertical column is contiguous.
+    /// Indexed `(x * 16 + z) * CH + y`, so each vertical column is contiguous.
     pub blocks: Vec<Block>,
 }
 
