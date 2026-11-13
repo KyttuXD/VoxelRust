@@ -21,6 +21,7 @@ import io
 import json
 import math
 import os
+import re
 import sys
 import uuid
 
@@ -164,6 +165,7 @@ class Model:
         self.id, self.seed, self.noise = mid, seed, noise
         self.parts = []
         self.bones = {"Body": ((0, 0, 0), None)}
+        self.jointed = False
 
     def bone(self, name, pivot, parent="Body"):
         self.bones[name] = (tuple(pivot), parent)
@@ -189,6 +191,50 @@ class Model:
         mrot = (rot[0], -rot[1], -rot[2]) if rot else None
         morg = (-origin[0], origin[1], origin[2]) if origin else None
         self.box(name + "-r", br, mlo, mhi, shader, decal, mrot, morg, skip, noise)
+
+    def rename_bone(self, old, new):
+        self.bones = {(new if b == old else b): (piv, new if par == old else par) for b, (piv, par) in self.bones.items()}
+        for p in self.parts:
+            if p.bone == old:
+                p.bone = new
+
+    def split(self, part, axis, k):
+        """Cuts an already painted box in two, k texels from its low end along
+        axis, sharing out its texture so that it looks the same as before.
+        Returns the (low, high) pieces, which take the box's place in the model."""
+        n = max(1, int(round(part.hi[axis] - part.lo[axis])))
+        assert 0 < k < n, (self.id, part.name, axis, k, n)
+        at = round(part.lo[axis] + k * (part.hi[axis] - part.lo[axis]) / n, 6)
+        lo_t, hi_t, line = {}, {}, None
+        for f, px in part.tex.items():
+            tl, tr, bl = face_frame(f, part.lo, part.hi)
+            if tr[axis] != tl[axis]:
+                asc = tr[axis] > tl[axis]
+                lo_t[f] = [row[:k] if asc else row[n - k:] for row in px]
+                hi_t[f] = [row[k:] if asc else row[:n - k] for row in px]
+                line = line or [row[-1] if asc else row[0] for row in lo_t[f]]
+            elif bl[axis] != tl[axis]:
+                asc = bl[axis] > tl[axis]
+                lo_t[f] = px[:k] if asc else px[n - k:]
+                hi_t[f] = px[k:] if asc else px[:n - k]
+                line = line or list(lo_t[f][-1] if asc else lo_t[f][0])
+            else:
+                (lo_t if tl[axis] == part.lo[axis] else hi_t)[f] = px
+        pieces = []
+        for tex, cap, end in ((lo_t, ("east", "up", "south")[axis], "hi"), (hi_t, ("west", "down", "north")[axis], "lo")):
+            q = Part()
+            q.__dict__.update(part.__dict__)
+            if end == "hi":
+                q.hi = tuple(at if a == axis else v for a, v in enumerate(part.hi))
+            else:
+                q.lo = tuple(at if a == axis else v for a, v in enumerate(part.lo))
+            if line:  # the cut end, seen only when the joint bends: one texel of the colour there
+                tex[cap] = [[tuple(sum(c[i] for c in line) // len(line) for i in range(3)) + (255,)]]
+            q.tex = tex
+            pieces.append(q)
+        i = self.parts.index(part)
+        self.parts[i:i + 1] = pieces
+        return pieces
 
     # -- texture
 
@@ -270,6 +316,9 @@ class Model:
 
     def to_json(self):
         self.paint()
+        if not self.jointed and self.id not in RIGID:
+            self.jointed = True
+            articulate(self)
         for p in self.parts:
             p.uv = {}
         self.pack()
@@ -329,6 +378,182 @@ def wheel(m, name, bone, x0, x1, cy, cz, r, tire=(38, 38, 42), hub=(150, 150, 15
 
     m.box(name + "-a", bone, (x0, cy - r, cz - r + c), (x1, cy + r, cz + r - c), sh)
     m.box(name + "-b", bone, (x0 + 0.1, cy - r + c, cz - r), (x1 - 0.1, cy + r - c, cz + r), sh)
+
+
+# ---------------------------------------------------------------- joints
+#
+# Limbs are modelled as straight boxes; articulate() then gives every model
+# its knees, elbows and tail joints in one place. It runs after painting, so a
+# box cut in two at a joint keeps exactly the texels it had and the model looks
+# the same at rest. The lower part of each limb moves to a child bone whose
+# pivot is the joint: `Shin-FL` under `Leg-FL`, `Forearm-L` under `Arm-L`,
+# `tail-b` under `tail-a`, `neck-b` under `neck`.
+
+RIGID = {"boat", "cargo_boat", "cart", "chest_cart", "plane", "car", "spellbook"}  # models articulate() leaves alone
+MIN_LIMB = 4.0   # legs and arms no longer than this stay in one piece
+MIN_TAIL = 6.0   # and tails shorter than this
+MIN_NECK = 9.0
+
+
+def _same_frame(p, q):
+    return (not any(p.rot) and not any(q.rot)) or (p.rot == q.rot and p.origin == q.origin)
+
+
+def _unrot(pt, part):
+    """pt in the unrotated frame of a (rotated) box."""
+    if not any(part.rot):
+        return tuple(pt)
+    r, o = rot_matrix(part.rot), part.origin
+    q = [pt[k] - o[k] for k in range(3)]
+    return tuple(sum(r[k][i] * q[k] for k in range(3)) + o[i] for i in range(3))
+
+
+def _centre(p):
+    return tuple((p.lo[a] + p.hi[a]) / 2 for a in range(3))
+
+
+def _span(p, main, a):
+    """The extent of p along axis a of main's frame."""
+    if _same_frame(p, main):
+        return p.lo[a], p.hi[a]
+    c = _unrot(rotp(_centre(p), p.rot, p.origin) if any(p.rot) else _centre(p), main)[a]
+    half = (p.hi[a] - p.lo[a]) / 2
+    return c - half, c + half
+
+
+def joint(m, bone, child, explicit=None, axis=None, min_len=0.0, prefix="lower", fixed=(), cut=True):
+    """Splits what hangs on `bone` in two at a joint and moves the far part to
+    the new bone `child`, whose pivot is the joint. If a box whose name matches
+    the `explicit` pattern is there, that box is the far segment (a modelled
+    shin, forearm, ...); otherwise the longest box is cut in half way between
+    the bone's pivot and the limb's far end. Returns whether it did."""
+    parts = [p for p in m.parts if p.bone == bone]
+    if not parts or child in m.bones:
+        return False
+    vol = lambda p: (p.hi[0] - p.lo[0]) * (p.hi[1] - p.lo[1]) * (p.hi[2] - p.lo[2])
+    dim = lambda p, a: p.hi[a] - p.lo[a]
+    ex = sorted((p for p in parts if explicit and re.match(explicit, p.name)), key=vol)
+    if ex:
+        main = ex[-1]
+    elif not cut:
+        return False
+    elif axis is None:
+        main = max(parts, key=lambda p: max(dim(p, a) for a in range(3)))
+    else:
+        main = max(parts, key=lambda p: dim(p, axis))
+    if main.name.startswith(fixed):
+        return False
+    a = axis if axis is not None else max(range(3), key=lambda k: dim(main, k))
+    span = {id(p): _span(p, main, a) for p in parts}
+    mid = lambda p: sum(span[id(p)]) / 2
+    mn, mx = min(v[0] for v in span.values()), max(v[1] for v in span.values())
+    if mx - mn <= min_len:
+        return False
+    hip = min(max(_unrot(m.bones[bone][0], main)[a], mn), mx)
+    root_hi = abs(hip - mx) < abs(hip - mn)   # is the limb's root at its high end?
+    beyond = (lambda v, j: v <= j) if root_hi else (lambda v, j: v >= j)
+    j, up = None, None
+    if ex:
+        uppers = [p for p in parts if p not in ex and not beyond(mid(p), mid(main))]
+        if not uppers:
+            return False
+        up = max(uppers, key=vol)
+        if not _same_frame(up, main):
+            # The far segment has a rotation of its own, about the joint.
+            pivot = main.origin
+            lower = [p for p in parts if p is main or (any(p.rot) and _same_frame(p, main))]
+        else:
+            o0, o1 = max(main.lo[a], up.lo[a]), min(main.hi[a], up.hi[a])
+            j = (o0 + o1) / 2 if o0 <= o1 else (main.hi[a] if root_hi else main.lo[a])
+            lower = [main]
+    else:
+        n = max(1, int(round(dim(main, a))))
+        if n < 2:
+            return False
+        far = mn if root_hi else mx
+        root = main.hi[a] if root_hi else main.lo[a]
+        want = abs(root - (hip + far) / 2)
+        k = min(range(1, n), key=lambda k: (abs(k * dim(main, a) / n - want), k))   # texels from the root end
+        lo, hi = m.split(main, a, n - k if root_hi else k)
+        near, farp = (hi, lo) if root_hi else (lo, hi)
+        farp.name = prefix + "-" + re.sub(r"^(leg|arm)-", "", main.name)
+        j = near.lo[a] if root_hi else near.hi[a]
+        lower = [farp]
+        up = main = near
+    if j is not None:
+        c = list(_centre(lower[0]))
+        c[a] = j
+        pivot = rotp(c, main.rot, main.origin) if any(main.rot) else tuple(round(v, 4) for v in c)
+        for p in parts:
+            if p is up or p in lower or not any(p is q for q in m.parts):
+                continue
+            n = max(1, int(round(dim(p, a))))
+            if _same_frame(p, main) and n >= 2 and p.lo[a] + 0.9 < j < p.hi[a] - 0.9:
+                # It runs across the joint: cut it there too (at its nearest texel edge).
+                k = min(range(1, n), key=lambda k: (abs(p.lo[a] + k * dim(p, a) / n - j), k))
+                lo, hi = m.split(p, a, k)
+                farp = lo if root_hi else hi
+                farp.name = p.name + "-b"
+                lower.append(farp)
+            elif beyond(mid(p), j):
+                lower.append(p)
+    m.bone(child, pivot, bone)
+    for p in lower:
+        p.bone = child
+    if j is not None:
+        for b, (piv, par) in list(m.bones.items()):
+            if par == bone and b != child and beyond(_unrot(piv, main)[a], j) and _unrot(piv, main)[a] != j:
+                m.bones[b] = (piv, child)
+    return True
+
+
+def articulate(m):
+    """Knees, elbows, tail and neck joints for a painted model (see above)."""
+    for b in list(m.bones):
+        leg = re.match(r"Leg-(.+)$", b) or re.match(r"([LR])-Leg$", b)
+        arm = re.match(r"Arm-(.+)$", b) or re.match(r"([LR])-Arm$", b)
+        if leg:
+            # A folded hind leg (a haunch sitting on a long foot) has no knee to bend.
+            joint(m, b, "Shin-" + leg.group(1), r"(shin|tibia)", 1, MIN_LIMB, "shin", fixed=("haunch", "thigh"))
+        elif arm:
+            joint(m, b, "Forearm-" + arm.group(1), r"(forearm|fist)-[lr]$", None, MIN_LIMB, "forearm")
+
+    # Tails. The older models have theirs as plain boxes on the body.
+    if not any(b.startswith("tail") for b in m.bones):
+        boxes = [p for p in m.parts if p.bone == "Body" and re.match(r"tail(-[a-c]|-fin|-tuft|-brush)?$", p.name)]
+        base = [p for p in boxes if p.name in ("tail", "tail-a")]
+        if base and _tail_ok(boxes, base[0], base[0].name == "tail"):
+            p = base[0]
+            a = max((1, 2), key=lambda k: p.hi[k] - p.lo[k])
+            end = list(_centre(p))
+            end[a] = p.lo[a] if a == 2 else p.hi[a]   # tails leave the body backwards, or hang from it
+            m.bone("tail-a", p.origin if any(p.rot) else end)
+            for q in boxes:
+                q.bone = "tail-a"
+    elif "tail" in m.bones and "tail-a" not in m.bones:
+        boxes = [p for p in m.parts if p.bone == "tail"]
+        if boxes and _tail_ok(boxes, max(boxes, key=lambda p: max(p.hi[k] - p.lo[k] for k in (1, 2))), True):
+            m.rename_bone("tail", "tail-a")
+    if "tail-a" in m.bones and "tail-b" not in m.bones:
+        boxes = [p for p in m.parts if p.bone == "tail-a"]
+        main = max(boxes, key=lambda p: max(p.hi[k] - p.lo[k] for k in (1, 2)))
+        a = max((1, 2), key=lambda k: main.hi[k] - main.lo[k])
+        if joint(m, "tail-a", "tail-b", r"tail-b$", a, 0.0, "tail-b"):
+            joint(m, "tail-b", "tail-c", r"tail-c$", a, cut=False)
+
+    # Long necks.
+    if "neck" in m.bones and "neck-b" not in m.bones:
+        boxes = [p for p in m.parts if p.bone == "neck"]
+        if boxes and all(_same_frame(p, boxes[0]) for p in boxes):
+            joint(m, "neck", "neck-b", r"neck-b$", 1, MIN_NECK, "neck-b")
+
+
+def _tail_ok(boxes, main, single):
+    """Is this tail worth a second joint? Long, thin, and all of one piece."""
+    if not single:   # modelled in segments already: tail-a, tail-b, ...
+        return sum(max(p.hi[k] - p.lo[k] for k in range(3)) for p in boxes) >= MIN_TAIL
+    length = max(main.hi[k] - main.lo[k] for k in (1, 2))
+    return length >= MIN_TAIL and main.hi[0] - main.lo[0] < length and all(_same_frame(p, main) for p in boxes)
 
 
 # ---------------------------------------------------------------- animals
