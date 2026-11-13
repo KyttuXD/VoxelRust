@@ -166,7 +166,8 @@ impl Player {
                 }
                 let blocked = self.pos;
                 // Try again from one step higher.
-                let grounded = self.on_ground || was_on_ground;
+                // Swimmers climb out over a shore just as walkers step up to a ledge.
+                let grounded = self.on_ground || was_on_ground || self.in_water;
                 let mut stepped = false;
                 if grounded && !self.flying {
                     self.pos = before;
@@ -338,6 +339,32 @@ mod tests {
         let mut p = Player::new([0.5, 50.0, 0.5]);
         p.update(0.0, &Input::default(), &solid);
         assert_eq!(p.pos, [0.5, 50.0, 0.5]);
+    }
+
+    #[test]
+    fn a_swimmer_climbs_out_onto_a_shore_one_block_up() {
+        // A pool at x < 10, water at y = 10; land beyond it at x >= 10, one
+        // block higher, with a player swimming toward it.
+        let stone = reg().wk.stone;
+        let water = reg().wk.water;
+        let w = move |x: i32, y: i32, z: i32| -> Block {
+            if y < 10 {
+                stone
+            } else if y == 10 && x < 10 {
+                water
+            } else if y == 10 && x >= 10 {
+                stone
+            } else {
+                0
+            }
+        };
+        let mut p = Player::new([8.5, 10.0, 5.5]);
+        p.yaw = -crate::math::PI * 0.5; // facing +x
+        // Swim toward the shore, paddling up now and then.
+        let out = Input { forward: 1.0, jump: true, ..Default::default() };
+        run(&mut p, out, 4.0, &w);
+        assert!(p.pos[0] > 10.0, "still in the pool at x = {}", p.pos[0]);
+        assert!(p.pos[1] >= 11.0 - 1e-3, "not up on the shore: y = {}", p.pos[1]);
     }
 
     #[test]
