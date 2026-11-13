@@ -3869,6 +3869,7 @@ fn run_server(opts: &Opts, base: &str, pack_text: &[u8]) -> Result<(), String> {
     // as it is found, and the server restarts into it once nobody is playing.
     sys::handle_termination(on_terminate);
     let restart_exe = sys::exe_path();
+    #[cfg(not(target_arch = "wasm32"))]
     let _ = crate::update::consume_restart_marker(base);
     if !opts.no_update {
         let (scratch, install) = (String::from(base), true);
@@ -3879,6 +3880,7 @@ fn run_server(opts: &Opts, base: &str, pack_text: &[u8]) -> Result<(), String> {
     logf!("voxelrust: players join with:  voxelrust --join {}:{}", address, server.port());
     if server_loop(server, edits_path, false) {
         logf!("voxelrust: restarting into the new version");
+        #[cfg(not(target_arch = "wasm32"))]
         crate::update::restart(&restart_exe, base);
     }
     Ok(())

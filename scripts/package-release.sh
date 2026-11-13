@@ -37,13 +37,16 @@ export VOXELRUST_SEQ
 # build with the same number). VOXELRUST_ALLOW_SEQ_DECREASE=1 overrides this,
 # for a deliberate rollback.
 published="$(mktemp)"
-code="$(curl -sS -o "$published" -w '%{http_code}' "https://github.com/KyttuXD/VoxelRust/releases/download/nightly/nightly.txt" || echo 000)"
+code="$(curl -sSL -o "$published" -w '%{http_code}' "https://github.com/KyttuXD/VoxelRust/releases/download/nightly/nightly.txt" || echo 000)"
 case "$code" in
   404) echo "no release is published yet; this will be the first" ;;
   200)
     pub_commit="$(sed -n 's/^commit //p' "$published" | head -1)"
     pub_seq="$(sed -n 's/^seq //p' "$published" | head -1)"
-    case "$pub_seq" in ''|*[!0-9]*) echo "refusing: the published list has no release number." >&2; exit 1 ;; esac
+    case "$pub_seq" in
+      '') echo "the published list is from before release numbers; this one will be the first with a number"; pub_seq=0 ;;
+      *[!0-9]*) echo "refusing: the published release number is not a number." >&2; exit 1 ;;
+    esac
     if [ "$SEQ" -lt "$pub_seq" ] || { [ "$SEQ" -eq "$pub_seq" ] && [ "$COMMIT" != "$pub_commit" ]; }; then
       if [ "${VOXELRUST_ALLOW_SEQ_DECREASE:-}" != 1 ]; then
         echo "refusing: release $SEQ ($COMMIT) is not newer than the published $pub_seq ($pub_commit)." >&2
