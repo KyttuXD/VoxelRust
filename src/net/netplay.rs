@@ -12,6 +12,8 @@ pub struct Remote {
     pub pos: [f64; 3],
     pub yaw: f32,
     pub pitch: f32,
+    /// The item in their hand: index plus one, 0 for none.
+    pub held: u16,
     /// Walk animation, driven by how far they move between updates.
     pub phase: f32,
     pub stride: f32,
@@ -48,7 +50,7 @@ pub struct Client {
     send_timer: f32,
     /// Time since a position was last sent at all.
     refresh_timer: f32,
-    last_sent: ([f64; 3], f32, f32),
+    last_sent: ([f64; 3], f32, f32, u16),
     pub alive: bool,
 }
 
@@ -77,7 +79,7 @@ impl Client {
         for _ in 0..80 {
             match inbox.next() {
                 Next::Msg(Msg::Welcome { id, seed, time, kind }) => {
-                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0), alive: true };
+                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0), alive: true };
                     return Ok((c, Welcome { seed, time, kind }));
                 }
                 Next::Msg(Msg::Refuse { reason }) => return Err(reason.to_ascii_uppercase()),
@@ -125,15 +127,16 @@ impl Client {
                 Next::Msg(m) => match m {
                     Msg::Join { id, name } => {
                         events.push(Event::Chat(alloc::format!("{} JOINED", name.to_ascii_uppercase())));
-                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, phase: 0.0, stride: 0.0, seen: false });
+                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, seen: false });
                     }
                     Msg::Leave { id } => {
                         if let Some(p) = self.players.remove(&id) {
                             events.push(Event::Chat(alloc::format!("{} LEFT", p.name.to_ascii_uppercase())));
                         }
                     }
-                    Msg::Move { id, pos, yaw, pitch } => {
+                    Msg::Move { id, pos, yaw, pitch, held } => {
                         if let Some(p) = self.players.get_mut(&id) {
+                            p.held = held;
                             let (dx, dz) = ((pos[0] - p.pos[0]) as f32, (pos[2] - p.pos[2]) as f32);
                             let step = crate::math::sqrtf(dx * dx + dz * dz);
                             if p.seen {
@@ -179,18 +182,18 @@ impl Client {
 
     /// Report where we are: ten times a second while moving, and every
     /// couple of seconds regardless.
-    pub fn send_move(&mut self, dt: f32, pos: [f64; 3], yaw: f32, pitch: f32) {
+    pub fn send_move(&mut self, dt: f32, pos: [f64; 3], yaw: f32, pitch: f32, held: u16) {
         self.send_timer += dt;
         self.refresh_timer += dt;
-        let changed = self.last_sent != (pos, yaw, pitch);
+        let changed = self.last_sent != (pos, yaw, pitch, held);
         if self.send_timer < 0.1 || (!changed && self.refresh_timer < 2.0) {
             return;
         }
         self.send_timer = 0.0;
         self.refresh_timer = 0.0;
-        self.last_sent = (pos, yaw, pitch);
+        self.last_sent = (pos, yaw, pitch, held);
         let id = self.id;
-        self.send(&Msg::Move { id, pos, yaw, pitch });
+        self.send(&Msg::Move { id, pos, yaw, pitch, held });
     }
 
     pub fn send_block(&mut self, x: i32, y: i32, z: i32, block: u16) {
@@ -300,7 +303,7 @@ mod tests {
         // Someone joining later is told where a player who is standing
         // still already is.
         let (mut c, _) = Client::connect("127.0.0.1", port, "Cat").unwrap();
-        a.send_move(1.0, [3.5, 70.0, 9.5], 0.25, 0.0);
+        a.send_move(1.0, [3.5, 70.0, 9.5], 0.25, 0.0, 0);
         pump(&mut a, 60);
         drop(c);
         pump(&mut a, 60);
@@ -313,7 +316,7 @@ mod tests {
         pump(&mut b, 100);
 
         // Movement, a live edit, and chat all cross over.
-        a.send_move(1.0, [10.5, 64.0, -2.25], 1.0, -0.5);
+        a.send_move(1.0, [10.5, 64.0, -2.25], 1.0, -0.5, 0);
         a.send_block(5, 60, 5, 0);
         a.send_chat("hello bob");
         pump(&mut a, 40);

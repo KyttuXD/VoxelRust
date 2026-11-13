@@ -327,6 +327,8 @@ struct App {
     help_timer: f32,
     /// Camera behind the player instead of in their head.
     third_person: bool,
+    /// In the third-person view, from the front (the camera faces the player).
+    third_front: bool,
     /// Drop the text typed by the key press that opened a text box.
     swallow_text: bool,
     /// F1: no HUD at all (for looking and for pictures).
@@ -679,7 +681,16 @@ impl App {
                 } else if sc == k_fly {
                     self.leave = true;
                 } else if sc == key::F5 {
-                    self.third_person = !self.third_person;
+                    // F5 cycles: first person, behind, in front.
+                    if !self.third_person {
+                        self.third_person = true;
+                        self.third_front = false;
+                    } else if !self.third_front {
+                        self.third_front = true;
+                    } else {
+                        self.third_person = false;
+                        self.third_front = false;
+                    }
                 } else if sc == key::F1 {
                     self.hud_hidden = !self.hud_hidden;
                 } else if (key::N1..=key::N9).contains(&sc) {
@@ -968,12 +979,14 @@ impl App {
                 eye[1] += (sinf(g.clock * 61.0) * g.shake * 0.18) as f64;
             }
             if self.third_person {
-                // Pull the camera back, but not through walls.
-                let back = crate::math::forward(g.player.yaw, g.player.pitch) * -1.0;
+                // Pull the camera back (or, from the front, out ahead), but not through walls.
+                let back = crate::math::forward(g.player.yaw, g.player.pitch) * if self.third_front { 1.0 } else { -1.0 };
                 let room = g.world.raycast(eye, back, 4.5).map_or(4.0, |hit| (hit.dist - 0.4).clamp(0.3, 4.0));
                 eye = [eye[0] + (back.x * room) as f64, eye[1] + (back.y * room) as f64, eye[2] + (back.z * room) as f64];
             }
-            let cam = Camera { pos: eye, yaw: g.player.yaw, pitch: g.player.pitch, fov: self.settings.fov as f32 };
+            // From the front the camera turns round to face the player.
+            let (cam_yaw, cam_pitch) = if self.third_person && self.third_front { (g.player.yaw + PI, -g.player.pitch) } else { (g.player.yaw, g.player.pitch) };
+            let cam = Camera { pos: eye, yaw: cam_yaw, pitch: cam_pitch, fov: self.settings.fov as f32 };
             let head = g.world.get(floord(eye[0]), floord(eye[1]), floord(eye[2]));
             underwater = reg().kind[head as usize] == Kind::Liquid;
             let env = Env {
@@ -1009,6 +1022,20 @@ impl App {
                 r.draw_funnel([(x as f64 - cam.pos[0]) as f32, (ground - cam.pos[1]) as f32, (z as f64 - cam.pos[2]) as f32], g.clock);
             }
             r.finish_world(&cam, &env);
+            // The hand and what it holds, in their own close-up pass.
+            if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried {
+                if let Some(hand) = reg().models.iter().position(|m| m.id == "hand") {
+                    let swing = hand_swing(g);
+                    let v = g.player.vel;
+                    let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
+                    let bob = if g.player.on_ground { sinf(g.clock * 9.0) * 0.014 * (speed / 4.4).min(1.0) } else { 0.0 };
+                    let mut items = Vec::new();
+                    let held = crate::client::hand::held_of(g.held().map(|h| h.0));
+                    crate::client::hand::first_person(held, crate::client::hand::white_tile(), swing, bob, &mut items);
+                    let to_view = |p: [f32; 3]| crate::client::hand::arm_point(p, swing, bob);
+                    r.draw_first_person(hand, self.skin_tex, cam.fov, 0.7, &to_view, &items);
+                }
+            }
         } else {
             r.clear([0.36, 0.56, 0.86]);
         }
@@ -1174,6 +1201,11 @@ impl App {
                 let pose = crate::model::Pose { phase: p.phase, stride: p.stride, head_pitch: -p.pitch * 180.0 / PI, head_yaw: 0.0, ..Default::default() };
                 r.tex_override = self.remote_skins.get(id).copied().unwrap_or(0);
                 r.draw_model(model, &pose, at, p.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                // What they hold, out to the right of the body.
+                let held = if p.held == 0 { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(Some(p.held as usize - 1)) };
+                let mut held_quads = Vec::new();
+                crate::client::hand::on_body(held, crate::client::hand::white_tile(), 0.0, at, p.yaw, crate::player::HEIGHT as f32, &mut held_quads);
+                r.draw_quads(&held_quads, None);
                 if let Some((sx, sy)) = r.project(cam, [at[0], at[1] + 2.15, at[2]]) {
                     tags.push((sx, sy, p.name.to_ascii_uppercase()));
                 }
@@ -1193,6 +1225,10 @@ impl App {
                 let l = (light_at(g.player.pos) * 255.0) as u8;
                 r.tex_override = self.skin_tex;
                 r.draw_model(model, &pose, rel(g.player.pos), g.player.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                let held = crate::client::hand::held_of(g.held().map(|h| h.0));
+                let mut held_quads = Vec::new();
+                crate::client::hand::on_body(held, crate::client::hand::white_tile(), hand_swing(g), rel(g.player.pos), g.player.yaw, crate::player::HEIGHT as f32, &mut held_quads);
+                r.draw_quads(&held_quads, None);
             }
         }
     }
@@ -2496,6 +2532,12 @@ fn label_coloured(r: &mut Renderer, x: f32, y: f32, s: f32, line: &str, alpha: u
     }
 }
 
+/// How far the hand has swung: a blow or a use, 0..1 (the cooldowns that
+/// follow them).
+fn hand_swing(g: &session::Session) -> f32 {
+    (g.cooldown[0] / 0.35).max(g.cooldown[1] / 0.5).clamp(0.0, 1.0)
+}
+
 fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Color) {
     let it = &reg().items[index];
     // A spawn egg shows the creature itself, standing in half an eggshell.
@@ -2832,7 +2874,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         tune_timer: 0.0,
         show_debug: opts.show.contains("debug"),
         help_timer: 0.0,
-        third_person: opts.show.contains("third"),
+        third_person: opts.show.contains("third") || opts.show.contains("front"),
+        third_front: opts.show.contains("front"),
         swallow_text: false,
         hud_hidden: false,
         ui_clock: 0.0,

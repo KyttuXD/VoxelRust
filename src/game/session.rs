@@ -1410,9 +1410,10 @@ impl Session {
         for c in self.chat.iter_mut() {
             c.1 -= dt;
         }
+        let held = self.held().map_or(0, |h| h.0 as u16 + 1);
         let polled = match self.net.as_mut() {
             Some(n) => {
-                n.send_move(dt, self.player.pos, self.player.yaw, self.player.pitch);
+                n.send_move(dt, self.player.pos, self.player.yaw, self.player.pitch, held);
                 for (x, y, z, b) in self.world.edit_log.drain(..) {
                     n.send_block(x, y, z, b);
                 }

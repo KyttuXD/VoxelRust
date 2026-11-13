@@ -40,7 +40,7 @@ struct Conn {
     name: String,
     joined: bool,
     /// Where this player last said they were, for telling newcomers.
-    last_move: Option<([f64; 3], f32, f32)>,
+    last_move: Option<([f64; 3], f32, f32, u16)>,
     skin: Vec<u8>,
     /// Ticks since anything arrived; idle strangers are dropped.
     quiet: u32,
@@ -291,8 +291,8 @@ impl Server {
                             if !other.skin.is_empty() {
                                 out.extend(Msg::Skin { id: other.id, png: other.skin.clone() }.encode());
                             }
-                            if let Some((pos, yaw, pitch)) = other.last_move {
-                                out.extend(Msg::Move { id: other.id, pos, yaw, pitch }.encode());
+                            if let Some((pos, yaw, pitch, held)) = other.last_move {
+                                out.extend(Msg::Move { id: other.id, pos, yaw, pitch, held }.encode());
                             }
                         }
                         let all: Vec<(i32, i32, i32, u16)> = self.edits.iter().map(|(k, &b)| (k.0, k.1, k.2, b)).collect();
@@ -312,9 +312,9 @@ impl Server {
                         log.push(alloc::format!("{} joined ({} online)", name, self.players()));
                         self.broadcast(&Msg::Join { id, name }, id);
                     }
-                    Msg::Move { pos, yaw, pitch, .. } if joined => {
-                        self.conns[i].last_move = Some((pos, yaw, pitch));
-                        self.broadcast(&Msg::Move { id, pos, yaw, pitch }, id);
+                    Msg::Move { pos, yaw, pitch, held, .. } if joined => {
+                        self.conns[i].last_move = Some((pos, yaw, pitch, held));
+                        self.broadcast(&Msg::Move { id, pos, yaw, pitch, held }, id);
                     }
                     Msg::SetBlock { x, y, z, block } if joined => {
                         if (0..CH).contains(&y) && block < self.cfg.states {

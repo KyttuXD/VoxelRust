@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod render;
+pub mod hand;
 pub mod ui;
 pub mod audio;
 pub mod update;

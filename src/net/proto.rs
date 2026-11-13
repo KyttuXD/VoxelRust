@@ -7,7 +7,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub const VERSION: u16 = 4;
+pub const VERSION: u16 = 5;
 pub const DEFAULT_PORT: u16 = 25590;
 /// Most bytes of pack text in one message.
 pub const MAX_PACK_PART: usize = 40_000;
@@ -37,7 +37,8 @@ pub enum Msg {
     /// state names: both sides must be running the same data files.
     Hello { version: u16, content: u32, name: String },
     /// Where I am (also relayed to everyone else, with my id).
-    Move { id: u16, pos: [f64; 3], yaw: f32, pitch: f32 },
+    /// `held` is the item in hand as its index plus one (0 = empty hand).
+    Move { id: u16, pos: [f64; 3], yaw: f32, pitch: f32, held: u16 },
     /// A block changed (sent by whoever changed it, relayed to the rest).
     SetBlock { x: i32, y: i32, z: i32, block: u16 },
     Chat { id: u16, text: String },
@@ -148,7 +149,7 @@ impl Msg {
                 w.u32(*content);
                 w.str(name);
             }
-            Msg::Move { id, pos, yaw, pitch } => {
+            Msg::Move { id, pos, yaw, pitch, held } => {
                 w.u8(2);
                 w.u16(*id);
                 for p in pos {
@@ -156,6 +157,7 @@ impl Msg {
                 }
                 w.f32(*yaw);
                 w.f32(*pitch);
+                w.u16(*held);
             }
             Msg::SetBlock { x, y, z, block } => {
                 w.u8(3);
@@ -238,7 +240,7 @@ impl Msg {
         let mut r = R(body);
         let m = match kind {
             1 => Msg::Hello { version: r.u16()?, content: r.u32()?, name: r.str()? },
-            2 => Msg::Move { id: r.u16()?, pos: [r.f64()?, r.f64()?, r.f64()?], yaw: r.f32()?, pitch: r.f32()? },
+            2 => Msg::Move { id: r.u16()?, pos: [r.f64()?, r.f64()?, r.f64()?], yaw: r.f32()?, pitch: r.f32()?, held: r.u16()? },
             3 => Msg::SetBlock { x: r.i32()?, y: r.i32()?, z: r.i32()?, block: r.u16()? },
             4 => Msg::Chat { id: r.u16()?, text: r.str()? },
             5 => {
@@ -347,7 +349,7 @@ mod tests {
     fn every_message_round_trips() {
         let all = [
             Msg::Hello { version: VERSION, content: 0xDEAD_BEEF, name: String::from("Kyttu_1") },
-            Msg::Move { id: 7, pos: [1.5, -64.25, 1e6], yaw: -3.1, pitch: 0.5 },
+            Msg::Move { id: 7, pos: [1.5, -64.25, 1e6], yaw: -3.1, pitch: 0.5, held: 9 },
             Msg::SetBlock { x: -100_000, y: 127, z: 5, block: 4095 },
             Msg::Chat { id: 2, text: String::from("hello there") },
             Msg::Skin { id: 4, png: alloc::vec![1, 2, 3, 250] },

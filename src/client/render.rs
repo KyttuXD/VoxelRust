@@ -822,6 +822,85 @@ impl Renderer {
         }
     }
 
+    /// The first-person hand: the arm model drawn with the player's own skin
+    /// (`tex`), then the held item from the block atlas. Both are in the
+    /// hand's space: the depth buffer is cleared and a close-up projection
+    /// is used. `to_view` moves each model point into view space.
+    pub fn draw_first_person(&mut self, model: usize, tex: u32, fov: f32, height: f32, to_view: &dyn Fn([f32; 3]) -> [f32; 3], items: &[crate::client::hand::Quad]) {
+        let g = gl();
+        self.flush(gl::QUADS);
+        self.model_verts.clear();
+        if let Some(def) = self.models.get(model) {
+            def.quads(&crate::model::Pose::default(), [0.0, 0.0, 0.0], 0.0, height, true, &mut self.model_verts);
+        }
+        let aspect = self.w as f32 / self.h.max(1) as f32;
+        Self::load_matrices(&math::perspective(fov, aspect, 0.03, 8.0), &math::IDENTITY);
+        unsafe {
+            (g.Clear)(gl::DEPTH_BUFFER_BIT);
+            (g.Enable)(gl::DEPTH_TEST);
+            (g.Disable)(gl::CULL_FACE);
+            (g.Disable)(gl::FOG);
+            (g.Disable)(gl::BLEND);
+            (g.Enable)(gl::ALPHA_TEST);
+        }
+        Self::atlas_matrix(false);
+        let arm: Vec<V2> = self.model_verts.iter().map(|v| V2 { pos: to_view(v.pos), uv: v.uv, col: [v.shade, v.shade, v.shade, 255] }).collect();
+        if !arm.is_empty() && tex != 0 {
+            self.batch_tex = tex;
+            self.batch.extend(arm);
+            self.flush(gl::QUADS);
+        }
+        self.batch_tex = self.atlas;
+        for q in items {
+            for k in 0..4 {
+                self.batch.push(V2 { pos: q.p[k], uv: q.uv[k], col: q.col });
+            }
+        }
+        self.flush(gl::QUADS);
+        unsafe {
+            (g.Enable)(gl::FOG);
+        }
+    }
+
+    /// Draw flat-shaded quads from the block atlas (the hand and what it
+    /// holds, see `client::hand`). With `view_fov`, they are in the hand's
+    /// own space: the depth buffer is cleared and a close-up projection is
+    /// used, so the hand is never hidden by, or clipped into, the world.
+    /// Without it they are in the world's camera-relative space.
+    pub fn draw_quads(&mut self, quads: &[crate::client::hand::Quad], view_fov: Option<f32>) {
+        if quads.is_empty() {
+            return;
+        }
+        let g = gl();
+        self.flush(gl::QUADS);
+        match view_fov {
+            Some(fov) => {
+                let aspect = self.w as f32 / self.h.max(1) as f32;
+                Self::load_matrices(&math::perspective(fov, aspect, 0.03, 8.0), &math::IDENTITY);
+                unsafe { (g.Clear)(gl::DEPTH_BUFFER_BIT) };
+            }
+            None => {}
+        }
+        unsafe {
+            (g.Enable)(gl::DEPTH_TEST);
+            (g.Disable)(gl::CULL_FACE);
+            (g.Disable)(gl::FOG);
+            (g.Disable)(gl::BLEND);
+            (g.Enable)(gl::ALPHA_TEST);
+        }
+        Self::atlas_matrix(false);
+        self.batch_tex = self.atlas;
+        for q in quads {
+            for k in 0..4 {
+                self.batch.push(V2 { pos: q.p[k], uv: q.uv[k], col: q.col });
+            }
+        }
+        self.flush(gl::QUADS);
+        unsafe {
+            (g.Enable)(gl::FOG);
+        }
+    }
+
     pub fn draw_model_2d(&mut self, model: usize, pose: &crate::model::Pose, x: f32, y: f32, yaw: f32, height: f32) {
         let def = match self.models.get(model) {
             Some(d) => d,
