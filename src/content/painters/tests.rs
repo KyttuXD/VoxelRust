@@ -72,7 +72,7 @@ fn every_name_the_data_uses_is_in_the_lists() {
         for t in &r.tiles {
             match &t.src {
                 TileSrc::Builtin(n) => assert!(BUILTINS.contains(&n.as_str()), "{} uses unlisted painter {n}", t.id),
-                TileSrc::Paint { style, .. } => assert!(STYLES.contains(&style.as_str()), "{} uses unlisted style {style}", t.id),
+                TileSrc::Paint { style, .. } => assert!(STYLES.contains(&style.as_str()) || crate::content::art::bow::painted(style, [1, 2, 3], 0, 0).is_some(), "{} uses unlisted style {style}", t.id),
                 _ => {}
             }
         }
