@@ -96,7 +96,10 @@ fn main() {
     // Which commit this is, for the updater to compare with the release.
     // (VOXELRUST_COMMIT wins when set, as the release build does.)
     println!("cargo:rerun-if-env-changed=VOXELRUST_COMMIT");
+    // HEAD names the branch; the branch file is what moves with each commit.
     println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/refs/heads");
+    println!("cargo:rerun-if-changed=.git/packed-refs");
     if std::env::var("VOXELRUST_COMMIT").is_err() {
         let commit = std::process::Command::new("git").args(["rev-parse", "--short=12", "HEAD"]).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
         if let Some(c) = commit.filter(|c| !c.is_empty()) {
