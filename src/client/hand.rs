@@ -193,6 +193,18 @@ pub fn on_body(held: Held, white: u16, swing: f32, feet: [f32; 3], yaw: f32, hei
     });
 }
 
+/// An item lying on the ground: the held item, small, turning about its
+/// upright axis. `at` is where it lies (camera-relative), `turn` the angle.
+pub fn dropped(held: Held, white: u16, at: [f32; 3], turn: f32, out: &mut Vec<Quad>) {
+    let start = out.len();
+    item_geometry(held, white, out);
+    map(&mut out[start..], |p| {
+        let p = [p[0] * 1.6, p[1] * 1.6, p[2] * 1.6];
+        let p = rot_y(p, turn);
+        [p[0] + at[0], p[1] + at[1], p[2] + at[2]]
+    });
+}
+
 /// The tile used for plain colours (the "white" tile of the base game).
 pub fn white_tile() -> u16 {
     reg().tiles.iter().position(|t| t.id == "white").unwrap_or(0) as u16

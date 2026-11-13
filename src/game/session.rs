@@ -233,7 +233,7 @@ pub fn list_worlds(base: &str) -> Vec<String> {
     let text = sys::read_file(&alloc::format!("{}worlds.txt", base)).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
     let mut names: Vec<String> = Vec::new();
     for l in text.lines() {
-        let n = crate::settings::clean_name(l.trim(), 24);
+        let n = crate::settings::clean_world_name(l.trim(), 24);
         if !n.is_empty() && !names.contains(&n) && sys::read_file(&meta_path(base, &n)).is_some() {
             names.push(n);
         }
@@ -247,6 +247,66 @@ pub fn remember_world(base: &str, name: &str) {
         names.push(String::from(name));
         sys::write_file(&alloc::format!("{}worlds.txt", base), names.join("\n").as_bytes());
     }
+}
+
+/// The files a world is made of: everything in the data folder that starts
+/// with the world's name and a dot (its regions, its dimensions, its small
+/// files). Names cannot hold dots, so no other world's files match.
+pub fn world_files(base: &str, name: &str) -> Vec<String> {
+    let prefix = alloc::format!("{}.", name);
+    sys::list_dir(base).into_iter().filter(|f| f.starts_with(&prefix)).collect()
+}
+
+/// Take a world out of the index (its files are left alone).
+pub fn forget_world(base: &str, name: &str) {
+    let names: Vec<String> = list_worlds(base).into_iter().filter(|n| n != name).collect();
+    sys::write_file(&alloc::format!("{}worlds.txt", base), names.join("\n").as_bytes());
+}
+
+/// Delete a world: every file it is made of, and its place in the index.
+/// Returns whether the world was there and every file went.
+pub fn delete_world(base: &str, name: &str) -> bool {
+    if !world_exists(base, name) {
+        return false;
+    }
+    let mut all = true;
+    for f in world_files(base, name) {
+        all &= sys::remove_file(&alloc::format!("{}{}", base, f));
+    }
+    forget_world(base, name);
+    all
+}
+
+/// Copy a world's files under a new name. The old world is left as it was.
+pub fn copy_world(base: &str, name: &str, to: &str) -> bool {
+    if !world_exists(base, name) || world_exists(base, to) {
+        return false;
+    }
+    let from_prefix = alloc::format!("{}.", name);
+    for f in world_files(base, name) {
+        let data = match sys::read_file(&alloc::format!("{}{}", base, f)) {
+            Some(d) => d,
+            None => return false,
+        };
+        let new_name = alloc::format!("{}.{}", to, &f[from_prefix.len()..]);
+        if !sys::write_file(&alloc::format!("{}{}", base, new_name), &data) {
+            return false;
+        }
+    }
+    remember_world(base, to);
+    true
+}
+
+/// Rename a world: copy it under the new name, then delete the old files.
+pub fn rename_world(base: &str, name: &str, to: &str) -> bool {
+    if !copy_world(base, name, to) {
+        return false;
+    }
+    for f in world_files(base, name) {
+        sys::remove_file(&alloc::format!("{}{}", base, f));
+    }
+    forget_world(base, name);
+    true
 }
 
 pub fn world_exists(base: &str, name: &str) -> bool {
@@ -795,6 +855,21 @@ impl Session {
                     self.drain_flood(level);
                 }
                 String::new()
+            }
+            // /drop: toss the held item a little way ahead, as Q does.
+            "/drop" => {
+                match self.inv.take_one(self.selected) {
+                    Some(item) => {
+                        let dir = forward(self.player.yaw, self.player.pitch);
+                        let eye = self.player.eye();
+                        if self.drops.len() >= 128 {
+                            self.drops.remove(0);
+                        }
+                        self.drops.push(Dropped { pos: [eye[0], eye[1] - 0.3, eye[2]], vel: [dir.x * 5.0, dir.y * 5.0 + 2.0, dir.z * 5.0], item, count: 1, age: 0.0 });
+                        String::from("dropped")
+                    }
+                    None => String::from("NOTHING IN HAND"),
+                }
             }
             "/heal" => {
                 self.health = (self.health + arg(1).parse::<i32>().unwrap_or(4)).clamp(1, MAX_HEALTH);
@@ -1860,8 +1935,18 @@ impl Session {
 
     fn survival_rules(&mut self, dt: f32, audio: &mut Audio) {
         // What the player stands in or on: magma burns, cactus pricks.
-        let (fx, fy, fz) = (floord(self.player.pos[0]), floord(self.player.pos[1] + 0.1), floord(self.player.pos[2]));
-        let touch = block::def(self.world.get(fx, fy, fz)).x.hurts.max(block::def(self.world.get(fx, fy - 1, fz)).x.hurts);
+        // Every block the body touches counts: standing in or on one, or
+        // brushing against its side.
+        let (mn, mx) = self.player.aabb();
+        let grow = 0.15;
+        let mut touch = 0u8;
+        for x in floord(mn[0] - grow)..=floord(mx[0] + grow) {
+            for y in floord(mn[1] - grow)..=floord(mx[1] + grow) {
+                for z in floord(mn[2] - grow)..=floord(mx[2] + grow) {
+                    touch = touch.max(block::def(self.world.get(x, y, z)).x.hurts);
+                }
+            }
+        }
         if touch > 0 && !self.dead {
             self.touch_timer += dt;
             if self.touch_timer >= 1.0 {
@@ -2312,18 +2397,8 @@ impl Session {
     }
 }
 
-/// What a new player starts with.
-pub fn starting_inventory(mode: GameMode) -> Inventory {
-    let mut inv = Inventory::new();
-    if mode == GameMode::Creative {
-        let items = &reg().items;
-        let want = ["grass", "stone", "planks", "log", "glass", "lamp", "stone_stairs", "planks_slab", "builders_wand"];
-        for (slot, id) in want.iter().enumerate() {
-            if let Some(i) = items.iter().position(|it| it.id == *id) {
-                inv.slots[slot] = Some(Stack { item: i as u16, count: items[i].stack });
-            }
-        }
-    }
-    // Survival starts with empty hands.
-    inv
+/// What a new player starts with: nothing, in either mode. In creative the
+/// items come from the creative list.
+pub fn starting_inventory(_mode: GameMode) -> Inventory {
+    Inventory::new()
 }

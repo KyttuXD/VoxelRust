@@ -342,6 +342,7 @@ impl Lib {
 
 #[cfg(unix)]
 extern "C" {
+    fn unlink(path: *const c_char) -> c_int;
     fn opendir(path: *const c_char) -> *mut c_void;
     fn closedir(dir: *mut c_void) -> c_int;
     // On Linux the 64-bit form has one layout on every processor; on Intel
@@ -356,6 +357,7 @@ extern "system" {
     fn FindFirstFileA(pattern: *const c_char, data: *mut u8) -> *mut c_void;
     fn FindNextFileA(handle: *mut c_void, data: *mut u8) -> c_int;
     fn FindClose(handle: *mut c_void) -> c_int;
+    fn DeleteFileA(name: *const c_char) -> c_int;
 }
 
 #[cfg(target_os = "linux")]
@@ -508,6 +510,24 @@ pub fn read_file(path: &str) -> Option<Vec<u8>> {
         }
         ((*rw).close)(rw);
         Some(out)
+    }
+}
+
+/// Delete a file. `false` if it could not be deleted (or does not exist).
+pub fn remove_file(path: &str) -> bool {
+    let p = cstr(path);
+    #[cfg(unix)]
+    unsafe {
+        return unlink(p.as_ptr() as *const c_char) == 0;
+    }
+    #[cfg(windows)]
+    unsafe {
+        return DeleteFileA(p.as_ptr() as *const c_char) != 0;
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = p;
+        false
     }
 }
 

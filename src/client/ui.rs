@@ -304,6 +304,11 @@ pub fn name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_' || c == '-'
 }
 
+/// Characters allowed in world and server names: spaces too.
+pub fn world_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' '
+}
+
 /// Characters allowed in free text such as seeds, addresses and chat.
 pub fn any_char(c: char) -> bool {
     c.is_ascii_graphic() || c == ' '

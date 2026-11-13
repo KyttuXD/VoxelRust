@@ -489,8 +489,20 @@ fn tree(w: &mut Writer, wk: &WellKnown, h: u32, x: i32, y: i32, z: i32, biome: B
             }
         }
         Biome::Desert => {
-            for i in 1..=2 + size {
+            // A cactus: a trunk, and most of the time an arm out to one side,
+            // bent up into a column.
+            let th = 3 + size;
+            for i in 1..=th {
                 w.put(x, y + i, z, wk.cactus, true);
+            }
+            if (h >> 9) % 3 != 0 {
+                let (dx, dz) = [(1, 0), (-1, 0), (0, 1), (0, -1)][((h >> 11) % 4) as usize];
+                let ay = y + 2 + ((h >> 13) % 2) as i32;
+                let bar = if dx != 0 { wk.cactus_arm } else { wk.cactus_arm_z };
+                w.put(x + dx, ay, z + dz, bar, true);
+                for k in 1..=2 {
+                    w.put(x + dx, ay + k, z + dz, wk.cactus, true);
+                }
             }
         }
         Biome::Taiga | Biome::Tundra => {

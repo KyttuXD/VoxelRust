@@ -522,6 +522,8 @@ pub struct WellKnown {
     pub clay: Block,
     pub birch_log: Block,
     pub birch_leaves: Block,
+    pub cactus_arm: Block,
+    pub cactus_arm_z: Block,
     pub acacia_log: Block,
     pub acacia_leaves: Block,
     pub dark_oak_log: Block,
@@ -1955,6 +1957,8 @@ impl Registry {
             // Optional: a pack without these woods just grows oak instead.
             birch_log: AIR,
             birch_leaves: AIR,
+            cactus_arm: AIR,
+            cactus_arm_z: AIR,
             acacia_log: AIR,
             acacia_leaves: AIR,
             dark_oak_log: AIR,
@@ -1990,6 +1994,8 @@ impl Registry {
         };
         let mut wk = wk;
         let or = |id: &str, fallback: Block| by_id.get(id).copied().unwrap_or(fallback);
+        wk.cactus_arm = or("cactus_arm", wk.cactus);
+        wk.cactus_arm_z = or("cactus_arm_z", wk.cactus);
         wk.birch_log = or("birch_log", wk.log);
         wk.birch_leaves = or("birch_leaves", wk.leaves);
         wk.acacia_log = or("acacia_log", wk.log);

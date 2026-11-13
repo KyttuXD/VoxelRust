@@ -165,6 +165,13 @@ pub fn kv<'a>(text: &'a str, key: &str) -> Option<&'a str> {
 
 /// Keep only characters that are safe in names shown on screen and sent to
 /// other players.
+/// A world or server name: letters of either case, digits, spaces, `_` and
+/// `-`, with the ends trimmed.
+pub fn clean_world_name(s: &str, max: usize) -> String {
+    let kept: String = s.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-' || *c == ' ').take(max).collect();
+    String::from(kept.trim())
+}
+
 pub fn clean_name(s: &str, max: usize) -> String {
     s.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').take(max).collect()
 }

@@ -171,7 +171,15 @@ block("snow", "Snow", "snow", cat="Nature", hardness=0.4)
 block("snowy_grass", "Snowy Grass", "snow snow_side dirt", cat="Nature", hardness=0.7, drops="dirt")
 block("ice", "Ice", "ice", cat="Nature", hardness=0.6, drops="nothing")
 block("sandstone", "Sandstone", "sandstone", cat="Stone", hardness=1.6)
-block("cactus", "Cactus", "cactus_top cactus_side cactus_top", cat="Nature", hardness=0.5)
+# A cactus: a ribbed trunk that hurts whatever touches it. Arms are a bar
+# out of the trunk (cactus_arm along x, cactus_arm_z along z) and a column of
+# cactus on top of the bar.
+block("cactus", "Cactus", "cactus_top cactus_side cactus_top", cat="Nature", hardness=0.5, hurts=1,
+      box=["5 0 5 11 16 11", "4 3 6 5 7 10", "11 9 6 12 13 10"])
+block("cactus_arm", "Cactus Arm", "cactus_top cactus_side cactus_top", cat="Nature", hardness=0.5, hurts=1,
+      box=["0 6 6 16 10 10"])
+block("cactus_arm_z", "Cactus Arm (Z)", "cactus_top cactus_side cactus_top", cat="Nature", hardness=0.5, hurts=1,
+      box=["6 6 0 10 10 16"])
 block("lamp", "Lamp", "lamp", cat="Lights", hardness=0.5, light=15)
 block("flower_red", "Red Flower", "flower_red", shape="cross", cat="Nature", also="tomato_seeds 30")
 block("flower_yellow", "Yellow Flower", "flower_yellow", shape="cross", cat="Nature", also="carrot_seeds 30")

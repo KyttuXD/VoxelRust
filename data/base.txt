@@ -357,6 +357,24 @@ block cactus
   tex cactus_top cactus_side cactus_top
   category Nature
   hardness 0.5
+  hurts 1
+  box 5 0 5 11 16 11
+  box 4 3 6 5 7 10
+  box 11 9 6 12 13 10
+block cactus_arm
+  name Cactus Arm
+  tex cactus_top cactus_side cactus_top
+  category Nature
+  hardness 0.5
+  hurts 1
+  box 0 6 6 16 10 10
+block cactus_arm_z
+  name Cactus Arm (Z)
+  tex cactus_top cactus_side cactus_top
+  category Nature
+  hardness 0.5
+  hurts 1
+  box 6 6 0 10 10 16
 block lamp
   name Lamp
   tex lamp

@@ -121,6 +121,8 @@ struct Opts {
     icon_size: usize,
     version: bool,
     export: Option<String>,
+    /// `--world-op delete|copy|rename NAME [TO]`: change a world's files, and exit.
+    world_op: Option<(String, String, String)>,
     import: Option<String>,
     pos: Option<[f64; 3]>,
     look: Option<(f32, f32)>,
@@ -193,6 +195,12 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--no-update" => o.no_update = true,
             "--add-mod" => o.import_mod = Some(next(&mut i, a)?),
             "--export" => o.export = Some(next(&mut i, a)?),
+            "--world-op" => {
+                let op = next(&mut i, a)?;
+                let name = next(&mut i, a)?;
+                let to = if op == "delete" { String::new() } else { next(&mut i, a)? };
+                o.world_op = Some((op, name, to));
+            }
             "--import" => o.import = Some(next(&mut i, a)?),
             "--bench" => o.bench = Some(num::<u32>(&next(&mut i, a)?, a)?.max(1)),
             "--flypass" => {
@@ -562,7 +570,7 @@ impl App {
     /// Start a server inside this program and join it.
     fn host_game(&mut self, r: &mut Renderer) {
         self.close_world(r);
-        let name = crate::settings::clean_name(&self.form_host, 24);
+        let name = crate::settings::clean_world_name(&self.form_host, 24);
         let port = crate::proto::DEFAULT_PORT;
         let (server, edits) = match open_server(if name.is_empty() { "shared" } else { &name }, None, None, port, 16, &self.base, &self.pack_text) {
             Ok(v) => v,
@@ -1177,10 +1185,18 @@ impl App {
                 }
             }
         }
-        let mut sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
-        // Things lying on the ground glint.
-        sparks.extend(g.drops.iter().map(|d| (rel([d.pos[0], d.pos[1] + 0.25, d.pos[2]]), [255, 236, 150])));
+        let sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
         r.draw_sparks(&sparks);
+        // Things lying on the ground are the things themselves, turning slowly.
+        let white = crate::client::hand::white_tile();
+        let mut lying = Vec::new();
+        for d in &g.drops {
+            let held = crate::client::hand::held_of(Some(d.item as usize));
+            let spin = g.clock * 1.6 + d.pos[0] as f32;
+            let bob = (sinf(g.clock * 2.5 + d.pos[2] as f32) * 0.04) as f32;
+            crate::client::hand::dropped(held, white, rel([d.pos[0], d.pos[1] + 0.3, d.pos[2]]), spin + bob, &mut lying);
+        }
+        r.draw_quads(&lying, None);
         // Whatever the mods' own code has to show.
         {
             let view = crate::native::View { eye: cam.pos, yaw: cam.yaw, pitch: cam.pitch, third_person: self.third_person, light: &light_at };
@@ -1487,7 +1503,7 @@ impl App {
             let path = String::from(self.form_import.trim());
             // The world is named after the file.
             let stem = path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or("").trim_end_matches(".vxworld");
-            let mut name = crate::settings::clean_name(stem, 20);
+            let mut name = crate::settings::clean_world_name(stem, 24);
             if name.is_empty() {
                 name = String::from("imported");
             }
@@ -1526,7 +1542,7 @@ impl App {
         let (x, y, bw, bh, step) = Self::column(ui, 7);
         ui.centered(ui.w() * 0.5, y - 30.0 * s, 2.0, "NEW WORLD", WHITE);
         ui.text(x, y - 9.0 * s, "NAME", ui::DIM);
-        ui.text_field(1, x, y, bw, bh, &mut self.form_name, 24, ui::name_char);
+        ui.text_field(1, x, y, bw, bh, &mut self.form_name, 24, ui::world_char);
         ui.text(x, y + step * 1.5 - 9.0 * s, "SEED (EMPTY = RANDOM)", ui::DIM);
         ui.text_field(2, x, y + step * 1.5, bw, bh, &mut self.form_seed, 24, ui::any_char);
         let mode = alloc::format!("GAME MODE  {}", if self.form_mode == GameMode::Survival { "SURVIVAL" } else { "CREATIVE" });
@@ -1552,7 +1568,7 @@ impl App {
         let rows = form.map_or(0.0, |form| form(ui, x, y + step * 4.7, bw, bh, step));
         let y = y + step * rows;
         if ui.button(x, y + step * 5.0, bw, bh, "CREATE") {
-            let name = crate::settings::clean_name(&self.form_name, 24);
+            let name = crate::settings::clean_world_name(&self.form_name, 24);
             if name.is_empty() {
                 self.status = String::from("GIVE THE WORLD A NAME");
             } else if session::world_exists(&self.base, &name) {
@@ -1861,7 +1877,7 @@ impl App {
             // Saved servers: one "name address" per line.
             self.servers_loaded = true;
             self.servers = sys::read_file(&alloc::format!("{}servers.txt", self.base))
-                .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.split_once(' ').map(|(n, a)| (String::from(n), String::from(a.trim())))).collect())
+                .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.rsplit_once(' ').map(|(n, a)| (String::from(n.trim()), String::from(a.trim())))).collect())
                 .unwrap_or_default();
         }
         const ROWS: usize = 6;
@@ -1928,7 +1944,7 @@ impl App {
         ui.text_field(31, x + half + 4.0 * s, y, half, bh, &mut self.settings.player_name, 16, ui::name_char);
         // Hosting: a server runs inside the game for as long as you play.
         ui.text(x + half + 4.0 * s, y + step * 1.5 - 9.0 * s, "SHARED WORLD NAME", ui::DIM);
-        ui.text_field(32, x + half + 4.0 * s, y + step * 1.5, half, bh, &mut self.form_host, 24, ui::name_char);
+        ui.text_field(32, x + half + 4.0 * s, y + step * 1.5, half, bh, &mut self.form_host, 24, ui::world_char);
         if ui.button(x, y + step * 1.5, half, bh, "HOST A GAME") {
             self.status.clear();
             self.host_game(ui.r);
@@ -1950,7 +1966,7 @@ impl App {
         let (x, y, bw, bh, step) = Self::column(ui, 7);
         ui.centered(ui.w() * 0.5, y - 30.0 * s, 2.0, if self.server_edit.is_some() { "EDIT SERVER" } else { "ADD SERVER" }, WHITE);
         ui.text(x, y - 9.0 * s, "SERVER NAME", ui::DIM);
-        ui.text_field(33, x, y, bw, bh, &mut self.form_server, 16, ui::name_char);
+        ui.text_field(33, x, y, bw, bh, &mut self.form_server, 24, ui::world_char);
         ui.text(x, y + step * 1.5 - 9.0 * s, "SERVER ADDRESS (HOST OR HOST:PORT)", ui::DIM);
         let enter = ui.text_field(30, x, y + step * 1.5, bw, bh, &mut self.form_address, 60, ui::any_char);
         if ui.inp.pressed(ui::KEY_TAB) {
@@ -2265,6 +2281,12 @@ impl App {
                         None => draw_slot(ui.r, x, y, cell, s, None, false),
                     }
                 }
+            }
+            // Carrying something (dragged out of the inventory) and letting it go
+            // over the list deletes it, empty spaces in the list included.
+            if (click_l || click_r) && g.cursor.is_some() && ui.hot(gx, uy, cols as f32 * cell, upper_rows as f32 * cell) {
+                g.cursor = None;
+                ui.clicked_any = true;
             }
             // The wheel scrolls a row at a time; the bar at the side shows
             // where in the list this is, and can be dragged.
@@ -2689,9 +2711,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
         return if said.starts_with("ADDED") { Ok(()) } else { Err(String::from("the mod was not added")) };
     }
     // Moving a world in or out as one file needs no window.
+    if let Some((op, name, to)) = &opts.world_op {
+        if name.is_empty() || *name != crate::settings::clean_world_name(name, 24) {
+            return Err(String::from("--world-op: the world name must be letters, digits, spaces, - and _"));
+        }
+        let done = match op.as_str() {
+            "delete" => crate::session::delete_world(&base, name),
+            "copy" => crate::session::copy_world(&base, name, to),
+            "rename" => crate::session::rename_world(&base, name, to),
+            _ => return Err(alloc::format!("--world-op: unknown operation {} (delete, copy, rename)", op)),
+        };
+        logf!("voxelrust: {} {} {} -> {}", op, name, to, if done { "done" } else { "failed" });
+        return if done { Ok(()) } else { Err(alloc::format!("could not {} {}", op, name)) };
+    }
     if opts.export.is_some() || opts.import.is_some() {
         let name = opts.world.clone().unwrap_or_default();
-        if name.is_empty() || name != crate::settings::clean_name(&name, 24) {
+        if name.is_empty() || name != crate::settings::clean_world_name(&name, 24) {
             return Err(String::from("--export/--import need --world NAME (letters, digits, - and _)"));
         }
         if let Some(path) = &opts.export {
@@ -2957,8 +2992,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         app.set_screen(Screen::Game);
     } else if opts.world.is_some() || (scripted && !menu_only) {
         let name = opts.world.clone().unwrap_or_else(|| String::from("world"));
-        if name.is_empty() || name != crate::settings::clean_name(&name, 24) {
-            return Err(String::from("--world: use only letters, digits, - and _ (24 at most)"));
+        if name.is_empty() || name != crate::settings::clean_world_name(&name, 24) {
+            return Err(String::from("--world: use only letters, digits, spaces, - and _ (24 at most)"));
         }
         let seed = opts.seed.unwrap_or_else(|| unsafe { (api.SDL_GetPerformanceCounter)() } as u32 ^ 0x5EED_1234);
         let kind = asked_kind.as_deref().and_then(WorldKind::parse).unwrap_or(WorldKind::Normal);
@@ -3401,8 +3436,8 @@ static HOST_STOP: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBoo
 /// every edit) is read, or made on first use.
 fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u16, players: usize, base: &str, pack: &[u8]) -> Result<(crate::server::Server, String), String> {
     use crate::server::{Config, Server};
-    if name.is_empty() || name != crate::settings::clean_name(name, 24) {
-        return Err(String::from("world names use only letters, digits, - and _ (24 at most)"));
+    if name.is_empty() || name != crate::settings::clean_world_name(name, 24) {
+        return Err(String::from("world names use only letters, digits, spaces, - and _ (24 at most)"));
     }
     let meta_path = alloc::format!("{}{}.server.txt", base, name);
     let edits_path = alloc::format!("{}{}.server-edits.txt", base, name);
