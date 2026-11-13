@@ -54,7 +54,14 @@ pub struct Client {
     refresh_timer: f32,
     last_sent: ([f64; 3], f32, f32, u16),
     pub alive: bool,
+    /// Voice frames that have arrived and not yet been played: who, sequence
+    /// number, loudness (0..=255), the ADPCM frame. Taken by `client::voice`;
+    /// kept short so a client that ignores them costs nothing.
+    pub voice_in: Vec<(u16, u16, u8, Vec<u8>)>,
 }
+
+/// Most voice frames held waiting (about a second of one talker).
+const MAX_VOICE_WAITING: usize = 64;
 
 /// Split `host:port`; the port may be left out.
 pub fn parse_address(addr: &str) -> Option<(String, u16)> {
@@ -81,7 +88,7 @@ impl Client {
         for _ in 0..80 {
             match inbox.next() {
                 Next::Msg(Msg::Welcome { id, seed, time, kind }) => {
-                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0), alive: true };
+                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0), alive: true, voice_in: Vec::new() };
                     return Ok((c, Welcome { seed, time, kind }));
                 }
                 Next::Msg(Msg::Refuse { reason }) => return Err(reason.to_ascii_uppercase()),
@@ -169,6 +176,12 @@ impl Client {
                     Msg::Skin { id, png, slim } => events.push(Event::Skin(id, png, slim)),
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
+                    Msg::Voice { id, seq, gain, frame } => {
+                        if self.voice_in.len() >= MAX_VOICE_WAITING {
+                            self.voice_in.remove(0);
+                        }
+                        self.voice_in.push((id, seq, gain, frame));
+                    }
                     _ => {}
                 },
             }
@@ -218,6 +231,18 @@ impl Client {
     /// for everybody: the one with the lowest number of those present.
     pub fn runs_the_world(&self) -> bool {
         self.players.keys().all(|&other| self.id < other)
+    }
+
+    /// Tell the server whether we want to hear voice chat and whether we
+    /// may talk (`proto::VOICE_HEAR`, `VOICE_TALK`).
+    pub fn send_voice_state(&mut self, flags: u8) {
+        self.send(&Msg::VoiceState { flags });
+    }
+
+    /// Send one 20 ms frame of our voice; the server passes it on to whoever is near.
+    pub fn send_voice(&mut self, seq: u16, frame: &[u8]) {
+        let id = self.id;
+        self.send(&Msg::Voice { id, seq, gain: 255, frame: frame.to_vec() });
     }
 
     pub fn send_chat(&mut self, text: &str) {
@@ -283,16 +308,16 @@ mod tests {
         let (mut ann, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
         let ea = pump(&mut ann, 80);
         // The first player is the operator and may do everything.
-        assert!(ea.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS)), "no such event");
+        assert!(ea.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE)), "no such event");
         let (mut bob, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
         let eb = pump(&mut bob, 100);
         // Everyone else may build, and nothing more, and starts in survival.
-        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD)), "no such event");
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_VOICE)), "no such event");
         pump(&mut ann, 40);
         ann.send_chat("/default -build");
         pump(&mut ann, 60);
         let eb = pump(&mut bob, 100);
-        assert!(eb.iter().any(|e| matches!(e, Event::Perms(0))), "no such event");
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_VOICE)), "no such event");
         // Bob's edit goes nowhere...
         let stone = crate::block::reg().wk.stone;
         bob.send_block(2, 70, 2, stone);
@@ -303,7 +328,7 @@ mod tests {
         ann.send_chat("/perm Bob +build");
         pump(&mut ann, 60);
         let eb = pump(&mut bob, 100);
-        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD)), "no such event");
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_VOICE)), "no such event");
         bob.send_block(2, 70, 2, stone);
         pump(&mut bob, 60);
         let ea = pump(&mut ann, 100);
@@ -399,6 +424,59 @@ mod tests {
         assert!(data.iter().all(|&b| b == 7));
         // Nobody answering at all.
         assert!(Client::connect("127.0.0.1", 1, "X").is_err());
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn voice_reaches_only_those_near_who_listen() {
+        use crate::proto::*;
+        let (port, stop, handle) = start_server(8);
+        let (mut ann, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
+        let (mut bob, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
+        let (mut cy, _) = Client::connect("127.0.0.1", port, "Cy").unwrap();
+        let (mut dee, _) = Client::connect("127.0.0.1", port, "Dee").unwrap();
+        ann.send_move(1.0, [0.0, 64.0, 0.0], 0.0, 0.0, 0);
+        bob.send_move(1.0, [5.0, 64.0, 0.0], 0.0, 0.0, 0);
+        cy.send_move(1.0, [200.0, 64.0, 0.0], 0.0, 0.0, 0);
+        dee.send_move(1.0, [6.0, 64.0, 0.0], 0.0, 0.0, 0);
+        ann.send_voice_state(VOICE_HEAR | VOICE_TALK);
+        bob.send_voice_state(VOICE_HEAR);
+        cy.send_voice_state(VOICE_HEAR);
+        // Dee is near but has voice off (never said otherwise).
+        for c in [&mut ann, &mut bob, &mut cy, &mut dee] {
+            pump(c, 80);
+        }
+        let frame = alloc::vec![0u8, 0, 10, 1, 2, 3, 4, 5];
+        ann.send_voice(1, &frame);
+        for c in [&mut ann, &mut bob, &mut cy, &mut dee] {
+            pump(c, 80);
+        }
+        assert_eq!(bob.voice_in.len(), 1, "a listener nearby hears");
+        let (id, seq, gain, got) = bob.voice_in[0].clone();
+        assert_eq!((id, seq, got), (ann.id, 1, frame.clone()));
+        assert!(gain > 0);
+        assert!(cy.voice_in.is_empty(), "too far");
+        assert!(dee.voice_in.is_empty(), "voice off");
+        assert!(ann.voice_in.is_empty(), "never to the sender");
+        // Someone without the mic switch on cannot talk.
+        bob.send_voice(1, &frame);
+        pump(&mut bob, 40);
+        pump(&mut ann, 80);
+        assert!(ann.voice_in.is_empty());
+        // Muted players are not passed on; /unmute lets them through again.
+        ann.send_chat("/mute Ann");
+        pump(&mut ann, 80);
+        ann.send_voice(2, &frame);
+        pump(&mut ann, 40);
+        pump(&mut bob, 80);
+        assert_eq!(bob.voice_in.len(), 1, "muted: nothing new arrived");
+        ann.send_chat("/unmute Ann");
+        pump(&mut ann, 80);
+        ann.send_voice(3, &frame);
+        pump(&mut ann, 40);
+        pump(&mut bob, 80);
+        assert_eq!(bob.voice_in.len(), 2);
         stop.store(true, Ordering::Relaxed);
         handle.join().unwrap();
     }

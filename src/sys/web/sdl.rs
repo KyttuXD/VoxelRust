@@ -401,7 +401,11 @@ fn sound() -> &'static mut Option<Sound> {
     unsafe { &mut *core::ptr::addr_of_mut!(SOUND) }
 }
 
-unsafe extern "C" fn SDL_OpenAudioDevice(_device: *const c_char, _capture: c_int, want: *const c_void, _got: *mut c_void, _changes: c_int) -> u32 {
+unsafe extern "C" fn SDL_OpenAudioDevice(_device: *const c_char, capture: c_int, want: *const c_void, _got: *mut c_void, _changes: c_int) -> u32 {
+    // No microphone in the page: voice chat can listen but not talk.
+    if capture != 0 {
+        return 0;
+    }
     let want = &*(want as *const AudioSpec);
     // Only what the game asks for: 16-bit samples, one channel.
     let callback = match want.callback {
@@ -413,6 +417,14 @@ unsafe extern "C" fn SDL_OpenAudioDevice(_device: *const c_char, _capture: c_int
     }
     *sound() = Some(Sound { callback, userdata: want.userdata, paused: true });
     1
+}
+
+/// No audio devices to choose from in a page.
+unsafe extern "C" fn SDL_GetNumAudioDevices(_capture: c_int) -> c_int {
+    0
+}
+unsafe extern "C" fn SDL_GetAudioDeviceName(_index: c_int, _capture: c_int) -> *const c_char {
+    core::ptr::null()
 }
 
 unsafe extern "C" fn SDL_PauseAudioDevice(_device: u32, paused: c_int) {
@@ -467,7 +479,7 @@ pub fn sym(name: &[u8]) -> *mut c_void {
         SDL_GetPerformanceCounter SDL_GetPerformanceFrequency SDL_Delay SDL_GetCPUCount
         SDL_WaitThread SDL_CreateMutex SDL_LockMutex SDL_UnlockMutex SDL_DestroyMutex
         SDL_CreateSemaphore SDL_SemWait SDL_SemPost SDL_DestroySemaphore SDL_RWFromFile SDL_free
-        SDL_InitSubSystem SDL_OpenAudioDevice SDL_PauseAudioDevice SDL_CloseAudioDevice
+        SDL_InitSubSystem SDL_OpenAudioDevice SDL_GetNumAudioDevices SDL_GetAudioDeviceName SDL_PauseAudioDevice SDL_CloseAudioDevice
         SDL_LockAudioDevice SDL_UnlockAudioDevice SDL_CreateRGBSurfaceFrom SDL_FreeSurface
         SDL_SetWindowIcon SDL_GetScancodeName SDL_StartTextInput SDL_CreateThread
         SDL_GetClipboardText SDL_SetClipboardText

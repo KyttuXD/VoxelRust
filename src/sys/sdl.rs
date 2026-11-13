@@ -143,6 +143,8 @@ sdl_api! {
     fn SDL_free(*mut c_void);
     fn SDL_InitSubSystem(u32) -> c_int;
     fn SDL_OpenAudioDevice(*const c_char, c_int, *const c_void, *mut c_void, c_int) -> u32;
+    fn SDL_GetNumAudioDevices(c_int) -> c_int;
+    fn SDL_GetAudioDeviceName(c_int, c_int) -> *const c_char;
     fn SDL_PauseAudioDevice(u32, c_int);
     fn SDL_CloseAudioDevice(u32);
     fn SDL_LockAudioDevice(u32);

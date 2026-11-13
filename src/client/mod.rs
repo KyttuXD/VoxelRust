@@ -9,3 +9,4 @@ pub mod picker;
 pub mod skinfile;
 pub mod audio;
 pub mod update;
+pub mod voice;
