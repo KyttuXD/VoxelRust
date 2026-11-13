@@ -206,8 +206,9 @@ The title screen shows how far this has got:
 | Message | Meaning |
 | --- | --- |
 | CHECKING FOR A NEWER VERSION... | the check is running |
-| THIS IS THE NEWEST VERSION | same commit, or the release has nothing for this build name |
-| A NEWER VERSION IS INSTALLED - START THE GAME AGAIN TO USE IT | replaced |
+| THIS IS THE NEWEST VERSION | the release is not newer (by its release number), or has nothing for this build name |
+| A NEWER VERSION IS INSTALLED - THE GAME RESTARTS WHEN YOU QUIT | replaced; it starts when you quit, never during play |
+| UPDATED - NOW RUNNING THE NEWEST VERSION | this copy was started by an update |
 | A NEWER VERSION IS OUT (AUTOMATIC UPDATES ARE OFF) | there is one, and it was not installed |
 | (no message) | a download failed, the list could not be read, the checksum did not match, or the program could not be replaced |
 
@@ -217,8 +218,12 @@ Switching it off:
 - UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS (`auto_update` in
   `settings.txt`, on by default): when off, the game still checks but only
   reports that a newer version is out.
-- A program built by hand with no commit stamp (`commit dev`) is never
-  replaced; it too only reports a newer version.
+- A program built by hand with no release number is never replaced; it too
+  only reports a newer version. A release replaces a program only if its
+  number (`seq` in `nightly.txt`) is larger, so an old list cannot move a
+  program back. The new program must pass its checksum and `--stamp` check.
+- A server (`--server`) updates itself as well, and restarts into the update
+  once nobody is connected, with the same options.
 - There is no check at all in scripted runs (`--screenshot`, `--bench`),
   for `--server`, or in the browser.
 

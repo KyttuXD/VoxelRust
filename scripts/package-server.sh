@@ -45,7 +45,10 @@ cat > "$stage/run.sh" <<'RUN'
 here="$(cd "$(dirname "$0")" && pwd)"
 LD_LIBRARY_PATH="$here/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export LD_LIBRARY_PATH
-exec "$here/voxelrust" --server --no-update "$@"
+# The server keeps itself up to date: it installs a newer release when it
+# finds one and restarts into it once nobody is playing. Add --no-update
+# to stop that.
+exec "$here/voxelrust" --server "$@"
 RUN
 chmod +x "$stage/run.sh" "$stage/voxelrust"
 
@@ -55,9 +58,13 @@ VoxelRust multiplayer server (build $COMMIT)
   ./run.sh --world public --port 25590 --data ./data
 
 Players join with the server's address and port. Open the port in the
-firewall. Changes are saved in the data folder every 20 seconds. Stopping the
-server (Ctrl-C, or systemctl stop) does not save first, so up to 20 seconds
-of changes can be lost.
+firewall. Changes are saved in the data folder every 20 seconds, and again
+when the server is stopped (Ctrl-C, or systemctl stop).
+
+The server updates itself from the project's release: when a newer one is
+out it installs it, and restarts into it once nobody is connected. Only the
+program is replaced: the mods folder beside it is not, so download a new
+server package when mods change. ./run.sh --no-update turns this off.
 
 Options: run ./voxelrust --help. --players N sets the most players at once.
 TXT
