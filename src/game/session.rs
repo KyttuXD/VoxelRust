@@ -85,6 +85,9 @@ pub struct Session {
     /// minimap shows.
     pub explored: alloc::collections::BTreeSet<(i32, i32)>,
     explored_path: String,
+    /// The world's waypoints on its map (see `game::waypoints`).
+    pub waypoints: Vec<crate::game::waypoints::Waypoint>,
+    waypoints_path: String,
     pets_path: String,
     explore_timer: f32,
     /// Storage kept by a mod's code that the player just asked to open:
@@ -441,6 +444,10 @@ impl Session {
                 })
                 .unwrap_or_default(),
             explored_path: alloc::format!("{}{}.explored.txt", world_dir(base), name),
+            waypoints: sys::read_file(&alloc::format!("{}{}.waypoints.txt", world_dir(base), name))
+                .map(|b| crate::game::waypoints::parse(&String::from_utf8_lossy(&b)))
+                .unwrap_or_default(),
+            waypoints_path: alloc::format!("{}{}.waypoints.txt", world_dir(base), name),
             pets_path: alloc::format!("{}{}.pets.txt", world_dir(base), name),
             explore_timer: 0.0,
             opened: None,
@@ -2414,6 +2421,7 @@ impl Session {
                 text.push_str(&alloc::format!("{} {}\n", x, z));
             }
             sys::write_file(&self.explored_path, text.as_bytes());
+            sys::write_file(&self.waypoints_path, crate::game::waypoints::format(&self.waypoints).as_bytes());
             sys::write_file(&self.pets_path, self.mobs.save_pets().as_bytes());
             let vars: String = self.vars.iter().map(|(k, v)| alloc::format!("{}={}\n", k, v)).collect();
             sys::write_file(&self.vars_path, vars.as_bytes());

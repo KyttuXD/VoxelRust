@@ -17,11 +17,12 @@ pub enum Action {
     Fly,
     Inventory,
     Map,
+    Waypoints,
     Chat,
     Drop,
 }
 
-pub const ACTIONS: [(Action, &str, &str, i32); 12] = [
+pub const ACTIONS: [(Action, &str, &str, i32); 13] = [
     (Action::Forward, "forward", "MOVE FORWARD", 26),
     (Action::Back, "back", "MOVE BACK", 22),
     (Action::Left, "left", "MOVE LEFT", 4),
@@ -32,6 +33,7 @@ pub const ACTIONS: [(Action, &str, &str, i32); 12] = [
     (Action::Fly, "leave", "GET OFF / GET OUT", 9),
     (Action::Inventory, "inventory", "INVENTORY", 8),
     (Action::Map, "map", "WORLD MAP", 16),
+    (Action::Waypoints, "waypoints", "WAYPOINT MAP", 17),
     (Action::Chat, "chat", "CHAT", 23),
     (Action::Drop, "drop", "DROP THE HELD ITEM", 20),
 ];
@@ -98,6 +100,13 @@ pub struct Settings {
     pub weather: bool,
     /// The small map in the corner of the screen.
     pub minimap: bool,
+    /// The full map (M): zoom step (index into `client::fullmap::MAP_SCALES`),
+    /// the three presets (indices), and what it shows when it opens.
+    pub map_zoom: i32,
+    pub map_preset: [i32; 3],
+    pub map_follow: bool,
+    pub map_grid: bool,
+    pub map_waypoints: bool,
     /// Slim (Alex-style) arms for the player model, instead of the classic
     /// four-pixel arms. Other players see it too.
     pub slim_arms: bool,
@@ -146,6 +155,11 @@ impl Default for Settings {
             auto_tuned: false,
             weather: true,
             minimap: true,
+            map_zoom: 2,
+            map_preset: [0, 2, 4],
+            map_follow: true,
+            map_grid: false,
+            map_waypoints: true,
             slim_arms: false,
             flags: Vec::new(),
             extras: Vec::new(),
@@ -234,6 +248,11 @@ impl Settings {
             auto_tuned: flag("auto_tuned", false),
             weather: flag("weather", true),
             minimap: flag("minimap", true),
+            map_zoom: int("map_zoom", d.map_zoom, 0, 6),
+            map_preset: [int("map_preset_1", d.map_preset[0], 0, 6), int("map_preset_2", d.map_preset[1], 0, 6), int("map_preset_3", d.map_preset[2], 0, 6)],
+            map_follow: flag("map_follow", true),
+            map_grid: flag("map_grid", false),
+            map_waypoints: flag("map_waypoints", true),
             slim_arms: flag("slim_arms", false),
             flags: text.lines().filter_map(|l| l.strip_prefix("flag_")).filter_map(|l| l.split_once('=')).map(|(k, v)| (String::from(k.trim()), v.trim() == "1")).take(64).collect(),
             extras: {
@@ -277,6 +296,7 @@ impl Settings {
             self.view_bobbing as i32,
         );
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\nslim_arms={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.slim_arms as i32));
+        s.push_str(&alloc::format!("map_zoom={}\nmap_preset_1={}\nmap_preset_2={}\nmap_preset_3={}\nmap_follow={}\nmap_grid={}\nmap_waypoints={}\n", self.map_zoom, self.map_preset[0], self.map_preset[1], self.map_preset[2], self.map_follow as i32, self.map_grid as i32, self.map_waypoints as i32));
         s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.auto_update as i32));
         for (i, a) in ACTIONS.iter().enumerate() {
             s.push_str(&alloc::format!("key_{}={}\n", a.1, self.keys[i]));
@@ -293,6 +313,17 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_map_settings_default_clamp_and_round_trip() {
+        let d = Settings::default();
+        assert_eq!((d.key(Action::Waypoints), d.map_zoom, d.map_preset, d.map_follow, d.map_grid, d.map_waypoints), (17, 2, [0, 2, 4], true, false, true));
+        let s = Settings::parse("map_zoom=99\nmap_preset_1=-4\nmap_preset_2=3\nmap_grid=1\nmap_follow=0\n");
+        assert_eq!((s.map_zoom, s.map_preset, s.map_grid, s.map_follow), (6, [0, 3, 4], true, false));
+        let back = Settings::parse(&s.to_text());
+        assert_eq!((back.map_zoom, back.map_preset, back.map_grid, back.map_follow, back.map_waypoints), (6, [0, 3, 4], true, false, true));
+        assert!(back.extra("map_zoom").is_empty(), "the map settings are typed, not extras");
+    }
+
     use super::*;
 
     #[test]

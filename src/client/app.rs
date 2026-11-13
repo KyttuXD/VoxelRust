@@ -252,6 +252,8 @@ enum Screen {
     Inventory,
     Dead,
     Map,
+    /// The block map (M, or N for waypoints), on every world.
+    FullMap,
     Join,
     /// Adding or editing one entry of the server list.
     AddServer,
@@ -285,8 +287,6 @@ pub const BUILD: &str = match option_env!("VOXELRUST_BUILD") {
 /// The project's public server (port 25590, the default).
 const PUBLIC_SERVER: &str = "195.62.47.178";
 
-/// The minimap is this many pixels square.
-const MINIMAP: usize = 64;
 const TABS: [&str; 6] = ["VIDEO", "AUDIO", "CONTROLS", "GAME", "SKIN", "MODS"];
 
 /// The player model and the first-person hand for classic or slim arms.
@@ -442,16 +442,10 @@ struct App {
     edit_world: String,
     edit_name: String,
     edit_confirm: bool,
-    /// The minimap: its texture, the picture being painted bit by bit,
-    /// how far that has got, and where each is centred (blocks).
-    minimap_tex: u32,
-    minimap_px: Vec<u8>,
-    minimap_cursor: usize,
-    minimap_origin: (i32, i32),
-    minimap_shown: (i32, i32),
-    /// Blocks per pixel of the picture on show, and whether M enlarged it.
-    minimap_scale: i32,
-    minimap_big: bool,
+    /// The minimap's picture (client::fullmap).
+    minimap: super::fullmap::MapPicture,
+    /// The full map, once opened in this world (its view, toggles, picture).
+    full: Option<super::fullmap::FullMap>,
     /// World file name typed on the worlds screen.
     form_import: String,
     form_skin_path: String,
@@ -605,6 +599,8 @@ impl App {
 
     fn close_world(&mut self, r: &mut Renderer) {
         self.loading_since = 0.0;
+        // The map's selection, name box and view belong to the world it was in.
+        self.full = None;
         if let Some(mut s) = self.session.take() {
             if !self.scripted && !s.save() {
                 logf!("voxelrust: some files of world `{}` could not be written", s.name);
@@ -715,6 +711,7 @@ impl App {
         }
         let typing = self.focus != 0;
         let (k_inv, k_fly, k_map) = (self.settings.key(Action::Inventory), self.settings.key(Action::Fly), self.settings.key(Action::Map));
+        let k_waypoints = self.settings.key(Action::Waypoints);
         let k_chat = self.settings.key(Action::Chat);
         match self.screen {
             Screen::Game => {
@@ -734,6 +731,8 @@ impl App {
                     self.set_screen(Screen::Inventory);
                 } else if sc == k_map {
                     self.open_map();
+                } else if sc == k_waypoints {
+                    self.open_full_map();
                 } else if sc == self.settings.key(Action::Drop) {
                     self.drop_item = true;
                 } else if sc == k_chat {
@@ -779,6 +778,7 @@ impl App {
             Screen::EditWorld if sc == key::ESCAPE && !typing => self.set_screen(Screen::Worlds),
             Screen::AddServer if sc == key::ESCAPE => self.set_screen(Screen::Join),
             Screen::Map if sc == key::ESCAPE || sc == k_map => self.set_screen(Screen::Game),
+            Screen::FullMap if !typing && (sc == key::ESCAPE || sc == k_map || sc == k_waypoints) => self.close_full_map(),
             Screen::Settings if sc == key::ESCAPE && !typing => self.leave_settings(),
             Screen::NewWorld if sc == key::ESCAPE => self.set_screen(Screen::Worlds),
             Screen::Worlds if sc == key::ESCAPE => self.set_screen(Screen::Title),
@@ -903,7 +903,7 @@ impl App {
         self.ui_clock += real_dt;
         // In multiplayer the world never stops.
         let online = self.session.as_ref().map_or(false, |g| g.net.is_some());
-        let playing = online || matches!(self.screen, Screen::Game | Screen::Inventory | Screen::Dead | Screen::Chat | Screen::Map | Screen::Craft | Screen::Chest);
+        let playing = online || matches!(self.screen, Screen::Game | Screen::Inventory | Screen::Dead | Screen::Chat | Screen::Map | Screen::FullMap | Screen::Craft | Screen::Chest);
         let in_game = self.screen == Screen::Game;
         let k = |a: Action| in_game && self.keys[(self.settings.key(a) as usize).min(511)];
         let controls = Controls {
@@ -989,6 +989,9 @@ impl App {
         }
         self.audio.tick(real_dt);
         self.paint_minimap(r);
+        if self.screen == Screen::FullMap {
+            self.work_full_map(r);
+        }
         if core::mem::take(&mut self.want_reload) {
             self.reload_packs(r);
         }
@@ -1188,6 +1191,7 @@ impl App {
                 Screen::Inventory | Screen::Craft | Screen::Chest => self.screen_inventory(&mut ui),
                 Screen::Dead => self.screen_dead(&mut ui),
                 Screen::Map => self.screen_map(&mut ui),
+                Screen::FullMap => self.screen_full_map(&mut ui),
                 Screen::Join => self.screen_join(&mut ui),
                 Screen::AddServer => self.screen_add_server(&mut ui),
                 Screen::Chat => self.screen_chat(&mut ui),
@@ -1425,14 +1429,24 @@ impl App {
             }
         }
         // The minimap: north up, the player a dot with a nose.
-        if self.settings.minimap && self.minimap_tex != 0 && matches!(self.screen, Screen::Game | Screen::Chat) {
-            let size = if self.minimap_big { (h * 0.6).min(w * 0.5) } else { 64.0 * s };
+        if self.settings.minimap && self.minimap.tex != 0 && matches!(self.screen, Screen::Game | Screen::Chat) {
+            let size = 64.0 * s;
             let (mx, my) = (w - size - 4.0 * s, 4.0 * s);
             r.rect(mx - s, my - s, size + 2.0 * s, size + 2.0 * s, [16, 18, 24, 200]);
-            r.image(self.minimap_tex, mx, my, size, size);
-            let per = size / (MINIMAP as f32 * self.minimap_scale as f32);
-            let cx = mx + size * 0.5 + (g.player.pos[0] as f32 - self.minimap_shown.0 as f32) * per;
-            let cy = my + size * 0.5 + (g.player.pos[2] as f32 - self.minimap_shown.1 as f32) * per;
+            r.image(self.minimap.tex, mx, my, size, size);
+            // The minimap shows 2 blocks per texel, centred where its picture began.
+            let per = size / (super::fullmap::MINIMAP_TEXELS as f32 * self.minimap.shown_step as f32);
+            let to_map = |bx: f32, bz: f32| (mx + size * 0.5 + (bx - self.minimap.shown_origin.0 as f32) * per, my + size * 0.5 + (bz - self.minimap.shown_origin.1 as f32) * per);
+            if self.settings.map_waypoints {
+                for wp in &g.waypoints {
+                    let (wx, wz) = to_map(wp.x as f32 + 0.5, wp.z as f32 + 0.5);
+                    if wx > mx && wx < mx + size && wz > my && wz < my + size {
+                        let c = crate::game::waypoints::COLOURS[wp.colour.min(7) as usize];
+                        r.rect(wx - 1.5 * s, wz - 1.5 * s, 3.0 * s, 3.0 * s, [c[0], c[1], c[2], 255]);
+                    }
+                }
+            }
+            let (cx, cy) = to_map(g.player.pos[0] as f32, g.player.pos[2] as f32);
             if cx > mx && cx < mx + size && cy > my && cy < my + size {
                 let (fx, fz) = (-crate::math::sinf(g.player.yaw), -crate::math::cosf(g.player.yaw));
                 r.rect(cx + fx * 3.0 * s - s * 0.5, cy + fz * 3.0 * s - s * 0.5, s, s, [255, 255, 255, 255]);
@@ -2168,76 +2182,39 @@ impl App {
         ui.centered(ui.w() * 0.5, y + step * 6.0, 1.0, "CTRL+V PASTES AN ADDRESS", ui::DIM);
     }
 
-    /// Paint a little more of the minimap; when a picture is finished it
-    /// goes on show and the next one starts where the player is now.
+    /// Paint a little more of the minimap (see client::fullmap).
     fn paint_minimap(&mut self, r: &mut Renderer) {
         let g = match self.session.as_ref() {
             Some(g) if self.settings.minimap => g,
             _ => return,
         };
-        let scale = if self.minimap_big { 8 } else { 2 };
-        if self.minimap_cursor == 0 {
-            self.minimap_origin = (floord(g.player.pos[0]), floord(g.player.pos[2]));
-        }
-        let seed = g.world.seed;
-        let half = (MINIMAP / 2) as i32;
+        let frame = super::fullmap::Frame {
+            seed: g.world.seed,
+            world: super::fullmap::world_key(g.world.seed, &g.name),
+            explored: &g.explored,
+            charted: crate::worldgen::source().map_or(false, |s| s.charted) && crate::worldgen::shape() == 0,
+            player: [g.player.pos[0] as f32, g.player.pos[2] as f32],
+            now: sys::now(),
+        };
         if crate::render::EXPERIMENT.load(core::sync::atomic::Ordering::Relaxed) & 16 != 0 {
             return;
         }
-        // A little each frame keeps this off the frame time: the whole
-        // picture comes round every couple of seconds.
-        for _ in 0..40 {
-            let i = self.minimap_cursor;
-            if i >= MINIMAP * MINIMAP {
-                break;
-            }
-            let (px, pz) = ((i % MINIMAP) as i32, (i / MINIMAP) as i32);
-            let (x, z) = (self.minimap_origin.0 + (px - half) * scale, self.minimap_origin.1 + (pz - half) * scale);
-            let seen = g.explored.contains(&(x.div_euclid(crate::session::EXPLORE), z.div_euclid(crate::session::EXPLORE)));
-            // Some terrain is mapped before anyone walks it: ground not yet
-            // visited shows too, only dimmer.
-            let charted = crate::worldgen::source().map_or(false, |s| s.charted) && crate::worldgen::shape() == 0;
-            let c = if seen || charted {
-                let col = crate::worldgen::column(seed, x, z);
-                let base = if col.river {
-                    [44, 104, 198]
-                } else if col.building > 0 {
-                    [196, 190, 184]
-                } else if col.road {
-                    [86, 88, 94]
-                } else if col.farm {
-                    [198, 180, 100]
-                } else if col.paved {
-                    [120, 118, 116]
-                } else {
-                    crate::lod::colour(col.height, col.biome)
-                };
-                // Higher ground is lighter, and slopes facing north-west
-                // catch the light, which makes hills readable.
-                let north = crate::worldgen::column(seed, x - scale, z - scale).height;
-                let lift = ((col.height - crate::worldgen::SEA).clamp(0, 60) / 3 + (col.height - north).clamp(-3, 3) * 9) as i32;
-                let lit = [0, 1, 2].map(|k| (base[k] as i32 + if col.height >= crate::worldgen::SEA { lift } else { 0 }).clamp(0, 255) as u8);
-                if seen {
-                    lit
-                } else {
-                    lit.map(|v| (v as u16 * 45 / 100 + 14) as u8)
-                }
-            } else {
-                [24, 26, 32]
-            };
-            self.minimap_px[i * 4..i * 4 + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
-            self.minimap_cursor += 1;
-        }
-        if self.minimap_cursor >= MINIMAP * MINIMAP {
-            if self.minimap_tex == 0 {
-                self.minimap_tex = r.add_texture(MINIMAP, MINIMAP, &self.minimap_px);
-            } else {
-                r.update_texture(self.minimap_tex, MINIMAP, MINIMAP, &self.minimap_px);
-            }
-            self.minimap_shown = self.minimap_origin;
-            self.minimap_scale = scale;
-            self.minimap_cursor = 0;
-        }
+        // A little each frame keeps this off the frame time.
+        super::fullmap::minimap_work(&mut self.minimap, r, &frame, 40);
+    }
+
+    /// Paint the full map while it is open.
+    fn work_full_map(&mut self, r: &mut Renderer) {
+        let (Some(g), Some(full)) = (self.session.as_ref(), self.full.as_mut()) else { return };
+        let frame = super::fullmap::Frame {
+            seed: g.world.seed,
+            world: super::fullmap::world_key(g.world.seed, &g.name),
+            explored: &g.explored,
+            charted: crate::worldgen::source().map_or(false, |s| s.charted) && crate::worldgen::shape() == 0,
+            player: [g.player.pos[0] as f32, g.player.pos[2] as f32],
+            now: sys::now(),
+        };
+        full.work(r, &frame);
     }
 
     /// Read the pack files again and switch to them without restarting.
@@ -2327,8 +2304,55 @@ impl App {
         if self.map_native.is_some() {
             self.set_screen(Screen::Map);
         } else {
-            self.minimap_big = !self.minimap_big;
-            self.minimap_cursor = 0;
+            self.open_full_map();
+        }
+    }
+
+    /// The block map: the world's terrain at any zoom, with waypoints.
+    fn open_full_map(&mut self) {
+        if self.session.is_some() {
+            self.set_screen(Screen::FullMap);
+        }
+    }
+
+    /// Leave the block map, keeping its zoom and toggles for next time.
+    fn close_full_map(&mut self) {
+        if let Some(full) = self.full.as_ref() {
+            self.settings.map_zoom = super::fullmap::scale_index(full.view.step) as i32;
+            self.settings.map_follow = full.follow;
+            self.settings.map_grid = full.grid;
+            self.settings.map_waypoints = full.show_waypoints;
+            if !self.scripted {
+                sys::write_file(&self.settings_path, self.settings.to_text().as_bytes());
+            }
+        }
+        self.set_screen(Screen::Game);
+    }
+
+    /// The block map's screen: its picture, panel and waypoints.
+    fn screen_full_map(&mut self, ui: &mut Ui) {
+        if self.session.is_none() {
+            self.set_screen(Screen::Game);
+            return;
+        }
+        if self.full.is_none() {
+            let st = &self.settings;
+            self.full = Some(super::fullmap::FullMap::new(st.map_zoom.max(0) as usize, st.map_follow, st.map_grid, st.map_waypoints));
+        }
+        let (Some(g), Some(full)) = (self.session.as_mut(), self.full.as_mut()) else { return };
+        let frame = super::fullmap::Frame {
+            seed: g.world.seed,
+            world: super::fullmap::world_key(g.world.seed, &g.name),
+            explored: &g.explored,
+            charted: crate::worldgen::source().map_or(false, |s| s.charted) && crate::worldgen::shape() == 0,
+            player: [g.player.pos[0] as f32, g.player.pos[2] as f32],
+            now: sys::now(),
+        };
+        let asked = super::fullmap::screen(full, ui, &frame, &mut g.waypoints);
+        if let Some(i) = asked.preset {
+            let step = super::fullmap::MAP_SCALES[(self.settings.map_preset[i].clamp(0, 6)) as usize];
+            full.view.step = step;
+            full.follow = true;
         }
     }
 
@@ -3131,13 +3155,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         edit_world: String::new(),
         edit_name: String::new(),
         edit_confirm: false,
-        minimap_tex: 0,
-        minimap_px: alloc::vec![0u8; MINIMAP * MINIMAP * 4],
-        minimap_cursor: 0,
-        minimap_origin: (0, 0),
-        minimap_shown: (0, 0),
-        minimap_scale: 2,
-        minimap_big: false,
+        minimap: super::fullmap::MapPicture::new(super::fullmap::MINIMAP_TEXELS),
+        full: None,
         form_import: String::new(),
         form_skin_path: String::new(),
         tags: Vec::new(),
@@ -3231,6 +3250,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         inp.mouse = (-100.0, -100.0);
         if opts.show.contains("map") {
             app.open_map();
+        }
+        // "atlas" opens the block map itself, on any world.
+        if opts.show.contains("atlas") {
+            app.open_full_map();
         }
     }
 

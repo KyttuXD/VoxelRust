@@ -6,4 +6,5 @@ pub mod interact;
 pub mod entity;
 pub mod path;
 pub mod session;
+pub mod waypoints;
 pub mod fluid;

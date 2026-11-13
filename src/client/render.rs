@@ -1219,6 +1219,17 @@ impl Renderer {
         );
     }
 
+    /// Part of a texture: the rectangle `uv` (u0, v0, u1, v1) of it, drawn
+    /// into the rectangle at (x, y) of size (w, h).
+    pub fn image_part(&mut self, tex: u32, x: f32, y: f32, w: f32, h: f32, uv: [f32; 4]) {
+        self.set_tex(tex, gl::QUADS);
+        self.quad(
+            [[x, y, 0.0], [x + w, y, 0.0], [x + w, y + h, 0.0], [x, y + h, 0.0]],
+            [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]],
+            WHITE,
+        );
+    }
+
     /// A block as a little 3D picture: seen from above and one corner,
     /// top lit, sides shaded. `boxes` empty means a whole cube.
     pub fn icon_block(&mut self, x: f32, y: f32, size: f32, tiles: [u16; 3], boxes: &[Bx], col: Color) {

@@ -195,7 +195,7 @@ fn unbundle_with(d: &[u8], file_names: bool) -> Option<Vec<(String, Vec<u8>)>> {
 }
 
 /// The suffixes of the small files every world has besides its regions.
-pub const WORLD_FILES: [&str; 6] = ["meta.txt", "chests.txt", "regions.txt", "explored.txt", "pets.txt", "vars.txt"];
+pub const WORLD_FILES: [&str; 7] = ["meta.txt", "chests.txt", "regions.txt", "explored.txt", "pets.txt", "vars.txt", "waypoints.txt"];
 
 /// Those, and the ones the mods' own code keeps for a world.
 fn world_files() -> Vec<&'static str> {
@@ -444,13 +444,15 @@ mod tests {
         s.flush();
         s.io.write("data/worlds/old.meta.txt", b"seed=5\n");
         s.io.write("data/worlds/old.chests.txt", b"1 2 3 stone:4\n");
+        s.io.write("data/worlds/old.waypoints.txt", b"5 6 2 Home base\n");
         let bundle = export_world(&mut s.io, "data/", "old").expect("export failed");
         assert!(export_world(&mut s.io, "data/", "missing").is_none());
 
         let mut other = MemIo::default();
         assert!(import_world(&mut other, "elsewhere/", "copy", &bundle));
         assert_eq!(other.0.get("elsewhere/worlds/copy.meta.txt").map(|v| v.as_slice()), Some(&b"seed=5\n"[..]));
-        assert_eq!(other.0.len(), 5, "{:?}", other.0.keys());
+        assert_eq!(other.0.get("elsewhere/worlds/copy.waypoints.txt").map(|v| v.as_slice()), Some(&b"5 6 2 Home base\n"[..]), "waypoints travel with the world");
+        assert_eq!(other.0.len(), 6, "{:?}", other.0.keys());
         let mut s2 = RegionStore::new(other, String::from("elsewhere/worlds/copy."));
         assert_eq!(s2.load(-1, -17).unwrap(), a);
         assert_eq!(s2.load(40, 3).unwrap(), b);

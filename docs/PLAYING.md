@@ -61,7 +61,8 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | Middle click | pick the block you are looking at |
 | 1-9, mouse wheel | choose a hotbar slot |
 | E * | inventory |
-| M * | Earth worlds: the world map. Other worlds: enlarge or shrink the minimap |
+| M | The world map: the whole map on every world (Earth worlds: the Earth map) |
+| N | The world map with waypoints, on every world |
 | T * | chat |
 | Esc | menu / close a screen |
 | F1 | hide or show the HUD |
@@ -92,11 +93,25 @@ In the browser version, copy and paste work inside the game only.
 
 A small map sits in the top right corner, north up, with you as a dot that
 shows which way you face. It only shows ground you have been near; the rest
-stays dark. In normal worlds M switches it between small and large. In Earth
-worlds the minimap shows the whole map from the start, dimmed where you have
-not been yet, and M opens the full map instead (see
-[EARTH.md](EARTH.md#the-map-m)).
+stays dark. Waypoints show on it as small squares. In Earth worlds the minimap
+shows the whole map from the start, dimmed where you have not been yet.
 SETTINGS > GAME > MINIMAP turns it off.
+
+### The world map
+
+M opens the world map, and N opens it with waypoints. It shows the terrain
+you have explored, on every world; in Earth worlds M opens the Earth map
+instead (see [EARTH.md](EARTH.md#the-map-m)), and N still opens the world map.
+
+- Drag to move, the wheel to zoom (1, 2 and 3 jump to the presets, + and -
+  step), C centres on you, F toggles FOLLOW ME, G toggles the grid, H the
+  waypoints. Escape or M or N closes it.
+- Right click adds a waypoint where the pointer is; ADD HERE adds one at the
+  centre. Click a waypoint to select it: rename it in the NAME box, GO TO
+  centres the view on it, COLOUR cycles its colour, DELETE asks once more.
+- Waypoints are saved with the world (`worlds/<name>.waypoints.txt`), and go
+  with it when it is exported or copied. Up to 64 per world.
+- The zoom, presets and toggles are kept in the settings file.
 
 ## Survival and creative
 
@@ -758,7 +773,7 @@ marked "From the Earth mod").
 | `--time T` | time of day, 0..1 (0.25 = noon) |
 | `--hidden` | do not show the window (with `--screenshot` / `--bench`) |
 | `--showcase` | with `--screenshot`: lay out every placeable block in front of the camera first (vehicles are not laid out; handy for checking a pack) |
-| `--show LIST` | with `--screenshot`: also draw `hud`, `debug`, `pause`, `items`, `title`, `worlds`, `newworld`, `multiplayer`, `addserver`, `dead`, `map`, `settings:TAB`, `items:TAB`, `third` (camera behind the player), `creatures` (one of each) or `walking` (the same, mid-stride) |
+| `--show LIST` | with `--screenshot`: also draw `hud`, `debug`, `pause`, `items`, `title`, `worlds`, `newworld`, `multiplayer`, `addserver`, `dead`, `map`, `atlas` (the world map), `settings:TAB`, `items:TAB`, `third` (camera behind the player), `creatures` (one of each) or `walking` (the same, mid-stride) |
 
 `--show` takes several words joined by commas. Two of them take a value:
 

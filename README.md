@@ -18,7 +18,7 @@ own procedurally painted textures and its own terrain generator.
   elevation tiles;
   water, forests, sand, ice, asphalt roads with painted lines, hollow
   buildings with floors, stairs and furniture, and fields of crops from
-  OpenStreetMap; and an in-game map (M) to look around and travel anywhere.
+  OpenStreetMap; and an in-game map (M) to look around, with waypoints (N).
   The world is 256 blocks high.
 - **Survival and creative modes.** Survival has health, hunger, falling,
   drowning, mining times with cracks spreading over the block, tools, hoes
@@ -306,7 +306,8 @@ Tiles.
 | Left / right / middle click | break or hit / place, use, open, sit, shoot, trade, tame, ride / pick |
 | 1-9, mouse wheel | choose a hotbar slot |
 | E | inventory |
-| M | world map (Earth worlds); bigger minimap (other worlds) |
+| M | world map (Earth worlds: the Earth map) |
+| N | world map with waypoints |
 | T | chat and commands (`/help` lists them) |
 | Esc | menu |
 | F1, F2, F3, F5, F11 | hide the HUD, screenshot, details, third-person view, full screen |
