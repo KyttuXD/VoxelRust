@@ -127,8 +127,14 @@ fn item_geometry(held: Held, white: u16, out: &mut Vec<Quad>, first: bool) {
             if first {
                 // The model, as in LastRoute's pose table: the handle's end (the grip) at
                 // the origin and the long axis up (+Y), the flat of it facing +Z.
+                // A picture's long axis may be the diagonal (the game's own tools) or
+                // straight up (a texture pack's): find it, and the end that is held.
+                let (angle, grip) = tool_frame(tile);
                 stacked(out, tile, [0.0, 0.0], [TOOL_SIZE, TOOL_SIZE], false);
-                map(&mut out[start..], |p| rot_z(p, core::f32::consts::FRAC_PI_4));
+                map(&mut out[start..], |p| {
+                    let q = [p[0] - grip[0] * TOOL_SIZE, p[1] - grip[1] * TOOL_SIZE, p[2]];
+                    rot_z(q, angle)
+                });
             } else {
                 stacked(out, tile, [-0.025, -0.025], [0.19, 0.19], false);
                 map(&mut out[start..], |p| rot_y(p, -0.5));
@@ -136,8 +142,9 @@ fn item_geometry(held: Held, white: u16, out: &mut Vec<Quad>, first: bool) {
         }
         Held::Bow(tile) => {
             if first {
+                let (angle, _) = tool_frame(tile);
                 stacked(out, tile, [-TOOL_SIZE * 0.5, -TOOL_SIZE * 0.5], [TOOL_SIZE * 0.5, TOOL_SIZE * 0.5], false);
-                map(&mut out[start..], |p| rot_z(p, core::f32::consts::FRAC_PI_4));
+                map(&mut out[start..], |p| rot_z(p, angle));
             } else {
                 stacked(out, tile, [-0.1, -0.1], [0.1, 0.1], false);
                 map(&mut out[start..], |p| rot_y(p, -0.5));
@@ -221,6 +228,65 @@ fn slab(out: &mut Vec<Quad>, tile: u16, lo: [f32; 2], hi: [f32; 2], mirror: bool
 /// Side of a tool's picture in the first-person model (blocks).
 const TOOL_SIZE: f32 = 0.30;
 
+/// How a picture sits as a held tool: the turn (radians, about z) that puts its
+/// long axis upright, and the held end (the handle's end) as a fraction of the
+/// picture from its bottom left. Found from which pixels are solid: the axis is
+/// the direction they spread most, and the handle is at the end nearer the
+/// picture's bottom.
+fn tool_frame(tile: u16) -> (f32, [f32; 2]) {
+    let diagonal = (core::f32::consts::FRAC_PI_4, [0.0, 0.0]);
+    let Some(alpha) = crate::textures::tile_alpha(tile as usize) else { return diagonal };
+    let (mut n, mut sx, mut sy) = (0.0f32, 0.0f32, 0.0f32);
+    for y in 0..16 {
+        for x in 0..16 {
+            if alpha[y * 16 + x] > 128 {
+                n += 1.0;
+                sx += x as f32 + 0.5;
+                sy += 15.5 - y as f32;
+            }
+        }
+    }
+    if n < 3.0 {
+        return diagonal;
+    }
+    let (mx, my) = (sx / n, sy / n);
+    let (mut cxx, mut cyy, mut cxy) = (0.0f32, 0.0f32, 0.0f32);
+    for y in 0..16 {
+        for x in 0..16 {
+            if alpha[y * 16 + x] > 128 {
+                let (dx, dy) = (x as f32 + 0.5 - mx, 15.5 - y as f32 - my);
+                cxx += dx * dx;
+                cyy += dy * dy;
+                cxy += dx * dy;
+            }
+        }
+    }
+    // The principal axis: its angle from the x axis, folded so that it points up.
+    let mut theta = 0.5 * crate::math::atan2f(2.0 * cxy, cxx - cyy);
+    if theta < 0.0 {
+        theta += core::f32::consts::PI;
+    }
+    // Rotating by (pi/2 - theta) turns the axis to point up (+y).
+    let angle = core::f32::consts::FRAC_PI_2 - theta;
+    let axis = [crate::math::cosf(theta), crate::math::sinf(theta)];
+    // The solid pixel furthest back along the axis, the end with the lower
+    // picture position, is where it is held.
+    let (mut best, mut at) = (f32::MAX, [0.0f32, 0.0]);
+    for y in 0..16 {
+        for x in 0..16 {
+            if alpha[y * 16 + x] > 128 {
+                let (px, py) = (x as f32 + 0.5, 15.5 - y as f32);
+                let along = px * axis[0] + py * axis[1];
+                if along < best {
+                    best = along;
+                    at = [px / 16.0, py / 16.0];
+                }
+            }
+        }
+    }
+    (angle, at)
+}
+
 fn rot_z(p: [f32; 3], a: f32) -> [f32; 3] {
     let (c, s) = (cosf(a), sinf(a));
     [p[0] * c - p[1] * s, p[0] * s + p[1] * c, p[2]]
@@ -241,7 +307,7 @@ pub struct Pose {
 pub fn pose_of(held: Held) -> Pose {
     match held {
         Held::Bow(_) => Pose { roll: 0.3, scale: 1.3, yaw: 0.4, pitch: -0.3 },
-        _ => Pose { roll: 0.62, scale: 1.9, yaw: 0.35, pitch: -0.5 },
+        _ => Pose { roll: 0.62, scale: 1.6, yaw: 0.35, pitch: -0.5 },
     }
 }
 

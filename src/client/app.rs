@@ -3080,7 +3080,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
     crate::textures::set_override_dir(&alloc::format!("{}textures/", base));
     // Texture packs: the settings' list, then any named on the command line.
     {
-        let saved = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| crate::settings::Settings::parse(&String::from_utf8_lossy(&b)).texture_pack).unwrap_or_default();
+        let early = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| crate::settings::Settings::parse(&String::from_utf8_lossy(&b))).unwrap_or_default();
+        crate::textures::set_pack_tweak(early.pack_hue, early.pack_saturation, early.pack_brightness);
+        let saved = early.texture_pack;
         let mut list: Vec<String> = saved.split('|').map(|s| String::from(s.trim())).filter(|s| !s.is_empty()).collect();
         list.extend(opts.texture_packs.iter().cloned());
         if !list.is_empty() {

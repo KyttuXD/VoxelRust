@@ -1061,7 +1061,6 @@ pub fn pack_names(id: &str) -> Vec<alloc::string::String> {
         ("water", "water_still"),
         ("lava", "lava_still"),
         ("crystal_ore", "diamond_ore"),
-        ("ruby_ore", "redstone_ore"),
         ("workbench_top", "crafting_table_top"),
         ("marble", "calcite"),
         ("slate", "deepslate"),
@@ -1076,7 +1075,6 @@ pub fn pack_names(id: &str) -> Vec<alloc::string::String> {
         ("cooked_fish", "cooked_cod"),
         ("berries", "sweet_berries"),
         ("crystal", "diamond"),
-        ("ruby", "emerald"),
         ("copper_ingot", "copper_ingot"),
         ("icicle", "pointed_dripstone"),
         ("bread_crust", "bread"),
@@ -1129,19 +1127,9 @@ pub fn pack_names(id: &str) -> Vec<alloc::string::String> {
             let m = match m {
                 "wood" => "wooden",
                 "crystal" => "diamond",
-                "ruby" => "netherite",
-                "tin" | "silver" => "iron",
                 m => m,
             };
             add(&alloc::format!("{}{}", m, theirs));
-            add(&alloc::format!("{}{}", if m == "copper" { "iron" } else { m }, theirs));
-        }
-    }
-    for (kind, theirs) in [("_ingot", "_ingot"), ("_ore", "_ore"), ("_block", "_block")] {
-        if let Some(m) = id.strip_suffix(kind) {
-            if m == "tin" || m == "silver" {
-                add(&alloc::format!("iron{}", theirs));
-            }
         }
     }
     v
@@ -1179,6 +1167,7 @@ pub fn pack_pixels(id: &str) -> Option<Vec<u8>> {
                 p[2] = (p[2] as u32 * t[2] as u32 / 255) as u8;
             }
         }
+        tweak_colours(&mut px);
         return Some(px);
     }
     None
@@ -1203,7 +1192,99 @@ pub fn tile_pixels(i: usize, t: &TileDef) -> Vec<u8> {
     if let Some(px) = pack_pixels(&t.id) {
         return px;
     }
+    // A tool the pack has no picture of (ruby, tin, emberite...): the pack's iron
+    // one in that material's colour, so it is in the pack's style too.
+    if let TileSrc::Paint { style, rgb } = &t.src {
+        if let Some(px) = pack_tool(style, *rgb) {
+            return px;
+        }
+    }
     described_pixels(i, t)
+}
+
+/// The pack's iron `kind` (pick, axe, shovel, hoe, sword) with its metal
+/// recoloured to `rgb`; its handle and outline stay.
+fn pack_tool(kind: &str, rgb: [u8; 3]) -> Option<Vec<u8>> {
+    let theirs = match kind {
+        "pick" => "iron_pickaxe",
+        "axe" => "iron_axe",
+        "shovel" => "iron_shovel",
+        "hoe" => "iron_hoe",
+        "sword" => "iron_sword",
+        _ => return None,
+    };
+    let mut px = pack_pixels(theirs)?;
+    for p in px.chunks_mut(4) {
+        if p[3] == 0 {
+            continue;
+        }
+        let (r, g, b) = (p[0] as i32, p[1] as i32, p[2] as i32);
+        let hi = r.max(g).max(b);
+        let lo = r.min(g).min(b);
+        // Metal: grey (little colour) and not dark like the outline.
+        if hi - lo < 28 && hi > 70 {
+            let lum = (r + g + b) as f32 / 3.0 / 255.0;
+            let k = (lum / 0.8).min(1.25);
+            p[0] = (rgb[0] as f32 * k).min(255.0) as u8;
+            p[1] = (rgb[1] as f32 * k).min(255.0) as u8;
+            p[2] = (rgb[2] as f32 * k).min(255.0) as u8;
+        }
+    }
+    Some(px)
+}
+
+/// How much the pack's colours are changed: hue turned by this many degrees,
+/// saturation and brightness scaled by these percentages. Set from the settings.
+static TWEAK: [core::sync::atomic::AtomicI32; 3] = [core::sync::atomic::AtomicI32::new(6), core::sync::atomic::AtomicI32::new(108), core::sync::atomic::AtomicI32::new(97)];
+
+pub fn set_pack_tweak(hue: i32, saturation: i32, brightness: i32) {
+    use core::sync::atomic::Ordering::Release;
+    TWEAK[0].store(hue, Release);
+    TWEAK[1].store(saturation, Release);
+    TWEAK[2].store(brightness, Release);
+}
+
+/// Change the colours of a pack's picture a little (see [`set_pack_tweak`]).
+fn tweak_colours(px: &mut [u8]) {
+    use core::sync::atomic::Ordering::Acquire;
+    let (hue, sat, val) = (TWEAK[0].load(Acquire), TWEAK[1].load(Acquire), TWEAK[2].load(Acquire));
+    if hue == 0 && sat == 100 && val == 100 {
+        return;
+    }
+    let (dh, ks, kv) = (hue as f32 / 60.0, sat as f32 / 100.0, val as f32 / 100.0);
+    for p in px.chunks_mut(4) {
+        let (r, g, b) = (p[0] as f32 / 255.0, p[1] as f32 / 255.0, p[2] as f32 / 255.0);
+        let mx = r.max(g).max(b);
+        let mn = r.min(g).min(b);
+        let d = mx - mn;
+        let mut h = if d <= 0.0 {
+            0.0
+        } else if mx == r {
+            (g - b) / d
+        } else if mx == g {
+            2.0 + (b - r) / d
+        } else {
+            4.0 + (r - g) / d
+        };
+        h += dh;
+        h -= 6.0 * crate::math::floorf(h / 6.0);
+        let s = if mx <= 0.0 { 0.0 } else { (d / mx * ks).min(1.0) };
+        let v = (mx * kv).min(1.0);
+        // Back to red, green, blue.
+        let c = v * s;
+        // The standard hsv to rgb: channel n takes v - c * max(0, min(k, 4 - k, 1)), k = (n + h) mod 6.
+        let chan = |n: f32| -> u8 {
+            let kk = {
+                let t = n + h;
+                t - 6.0 * crate::math::floorf(t / 6.0)
+            };
+            let m = kk.min(4.0 - kk).min(1.0).max(0.0);
+            ((v - c * m) * 255.0 + 0.5).clamp(0.0, 255.0) as u8
+        };
+        p[0] = chan(5.0);
+        p[1] = chan(3.0);
+        p[2] = chan(1.0);
+    }
 }
 
 /// The picture the data describes, whatever files there are.
@@ -1378,5 +1459,24 @@ mod tests {
         has("wheat_3", "wheat_stage4");
         has("carrot_4", "carrots_stage3");
         has("raw_meat", "beef");
+    }
+
+    #[test]
+    fn the_pack_colour_change_is_small_and_keeps_alpha() {
+        let mut px = [126u8, 126, 126, 255, 129, 94, 63, 128];
+        let before = px;
+        tweak_colours(&mut px);
+        // A grey stays grey (a little darker); a brown moves a little; alpha is untouched.
+        assert!(px[0] == px[1] && px[1] == px[2] && px[0] < before[0] && before[0] - px[0] < 8, "{px:?}");
+        assert!(px[4] != before[4] || px[5] != before[5] || px[6] != before[6]);
+        assert!((px[4] as i32 - before[4] as i32).abs() < 30 && (px[5] as i32 - before[5] as i32).abs() < 30);
+        assert_eq!((px[3], px[7]), (255, 128));
+    }
+
+    #[test]
+    fn ruby_tools_are_not_matched_to_other_materials() {
+        for id in ["ruby_pick", "ruby_axe", "ruby_sword", "ruby", "ruby_ore"] {
+            assert!(pack_names(id).iter().all(|n| !n.contains("netherite") && !n.contains("emerald") && !n.contains("redstone")), "{id}");
+        }
     }
 }

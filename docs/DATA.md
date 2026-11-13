@@ -943,6 +943,9 @@ lays one of every block out in front of the camera and writes a picture.
 
 ## Editing the game's textures
 
+New pictures are drawn in the OCD style: see [TEXTURING.md](TEXTURING.md).
+
+
 `voxelrust --export-textures DIR` writes every texture (the game's and every
 mod's) as `<id>.png`, 16 x 16 pixels, RGBA, in `DIR`, with `atlas.png` (all of
 them in one picture), `textures.txt` (number and id of each) and a note on
