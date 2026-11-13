@@ -126,6 +126,8 @@ pub struct Session {
     pub sound_queue: Vec<String>,
     /// How many `/fire` events are being acted on at once (see the `/fire` command).
     fire_depth: u8,
+    /// Asleep in a bed: the night passes quickly (see [`tick_clock`]).
+    pub sleeping: bool,
     /// Damage asked for by commands, dealt likewise.
     pending_hurt: i32,
     /// Things in flight: arrows, bolts, spells.
@@ -364,6 +366,20 @@ pub fn world_exists(base: &str, name: &str) -> bool {
     sys::read_file(&meta_path(base, name)).is_some()
 }
 
+/// The time of day (0..1, a full day each twenty minutes) after `dt` seconds.
+/// Asleep, it runs forty times faster, and the sleeper wakes when the day
+/// begins again (time passes through 1.0). Returns the new time and whether
+/// the sleeper is still asleep.
+pub fn tick_clock(time: f32, dt: f32, sleeping: bool) -> (f32, bool) {
+    // (No `%` on floats: that would need the C math library.)
+    let mut t = time + dt * if sleeping { 40.0 } else { 1.0 } / 1200.0;
+    let wrapped = t >= 1.0;
+    if wrapped {
+        t -= 1.0;
+    }
+    (t, sleeping && !wrapped)
+}
+
 impl Session {
     /// Open the world called `name`, creating it from `new` if it does not
     /// exist yet. `threads` is the number of worker threads.
@@ -474,6 +490,7 @@ impl Session {
             touch_timer: 0.0,
             sound_queue: Vec::new(),
             fire_depth: 0,
+            sleeping: false,
             pending_hurt: 0,
             shots: Vec::new(),
             drops: Vec::new(),
@@ -1649,6 +1666,9 @@ impl Session {
     }
 
     pub fn damage(&mut self, amount: i32, audio: &mut Audio) {
+        if amount > 0 {
+            self.sleeping = false;
+        }
         if self.mode != GameMode::Survival || self.dead || amount <= 0 {
             return;
         }
@@ -1706,10 +1726,16 @@ impl Session {
         self.hurt_flash = (self.hurt_flash - dt).max(0.0);
         // A full day lasts twenty minutes. (No `%` on floats: that would
         // need the C math library.)
-        self.time += dt / 1200.0;
-        if self.time >= 1.0 {
-            self.time -= 1.0;
+        // Moving, or getting off, wakes a sleeper.
+        if self.sleeping && (c.input.forward != 0.0 || c.input.strafe != 0.0 || c.input.jump || c.leave) {
+            self.sleeping = false;
         }
+        let (time, still_asleep) = tick_clock(self.time, dt, self.sleeping);
+        if self.sleeping && !still_asleep {
+            self.say("GOOD MORNING");
+        }
+        self.time = time;
+        self.sleeping = still_asleep;
         if c.toggle_fly && !self.carried {
             if self.mode == GameMode::Creative {
                 self.player.flying = !self.player.flying;
@@ -2263,8 +2289,9 @@ impl Session {
                     self.spawn = [hit.cell[0] as f64 + 0.5, hit.cell[1] as f64 + 1.0, hit.cell[2] as f64 + 0.5];
                     let night = crate::math::sinf(self.time * crate::math::TAU) < -0.05;
                     if night && self.net.is_none() {
-                        self.time = 0.0;
-                        self.say("GOOD MORNING");
+                        // Sleep until morning: the night passes at forty times the speed.
+                        self.sleeping = true;
+                        self.say("ZZZ...  MOVE TO WAKE UP");
                     } else {
                         self.say(if night { "YOU WILL WAKE UP HERE" } else { "YOU CAN SLEEP WHEN IT IS DARK" });
                     }
@@ -2471,4 +2498,36 @@ impl Session {
 /// items come from the creative list.
 pub fn starting_inventory(_mode: GameMode) -> Inventory {
     Inventory::new()
+}
+
+#[cfg(test)]
+mod clock_tests {
+    use super::tick_clock;
+
+    #[test]
+    fn a_night_asleep_passes_forty_times_faster_and_ends_at_dawn() {
+        // Awake, a second is 1/1200 of a day.
+        let (t, asleep) = tick_clock(0.6, 1.0, false);
+        assert!((t - (0.6 + 1.0 / 1200.0)).abs() < 1e-6 && !asleep);
+        // Asleep, forty times that, and still asleep before dawn.
+        let (t, asleep) = tick_clock(0.6, 1.0, true);
+        assert!((t - (0.6 + 40.0 / 1200.0)).abs() < 1e-6 && asleep);
+        // From the middle of the night (0.75) the rest of it takes 0.25 * 1200 / 40 = 7.5 seconds.
+        let (mut time, mut asleep, mut seconds) = (0.75f32, true, 0.0f32);
+        while asleep && seconds < 20.0 {
+            let (t, a) = tick_clock(time, 0.1, true);
+            time = t;
+            asleep = a;
+            seconds += 0.1;
+        }
+        assert!(!asleep, "the sleeper never woke");
+        assert!((7.0..8.2).contains(&seconds), "{seconds}");
+        assert!(time < 0.1, "it is morning: {time}");
+    }
+
+    #[test]
+    fn someone_awake_is_never_put_to_sleep_by_the_clock() {
+        let (t, asleep) = tick_clock(0.999, 5.0, false);
+        assert!(t < 0.01 && !asleep);
+    }
 }
