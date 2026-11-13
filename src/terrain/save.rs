@@ -208,6 +208,26 @@ pub fn export_world(io: &mut dyn FileIo, base: &str, name: &str) -> Option<Vec<u
             }
         }
     }
+    // Each dimension keeps its own index, vehicles and regions.
+    for (dim, _) in &reg().dimensions {
+        for suffix in ["regions.txt", "vehicles.txt"] {
+            let name_in = alloc::format!("{}.{}", dim, suffix);
+            if let Some(data) = io.read(&alloc::format!("{}{}.{}", base, name, name_in)) {
+                if suffix == "regions.txt" {
+                    for line in String::from_utf8_lossy(&data).lines() {
+                        let mut w = line.split(' ');
+                        if let (Some(Ok(rx)), Some(Ok(rz))) = (w.next().map(|v| v.parse::<i32>()), w.next().map(|v| v.parse::<i32>())) {
+                            let region = alloc::format!("{}.r.{}.{}.vxr", dim, rx, rz);
+                            if let Some(bytes) = io.read(&alloc::format!("{}{}.{}", base, name, region)) {
+                                files.push((region, bytes));
+                            }
+                        }
+                    }
+                }
+                files.push((name_in, data));
+            }
+        }
+    }
     Some(bundle(&files))
 }
 

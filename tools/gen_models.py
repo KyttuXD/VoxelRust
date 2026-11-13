@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Generates the creature and vehicle models in data/models/ and data/creatures.txt.
+"""Generates the creature and vehicle models in data/models/ (and the fantasy
+pack's in mods/spellsNmagic/models/, see OUTPUTS) and data/creatures.txt.
 
     python3 tools/gen_models.py                 # write the models, validate
     python3 tools/gen_models.py --creatures     # also rewrite creatures.txt (it has hand edits)
@@ -27,6 +28,7 @@ from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "data", "models")
+PACK_DIR = os.path.join(ROOT, "mods", "spellsNmagic", "models")  # the fantasy pack
 CREATURES = os.path.join(ROOT, "data", "creatures.txt")
 FACES = ("north", "south", "east", "west", "up", "down")
 # Brightness the game gives each face (src/model.rs), for the preview.
@@ -3114,8 +3116,1988 @@ def car():
     return m
 
 
+# ---------------------------------------------------------------- farm animals, ground monsters, fantasy pack
+#
+# Shared painting helpers first. The upright monsters use `Arm-L`/`Arm-R` and
+# `Leg-L`/`Leg-R`; the fantasy pack (SPELLS_N_MAGIC) is written to its own folder.
+
+def ragged_hem(seed, shader, n):
+    """Wraps a shader so the side faces lose 0..n texels off the bottom, column by column."""
+    sh = shader if callable(shader) else (lambda _p, c=shader: c)
+
+    def out(p):
+        c = sh(p)
+        if p.side() and p.h - 1 - p.j < int(hsh(seed, int(p.x * 1.01 + 50), int(p.z * 1.01 + 50)) * (n + 1)):
+            return tuple(c[:3]) + (0,)
+        return c
+    return out
+
+
+def shag(seed, base, dark, light=None):
+    """Long hair hanging in strands."""
+    def sh(p):
+        k = hsh(seed, int(math.floor(p.x * 1.3 + 50)), int(math.floor(p.z * 1.3 + 50)))
+        if p.face in ("up", "down"):
+            return mix(base, dark, 0.4) if k > 0.6 else base
+        if k > 0.66:
+            return dark
+        if light is not None and k < 0.2:
+            return light
+        return base
+    return sh
+
+
+def scaly(base, edge, belly=None, belly_y=-1e9):
+    """Rows of scales, with paler plates underneath and below belly_y."""
+    def sh(p):
+        if belly is not None and (p.face == "down" or p.y < belly_y):
+            return belly if int(math.floor(p.z + 100)) % 2 else mul(belly, 0.88)
+        if (p.i + 2 * p.j) % 4 == 0:
+            return edge
+        return base if (p.i + p.j) % 2 else mul(base, 0.94)
+    return sh
+
+
+def membrane(x0, period, arm, finger, skin, scallop=0.3):
+    """A wing plate lying flat: arm bone along the leading edge, fingers, a scalloped trailing edge."""
+    def sh(p):
+        u = abs(p.x) - x0
+        if p.face in ("up", "down"):
+            t = (u % period) / period
+            if p.lz > 1 - scallop * math.sin(math.pi * t) - 0.02:
+                return skin + (0,)
+        if p.lz < 0.14 or p.face == "north":
+            return arm
+        if int(math.floor(u)) % period == 0:
+            return finger
+        return skin if p.face == "up" else mul(skin, 0.9)
+    return sh
+
+
+def spines(col, tip, along="z", period=4):
+    """A thin plate of triangular spines: rooted at the bottom (along z) or at the front (along y)."""
+    def sh(p):
+        k = int(math.floor((p.z if along == "z" else p.y) + 100)) % period
+        frac = 1 - abs(k - period // 2) / (period // 2 + 1.0)
+        d = p.ly if along == "z" else p.lz
+        return tuple(mix(col, tip, d)) + ((255,) if d <= frac else (0,))
+    return sh
+
+
+def claws_d(col):
+    """Decal for a foot: claws along the front edge."""
+    def d(c):
+        if c.face == "north":
+            for x in range(0, c.w, 2):
+                c.px(x, c.h - 1, col)
+        elif c.face == "up":
+            for x in range(0, c.w, 2):
+                c.px(x, 0, col)
+    return d
+
+
+def bird_legs(m, x, top, z, col, toe, th=0.6, foot=1.6):
+    """Two thin legs with three-toed feet on Leg-L / Leg-R."""
+    def toes(p):
+        gap = p.face in ("up", "down") and p.i % 2 == 1 and (p.j < 2 if p.face == "up" else p.j > p.h - 3)
+        return toe + ((0,) if gap else (255,))
+
+    for tag, sx in (("L", -1), ("R", 1)):
+        cx = x * sx
+        m.bone("Leg-" + tag, (cx, top, z + th))
+        m.box("leg-" + tag.lower(), "Leg-" + tag, (cx - th, 0.5, z), (cx + th, top + 1, z + 2 * th), col)
+        m.box("foot-" + tag.lower(), "Leg-" + tag, (cx - foot, 0, z - 2.6), (cx + foot, 0.8, z + 2 * th + 0.4), toes)
+
+
+# -- farm animals
+
+def turkey():
+    m = Model("turkey", 401, noise=6)
+    BZ, DK, CP, W = (124, 88, 60), (60, 44, 40), (182, 122, 64), (240, 234, 220)
+    RD, BL, BK, LG = (206, 48, 44), (126, 164, 198), (226, 196, 120), (196, 150, 124)
+
+    def feathers(p):
+        if p.face == "down":
+            return mul(BZ, 0.8)
+        if (p.i + 2 * p.j) % 4 == 0:
+            return DK
+        return CP if (p.i + p.j) % 5 == 0 else BZ
+
+    def wing(p):
+        if p.j >= p.h - 3:
+            return W if p.i % 2 else DK
+        return DK if (p.i + 2 * p.j) % 4 == 0 else CP if p.j == 0 else BZ
+
+    def fan(p):
+        r = math.hypot(p.x, p.y - 9.0)
+        if r > 12.1:
+            return DK + (0,)
+        k = int(math.floor(math.atan2(p.y - 9.0, p.x) / (math.pi / 15) + 100))
+        if r > 10.6:
+            return W
+        if r > 9.0:
+            return DK
+        if r > 4.5:
+            return (CP if k % 2 else BZ) if int(r) % 3 else DK
+        return DK
+
+    def neck(p):
+        if p.ly > 0.55:
+            return BL
+        return RD if hsh(401, p.i, p.j, len(p.face)) > 0.3 else mul(RD, 0.8)
+
+    def head_d(c):
+        if c.face == "north":
+            c.sym(0, 1, BLACK)
+        c.side_eye(1, 1, BLACK, WHITE)
+        if c.face in ("east", "west"):
+            c.px(c.fx(3), 0, RD), c.px(c.fx(2), 3, RD)
+
+    m.box("body", "Body", (-4.5, 5, -5.5), (4.5, 13.5, 5), feathers)
+    m.box("breast", "Body", (-3.5, 6, -7), (3.5, 12.5, -5), feathers,
+          lambda c: c.face == "north" and c.rect(3, 3, 1, 3, (40, 32, 30)))
+    m.bone("tail", (0, 10, 5))
+    m.box("fan", "tail", (-10, 9, 4.6), (10, 21, 5.6), fan, rot=(10, 0, 0), origin=(0, 9, 5))
+    m.box("rump", "tail", (-3, 9, 4.5), (3, 12.5, 6.4), feathers)
+    wings(m, (-4.5, 12, -2), (-5.6, 6, -4), (-4.3, 12.5, 4), wing)
+    m.bone("Head", (0, 12.5, -5.5))
+    m.box("neck", "Head", (-1.3, 12, -7.5), (1.3, 18, -5), neck)
+    m.box("head", "Head", (-1.8, 17, -9), (1.8, 20.5, -5), BL, head_d)
+    m.box("beak", "Head", (-0.7, 18, -10.8), (0.7, 19, -8.8), BK)
+    m.box("snood", "Head", (0.1, 16.4, -10.4), (0.9, 19.3, -9.6), RD)
+    m.box("wattle", "Head", (-1, 13.4, -8.7), (1, 17.2, -7.4), lambda p: RD if (p.i + p.j) % 3 else mul(RD, 0.78))
+    bird_legs(m, 2.2, 5, 0, LG, mul(LG, 0.9))
+    return m
+
+
+def goose():
+    m = Model("goose", 402, noise=5)
+    W, SH, GY, OR, DO = (246, 244, 238), (222, 220, 212), (200, 198, 192), (238, 142, 44), (204, 108, 36)
+
+    def body(p):
+        if p.face == "down":
+            return W
+        if p.side() and (int(p.z + 50) + int(p.y + 50) * 2) % 4 == 0:
+            return SH
+        if p.face == "up" and abs(p.x) < 1.5 and p.lz > 0.3:
+            return SH
+        return W
+
+    def wing(p):
+        if p.j >= p.h - 2:
+            return GY if p.i % 2 else mul(GY, 0.82)
+        return SH if (p.i + 2 * p.j) % 4 == 0 else mul(W, 0.96)
+
+    def neck(p):
+        return SH if int(p.y) % 3 == 0 and p.face != "north" else W
+
+    def head_d(c):
+        if c.face == "north":
+            c.sym(0, 1, BLACK)
+        c.side_eye(1, 1, BLACK)
+        if c.face in ("east", "west"):
+            c.px(c.fx(1), 0, (120, 170, 220))
+
+    def bill_d(c):
+        if c.face == "up":
+            c.sym(0, 2, (120, 70, 30))
+        elif c.face in ("east", "west", "north"):
+            c.rect(0, c.h - 1, c.w, 1, DO)
+        if c.face == "north":
+            c.rect(1, 0, 1, 1, (250, 220, 190))
+
+    m.box("body", "Body", (-4.2, 4.5, -7), (4.2, 12.5, 7), body)
+    m.box("breast", "Body", (-3.5, 5.5, -8.6), (3.5, 12, -6.6), body)
+    m.bone("tail", (0, 10.5, 7))
+    m.box("tail", "tail", (-2.5, 9.5, 6.5), (2.5, 11.5, 10.5), lambda p: SH if p.i % 2 == 0 else W, rot=(-22, 0, 0), origin=(0, 10.5, 7))
+    wings(m, (-4.2, 11.5, -3), (-5.2, 6, -5), (-4, 12, 6), wing)
+    NP, NR = (0, 11.5, -6.5), (-9, 0, 0)
+    m.bone("neck", NP)
+    m.box("neck", "neck", (-1.4, 11, -8), (1.4, 23, -5.2), neck, rot=NR, origin=NP)
+    m.bone("Head", rotp((0, 22.5, -6.6), NR, NP), "neck")
+    m.box("head", "Head", (-2, 21.5, -11.2), (2, 25.6, -6), W, head_d)
+    m.box("bill", "Head", (-1.5, 21.8, -14.6), (1.5, 23.4, -10.8), OR, bill_d)
+    m.box("knob", "Head", (-1, 23.2, -12.2), (1, 24.6, -10.8), DO)
+    bird_legs(m, 2.3, 4.8, 0.8, OR, OR, foot=1.8)
+    return m
+
+
+def donkey():
+    m = Model("donkey", 403)
+    G, D, W, MN, HF, PK = (170, 162, 154), (124, 116, 110), (240, 236, 226), (62, 56, 54), (48, 42, 40), (206, 150, 144)
+
+    def coat(p):
+        if p.face == "down" or p.y < 12.6:
+            return W
+        if p.face == "up" and abs(p.x) < 0.8:
+            return MN
+        if abs(p.z + 5.5) < 0.8 and p.y > 15.5:
+            return MN
+        return D if vnoise(403, p.x / 4.0, p.y / 4.0, p.z / 4.0) > 0.64 else G
+
+    def leg(p):
+        if p.y < 1.6:
+            return HF
+        if p.y < 7.5 and int(p.y) % 2 == 0 and p.y > 3:
+            return D
+        return G if p.y > 2.5 else D
+
+    def head(p):
+        if p.face == "down":
+            return W
+        return G
+
+    def head_d(c):
+        c.side_eye(2, 2, BLACK, WHITE)
+        if c.face == "north":
+            c.sym(0, 2, BLACK)
+            c.symrect(0, 1, 1, 1, W)
+        if c.face in ("east", "west"):
+            c.px(c.fx(1), 1, W), c.px(c.fx(2), 1, W), c.px(c.fx(3), 2, W)
+
+    def muzzle_d(c):
+        if c.face == "north":
+            c.sym(0, 1, (70, 54, 54))
+            c.rect(0, c.h - 1, c.w, 1, (150, 130, 124))
+
+    def ear(p):
+        if p.face == "north" and 0 < p.j < p.h - 1:
+            return PK
+        return MN if p.j == 0 else G
+
+    def hair(p):
+        return MN if (p.i + p.j // 2) % 3 else mul(MN, 0.7)
+
+    NP, NR = (0, 19, -8.5), (-35, 0, 0)
+    m.box("body", "Body", (-4.5, 11, -9.5), (4.5, 20.5, 9.5), coat)
+    m.bone("tail", (0, 19.5, 9.5))
+    m.box("tail", "tail", (-0.6, 11, 9.2), (0.6, 20, 10.4), G, rot=(-10, 0, 0), origin=(0, 19.5, 9.5))
+    m.box("tail-tuft", "tail", (-1.1, 7.5, 9), (1.1, 12, 10.8), hair, rot=(-10, 0, 0), origin=(0, 19.5, 9.5))
+    m.bone("Head", NP)
+    m.box("neck", "Head", (-2.5, 16.5, -13.5), (2.5, 27, -7.5), lambda p: W if p.face == "north" and p.ly < 0.5 else G, rot=NR, origin=NP)
+    m.box("mane", "Head", (-0.8, 19, -7.9), (0.8, 28, -6.5), hair, rot=NR, origin=NP)
+    m.box("head", "Head", (-2.8, 21, -21.5), (2.8, 27.5, -12.5), head, head_d)
+    m.box("muzzle", "Head", (-2.3, 21, -24.5), (2.3, 25, -21), W, muzzle_d)
+    ears(m, (-2.7, 27, -15), (-1.1, 35, -13.8), ear, rot=(8, 0, 10))
+    four_legs(m, -4.5, -2, -9, 6.5, 2.5, 11, leg)
+    return m
+
+
+def llama():
+    m = Model("llama", 404, noise=9)
+    W, SH, BR, F, HF, PK = (238, 228, 208), (208, 194, 168), (156, 108, 72), (226, 212, 190), (70, 58, 52), (214, 160, 150)
+
+    def wool(p):
+        if vnoise(404, p.x / 6.0 + 4, p.y / 6.0, p.z / 6.0) > 0.6:
+            return BR if vnoise(404, p.x / 1.7, p.y / 1.7, p.z / 1.7) < 0.62 else mul(BR, 0.82)
+        n = vnoise(404, p.x / 1.7, p.y / 1.7, p.z / 1.7)
+        c = SH if n > 0.6 else W
+        if (int(p.x + 100) + int(p.y + 100) + int(p.z + 100)) % 5 == 0 and n > 0.4:
+            c = mul(SH, 0.93)
+        return c
+
+    def leg(p):
+        if p.y < 1.5:
+            return HF
+        return wool(p) if p.y > 7 else F
+
+    def head_d(c):
+        if c.face == "north":
+            c.sym(0, 1, BLACK)
+        c.side_eye(2, 1, BLACK, WHITE)
+        if c.face in ("east", "west"):
+            c.px(c.fx(2), 0, BR), c.px(c.fx(3), 0, BR)
+
+    def muzzle_d(c):
+        if c.face == "north":
+            c.sym(1, 0, (90, 66, 62))
+            c.rect(c.w // 2 - 1, 1, 2, 1, (150, 110, 104))
+            c.rect(1, 2, c.w - 2, 1, (120, 86, 80))
+        elif c.face in ("east", "west"):
+            c.px(c.fx(0), 2, (120, 86, 80)), c.px(c.fx(1), 2, (120, 86, 80))
+
+    m.box("body", "Body", (-5, 13, -8.5), (5, 24, 8.5), wool)
+    m.bone("tail", (0, 22, 8.5))
+    m.box("tail", "tail", (-1.5, 18, 8), (1.5, 23, 10.5), wool)
+    NP, NR = (0, 21, -7), (-6, 0, 0)
+    m.bone("neck", NP)
+    m.box("neck", "neck", (-2.5, 19, -10.5), (2.5, 35, -5.5), wool, rot=NR, origin=NP)
+    m.bone("Head", rotp((0, 34, -8), NR, NP), "neck")
+    m.box("head", "Head", (-2.6, 32.5, -14.5), (2.6, 38, -7.5), lambda p: mul(F, 0.9) if p.face == "down" else F, head_d)
+    m.box("topknot", "Head", (-2.2, 37.5, -13), (2.2, 39.2, -8.8), wool)
+    m.box("muzzle", "Head", (-1.8, 32.5, -17), (1.8, 35.6, -14), mix(F, W, 0.6), muzzle_d)
+    ears(m, (-2.5, 37.6, -9.6), (-0.9, 42, -8.6), pointed(BR, PK), rot=(0, 0, 7))
+    four_legs(m, -4.8, -2.2, -8, 5.4, 2.6, 13, leg)
+    return m
+
+
+def bison():
+    m = Model("bison", 405, noise=8)
+    DB, VD, BR, LB, HN, HF, NB = (96, 66, 48), (60, 42, 34), (146, 104, 70), (176, 134, 94), (60, 54, 50), (44, 38, 36), (40, 32, 32)
+    mane = shag(405, DB, VD)
+
+    def rear(p):
+        if p.face == "down":
+            return mul(BR, 0.8)
+        return LB if vnoise(405, p.x / 3.0, p.y / 3.0, p.z / 3.0) > 0.64 else BR
+
+    def leg(p):
+        if p.y < 1.6:
+            return HF
+        if p.z < 0 and p.y > 4:
+            return mane(p)
+        return mul(BR, 0.8) if p.y < 5 else rear(p)
+
+    def head_d(c):
+        if c.face == "north":
+            c.eyes(1, 4, BLACK, (230, 210, 180))
+        c.side_eye(2, 4, BLACK, (230, 210, 180))
+
+    def muzzle_d(c):
+        if c.face == "north":
+            c.sym(1, 1, (120, 90, 86))
+            c.rect(1, c.h - 1, c.w - 2, 1, (110, 76, 72))
+
+    m.box("rear", "Body", (-5.5, 11, -1), (5.5, 22, 11), rear)
+    m.box("hump", "Body", (-7, 11, -11), (7, 27.5, 0), ragged_hem(405, mane, 2))
+    m.box("hump-top", "Body", (-4.5, 27, -9.5), (4.5, 29, -2.5), mane)
+    m.bone("tail", (0, 20, 11))
+    m.box("tail", "tail", (-0.6, 12, 10.6), (0.6, 20.5, 11.8), BR, rot=(-8, 0, 0), origin=(0, 20, 11))
+    m.box("tail-tuft", "tail", (-1, 9, 10.4), (1, 13, 12), VD, rot=(-8, 0, 0), origin=(0, 20, 11))
+    m.bone("Head", (0, 18, -10.5))
+    m.box("head", "Head", (-4.5, 10, -18), (4.5, 20, -10), lambda p: VD if p.face == "down" else DB, head_d)
+    m.box("crown", "Head", (-5, 18.5, -17), (5, 22.5, -10.5), ragged_hem(406, mane, 1))
+    m.box("muzzle", "Head", (-3, 10, -20), (3, 14.5, -17.5), NB, muzzle_d)
+    m.box("beard", "Head", (-1.5, 5, -17.5), (1.5, 10.5, -13.5), ragged_hem(407, mane, 3), skip=("down",))
+    m.pair("horn-a", "Head", (-7.2, 17.6, -14.6), (-4.3, 19.4, -12.8), HN)
+    m.pair("horn-b", "Head", (-7.4, 19, -14.5), (-5.8, 22.6, -12.9), lambda p: (214, 204, 180) if p.ly > 0.6 else HN)
+    ears(m, (-6.6, 15, -12.2), (-4.3, 16.6, -11.2), VD, pivot=(-4.5, 15.8, -11.7))
+    four_legs(m, -6, -2.8, -9.5, 7, 3.2, 11, leg)
+    return m
+
+
+def yak():
+    m = Model("yak", 406, noise=8)
+    K, VD, LK, GY, HN, HF = (78, 64, 58), (48, 40, 38), (112, 94, 82), (200, 192, 182), (226, 216, 190), (40, 34, 34)
+    hair = shag(406, K, VD, LK)
+
+    def leg(p):
+        return HF if p.y < 1.6 else hair(p)
+
+    def head_d(c):
+        if c.face == "north":
+            c.eyes(1, 4)
+        c.side_eye(2, 4, BLACK, WHITE)
+
+    def muzzle_d(c):
+        if c.face == "north":
+            c.sym(1, 1, (70, 56, 58))
+            c.rect(1, c.h - 1, c.w - 2, 1, (120, 104, 100))
+
+    def horn(p):
+        return (50, 42, 40) if p.part.startswith("horn-b") and p.ly > 0.6 else HN
+
+    m.box("body", "Body", (-6, 11, -10), (6, 22.5, 10), hair)
+    m.box("hump", "Body", (-5, 22, -9.5), (5, 25, -2), hair)
+    m.pair("skirt", "Body", (-7, 3, -9.5), (-5.9, 15, 9.5), ragged_hem(406, hair, 4), skip=("up", "down"))
+    m.box("skirt-f", "Body", (-6, 4, -11), (6, 14, -9.9), ragged_hem(408, hair, 4), skip=("up", "down", "south"))
+    m.box("skirt-b", "Body", (-6, 3, 9.9), (6, 14, 11), ragged_hem(409, hair, 4), skip=("up", "down", "north"))
+    m.bone("tail", (0, 21, 10.5))
+    m.box("tail", "tail", (-2, 5, 10.6), (2, 21.5, 13.4), ragged_hem(410, shag(410, LK, K, GY), 3), rot=(-6, 0, 0), origin=(0, 21, 10.5), skip=("down",))
+    m.bone("Head", (0, 18, -10))
+    m.box("head", "Head", (-4, 11, -17.5), (4, 20.5, -9.5), lambda p: VD if p.face == "down" else K, head_d)
+    m.box("forelock", "Head", (-4.4, 18.5, -18.1), (4.4, 22, -11), ragged_hem(411, hair, 2))
+    m.box("muzzle", "Head", (-2.8, 11, -19.6), (2.8, 15, -17), GY, muzzle_d)
+    m.pair("horn-a", "Head", (-9.5, 19.6, -13.6), (-3.8, 21.2, -12), horn)
+    m.pair("horn-b", "Head", (-9.7, 20.8, -13.5), (-8.2, 27, -12.1), horn, rot=(0, 0, 8), origin=(-9, 21, -12.8))
+    ears(m, (-6.6, 16.5, -12), (-3.8, 18, -11), VD, pivot=(-4, 17.2, -11.5))
+    four_legs(m, -5.5, -2.5, -9, 6, 3, 11, leg)
+    return m
+
+
+def camel():
+    m = Model("camel", 407)
+    S, D, L, DK, HF = (216, 178, 122), (178, 140, 92), (238, 210, 162), (120, 88, 60), (90, 70, 56)
+    coat = fur(407, S, D, L, 18.2, 4.0)
+
+    def hump(p):
+        if p.face == "up" or p.ly > 0.7:
+            return DK if hsh(407, p.i, p.j, len(p.face)) > 0.45 else D
+        return coat(p)
+
+    def leg(p):
+        if p.y < 1.8:
+            return HF
+        if 8 < p.y < 10:
+            return D
+        return S if p.y > 3 else L
+
+    def neck(p):
+        if p.face == "north" and hsh(407, p.i, p.j) > 0.4:
+            return D
+        return S
+
+    def head_d(c):
+        c.side_eye(2, 1, BLACK, None)
+        if c.face in ("east", "west"):
+            c.px(c.fx(1), 0, D), c.px(c.fx(2), 0, D), c.px(c.fx(3), 0, D)
+        if c.face == "north":
+            c.sym(0, 1, BLACK)
+
+    def muzzle_d(c):
+        if c.face == "north":
+            c.sym(1, 0, (110, 80, 66))
+            c.rect(c.w // 2 - 1, 1, 2, 1, (150, 112, 90))
+            c.rect(0, c.h - 1, c.w, 1, (130, 96, 76))
+        elif c.face in ("east", "west"):
+            for k in range(3):
+                c.px(c.fx(k), c.h - 1, (130, 96, 76))
+
+    m.box("body", "Body", (-5, 17, -10), (5, 27, 10), coat)
+    for tag, z in (("f", -7.5), ("b", 1)):
+        m.box("hump-" + tag, "Body", (-3.5, 26.5, z), (3.5, 32, z + 6.5), hump)
+        m.box("hump-top-" + tag, "Body", (-2.4, 31.6, z + 1.2), (2.4, 34, z + 5.3), hump)
+    m.bone("tail", (0, 25, 10))
+    m.box("tail", "tail", (-0.6, 15, 9.7), (0.6, 25.5, 10.9), lambda p: DK if p.ly < 0.25 else S, rot=(-8, 0, 0), origin=(0, 25, 10))
+    NP = (0, 22, -9.5)
+    m.bone("neck", NP)
+    m.box("neck-a", "neck", (-2.5, 18.5, -15.5), (2.5, 25, -9), neck)
+    m.box("neck-b", "neck", (-2.2, 22, -18), (2.2, 37, -13.5), neck)
+    m.bone("Head", (0, 36, -15.5), "neck")
+    m.box("head", "Head", (-2.6, 34.5, -22), (2.6, 39.5, -14), lambda p: L if p.face == "down" else S, head_d)
+    m.box("muzzle", "Head", (-2.2, 34, -25), (2.2, 37.6, -21.5), mix(S, L, 0.5), muzzle_d)
+    ears(m, (-3.4, 38.6, -15.6), (-1.8, 40.4, -14.6), D)
+    four_legs(m, -4.6, -2.2, -9.5, 7, 2.6, 17, leg)
+    return m
+
+
+def bull():
+    m = Model("bull", 408)
+    K, VD, LB, HN, HF, PK, GD = (74, 56, 50), (44, 34, 34), (118, 90, 72), (232, 222, 196), (40, 34, 34), (196, 150, 142), (238, 198, 72)
+
+    def hide(p):
+        if p.face == "down":
+            return VD
+        n = vnoise(408, p.x / 4.0, p.y / 4.0, p.z / 4.0)
+        return LB if n > 0.68 else VD if n < 0.3 else K
+
+    def leg(p):
+        return HF if p.y < 1.8 else VD if p.y < 5 else hide(p)
+
+    def head(p):
+        if p.face in ("north", "up") and abs(p.x) < 1:
+            return LB
+        return hide(p)
+
+    def head_d(c):
+        if c.face == "north":
+            c.eyes(1, 3, (120, 20, 20), WHITE)
+            c.symrect(1, 2, 2, 1, VD)
+        c.side_eye(1, 3, BLACK, WHITE)
+
+    def muzzle_d(c):
+        if c.face == "north":
+            c.sym(1, 1, (110, 70, 72))
+            c.rect(1, c.h - 1, c.w - 2, 1, (150, 104, 104))
+
+    def ring(p):
+        hole = 0 < p.i < p.w - 1 and p.j < p.h - 1
+        return GD + ((0,) if hole else (255,))
+
+    def horn(p):
+        return (60, 50, 46) if p.part.startswith("horn-c") and p.ly > 0.5 else HN
+
+    m.box("body", "Body", (-6.5, 10, -3), (6.5, 22, 11), hide)
+    m.box("shoulders", "Body", (-7.5, 10.5, -11), (7.5, 24.5, -2), hide)
+    m.box("dewlap", "Body", (-1.5, 7.5, -11.5), (1.5, 11, -4), lambda p: mix(K, LB, 0.5))
+    m.bone("tail", (0, 21, 11))
+    m.box("tail", "tail", (-0.6, 10, 10.6), (0.6, 21.5, 11.8), K, rot=(-8, 0, 0), origin=(0, 21, 11))
+    m.box("tail-tuft", "tail", (-1.1, 7, 10.3), (1.1, 11, 12.1), VD, rot=(-8, 0, 0), origin=(0, 21, 11))
+    m.bone("Head", (0, 19, -11))
+    m.box("head", "Head", (-4.5, 13, -18.5), (4.5, 22.5, -10.5), head, head_d)
+    m.box("muzzle", "Head", (-3.2, 13, -21), (3.2, 17.5, -18), PK, muzzle_d)
+    m.box("ring", "Head", (-1.5, 11.2, -21.5), (1.5, 14.2, -20.9), ring, skip=("up", "down", "east", "west"), noise=0)
+    m.pair("horn-a", "Head", (-8, 21, -15.5), (-4.2, 23, -13.5), horn)
+    m.pair("horn-b", "Head", (-8.3, 21.2, -19.5), (-6.5, 22.9, -15), horn)
+    m.pair("horn-c", "Head", (-8.2, 22.4, -19.5), (-6.7, 25.5, -18), horn)
+    ears(m, (-7.2, 17.3, -13.6), (-4.2, 19.2, -12.5), lambda p: PK if p.face == "north" and 0.2 < p.lx < 0.8 else K,
+         pivot=(-4.4, 18.3, -13))
+    four_legs(m, -6.5, -3.3, -10, 7.5, 3.2, 10, leg)
+    return m
+
+
+def rabbit_lop():
+    m = Model("rabbit_lop", 409)
+    C, BR, DB, W, PK = (238, 224, 200), (166, 120, 82), (126, 88, 60), (250, 246, 238), (236, 168, 166)
+
+    def coat(p):
+        if p.face == "down" or p.y < 3:
+            return W
+        if vnoise(409, p.x / 3.0 + 9, p.y / 3.0, p.z / 3.0) > 0.58:
+            return BR
+        return C
+
+    def head(p):
+        if p.face == "down":
+            return W
+        if abs(p.x) > 1.2 and p.y > 8.2 and p.face != "south":
+            return BR
+        return C
+
+    def head_d(c):
+        if c.face == "north":
+            c.rect(1, 3, c.w - 2, 2, W)
+            c.px(c.w // 2, 2, PK)
+            c.px(c.w // 2, 3, (150, 100, 100))
+            c.px(c.w // 2, 4, WHITE)
+            c.sym(0, 1, BLACK)
+        c.side_eye(1, 1, BLACK, None)
+
+    def ear(p):
+        if p.face == ("west" if p.x < 0 else "east") and 0 < p.i < p.w - 1 and p.j > 0:
+            return BR if p.j < p.h - 1 else DB
+        if p.face == ("east" if p.x < 0 else "west"):
+            return PK
+        return DB
+
+    m.box("body", "Body", (-3.2, 2, -4), (3.2, 8.4, 2), coat)
+    m.box("rump", "Body", (-3.8, 1.6, 0), (3.8, 9.4, 5), coat)
+    m.bone("tail", (0, 5.5, 5))
+    m.box("tail", "tail", (-1.5, 4, 4.5), (1.5, 7, 6.5), W)
+    m.bone("Head", (0, 7.5, -4))
+    m.box("head", "Head", (-2.7, 6, -8.8), (2.7, 11.2, -3.5), head, head_d)
+    m.box("crown", "Head", (-2.4, 10.8, -7), (2.4, 11.9, -4.2), BR)
+    ears(m, (-4, 3.6, -6.8), (-2.8, 11, -4.2), ear, rot=(0, 0, -8), pivot=(-2.9, 10.8, -5.5))
+    m.bone("Leg-FL", (-1.7, 3, -3.2))
+    m.bone("Leg-FR", (1.7, 3, -3.2))
+    m.pair("leg-f", ("Leg-FL", "Leg-FR"), (-2.4, 0, -4), (-1, 3.5, -2.5), lambda p: W if p.y < 1.2 else C)
+    m.bone("Leg-BL", (-3.5, 4.5, 2.5))
+    m.bone("Leg-BR", (3.5, 4.5, 2.5))
+    m.pair("haunch", ("Leg-BL", "Leg-BR"), (-4.7, 1, 0.2), (-2.8, 6.8, 4.8), coat)
+    m.pair("foot", ("Leg-BL", "Leg-BR"), (-4.7, 0, -2.6), (-2.8, 1.3, 3.6), lambda p: W if p.lz < 0.35 or p.face == "down" else C)
+    return m
+
+
+def cow_highland():
+    m = Model("cow_highland", 410, noise=8)
+    G, D, L, HN, HF, PK = (198, 122, 64), (150, 86, 46), (228, 164, 100), (236, 226, 200), (60, 50, 46), (214, 160, 140)
+    hair = shag(410, G, D, L)
+
+    def leg(p):
+        return HF if p.y < 1.8 else hair(p)
+
+    def muzzle_d(c):
+        if c.face == "north":
+            c.sym(1, 1, (140, 90, 86))
+            c.rect(1, 3, c.w - 2, 1, (160, 104, 100))
+
+    def horn(p):
+        return (70, 58, 50) if p.part.startswith("horn-b") and p.ly > 0.65 else HN
+
+    m.box("body", "Body", (-6, 10, -9), (6, 21.5, 10), hair)
+    m.pair("skirt", "Body", (-6.9, 5, -8.5), (-5.9, 15, 9.5), ragged_hem(410, hair, 4), skip=("up", "down"))
+    m.box("chest-hair", "Body", (-5, 6, -10), (5, 14, -8.9), ragged_hem(412, hair, 3), skip=("up", "down", "south"))
+    m.bone("tail", (0, 20, 10))
+    m.box("tail", "tail", (-0.6, 10, 9.6), (0.6, 20.5, 10.8), G, rot=(-8, 0, 0), origin=(0, 20, 10))
+    m.box("tail-tuft", "tail", (-1.4, 5, 9.2), (1.4, 11, 11.2), ragged_hem(413, shag(413, L, G), 2), rot=(-8, 0, 0), origin=(0, 20, 10), skip=("down",))
+    m.bone("Head", (0, 18, -9))
+    m.box("head", "Head", (-4, 14, -16), (4, 22, -8.5), hair,
+          lambda c: c.side_eye(1, 4, BLACK, None))
+    m.box("fringe", "Head", (-4.5, 17, -16.8), (4.5, 23.2, -11.5), ragged_hem(414, shag(414, L, G, (244, 196, 136)), 3), skip=("down",))
+    m.box("muzzle", "Head", (-3, 14, -18), (3, 18, -15.5), PK, muzzle_d)
+    m.pair("horn-a", "Head", (-11, 20.8, -13.5), (-3.8, 22.4, -12), horn)
+    m.pair("horn-b", "Head", (-11.2, 22, -13.4), (-9.7, 28, -12.1), horn, rot=(0, 0, 14), origin=(-10.4, 22, -12.75))
+    ears(m, (-7, 17.5, -11.5), (-3.8, 19.2, -10.5), D, pivot=(-4, 18.4, -11))
+    four_legs(m, -6, -3, -8, 6, 3, 10, leg)
+    return m
+
+
+def sheep_merino():
+    m = Model("sheep_merino", 411, noise=8)
+    W, SH, F, HF = (250, 248, 242), (228, 226, 218), (240, 230, 214), (120, 104, 96)
+
+    def wool(p):
+        n = vnoise(411, p.x / 1.9, p.y / 1.9, p.z / 1.9)
+        c = SH if n > 0.62 else W
+        if (int(p.x + 100) + int(p.y + 100) + int(p.z + 100)) % 5 == 0 and n > 0.4:
+            c = mul(SH, 0.95)
+        return c
+
+    def fold(p):
+        # deep rolls of wool around the neck
+        if p.side() and p.j == p.h - 1:
+            return mul(SH, 0.9)
+        return wool(p)
+
+    def leg(p):
+        if p.y < 1.5:
+            return HF
+        return wool(p) if p.y > 2.6 else F
+
+    def head_d(c):
+        if c.face == "north":
+            c.eyes(0, 3)
+            c.rect(2, 5, 2, 1, (200, 150, 140))
+            c.px(2, 6, (170, 124, 116)), c.px(3, 6, (170, 124, 116))
+        c.side_eye(1, 3)
+
+    m.box("body", "Body", (-7, 7.5, -10), (7, 22.5, 10), wool)
+    m.box("back-roll", "Body", (-5, 22, -8), (5, 24, 8), wool)
+    m.box("collar-a", "Body", (-6, 8.5, -12), (6, 21.5, -9.5), fold)
+    m.box("collar-b", "Body", (-4.8, 10.5, -13.6), (4.8, 20.5, -11.6), fold)
+    m.bone("tail", (0, 17, 10))
+    m.box("tail", "tail", (-2, 11, 9.5), (2, 18, 12), wool)
+    m.bone("Head", (0, 17.5, -12))
+    m.box("head", "Head", (-3, 13.5, -19), (3, 20, -13), lambda p: mul(F, 0.94) if p.face == "down" else F, head_d)
+    m.box("cap", "Head", (-3.8, 18.5, -17.6), (3.8, 23, -12.5), wool)
+    m.pair("cheek", "Head", (-4, 13.8, -16), (-2.8, 19, -12.8), wool)
+    ears(m, (-6, 16.2, -15.4), (-3.6, 17.8, -14.2), lambda p: (232, 190, 180) if p.face == "north" and 0 < p.i < p.w - 1 else F,
+         rot=(0, 0, 14), pivot=(-3.8, 17.2, -14.8))
+    four_legs(m, -6.2, -3, -9, 6, 3.2, 7.5, leg)
+    return m
+
+
+FARM = [turkey, goose, donkey, llama, bison, yak, camel, bull, rabbit_lop, cow_highland, sheep_merino]
+
+
+# -- ground monsters: upright, on Arm-L / Arm-R and Leg-L / Leg-R
+
+def skeleton():
+    m = Model("skeleton", 421, noise=5)
+    BN, SH, DK, EY = (236, 230, 210), (186, 176, 154), (54, 48, 52), (255, 96, 60)
+
+    def bone(p):
+        return SH if p.face == "down" or hsh(421, int(p.x * 2 + 99), int(p.y * 2), int(p.z * 2 + 99)) > 0.84 else BN
+
+    def long_bone(p):
+        return BN if p.ly < 0.14 or p.ly > 0.86 else SH if p.face in ("east", "west", "south") else mul(BN, 0.95)
+
+    def spine(p):
+        return SH if int(math.floor(p.y * 1.0 + 100)) % 2 else BN
+
+    def ribs(p):
+        rib = int(math.floor(p.y + 100)) % 2 == 0
+        if p.face == "north":
+            on = (rib and not (p.ly < 0.3 and abs(p.x) < 1.6)) or (abs(p.x) < 0.8 and p.ly > 0.3)
+        elif p.face == "south":
+            on = rib or abs(p.x) < 0.8
+        elif p.face in ("east", "west"):
+            on = rib
+        else:
+            on = p.face == "up" and min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) == 0
+        return bone(p) + ((255,) if on else (0,))
+
+    def pelvis(p):
+        if p.face in ("north", "south") and 0.15 < p.ly < 0.7 and 0.9 < abs(p.x) < 2.2:
+            return DK + (0,)
+        return bone(p)
+
+    def skull_d(c):
+        if c.face == "north":
+            c.symrect(1, 2, 2, 2, DK)
+            c.sym(1, 3, EY)
+            c.px(2, 4, DK), c.px(3, 4, DK)
+            for x in range(1, c.w - 1):
+                c.px(x, c.h - 1, DK if x % 2 else WHITE)
+        elif c.face in ("east", "west"):
+            c.px(c.fx(0), 2, DK), c.px(c.fx(0), 3, DK)
+            c.px(c.fx(2), 3, SH), c.px(c.fx(3), 4, SH)
+            for k in range(0, 3):
+                c.px(c.fx(k), c.h - 1, DK if k % 2 else WHITE)
+
+    def jaw(p):
+        teeth = p.face in ("east", "west", "north") and p.j == 0 and p.i % 2 == 1
+        return DK if teeth else SH if p.face == "down" else BN
+
+    def hand(p):
+        gap = p.side() and p.j >= p.h - 2 and p.i % 2 == 1
+        return BN + ((0,) if gap else (255,))
+
+    m.box("pelvis", "Body", (-3, 11.5, -1.5), (3, 14.5, 1.5), pelvis)
+    m.box("spine", "Body", (-0.8, 14, 0), (0.8, 24, 1.4), spine)
+    m.box("ribcage", "Body", (-3.5, 16.5, -2.2), (3.5, 22.5, 1.8), ribs)
+    m.box("collar", "Body", (-5.2, 22.2, -1), (5.2, 23.4, 1), bone)
+    m.bone("Head", (0, 24.5, 0.5))
+    m.box("neck", "Head", (-0.7, 23, -0.2), (0.7, 25.5, 1.2), spine)
+    m.box("skull", "Head", (-3, 25, -3.4), (3, 31, 2.8), bone, skull_d)
+    m.bone("jaw", (0, 25, 1), "Head")
+    m.box("jaw", "jaw", (-2.5, 23.6, -3.1), (2.5, 25, 0.6), jaw)
+    for tag, sx in (("L", -1), ("R", 1)):
+        ax, lx = 5.7 * sx, 1.9 * sx
+        m.bone("Arm-" + tag, (ax, 22.8, 0))
+        m.box("humerus-" + tag.lower(), "Arm-" + tag, (ax - 0.7, 16, -0.7), (ax + 0.7, 23.2, 0.7), long_bone)
+        m.box("forearm-" + tag.lower(), "Arm-" + tag, (ax - 0.6, 10, -0.9), (ax + 0.6, 16.4, 0.3), long_bone)
+        m.box("hand-" + tag.lower(), "Arm-" + tag, (ax - 0.5, 7.4, -1.5), (ax + 0.5, 10.4, 0.5), hand)
+        m.bone("Leg-" + tag, (lx, 12, 0))
+        m.box("femur-" + tag.lower(), "Leg-" + tag, (lx - 0.8, 6, -0.8), (lx + 0.8, 12.5, 0.8), long_bone)
+        m.box("tibia-" + tag.lower(), "Leg-" + tag, (lx - 0.65, 0.8, -0.5), (lx + 0.65, 6.4, 0.8), long_bone)
+        m.box("foot-" + tag.lower(), "Leg-" + tag, (lx - 1, 0, -2.8), (lx + 1, 1, 1), bone, claws_d(SH))
+    return m
+
+
+def werewolf():
+    m = Model("werewolf", 422)
+    F, D, L, NB, EY, CL = (116, 104, 100), (72, 64, 66), (178, 162, 144), (30, 26, 28), (250, 200, 50), (232, 226, 206)
+    coat = fur(422, F, D, None, scale=2.2, thr=0.58)
+
+    def chest(p):
+        if p.face == "north" and abs(p.x) < 3:
+            return L if (p.i + p.j) % 4 else mix(L, F, 0.5)
+        if p.face == "south" or p.face == "up":
+            return D if (p.i + p.j) % 3 else F
+        return coat(p)
+
+    def head(p):
+        if p.face == "down":
+            return L
+        if p.face == "up":
+            return D if abs(p.x) < 2 else F
+        return F
+
+    def head_d(c):
+        if c.face == "north":
+            c.sym(1, 2, EY), c.sym(2, 2, (255, 240, 150))
+            c.sym(0, 1, D), c.sym(1, 1, D), c.sym(2, 1, D)
+            c.symrect(0, 4, 2, 2, L)
+        c.side_eye(1, 2, EY)
+        if c.face in ("east", "west"):
+            c.px(c.fx(0), 1, D), c.px(c.fx(1), 1, D)
+
+    def snout_d(c):
+        nose_d(NB, (70, 30, 34))(c)
+        if c.face in ("east", "west"):
+            c.px(c.fx(0), c.h - 1, WHITE), c.px(c.fx(3), c.h - 1, WHITE)
+        elif c.face == "north":
+            c.sym(0, c.h - 1, WHITE)
+
+    def jaw(p):
+        if p.face in ("east", "west", "north") and p.j == 0 and p.i % 2 == 0:
+            return WHITE
+        return (120, 44, 50) if p.face == "up" else D
+
+    def arm(p):
+        return coat(p)
+
+    def hand(p):
+        if p.side() and p.j >= p.h - 2:
+            return CL + ((255,) if p.i % 2 == 0 else (0,))
+        return D
+
+    def tail(p):
+        return D if p.face == "up" or p.lz > 0.8 else L if p.face == "down" else F
+
+    CP, CR = (0, 14, 2), (-22, 0, 0)
+    m.box("hips", "Body", (-3.8, 11, -0.5), (3.8, 16.5, 6), fur(422, F, D, L, 12.2, 2.2, 0.58))
+    m.box("chest", "Body", (-5.5, 13.5, -3), (5.5, 24.5, 4), chest, rot=CR, origin=CP)
+    m.box("mane", "Body", (-1.6, 16, 3.6), (1.6, 26, 5.6), ragged_hem(422, shag(422, D, (44, 40, 44)), 2), rot=CR, origin=CP)
+    m.bone("tail", (0, 14.5, 6))
+    m.box("tail", "tail", (-1.2, 13, 5.5), (1.2, 15.4, 13.5), tail, rot=(28, 0, 0), origin=(0, 14.5, 6))
+    m.box("tail-brush", "tail", (-1.9, 12.4, 8), (1.9, 15.8, 12.5), tail, rot=(28, 0, 0), origin=(0, 14.5, 6))
+    m.bone("Head", (0, 22.5, -4))
+    m.box("head", "Head", (-3.3, 20, -11), (3.3, 26, -4.5), head, head_d)
+    m.box("snout", "Head", (-1.7, 20.4, -16), (1.7, 23.2, -10.5), lambda p: F if p.face == "up" else D if p.face == "down" else mix(F, L, 0.5), snout_d)
+    m.bone("jaw", (0, 20.6, -10), "Head")
+    m.box("jaw", "jaw", (-1.4, 19, -15.4), (1.4, 20.5, -9.5), jaw, rot=(-10, 0, 0), origin=(0, 20.6, -10))
+    m.pair("cheek", "Head", (-4.3, 19.6, -8.5), (-3.1, 23.5, -5), lambda p: L if p.ly < 0.5 else F)
+    ears(m, (-3.2, 25.5, -7.5), (-1.2, 29.5, -6.3), pointed(F, (206, 150, 150), D))
+    for tag, sx in (("L", -1), ("R", 1)):
+        ax, lx = 6.7 * sx, 2.6 * sx
+        ap = rotp((ax, 22.5, 0.5), CR, CP)
+        ar = (16, 0, 0)
+        m.bone("Arm-" + tag, ap)
+        m.box("arm-" + tag.lower(), "Arm-" + tag, (ax - 1.5, ap[1] - 9, ap[2] - 1.6), (ax + 1.5, ap[1] + 1.2, ap[2] + 1.6), arm, rot=ar, origin=ap)
+        m.box("forearm-" + tag.lower(), "Arm-" + tag, (ax - 1.3, ap[1] - 16, ap[2] - 1.4), (ax + 1.3, ap[1] - 8.6, ap[2] + 1.4),
+              lambda p: D if p.ly < 0.3 else F, rot=ar, origin=ap)
+        m.box("claws-" + tag.lower(), "Arm-" + tag, (ax - 1.5, ap[1] - 18.6, ap[2] - 1.6), (ax + 1.5, ap[1] - 15.6, ap[2] + 0.6), hand, rot=ar, origin=ap)
+        m.bone("Leg-" + tag, (lx, 12, 3))
+        m.box("thigh-" + tag.lower(), "Leg-" + tag, (lx - 1.7, 6.5, 0.2), (lx + 1.7, 13, 5), coat)
+        m.box("shin-" + tag.lower(), "Leg-" + tag, (lx - 1.1, 1, 2.6), (lx + 1.1, 7.5, 5.2), lambda p: D if p.y < 3 else F)
+        m.box("paw-" + tag.lower(), "Leg-" + tag, (lx - 1.5, 0, -1.6), (lx + 1.5, 1.7, 4.6), D, claws_d(CL))
+    return m
+
+
+def zombie():
+    m = Model("zombie", 423)
+    SK, SD, SHT, SHD, PT, PD, DK, BN = (126, 162, 110), (88, 122, 84), (72, 116, 134), (48, 82, 100), (84, 70, 104), (58, 48, 76), (30, 34, 30), (228, 222, 200)
+
+    def skin(p):
+        return SD if vnoise(423, p.x / 2.0, p.y / 2.0, p.z / 2.0) > 0.62 else SK
+
+    def shirt(p):
+        n = vnoise(423, p.x / 2.5 + 5, p.y / 2.5, p.z / 2.5)
+        if n > 0.7:
+            return skin(p)
+        if p.face == "north" and 2 < p.i < 6 and 3 < p.j < 7:
+            return (120, 40, 44) if (p.i + p.j) % 2 else BN
+        return SHD if n < 0.36 or p.i % 4 == 0 else SHT
+
+    def pants(p):
+        if p.y < 1.4:
+            return (56, 46, 40)
+        if p.y < 3.2:
+            return skin(p)
+        if hsh(423, int(p.x * 2 + 50), int(p.y), int(p.z * 2 + 50)) > 0.9:
+            return skin(p)
+        return PD if int(p.y) % 4 == 0 else PT
+
+    def head_d(c):
+        if c.face == "north":
+            c.symrect(1, 2, 2, 2, DK)
+            c.px(1, 3, WHITE), c.px(c.w - 3, 2, (200, 60, 50))
+            c.rect(2, 5, 3, 1, DK)
+            c.px(2, 5, BN), c.px(4, 5, BN)
+            c.px(5, 4, (120, 40, 44)), c.px(5, 5, (120, 40, 44))
+            c.rect(0, 0, c.w, 1, (50, 60, 44)), c.rect(0, 1, 2, 1, (50, 60, 44))
+        elif c.face in ("east", "west", "south"):
+            c.rect(0, 0, c.w, 2 if c.face == "south" else 1, (50, 60, 44))
+            if c.face == "south":
+                c.rect(1, 2, 3, 1, (50, 60, 44))
+        elif c.face == "up":
+            c.rect(0, 0, c.w, c.h, (50, 60, 44))
+            c.rect(4, 2, 2, 2, SD)
+
+    def forearm(p):
+        if p.part.endswith("-l") and 0.3 < p.ly < 0.7 and p.face in ("north", "west"):
+            return BN
+        return skin(p)
+
+    def hand(p):
+        gap = p.side() and p.j >= p.h - 1 and p.i % 2 == 1
+        return tuple(SD) + ((0,) if gap else (255,))
+
+    m.box("torso", "Body", (-4, 12, -2), (4, 22.5, 2), shirt)
+    m.box("shirt-tail", "Body", (-4.2, 9.5, -2.2), (4.2, 12.6, 2.2), ragged_hem(423, shirt, 3), skip=("down", "up"))
+    m.bone("Head", (0, 22.5, 0))
+    m.box("head", "Head", (-3.5, 22.5, -3.5), (3.5, 29.5, 3.5), skin, head_d, rot=(0, 0, -7), origin=(0, 22.5, 0))
+    m.box("hair", "Head", (-3.8, 27.6, 0), (3.8, 30.2, 3.9), ragged_hem(424, (50, 60, 44), 2), rot=(0, 0, -7), origin=(0, 22.5, 0), skip=("down",))
+    for tag, sx, reach in (("L", -1, 78), ("R", 1, 60)):
+        ax, lx = 5.2 * sx, 2.0 * sx
+        ap = (ax, 21.3, 0)
+        m.bone("Arm-" + tag, ap)
+        m.box("sleeve-" + tag.lower(), "Arm-" + tag, (ax - 1.3, 16, -1.4), (ax + 1.3, 22.5, 1.4), ragged_hem(425, shirt, 2), rot=(reach, 0, 0), origin=ap,
+              skip=("down",))
+        m.box("forearm-" + tag.lower(), "Arm-" + tag, (ax - 1.1, 11.5, -1.2), (ax + 1.1, 17, 1.2), forearm, rot=(reach, 0, 0), origin=ap)
+        m.box("hand-" + tag.lower(), "Arm-" + tag, (ax - 1.2, 9, -1.3), (ax + 1.2, 11.8, 1.3), hand, rot=(reach, 0, 0), origin=ap)
+        m.bone("Leg-" + tag, (lx, 11.5, 0))
+        m.box("leg-" + tag.lower(), "Leg-" + tag, (lx - 1.9, 0, -1.8), (lx + 1.9, 12, 1.8), pants)
+        m.box("cuff-" + tag.lower(), "Leg-" + tag, (lx - 2.1, 2.2, -2), (lx + 2.1, 5.5, 2), ragged_hem(426 + sx, PT, 3), skip=("down", "up"))
+    return m
+
+
+def ogre():
+    m = Model("ogre", 424, noise=8)
+    SK, SD, BL, CL, CD, WD, IV, DK = (152, 162, 106), (112, 124, 80), (190, 192, 136), (116, 82, 52), (82, 56, 38), (140, 100, 60), (238, 230, 204), (40, 36, 30)
+
+    def skin(p):
+        n = vnoise(424, p.x / 3.0, p.y / 3.0, p.z / 3.0)
+        c = SD if n > 0.64 else SK
+        if hsh(424, int(p.x + 50), int(p.y), int(p.z + 50)) > 0.95:
+            c = mul(SD, 0.8)
+        return c
+
+    def belly(p):
+        if p.y < 12.5:
+            return CD if int(p.x + 100) % 3 == 0 else CL
+        if p.y < 13.6:
+            return (200, 180, 120)
+        if p.face == "north" and abs(p.x) < 6 and p.y < 21:
+            if abs(p.x) < 0.6 and 15 < p.y < 16.2:
+                return SD
+            return BL
+        return skin(p)
+
+    def chest_d(c):
+        if c.face == "north":
+            c.symrect(3, 3, 5, 1, SD)
+            c.sym(5, 4, (190, 130, 120))
+
+    def head_d(c):
+        if c.face == "north":
+            c.symrect(1, 3, 2, 1, (250, 230, 120))
+            c.sym(2, 3, BLACK)
+            c.rect(3, 4, 3, 2, SD)
+            c.sym(3, 5, DK)
+        c.side_eye(1, 3, BLACK)
+
+    def jaw_d(c):
+        if c.face == "north":
+            c.rect(1, 0, c.w - 2, 1, (90, 40, 40))
+
+    def loin(p):
+        return CD if (p.i + p.j) % 3 == 0 else CL
+
+    def club(p):
+        c = planks(WD, lambda q: q.x + q.y, lambda q: q.z, 3, 424)(p)
+        if p.part.startswith("club-head") and hsh(425, p.i, p.j, len(p.face)) > 0.86:
+            return (190, 190, 196)
+        return c
+
+    def foot_d(c):
+        if c.face == "north":
+            for x in range(0, c.w, 2):
+                c.rect(x, c.h - 1, 1, 1, IV)
+        elif c.face == "up":
+            for x in range(1, c.w, 2):
+                c.rect(x, 0, 1, 2, SD)
+
+    m.box("belly", "Body", (-9, 10, -6.5), (9, 22, 6.5), belly)
+    m.box("chest", "Body", (-10, 21, -5.5), (10, 30, 5.5), skin, chest_d)
+    m.box("loin-f", "Body", (-4, 4.5, -7.1), (4, 11, -6.3), ragged_hem(424, loin, 3), skip=("up", "down"))
+    m.box("loin-b", "Body", (-4, 5, 6.3), (4, 11, 7.1), ragged_hem(427, loin, 3), skip=("up", "down"))
+    m.bone("Head", (0, 29.5, -2))
+    m.box("head", "Head", (-4.5, 29.5, -6.5), (4.5, 36.5, 1.5), skin, head_d)
+    m.box("brow", "Head", (-4.8, 33.6, -7.2), (4.8, 35.2, -5.6), SD)
+    ears(m, (-6.6, 31.5, -3), (-4.3, 35, -1.8), lambda p: (190, 150, 130) if p.face == "north" and p.i > 0 and p.j > 0 else SD,
+         rot=(0, 0, 12), pivot=(-4.4, 32.5, -2.4))
+    m.bone("jaw", (0, 30, -2.5), "Head")
+    m.box("jaw", "jaw", (-4, 27.8, -7.6), (4, 30.2, -2.5), skin, jaw_d)
+    m.pair("tusk", "jaw", (-3.5, 30, -7.5), (-2.4, 32.4, -6.4), IV)
+    for tag, sx in (("L", -1), ("R", 1)):
+        ax, lx = 12.3 * sx, 4.6 * sx
+        m.bone("Arm-" + tag, (ax, 28, 0))
+        m.box("arm-" + tag.lower(), "Arm-" + tag, (ax - 2.4, 18.5, -2.6), (ax + 2.4, 29.2, 2.8), skin)
+        m.box("fist-" + tag.lower(), "Arm-" + tag, (ax - 2.9, 9.5, -3.3), (ax + 2.9, 19, 3.5),
+              lambda p: CD if 0.72 < p.ly < 0.86 else skin(p))
+        m.bone("Leg-" + tag, (lx, 10, 0))
+        m.box("leg-" + tag.lower(), "Leg-" + tag, (lx - 3, 0, -3), (lx + 3, 11, 3.5), skin)
+        m.box("foot-" + tag.lower(), "Leg-" + tag, (lx - 3.4, 0, -5.6), (lx + 3.4, 2.6, 3.9), skin, foot_d)
+    cx = 12.3
+    m.box("club-handle", "Arm-R", (cx - 1.2, 10.5, -11), (cx + 1.2, 13, -2.5), club)
+    m.box("club-head", "Arm-R", (cx - 2.7, 8.8, -22), (cx + 2.7, 14.6, -10.5), club)
+    m.box("club-knot", "Arm-R", (cx - 1.8, 14.2, -19.5), (cx + 1.8, 16, -15.5), club)
+    return m
+
+
+def ghoul():
+    m = Model("ghoul", 425)
+    SK, SD, LT, DK, EY, RG, CL = (178, 186, 170), (128, 140, 130), (206, 212, 196), (40, 36, 46), (190, 255, 120), (96, 84, 76), (60, 54, 58)
+
+    def skin(p):
+        return SD if vnoise(425, p.x / 1.8, p.y / 1.8, p.z / 1.8) > 0.64 else SK
+
+    def torso(p):
+        if p.face == "north":
+            if int(p.j) % 2 == 1 and p.j < 7 and abs(p.x) > 0.6:
+                return SD
+            return LT if abs(p.x) < 0.6 else SK
+        if p.face == "south":
+            return LT if abs(p.x) < 0.7 and p.j % 2 == 0 else SD if abs(p.x) < 0.7 else SK
+        if p.face in ("east", "west") and p.j % 2 == 1 and p.j < 7:
+            return SD
+        return skin(p)
+
+    def head_d(c):
+        if c.face == "north":
+            c.symrect(0, 2, 2, 2, DK)
+            c.sym(1, 2, EY), c.sym(1, 3, mul(EY, 0.6))
+            c.px(2, 4, DK), c.px(3, 4, DK)
+            for x in range(c.w):
+                c.px(x, c.h - 1, WHITE if x % 2 == 0 else DK)
+        elif c.face in ("east", "west"):
+            c.px(c.fx(0), 2, DK), c.px(c.fx(0), 3, DK)
+            for k in range(4):
+                c.px(c.fx(k), c.h - 1, WHITE if k % 2 == 0 else DK)
+
+    def jaw(p):
+        if p.face == "up":
+            return (110, 30, 44)
+        if p.side() and p.j == 0 and p.face != "south":
+            return WHITE if p.i % 2 else DK
+        return SD
+
+    def claws(p):
+        if p.side() and p.j >= 1:
+            return CL + ((255,) if p.i % 2 == 0 else (0,))
+        return SD
+
+    def rag(p):
+        return mul(RG, 0.75) if (p.i + p.j) % 3 == 0 else RG
+
+    CP, CR = (0, 12.5, 0.5), (-25, 0, 0)
+    m.box("pelvis", "Body", (-3, 10.5, -1.6), (3, 13.2, 2.4), skin)
+    m.box("rag", "Body", (-3.3, 6.5, -1.9), (3.3, 12, 2.7), ragged_hem(425, rag, 4), skip=("up", "down"))
+    m.box("torso", "Body", (-3.4, 12.5, -2), (3.4, 22, 2.2), torso, rot=CR, origin=CP)
+    m.box("spine", "Body", (-0.6, 13, 2), (0.6, 22.4, 3.1), spines(LT, SD, "y", 3), rot=CR, origin=CP)
+    m.bone("Head", (0, 20.5, -4))
+    m.box("head", "Head", (-3, 19, -9.6), (3, 25, -3.5), lambda p: LT if p.face == "up" else skin(p), head_d)
+    ears(m, (-5.2, 21.5, -5.6), (-2.8, 23.2, -4.6), pointed(SD, (190, 150, 150)), rot=(0, 0, -20), pivot=(-2.9, 22, -5.1))
+    m.bone("jaw", (0, 19.4, -4.5), "Head")
+    m.box("jaw", "jaw", (-2.6, 17, -9.3), (2.6, 19, -4.6), jaw, rot=(-12, 0, 0), origin=(0, 19.4, -4.5))
+    for tag, sx in (("L", -1), ("R", 1)):
+        ax, lx = 4.4 * sx, 1.8 * sx
+        ap = rotp((ax, 21, 0), CR, CP)
+        m.bone("Arm-" + tag, ap)
+        m.box("arm-" + tag.lower(), "Arm-" + tag, (ax - 0.9, ap[1] - 9.5, ap[2] - 0.9), (ax + 0.9, ap[1] + 0.8, ap[2] + 0.9), skin, rot=(22, 0, 0), origin=ap)
+        el = rotp((ax, ap[1] - 9.3, ap[2]), (22, 0, 0), ap)
+        m.box("forearm-" + tag.lower(), "Arm-" + tag, (ax - 0.8, el[1] - 8.4, el[2] - 0.8), (ax + 0.8, el[1] + 0.5, el[2] + 0.8),
+              lambda p: SD if p.ly < 0.2 else SK, rot=(-8, 0, 0), origin=el)
+        m.box("claws-" + tag.lower(), "Arm-" + tag, (ax - 1.1, max(0.2, el[1] - 11.4), el[2] - 1.2), (ax + 1.1, el[1] - 8, el[2] + 0.8), claws,
+              rot=(-8, 0, 0), origin=el)
+        m.bone("Leg-" + tag, (lx, 11, 0.5))
+        m.box("thigh-" + tag.lower(), "Leg-" + tag, (lx - 1.1, 5, -0.8), (lx + 1.1, 11.5, 1.6), skin)
+        m.box("shin-" + tag.lower(), "Leg-" + tag, (lx - 0.9, 0.6, -0.2), (lx + 0.9, 5.5, 1.5), lambda p: SD if abs(p.y - 5) < 0.8 else SK)
+        m.box("foot-" + tag.lower(), "Leg-" + tag, (lx - 1.2, 0, -3.2), (lx + 1.2, 1, 1.7), SD, claws_d(CL))
+    return m
+
+
+def scarecrow():
+    m = Model("scarecrow", 426)
+    ST, SD, BU, BD, RD, RK, BLU, BLD, HT, HD, WD, DK = ((228, 198, 98), (186, 150, 62), (198, 168, 118), (160, 130, 88), (182, 62, 54), (122, 38, 38),
+                                                        (76, 98, 146), (54, 70, 112), (150, 112, 62), (112, 80, 44), (120, 86, 54), (36, 30, 28))
+
+    def straw(p):
+        return SD if hsh(426, int(p.x * 2 + 60), int(p.z * 2 + 60), len(p.face)) > 0.55 else ST
+
+    def strands(p):
+        c = straw(p)
+        if p.side() and p.i % 2 == 1:
+            return c + (0,)
+        return c
+
+    def hand(p):
+        c = straw(p)
+        if p.face in ("up", "down", "north", "south") and (p.j if p.face in ("north", "south") else p.j) % 2 == 1 and abs(p.x) > 13:
+            return c + (0,)
+        return c
+
+    def plaid(p):
+        a = int(math.floor(p.x + 100)) % 3 == 0 if p.face in ("north", "south", "up", "down") else int(math.floor(p.z + 100)) % 3 == 0
+        b = int(math.floor(p.y + 100)) % 3 == 0 if p.side() else int(math.floor(p.z + 100)) % 3 == 0
+        return RK if a and b else mix(RD, RK, 0.5) if a or b else RD
+
+    def shirt(p):
+        if p.y < 12.6:
+            return (214, 196, 150) if (p.i % 3) else BD
+        return plaid(p)
+
+    def shirt_d(c):
+        if c.face == "north":
+            c.rect(5, 6, 2, 2, BU), c.px(5, 6, DK), c.px(6, 7, DK)
+            c.px(3, 2, (240, 230, 200)), c.px(3, 5, (240, 230, 200))
+
+    def pants(p):
+        if p.face == "north" and p.x < 0 and 6 < p.y < 9:
+            return BU
+        return BLD if int(math.floor(p.x * 1.0 + 100)) % 4 == 0 and p.face in ("north", "south") else BLU
+
+    def sack(p):
+        return BD if (p.i + p.j) % 2 == 0 and hsh(426, p.i, p.j, len(p.face)) > 0.5 else BU
+
+    def head_d(c):
+        if c.face == "north":
+            c.rect(1, 2, 2, 2, DK), c.px(1, 2, (90, 80, 70))
+            c.px(c.w - 3, 2, DK), c.px(c.w - 2, 3, DK), c.px(c.w - 2, 2, BD), c.px(c.w - 3, 3, BD)
+            c.rect(3, 3, 1, 2, (226, 120, 40))
+            for x in range(1, c.w - 1):
+                c.px(x, 5 if x % 2 else 4, DK)
+        if c.face in ("north", "south", "east", "west"):
+            for x in range(0, c.w, 2):
+                c.px(x, c.h - 1, ST)
+
+    def hat(p):
+        if p.part == "hat-crown" and p.side() and p.j == p.h - 1:
+            return RK
+        return HD if (p.i + p.j) % 3 == 0 else HT
+
+    m.box("pole", "Body", (-0.7, 0, 1.2), (0.7, 24, 2.6), planks(WD, lambda q: q.x + q.z, lambda q: q.y, 3, 426))
+    m.box("torso", "Body", (-4, 11.5, -2), (4, 22, 2), shirt, shirt_d)
+    m.box("collar", "Body", (-2.6, 21.6, -2.4), (2.6, 23.2, 2.4), strands, skip=("down",))
+    m.bone("Head", (0, 22.6, 0))
+    m.box("head", "Head", (-3.3, 22.8, -3.3), (3.3, 29.4, 3.3), sack, head_d)
+    m.box("hat-brim", "Head", (-5.6, 28.8, -5.6), (5.6, 29.7, 5.6), hat)
+    m.box("hat-crown", "Head", (-3.1, 29.5, -3.1), (3.1, 33, 3.1), hat)
+    m.box("hat-tip", "Head", (-1.8, 32.6, -1.2), (1.8, 35.4, 2.4), hat, rot=(18, 0, 6), origin=(0, 32.8, 0.6))
+    for tag, sx in (("L", -1), ("R", 1)):
+        lx = 2.0 * sx
+        x0, x1 = (-12.5, -4) if sx < 0 else (4, 12.5)
+        h0, h1 = (-15.2, -12.2) if sx < 0 else (12.2, 15.2)
+        m.bone("Arm-" + tag, (4.0 * sx, 20.4, 0))
+        m.box("sleeve-" + tag.lower(), "Arm-" + tag, (x0, 18.8, -1.5), (x1, 22, 1.5), plaid)
+        m.box("hand-" + tag.lower(), "Arm-" + tag, (h0, 19.2, -1.1), (h1, 21.6, 1.1), hand)
+        m.bone("Leg-" + tag, (lx, 11.5, 0))
+        m.box("leg-" + tag.lower(), "Leg-" + tag, (lx - 1.7, 2.6, -1.6), (lx + 1.7, 12, 1.6), pants)
+        m.box("cuff-" + tag.lower(), "Leg-" + tag, (lx - 1.3, 0.4, -1.2), (lx + 1.3, 3, 1.2), strands)
+    return m
+
+
+MONSTERS = [skeleton, werewolf, zombie, ogre, ghoul, scarecrow]
+
+
+# -- the spellsNmagic pack (written to mods/spellsNmagic/models/)
+
+def dragon():
+    m = Model("dragon", 501, noise=6)
+    SC, SE, BL, HN, MB, SP, EY = (216, 224, 206), (168, 182, 164), (242, 234, 198), (240, 230, 204), (232, 216, 198), (150, 164, 152), (255, 186, 40)
+    hide = scaly(SC, SE, BL, 16.2)
+    top = scaly(SC, SE)
+
+    def leg(p):
+        if p.y < 1.2:
+            return SE
+        return SE if (p.i + 2 * p.j) % 4 == 0 else SC if (p.i + p.j) % 2 else mul(SC, 0.94)
+
+    def neck(p):
+        if p.face == "north":
+            return BL if p.j % 2 else mul(BL, 0.88)
+        return top(p)
+
+    def head_d(c):
+        if c.face in ("east", "west"):
+            c.px(c.fx(2), 2, EY), c.px(c.fx(3), 2, BLACK), c.px(c.fx(4), 2, EY)
+            for k in range(1, 6):
+                c.px(c.fx(k), 1, SP)
+        elif c.face == "up":
+            c.symrect(1, 2, 2, c.h - 2, SE)
+
+    def snout_d(c):
+        if c.face == "up":
+            c.sym(1, 1, (70, 70, 66))
+            c.rect(c.w // 2 - 1, 3, 2, c.h - 3, SE)
+        elif c.face in ("east", "west"):
+            for k in range(0, c.w, 2):
+                c.px(c.fx(k), c.h - 1, WHITE)
+            c.rect(0, c.h - 2, c.w, 1, mul(SE, 0.8))
+        elif c.face == "north":
+            c.sym(1, 1, (70, 70, 66))
+            c.sym(0, c.h - 1, WHITE), c.sym(2, c.h - 1, WHITE)
+
+    def jaw(p):
+        if p.face == "up":
+            return (176, 70, 80)
+        if p.face in ("east", "west", "north") and p.j == 0 and p.i % 2 == 1:
+            return WHITE
+        return BL if p.face == "down" else mul(SC, 0.92)
+
+    def horn(p):
+        return mix(HN, (150, 140, 120), p.lz) if int(p.lz * 6) % 2 else mix(HN, (150, 140, 120), p.lz * 0.6)
+
+    def spade(p):
+        if p.face in ("up", "down"):
+            w = (p.lz * 1.8 if p.lz < 0.5 else (1 - p.lz) * 2.2) + 0.12
+            if abs(p.lx - 0.5) * 2 > w:
+                return SP + (0,)
+        return SP if p.face != "up" else mix(SP, SC, 0.4)
+
+    m.box("body", "Body", (-6, 14, -11), (6, 25.5, 11), hide)
+    m.box("back-spines", "Body", (-0.5, 25.3, -9), (0.5, 28.3, 11), spines(SP, SC), noise=3)
+    # neck -> head
+    NP, NR = (0, 21, -10), (-40, 0, 0)
+    m.bone("neck", NP)
+    m.box("neck-a", "neck", (-3, 19.5, -13.5), (3, 30, -8), neck, rot=NR, origin=NP)
+    m.box("neck-b", "neck", (-2.6, 29, -13), (2.6, 38, -8.5), neck, rot=NR, origin=NP)
+    m.box("neck-spines", "neck", (-0.5, 22, -8.2), (0.5, 38, -6.2), spines(SP, SC, "y"), rot=NR, origin=NP, noise=3)
+    m.bone("Head", (0, 33, -21), "neck")
+    m.box("head", "Head", (-4, 31, -28.5), (4, 38, -19.5), top, head_d)
+    m.box("snout", "Head", (-3, 31.5, -35), (3, 36, -28), top, snout_d)
+    m.bone("jaw", (0, 31.8, -21.5), "Head")
+    m.box("jaw", "jaw", (-2.7, 29.8, -34), (2.7, 31.6, -21), jaw, rot=(-8, 0, 0), origin=(0, 31.8, -21.5))
+    m.pair("horn", "Head", (-3.8, 36.8, -21.5), (-2.2, 38.8, -13.5), horn, rot=(-24, 0, 0), origin=(-3, 37.8, -21))
+    m.pair("frill", "Head", (-4.9, 31.5, -22.5), (-3.9, 36, -17.5), spines(SP, BL, "y", 3), noise=3)
+    # wings: an inner plate at the shoulder and an outer one on its own bone
+    WP, WR = (-5, 25, -5), (0, 0, -18)
+    web = membrane(5, 4, SC, SE, MB)
+    wings(m, WP, (-21, 24.6, -10), (-5, 25.4, 6), web, rot=WR, skip=("south",), name="wing-in")
+    EL = rotp((-21, 25, -2), WR, WP)
+    m.bone("wing-l-tip", EL, "wing-l")
+    m.bone("wing-r-tip", (-EL[0], EL[1], EL[2]), "wing-r")
+    tip = membrane(-EL[0], 4, SC, SE, MB, 0.36)
+    m.pair("wing-out", ("wing-l-tip", "wing-r-tip"), (EL[0] - 16, EL[1] - 0.38, -9.5), (EL[0], EL[1] + 0.38, 5), tip,
+           rot=(0, 0, 6), origin=EL, skip=("south", "east", "west"))
+    # legs
+    four_legs(m, -7.5, -3.5, -10, 6, 4.5, 14, leg)
+    m.pair("foot-f", ("Leg-FL", "Leg-FR"), (-8, 0, -12.5), (-3, 2.2, -5), leg, claws_d(WHITE))
+    m.pair("foot-b", ("Leg-BL", "Leg-BR"), (-8, 0, 3.5), (-3, 2.2, 11), leg, claws_d(WHITE))
+    m.pair("haunch", ("Leg-BL", "Leg-BR"), (-8, 11, 4.5), (-5.2, 21, 11.5), top)
+    # tail chain, drooping away from the hips
+    TP, TR = (0, 21, 11), (12, 0, 0)
+    segs = ((3.5, 17, 24, 10.5, 19.5), (2.6, 17.6, 22.8, 19, 28), (1.8, 18, 21.6, 27.5, 36), (1.1, 18.4, 20.6, 35.5, 43))
+    par = "Body"
+    for k, (w, y0, y1, z0, z1) in enumerate(segs):
+        name = "tail-" + "abcd"[k]
+        m.bone(name, rotp((0, (y0 + y1) / 2 + (1 if k == 0 else 0), z0 + 0.5), TR, TP), par)
+        m.box(name, name, (-w, y0, z0), (w, y1, z1), scaly(SC, SE, BL, y0 + 1.2), rot=TR, origin=TP)
+        par = name
+    m.box("tail-spines-a", "tail-a", (-0.45, 23.8, 11.5), (0.45, 26.2, 19.5), spines(SP, SC), rot=TR, origin=TP, noise=3)
+    m.box("tail-spines-b", "tail-b", (-0.45, 22.6, 19.5), (0.45, 24.6, 27.5), spines(SP, SC), rot=TR, origin=TP, noise=3)
+    m.box("tail-spade", "tail-d", (-3, 19, 42), (3, 20, 48), spade, rot=TR, origin=TP)
+    return m
+
+
+def wyvern():
+    m = Model("wyvern", 502, noise=6)
+    SC, SE, BL, MB, SP, EY, CL = (192, 208, 178), (140, 160, 136), (234, 226, 188), (218, 200, 172), (110, 128, 116), (250, 220, 60), (60, 56, 54)
+    top = scaly(SC, SE)
+
+    def neck(p):
+        if p.face == "north":
+            return BL if p.j % 2 else mul(BL, 0.88)
+        return top(p)
+
+    def head_d(c):
+        if c.face in ("east", "west"):
+            c.px(c.fx(2), 1, EY), c.px(c.fx(3), 1, BLACK)
+            for k in range(1, 5):
+                c.px(c.fx(k), 0, SP)
+        elif c.face == "north":
+            c.sym(0, 1, EY)
+
+    def snout_d(c):
+        if c.face in ("east", "west"):
+            for k in range(0, c.w, 2):
+                c.px(c.fx(k), c.h - 1, WHITE)
+        elif c.face == "up":
+            c.sym(0, 1, CL)
+        elif c.face == "north":
+            c.sym(0, c.h - 1, WHITE)
+
+    def jaw(p):
+        if p.face == "up":
+            return (170, 66, 78)
+        if p.face in ("east", "west", "north") and p.j == 0 and p.i % 2 == 1:
+            return WHITE
+        return BL
+
+    def leg(p):
+        return SE if (p.i + 2 * p.j) % 4 == 0 else SC
+
+    BP, BR = (0, 13, 2), (18, 0, 0)
+    m.box("body", "Body", (-4, 11, -7), (4, 19.5, 8), scaly(SC, SE, BL, 12.6), rot=BR, origin=BP)
+    m.box("back-spines", "Body", (-0.45, 19.3, -5), (0.45, 21.6, 8), spines(SP, SC), rot=BR, origin=BP, noise=3)
+    NP, NR = (0, 20.5, -5), (-20, 0, 0)
+    m.bone("neck", NP)
+    m.box("neck", "neck", (-2, 19.5, -7.5), (2, 31, -3.5), neck, rot=NR, origin=NP)
+    m.box("neck-spines", "neck", (-0.45, 21, -3.7), (0.45, 31, -2), spines(SP, SC, "y"), rot=NR, origin=NP, noise=3)
+    m.bone("Head", (0, 30, -9), "neck")
+    m.box("head", "Head", (-3, 28, -15), (3, 33.5, -8), top, head_d)
+    m.box("snout", "Head", (-2.2, 28.3, -20), (2.2, 31.8, -14.5), top, snout_d)
+    m.bone("jaw", (0, 28.6, -9.5), "Head")
+    m.box("jaw", "jaw", (-2, 27, -19.3), (2, 28.5, -9.5), jaw, rot=(-9, 0, 0), origin=(0, 28.6, -9.5))
+    m.pair("horn", "Head", (-2.9, 32.4, -10), (-1.5, 34, -3.5), lambda p: mix((236, 226, 200), (130, 120, 104), p.lz), rot=(-22, 0, 0), origin=(-2.2, 33.2, -9.5))
+    # wings for arms
+    WP, WR = rotp((-4, 18.5, -4.5), BR, BP), (0, 0, -14)
+    web = membrane(4, 4, SC, SE, MB)
+    wings(m, WP, (WP[0] - 14, WP[1] - 0.4, WP[2] - 4.5), (WP[0], WP[1] + 0.4, WP[2] + 9), web, rot=WR, skip=("south",), name="wing-in")
+    EL = rotp((WP[0] - 14, WP[1], WP[2] - 1), WR, WP)
+    m.bone("wing-l-tip", EL, "wing-l")
+    m.bone("wing-r-tip", (-EL[0], EL[1], EL[2]), "wing-r")
+    m.pair("wing-out", ("wing-l-tip", "wing-r-tip"), (EL[0] - 14, EL[1] - 0.38, WP[2] - 4), (EL[0], EL[1] + 0.38, WP[2] + 7.5),
+           membrane(-EL[0], 4, SC, SE, MB, 0.36), rot=(0, 0, 8), origin=EL, skip=("south", "east", "west"))
+    m.pair("wing-claw", ("wing-l-tip", "wing-r-tip"), (EL[0] - 0.7, EL[1] - 0.6, WP[2] - 6.6), (EL[0] + 0.7, EL[1] + 0.6, WP[2] - 4), CL)
+    for tag, sx in (("L", -1), ("R", 1)):
+        lx = 3.6 * sx
+        m.bone("Leg-" + tag, (lx, 13, 2.5))
+        m.box("thigh-" + tag.lower(), "Leg-" + tag, (lx - 1.9, 7, -0.5), (lx + 1.9, 14.5, 5), leg)
+        m.box("shin-" + tag.lower(), "Leg-" + tag, (lx - 1.2, 1, 1.2), (lx + 1.2, 8, 4), leg)
+        m.box("foot-" + tag.lower(), "Leg-" + tag, (lx - 2, 0, -3.6), (lx + 2, 1.7, 4.6), lambda p: SE if p.face == "up" else SC, claws_d(CL))
+    TP, TR = (0, 13, 8), (8, 0, 0)
+    segs = ((2.5, 10.5, 15.5, 7.5, 16), (1.8, 11.2, 14.8, 15.5, 24), (1.1, 11.8, 14.2, 23.5, 31))
+    par = "Body"
+    for k, (w, y0, y1, z0, z1) in enumerate(segs):
+        name = "tail-" + "abc"[k]
+        m.bone(name, rotp((0, (y0 + y1) / 2, z0 + 0.5), TR, TP), par)
+        m.box(name, name, (-w, y0, z0), (w, y1, z1), scaly(SC, SE, BL, y0 + 1.0), rot=TR, origin=TP)
+        par = name
+    m.box("tail-barb", "tail-c", (-0.7, 12, 30.5), (0.7, 17.5, 32.5), lambda p: mix(CL, (190, 60, 60), p.ly), rot=TR, origin=TP)
+    return m
+
+
+def phoenix():
+    m = Model("phoenix", 503, noise=5)
+    RD, OR, YL, GD, DK, BK = (228, 72, 38), (246, 142, 42), (252, 212, 88), (255, 238, 160), (156, 38, 32), (250, 206, 90)
+
+    def body(p):
+        if p.face == "down" or (p.side() and p.ly < 0.3):
+            return YL if (p.i + p.j) % 3 else GD
+        if (p.i + 2 * p.j) % 4 == 0:
+            return DK
+        return OR if p.side() and p.ly < 0.55 else RD
+
+    def flame(p):
+        # feather colours running outwards: red at the root, gold at the tips
+        u = (abs(p.x) - 3.3) / 20.5
+        c = RD if u < 0.3 else OR if u < 0.62 else YL if u < 0.86 else GD
+        if p.face in ("up", "down"):
+            notch = (p.i % 3 == 0)
+            if p.lz > (0.72 if notch else 0.9) + 0.1 * math.sin(abs(p.x) * 1.3):
+                return c + (0,)
+            if p.lz < 0.2:
+                return DK if u < 0.5 else OR
+            if notch:
+                return mul(c, 0.82)
+        return c
+
+    def tail(k):
+        def sh(p):
+            t = (k + p.lz) / 3.0
+            c = RD if t < 0.3 else OR if t < 0.6 else YL
+            if p.face in ("up", "down"):
+                if k == 2:
+                    if abs(abs(p.x) - 1.5) < 0.5:
+                        return c + (0,)
+                    if p.lz > 0.62:
+                        d = math.hypot((p.x - round(p.x / 3.0) * 3.0), (p.lz - 0.8) * 8)
+                        return (60, 90, 200) if d < 0.9 else GD
+                if abs(p.x) < 0.5:
+                    return DK
+                if (p.i + p.j) % 3 == 0:
+                    return mul(c, 0.84)
+            return c
+        return sh
+
+    def head_d(c):
+        if c.face == "north":
+            c.sym(0, 1, BLACK)
+        c.side_eye(1, 1, BLACK, GD)
+        if c.face in ("east", "west"):
+            c.px(c.fx(2), 2, YL), c.px(c.fx(3), 2, YL)
+
+    def plume(p):
+        return GD if p.ly > 0.75 else YL if p.ly > 0.5 else OR
+
+    m.box("body", "Body", (-3.5, 8, -5), (3.5, 15.5, 5), body)
+    m.box("breast", "Body", (-3, 9, -6.6), (3, 15, -4.6), lambda p: YL if p.ly < 0.4 else OR if (p.i + p.j) % 3 else RD)
+    NP, NR = (0, 14.5, -4.5), (-10, 0, 0)
+    m.bone("neck", NP)
+    m.box("neck", "neck", (-1.5, 13.5, -6.5), (1.5, 21, -3.5), lambda p: OR if int(p.y) % 2 else RD, rot=NR, origin=NP)
+    m.bone("Head", (0, 20.5, -6), "neck")
+    m.box("head", "Head", (-2.2, 19.5, -9.5), (2.2, 24, -4.5), RD, head_d)
+    m.box("beak", "Head", (-0.8, 20.6, -12.2), (0.8, 22, -9.2), BK)
+    m.box("beak-hook", "Head", (-0.8, 19.7, -12.2), (0.8, 20.8, -11.1), mul(BK, 0.8))
+    m.box("crest-a", "Head", (-0.5, 23.5, -8), (0.5, 29.5, -6.8), plume, rot=(20, 0, 0), origin=(0, 23.5, -7.4))
+    m.pair("crest-b", "Head", (-1.7, 23.5, -6.8), (-0.8, 28, -5.8), plume, rot=(28, 0, 14), origin=(-1.2, 23.5, -6.3))
+    WP, WR = (-3.5, 14.5, -1.5), (0, 0, -20)
+    wings(m, WP, (-15, 14.1, -5), (-3.3, 14.8, 5.5), flame, rot=WR, skip=("south",), name="wing-in")
+    m.pair("wing-out", ("wing-l", "wing-r"), (-24, 14.15, -4.2), (-15, 14.75, 4.5), flame, rot=WR, origin=WP, skip=("south", "east"))
+    TP, TR = (0, 13, 5), (22, 0, 0)
+    segs = ((2.5, 4.5, 12), (2, 11.5, 19.5), (3.5, 19, 28))
+    par = "Body"
+    for k, (w, z0, z1) in enumerate(segs):
+        name = "tail-" + "abc"[k]
+        m.bone(name, rotp((0, 13, z0 + 0.5), TR, TP), par)
+        m.box(name, name, (-w, 12.6 + 0.02 * k, z0), (w, 13.4 - 0.02 * k, z1), tail(k), rot=TR, origin=TP, skip=("north",))
+        par = name
+    bird_legs(m, 1.7, 8, 0, BK, BK, th=0.5, foot=1.5)
+    return m
+
+
+def unicorn():
+    m = Model("unicorn", 504)
+    C, D, HN, HD, HF, PK = (250, 248, 252), (226, 224, 238), (252, 224, 124), (214, 172, 70), (230, 200, 120), (240, 190, 200)
+    HAIR = ((246, 190, 226), (192, 204, 248), (252, 238, 184))
+
+    def coat(p):
+        if p.face == "down" or vnoise(504, p.x / 5.0, p.y / 5.0, p.z / 5.0) > 0.64:
+            return D
+        return C
+
+    def leg(p):
+        if p.y < 2:
+            return HF
+        if p.y < 4.6:
+            return C if (p.i + int(p.y)) % 2 else D
+        return coat(p)
+
+    def head_d(c):
+        c.side_eye(2, 2, (70, 60, 150), None)
+        if c.face in ("east", "west"):
+            c.px(c.fx(2), 1, (120, 110, 150)), c.px(c.fx(3), 1, (120, 110, 150))
+        if c.face == "north":
+            c.sym(0, 2, (70, 60, 150))
+            c.rect(2, 1, 2, 2, HN), c.px(2, 1, HD)
+
+    def muzzle_d(c):
+        if c.face == "north":
+            c.sym(0, 1, (150, 110, 124))
+            c.rect(0, c.h - 1, c.w, 1, (200, 150, 164))
+
+    def hair(p):
+        return HAIR[(p.i + p.j // 3) % 3]
+
+    def horn(p):
+        return HD if int(math.floor(p.y * 1.4 + p.i)) % 2 == 0 else HN
+
+    NP, NR = (0, 21, -9.5), (-28, 0, 0)
+    m.box("body", "Body", (-5, 13, -11), (5, 23.5, 11), coat)
+    m.bone("tail", (0, 22.5, 11))
+    m.box("tail", "tail", (-1.8, 6, 10.5), (1.8, 22.8, 13.6), ragged_hem(504, hair, 3), rot=(-18, 0, 0), origin=(0, 22.5, 11), skip=("down",))
+    m.bone("Head", NP)
+    m.box("neck", "Head", (-3, 18, -15.5), (3, 32, -8.5), coat, rot=NR, origin=NP)
+    m.box("mane", "Head", (-1.2, 20, -9), (1.2, 34, -6), hair, rot=NR, origin=NP)
+    m.box("mane-fall", "Head", (-3.7, 20.5, -14), (-2.9, 31.5, -8.6), ragged_hem(505, hair, 4), rot=NR, origin=NP, skip=("down", "east"))
+    m.box("head", "Head", (-3, 26.5, -23.5), (3, 33.5, -14), coat, head_d)
+    m.box("muzzle", "Head", (-2.2, 26.5, -27), (2.2, 31, -22.5), PK, muzzle_d)
+    m.box("forelock", "Head", (-1.8, 31.5, -20), (1.8, 34.6, -13.5), hair)
+    m.box("horn", "Head", (-0.6, 33, -21.2), (0.6, 41.5, -20), horn, rot=(-30, 0, 0), origin=(0, 33.2, -20.6))
+    ears(m, (-2.8, 33, -16.2), (-1.4, 36.2, -15), pointed(C, PK))
+    four_legs(m, -5, -2, -10.5, 7.5, 3, 13, leg)
+    return m
+
+
+def griffin():
+    m = Model("griffin", 505)
+    WH, WS, BR, DB, GB, TW, TD, CR, YL, YD, BK = ((246, 242, 232), (216, 210, 196), (170, 122, 70), (112, 78, 50), (214, 168, 96), (220, 176, 110),
+                                                  (184, 138, 80), (244, 226, 184), (240, 196, 70), (198, 150, 50), (40, 34, 34))
+
+    def feathers(p):
+        if (p.i + 2 * p.j) % 4 == 0:
+            return DB
+        return GB if (p.i + p.j) % 5 == 0 else BR
+
+    def front(p):
+        if p.face == "north":
+            return WS if (p.i + 2 * p.j) % 4 == 0 else WH if p.ly > 0.35 else GB
+        return feathers(p)
+
+    lion = fur(505, TW, TD, CR, 13.4, 3.0)
+
+    def leg(p):
+        if p.z < 0:
+            if p.y < 1.4:
+                return BK if p.face == "north" and p.i % 2 == 0 else YD
+            if p.y < 6:
+                return YD if int(p.y) % 2 else YL
+            return feathers(p)
+        return CR if p.y < 2 else TW
+
+    def neck(p):
+        if p.ly < 0.3 and (p.i + p.j) % 2:
+            return BR
+        return WS if (p.i + 2 * p.j) % 4 == 0 else WH
+
+    def head_d(c):
+        if c.face == "north":
+            c.sym(0, 2, (250, 190, 40))
+            c.sym(0, 1, WS), c.sym(1, 1, WS)
+        c.side_eye(1, 2, BLACK, (250, 190, 40))
+        if c.face in ("east", "west"):
+            c.px(c.fx(0), 1, BR), c.px(c.fx(1), 1, BR), c.px(c.fx(2), 1, BR)
+
+    def wing(p):
+        u = (abs(p.x) - 5) / 23.0
+        if p.face in ("up", "down"):
+            if p.lz > (0.78 if p.i % 3 == 0 else 0.94):
+                return DB + (0,)
+            if p.lz < 0.22:
+                return BR if (p.i + p.j) % 2 else GB
+            if p.lz > 0.6:
+                return (WS if int(abs(p.x)) % 2 else DB) if u > 0.25 else DB
+            return DB if p.i % 3 == 0 else BR
+        return BR
+
+    m.box("chest", "Body", (-5, 12, -10), (5, 23.5, 0), front)
+    m.box("rear", "Body", (-4.5, 12, -0.5), (4.5, 21.5, 11), lion)
+    TP, TR = (0, 19.5, 11), (30, 0, 0)
+    m.bone("tail-a", TP)
+    m.box("tail-a", "tail-a", (-0.8, 18.7, 10.5), (0.8, 20.3, 18), TW, rot=TR, origin=TP)
+    m.bone("tail-b", rotp((0, 19.5, 17.8), TR, TP), "tail-a")
+    m.box("tail-b", "tail-b", (-0.7, 18.8, 17.5), (0.7, 20.2, 24.5), TW, rot=TR, origin=TP)
+    m.box("tail-tuft", "tail-b", (-1.5, 18.1, 23.5), (1.5, 20.9, 28), lambda p: DB if (p.i + p.j) % 3 else BR, rot=TR, origin=TP)
+    m.bone("Head", (0, 22, -9))
+    m.box("neck", "Head", (-3.2, 19, -13), (3.2, 27, -7.5), neck)
+    m.box("head", "Head", (-3.2, 25, -16.5), (3.2, 31, -9.5), lambda p: WS if p.face == "up" and (p.i + p.j) % 3 == 0 else WH, head_d)
+    m.box("beak", "Head", (-1.4, 26, -20), (1.4, 28.6, -16), YL,
+          lambda c: c.face in ("east", "west") and [c.px(c.fx(2), 0, BK), c.rect(0, c.h - 1, c.w, 1, YD)])
+    m.box("beak-hook", "Head", (-1.2, 24.6, -20), (1.2, 26.2, -18.4), YD)
+    ears(m, (-3, 30.5, -12), (-1.4, 33.5, -10.8), pointed(WH, None, BR))
+    WP, WR = (-5, 22.5, -5), (0, 0, -25)
+    wings(m, WP, (-17, 22.1, -9), (-4.8, 22.9, 3.5), wing, rot=WR, skip=("south",), name="wing-in")
+    m.pair("wing-out", ("wing-l", "wing-r"), (-28, 22.15, -8), (-17, 22.85, 2.5), wing, rot=WR, origin=WP, skip=("south", "east"))
+    four_legs(m, -5.2, -2.4, -9.5, 7, 3, 12, leg)
+    return m
+
+
+def wisp():
+    m = Model("wisp", 506, noise=0)
+    CO, GL, DP, DK = (226, 252, 255), (136, 224, 250), (64, 156, 224), (20, 60, 120)
+
+    def core(p):
+        d = max(abs(p.i - (p.w - 1) / 2.0) / p.w, abs(p.j - (p.h - 1) / 2.0) / p.h)
+        return CO if d < 0.22 else mix(CO, GL, 0.6) if d < 0.38 else GL
+
+    def core_d(c):
+        if c.face == "north":
+            c.sym(1, 2, DK), c.sym(1, 3, DP)
+
+    def shell(p):
+        edge = min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j)
+        corner = p.i in (0, p.w - 1) and p.j in (0, p.h - 1)
+        on = not corner and ((edge == 0 and (p.i + p.j) % 2 == 0) or (edge > 0 and hsh(506, p.i, p.j, len(p.face)) > 0.86))
+        return (DP if edge == 0 else CO) + ((255,) if on else (0,))
+
+    def tatter(n, a, b):
+        def sh(p):
+            c = mix(a, b, 1 - p.ly)
+            if (p.i + p.j) % 3 == 0:
+                c = mul(c, 0.86)
+            return c
+        return ragged_hem(506 + n, sh, n)
+
+    TR, TP = (-28, 0, 0), (0, 9.5, 0.5)
+    m.box("shell", "Body", (-4, 8, -4), (4, 16, 4), shell)
+    m.bone("Head", (0, 12, 0))
+    m.box("core", "Head", (-3, 9, -3), (3, 15, 3), core, core_d)
+    m.bone("tail-a", TP)
+    m.box("tatter-a", "tail-a", (-2.6, 5, 0), (2.6, 9.6, 1), tatter(3, GL, DP), rot=TR, origin=TP, skip=("down",))
+    m.pair("tatter-side", "tail-a", (-3.8, 5.5, -1.5), (-3, 9.4, 1.2), tatter(3, GL, DP), rot=TR, origin=TP, skip=("down",))
+    m.bone("tail-b", rotp((0, 5.2, 0.5), TR, TP), "tail-a")
+    m.box("tatter-b", "tail-b", (-1.9, 1.8, 0.1), (1.9, 5.4, 0.9), tatter(3, DP, DK), rot=TR, origin=TP, skip=("down",))
+    m.bone("tail-c", rotp((0, 2, 0.5), TR, TP), "tail-b")
+    m.box("tatter-c", "tail-c", (-1.2, 0, 0.15), (1.2, 2.2, 0.85), tatter(2, DP, DK), rot=TR, origin=TP, skip=("down",))
+    for k, (x, y, z) in enumerate(((-6, 14, -2), (5.5, 10, 2.5), (1.5, 18, 1), (-4.5, 6.5, 3.5))):
+        m.box("mote-%d" % k, "Body", (x - 0.5, y - 0.5, z - 0.5), (x + 0.5, y + 0.5, z + 0.5), CO if k % 2 else GL)
+    return m
+
+
+def imp():
+    m = Model("imp", 507)
+    RD, DR, BL, HN, EY, HF, WG = (208, 68, 58), (150, 40, 46), (234, 124, 92), (240, 226, 190), (255, 226, 60), (40, 30, 34), (120, 36, 50)
+
+    def skin(p):
+        return DR if vnoise(507, p.x / 1.8, p.y / 1.8, p.z / 1.8) > 0.66 else RD
+
+    def head_d(c):
+        if c.face == "north":
+            c.symrect(1, 2, 2, 1, EY)
+            c.sym(2, 2, BLACK)
+            c.sym(0, 1, DR), c.sym(1, 1, DR), c.sym(2, 0, DR)
+            c.rect(1, 4, c.w - 2, 1, HF)
+            c.px(0, 3, HF), c.px(c.w - 1, 3, HF)
+            c.sym(1, 4, WHITE), c.sym(3, 4, WHITE)
+        c.side_eye(0, 2, EY)
+
+    def horn(p):
+        return HN if p.ly > 0.5 else mix(DR, HN, p.ly * 2)
+
+    def ear(p):
+        out = (p.lx < 0.5) == (p.x < 0)
+        if p.face in ("north", "south") and out and (p.j == 0 or p.j == p.h - 1):
+            return RD + (0,)
+        if p.face == "north" and 0 < p.j < p.h - 1:
+            return BL
+        return DR
+
+    def wing(p):
+        u = abs(p.x) - 1.3
+        if p.face in ("north", "south"):
+            t = (u % 2.5) / 2.5
+            if p.ly < 0.42 * math.sin(math.pi * t) * min(1.0, u / 2.0 + 0.3):
+                return WG + (0,)
+            if p.j == 0 or int(u / 2.5 + 0.02) != int((u - 1) / 2.5 + 0.02):
+                return DR
+        return WG
+
+    def leg(p):
+        return HF if p.y < 1.4 else DR if p.y < 2.4 else skin(p)
+
+    def arm(p):
+        if p.side() and p.j == p.h - 1:
+            return HF + ((255,) if p.i % 2 == 0 else (0,))
+        return skin(p)
+
+    def spade(p):
+        if p.face in ("up", "down"):
+            w = (p.lz * 2.4 if p.lz < 0.4 else (1 - p.lz) * 1.8) + 0.15
+            if abs(p.lx - 0.5) * 2 > w:
+                return DR + (0,)
+        return DR
+
+    m.box("torso", "Body", (-2.6, 5.5, -1.8), (2.6, 11.6, 1.8), lambda p: BL if p.face == "north" and abs(p.x) < 1.6 and p.ly < 0.7 else skin(p))
+    m.box("belly", "Body", (-2, 6, -2.7), (2, 9.6, -1.6), BL, lambda c: c.face == "north" and c.px(2, 2, DR))
+    m.bone("Head", (0, 11.5, 0))
+    m.box("head", "Head", (-3.6, 11.3, -3.6), (3.6, 17.6, 2.8), skin, head_d)
+    m.box("nose", "Head", (-0.6, 13.3, -4.6), (0.6, 14.6, -3.4), DR)
+    m.pair("horn", "Head", (-3.2, 17.2, -2), (-2, 20.4, -0.8), horn, rot=(0, 0, 16), origin=(-2.6, 17.2, -1.4))
+    ears(m, (-6.6, 13.4, -0.8), (-3.4, 16.2, 0.2), ear, rot=(0, 0, -18), pivot=(-3.5, 14.6, -0.3))
+    wings(m, (-1.3, 10.5, 2), (-9.3, 7, 1.9), (-1.3, 15, 2.5), wing, rot=(0, 28, 0))
+    TP, TR = (0, 6.5, 1.8), (-26, 0, 0)
+    m.bone("tail-a", TP)
+    m.box("tail-a", "tail-a", (-0.5, 6, 1.5), (0.5, 7, 6.5), DR, rot=TR, origin=TP)
+    m.bone("tail-b", rotp((0, 6.5, 6.3), TR, TP), "tail-a")
+    m.box("tail-b", "tail-b", (-0.45, 6.05, 6), (0.45, 6.95, 10.5), DR, rot=TR, origin=TP)
+    m.box("tail-spade", "tail-b", (-1.5, 6.1, 10), (1.5, 6.9, 13.2), spade, rot=TR, origin=TP)
+    for tag, sx in (("L", -1), ("R", 1)):
+        ax, lx = 3.3 * sx, 1.5 * sx
+        m.bone("Arm-" + tag, (ax, 10.8, 0))
+        m.box("arm-" + tag.lower(), "Arm-" + tag, (ax - 0.8, 4.6, -0.8), (ax + 0.8, 11.3, 0.8), arm)
+        m.bone("Leg-" + tag, (lx, 5.6, 0))
+        m.box("leg-" + tag.lower(), "Leg-" + tag, (lx - 1.1, 0, -1), (lx + 1.1, 6, 1.2), leg)
+    return m
+
+
+def mimic():
+    m = Model("mimic", 508)
+    WD, FR, MT, MD, IN, TG, IV, EY = (170, 118, 62), (86, 54, 30), (220, 184, 84), (150, 116, 44), (112, 26, 48), (228, 92, 114), (244, 238, 216), (255, 220, 60)
+
+    def wood(p):
+        edge = min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) == 0
+        if p.face == "up" and p.part == "base" or p.face == "down" and p.part == "lid":
+            return FR if edge else IN if (p.i + p.j) % 4 else mul(IN, 0.8)
+        if edge:
+            return FR
+        if p.face in ("north", "south", "up") and (p.i in (2, p.w - 3)):
+            return MD if p.j % 2 else MT
+        s = p.x + p.z if p.side() else p.x
+        return planks(WD, lambda q: s, lambda q: q.y + q.z, 3, 508)(p)
+
+    def lid_d(c):
+        if c.face == "north":
+            c.symrect(3, 1, 3, 2, EY)
+            c.sym(4, 1, BLACK), c.sym(4, 2, BLACK)
+            c.symrect(3, 0, 3, 1, FR)
+            x = c.w // 2 - 1
+            c.rect(x, c.h - 3, 2, 3, MT), c.px(x, c.h - 2, FR), c.px(x + 1, c.h - 2, FR)
+
+    def teeth(up):
+        def sh(p):
+            if p.face in ("up", "down"):
+                return IV + (0,)
+            row = p.j if up else p.h - 1 - p.j
+            on = p.i % 2 == 0 or row < p.h // 2
+            if p.face in ("north", "south") and p.part.endswith(("-l", "-r")):
+                on = False
+            return (IV if row < p.h - 1 else mul(IV, 0.85)) + ((255,) if on else (0,))
+        return sh
+
+    def tongue(p):
+        return mul(TG, 0.82) if p.face == "up" and abs(p.x) < 0.5 else TG
+
+    def leg(p):
+        if p.y < 1.2:
+            return IV if p.face == "north" and p.i % 2 == 0 else FR
+        return FR if p.i % 2 else mul(WD, 0.8)
+
+    JP, JR = (0, 9, 5), (30, 0, 0)
+    m.box("base", "Body", (-7, 3, -5), (7, 9, 5), wood)
+    m.box("teeth-lo", "Body", (-6.5, 9, -4.9), (6.5, 11, -4.1), teeth(False), noise=2)
+    m.pair("teeth-lo-side", "Body", (-6.9, 9, -4.5), (-6.1, 10.8, 1.5), teeth(False), noise=2)
+    m.box("tongue", "Body", (-2, 8.9, -10.5), (2, 9.9, -2), tongue, rot=(-10, 0, 0), origin=(0, 9.4, -2))
+    m.bone("jaw", JP)
+    m.box("lid", "jaw", (-7, 9, -5), (7, 14, 5), wood, lid_d, rot=JR, origin=JP)
+    m.box("teeth-hi", "jaw", (-6.5, 7, -4.9), (6.5, 9, -4.1), teeth(True), rot=JR, origin=JP, noise=2)
+    m.pair("teeth-hi-side", "jaw", (-6.9, 7.2, -4.5), (-6.1, 9, 1.5), teeth(True), rot=JR, origin=JP, noise=2)
+    four_legs(m, -6.6, -4, -4.6, 2, 2.6, 3, leg)
+    return m
+
+
+def fairy():
+    m = Model("fairy", 509, noise=4)
+    SK, SD, DR, DD, PT, HR, HD, WG, WE, SL = ((252, 224, 202), (232, 190, 170), (156, 224, 176), (110, 186, 140), (248, 176, 206), (252, 218, 116),
+                                              (222, 176, 76), (220, 242, 255), (170, 210, 245), (120, 190, 150))
+
+    def dress(p):
+        return DD if (p.i + p.j) % 3 == 0 else DR
+
+    def petals(p):
+        c = PT if int(math.floor(p.x * 1.0 + p.z * 1.0 + 100)) % 2 else mul(PT, 0.88)
+        if p.face == "up":
+            return DR
+        return c
+
+    def head_d(c):
+        if c.face == "north":
+            c.sym(0, 2, (60, 110, 200))
+            c.rect(1, 3, 2, 1, (220, 120, 130))
+            c.rect(0, 0, c.w, 1, HR)
+            c.sym(0, 1, HR)
+        elif c.face in ("east", "west"):
+            c.rect(0, 0, c.w, 2, HR)
+
+    def hair(p):
+        return HD if (p.i + p.j // 2) % 3 == 0 else HR
+
+    def wing(p):
+        if p.face not in ("north", "south"):
+            return WE + (0,)
+        dx, dy = (p.lx - 0.5) * 2, (p.ly - 0.5) * 2
+        r = dx * dx + dy * dy
+        if r > 1.0:
+            return WE + (0,)
+        if r > 0.62 or abs(dy) < 0.12 or (abs(dx + dy) < 0.16 and p.w > 5):
+            return WE
+        return WG
+
+    def leg(p):
+        return SL if p.y < 1.2 else SK
+
+    m.box("torso", "Body", (-1.6, 6.8, -1), (1.6, 10.6, 1), dress)
+    m.box("skirt", "Body", (-2.6, 3.6, -2), (2.6, 7.2, 2), ragged_hem(509, petals, 2), skip=("down",))
+    m.bone("Head", (0, 10.5, 0))
+    m.box("head", "Head", (-2.2, 10.4, -2.2), (2.2, 14.6, 2.2), SK, head_d)
+    m.box("hair", "Head", (-2.5, 13.4, -2.5), (2.5, 15.3, 2.6), hair)
+    m.box("hair-back", "Head", (-2.5, 8.6, 1.5), (2.5, 13.6, 2.8), ragged_hem(510, hair, 2), skip=("down",))
+    m.box("flower", "Head", (1.2, 14.6, -2.9), (2.8, 16, -1.6), PT, lambda c: c.face in ("north", "up") and c.px(1, 0, HR))
+    WP = (-0.6, 9.6, 1.1)
+    wings(m, WP, (-8, 9.2, 1.1), (-0.5, 16, 1.5), wing, rot=(0, 22, 0), name="wing-hi")
+    m.pair("wing-lo", ("wing-l", "wing-r"), (-6, 3.8, 1.15), (-0.5, 9.4, 1.45), wing, rot=(0, 22, 0), origin=WP)
+    for tag, sx in (("L", -1), ("R", 1)):
+        ax, lx = 2.1 * sx, 0.9 * sx
+        m.bone("Arm-" + tag, (ax, 10, 0))
+        m.box("arm-" + tag.lower(), "Arm-" + tag, (ax - 0.5, 5.8, -0.5), (ax + 0.5, 10.4, 0.5), lambda p: DR if p.ly > 0.8 else SK)
+        m.bone("Leg-" + tag, (lx, 5, 0))
+        m.box("leg-" + tag.lower(), "Leg-" + tag, (lx - 0.6, 0, -0.6), (lx + 0.6, 5.4, 0.6), leg)
+    m.box("wand", "Arm-R", (1.85, 5.4, -3.6), (2.35, 5.9, 0.2), (150, 110, 70))
+    m.box("wand-star", "Arm-R", (1.35, 4.9, -4.8), (2.85, 6.4, -3.5), (255, 240, 130),
+          lambda c: c.face == "north" and c.px(0, 0, WHITE), noise=0)
+    return m
+
+
+def golem_crystal():
+    m = Model("golem_crystal", 510, noise=4)
+    C, L, D, V, CORE, EY = (172, 228, 242), (232, 250, 255), (98, 162, 204), (182, 158, 240), (255, 250, 204), (255, 255, 255)
+
+    def crystal(p):
+        n = vnoise(510, p.x / 5.0 + 3, p.y / 5.0, p.z / 5.0)
+        c = mix(C, V, 0.8) if n > 0.6 else C
+        if min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) == 0:
+            return mul(c, 0.8) if p.face != "up" else L
+        if (p.i - p.j) % 6 == 0:
+            return L
+        if (p.i + 2 * p.j) % 7 == 0:
+            return D
+        return c if p.face != "down" else D
+
+    def shard(p):
+        """A crystal point: the corners of the top are cut away."""
+        c = crystal(p)
+        cut = max(1, min(p.w, 6) // 2)
+        if p.side() and p.j < cut and min(p.i, p.w - 1 - p.i) < cut - p.j:
+            return c[:3] + (0,)
+        if p.face == "up" and min(p.i, p.w - 1 - p.i, p.j, p.h - 1 - p.j) < min(p.w, p.h) // 2 - (0 if min(p.w, p.h) % 2 else 1):
+            return c[:3] + (0,)
+        return c
+
+    def torso_d(c):
+        if c.face == "north":
+            x, y = c.w // 2 - 2, 3
+            c.rect(x, y, 4, 4, D)
+            c.rect(x + 1, y, 2, 4, CORE), c.rect(x, y + 1, 4, 2, CORE)
+            c.px(x + 1, y + 1, (255, 214, 120)), c.px(x + 2, y + 2, (255, 214, 120))
+
+    def head_d(c):
+        if c.face == "north":
+            c.rect(0, 2, c.w, 3, D)
+            c.symrect(1, 3, 2, 1, EY)
+            c.sym(1, 3, CORE)
+        elif c.face in ("east", "west"):
+            c.rect(0, 2, c.w, 1, D)
+
+    m.box("pelvis", "Body", (-4, 9, -3), (4, 12.5, 3), crystal)
+    m.box("torso", "Body", (-6.5, 12, -4), (6.5, 23, 4.5), crystal, torso_d)
+    m.pair("shoulder-shard", "Body", (-10.5, 19.5, -2.5), (-6, 29, 2.5), shard, rot=(0, 0, 24), origin=(-7.5, 20, 0))
+    m.box("back-shard-a", "Body", (-2, 17, 3.5), (2, 31, 7.5), shard, rot=(24, 0, 0), origin=(0, 18, 4.5))
+    m.box("back-shard-b", "Body", (-5.5, 15, 3.6), (-2.5, 25, 6.6), shard, rot=(30, 0, 18), origin=(-4, 16, 4.5))
+    m.box("back-shard-c", "Body", (2.5, 14, 3.6), (5.5, 23, 6.6), shard, rot=(34, 0, -20), origin=(4, 15, 4.5))
+    m.bone("Head", (0, 23, -0.5))
+    m.box("head", "Head", (-3, 23, -3.6), (3, 29.6, 2.4), crystal, head_d)
+    m.box("head-shard", "Head", (-1.5, 29.2, -2), (1.5, 34.5, 1), shard, rot=(8, 0, 6), origin=(0, 29.4, -0.5))
+    for tag, sx in (("L", -1), ("R", 1)):
+        ax, lx = 8.4 * sx, 3.0 * sx
+        m.bone("Arm-" + tag, (ax, 21, 0.2))
+        m.box("arm-" + tag.lower(), "Arm-" + tag, (ax - 1.6, 13, -1.8), (ax + 1.6, 21.5, 2.2), crystal)
+        m.box("fist-" + tag.lower(), "Arm-" + tag, (ax - 2.4, 4.5, -2.8), (ax + 2.4, 13.5, 3.2), crystal)
+        m.box("fist-shard-" + tag.lower(), "Arm-" + tag, (ax + sx * 1.6 - 1, 9, -1), (ax + sx * 1.6 + 1, 17, 1), shard, rot=(0, 0, -20 * sx), origin=(ax + sx * 1.6, 10, 0))
+        m.bone("Leg-" + tag, (lx, 9.5, 0.2))
+        m.box("leg-" + tag.lower(), "Leg-" + tag, (lx - 2, 0, -2.4), (lx + 2, 10, 2.6), crystal)
+        m.box("foot-" + tag.lower(), "Leg-" + tag, (lx - 2.6, 0, -3.6), (lx + 2.6, 2.4, 3), crystal)
+    return m
+
+
+def wizard():
+    m = Model("wizard", 511)
+    RB, RD, GD, GDD, SK, SD, BD, BS, BT, WD, ORB = ((72, 92, 184), (48, 62, 134), (238, 200, 84), (190, 150, 50), (240, 200, 170), (212, 164, 138),
+                                                    (242, 242, 238), (204, 206, 212), (84, 58, 42), (130, 92, 56), (140, 240, 255))
+
+    def star(p, seed):
+        return hsh(seed, int(math.floor(p.x * 0.5 + 40)), int(math.floor(p.y * 0.5)), int(math.floor(p.z * 0.5 + 40))) > 0.86 and (p.i + p.j) % 2 == 0
+
+    def robe(p):
+        if p.part == "skirt" and p.side() and p.j == p.h - 1:
+            return GD if p.i % 2 else GDD
+        if p.part == "torso" and p.side() and abs(p.y - 13.6) < 0.6:
+            return GD if p.i % 3 else GDD
+        if p.part == "torso" and p.face == "north" and abs(p.x) < 0.6:
+            return RD
+        if star(p, 511):
+            return GD
+        return RD if int(math.floor(p.x * 0.9 + p.z * 0.9 + 100)) % 4 == 0 else RB
+
+    def sleeve(p):
+        if p.side() and p.j >= p.h - 2:
+            return GD if p.j == p.h - 2 else RD
+        return robe(p)
+
+    def leg(p):
+        return BT if p.y < 2.2 else RD
+
+    def head_d(c):
+        if c.face == "north":
+            c.eyes(1, 2, (50, 80, 150), WHITE)
+            c.symrect(1, 1, 2, 1, BD)
+            c.rect(2, 3, 2, 2, SD)
+            c.rect(1, 5, c.w - 2, 1, BD), c.rect(0, 6, c.w, 1, BD)
+        elif c.face in ("east", "west"):
+            c.rect(0, 5, c.w, 2, BD)
+            c.rect(c.fx(1) if c.face == "west" else c.fx(1) - 1, 3, 2, 1, SD)
+
+    def beard(p):
+        return BS if (p.i + p.j // 2) % 3 == 0 else BD
+
+    def hat(p):
+        if p.part == "hat-a" and p.side() and p.j == p.h - 1:
+            return GD if p.i % 2 else GDD
+        if star(p, 512):
+            return GD
+        return RD if p.part == "hat-brim" and p.face != "up" else RB if (p.i + p.j) % 4 else RD
+
+    def orb(p):
+        d = abs(p.i - (p.w - 1) / 2.0) + abs(p.j - (p.h - 1) / 2.0)
+        return (236, 255, 255) if d < 1 else ORB
+
+    m.box("torso", "Body", (-3.8, 12, -2.2), (3.8, 21.5, 2.2), robe)
+    m.box("skirt", "Body", (-4.3, 4, -2.7), (4.3, 12.6, 2.9), robe, skip=("down",))
+    m.bone("Head", (0, 21.5, 0))
+    m.box("head", "Head", (-3.2, 21.5, -3.2), (3.2, 28, 3.2), SK, head_d)
+    m.box("beard", "Head", (-2.8, 14.5, -4), (2.8, 23, -3), ragged_hem(511, beard, 3), skip=("down",))
+    m.box("hair", "Head", (-3.5, 19.5, 2.4), (3.5, 27, 3.7), ragged_hem(512, beard, 2), skip=("down",))
+    m.box("hat-brim", "Head", (-5.4, 27.4, -5.4), (5.4, 28.4, 5.4), hat)
+    m.box("hat-a", "Head", (-3.5, 28.2, -3.5), (3.5, 32, 3.5), hat)
+    m.box("hat-b", "Head", (-2.4, 31.8, -2.4), (2.4, 35.6, 2.4), hat)
+    m.box("hat-c", "Head", (-1.3, 35.2, -1.1), (1.3, 39, 1.5), hat, rot=(28, 0, 0), origin=(0, 35.3, 0.2))
+    for tag, sx in (("L", -1), ("R", 1)):
+        ax, lx = 5.0 * sx, 1.9 * sx
+        m.bone("Arm-" + tag, (ax, 20.5, 0))
+        m.box("sleeve-" + tag.lower(), "Arm-" + tag, (ax - 1.4, 12.5, -1.6), (ax + 1.4, 21.4, 1.6), sleeve)
+        m.box("hand-" + tag.lower(), "Arm-" + tag, (ax - 0.8, 10.8, -0.9), (ax + 0.8, 12.8, 0.9), SK)
+        m.bone("Leg-" + tag, (lx, 6, 0))
+        m.box("leg-" + tag.lower(), "Leg-" + tag, (lx - 1.5, 0, -1.6), (lx + 1.5, 6.5, 1.6), leg)
+        m.box("toe-" + tag.lower(), "Leg-" + tag, (lx - 1.4, 0, -2.8), (lx + 1.4, 1.6, -1.4), BT)
+    m.box("staff", "Arm-R", (4.5, 6, -2.4), (5.5, 25, -1.4), planks(WD, lambda q: q.y, lambda q: q.x, 4, 511))
+    m.box("staff-orb", "Arm-R", (3.8, 24.6, -3.1), (6.2, 27, -0.7), orb, noise=0)
+    return m
+
+
+def familiar_cat():
+    m = Model("familiar_cat", 512)
+    K, D, W, PK, EY, HT, HD, GD = (70, 64, 92), (44, 40, 62), (240, 238, 244), (232, 150, 170), (150, 240, 110), (128, 76, 178), (88, 50, 130), (244, 208, 90)
+
+    def body(p):
+        if p.face == "up" and abs(p.x) < 0.8:
+            return D
+        return D if vnoise(512, p.x / 2.0, p.y / 2.0, p.z / 3.0) > 0.62 else K
+
+    def chest(p):
+        if p.face == "north" and abs(p.x) < 1.4 and p.ly < 0.7:
+            return W
+        return body(p)
+
+    def head_d(c):
+        if c.face == "north":
+            c.sym(1, 2, EY), c.sym(2, 2, BLACK)
+            c.sym(1, 1, D)
+            c.rect(3, 4, 1, 1, W)
+        elif c.face in ("east", "west"):
+            c.px(c.fx(0), 4, W), c.px(c.fx(0), 3, (200, 200, 210))
+
+    def muzzle_d(c):
+        if c.face == "north":
+            c.px(1, 0, PK)
+            c.px(1, 1, (120, 100, 120))
+
+    def hat(p):
+        if p.part == "hat-a" and p.side() and p.j == p.h - 1:
+            return GD
+        return HD if (p.i + p.j) % 3 == 0 else HT
+
+    m.box("body", "Body", (-2.5, 6, -7), (2.5, 11.5, 7), chest)
+    TP = (0, 10.2, 6.5)
+    m.bone("tail-a", TP)
+    m.box("tail-a", "tail-a", (-1, 9.2, 6.5), (1, 11.2, 12), body, rot=(-40, 0, 0), origin=TP)
+    TB = rotp((0, 10.2, 11.8), (-40, 0, 0), TP)
+    m.bone("tail-b", TB, "tail-a")
+    m.box("tail-b", "tail-b", (-0.9, TB[1] - 0.9, TB[2] - 0.3), (0.9, TB[1] + 0.9, TB[2] + 5), lambda p: W if p.lz > 0.7 else K, rot=(-75, 0, 0), origin=TB)
+    m.bone("Head", (0, 11, -7))
+    m.box("head", "Head", (-3.5, 8.5, -12), (3.5, 14.5, -6.5), body, head_d)
+    m.box("muzzle", "Head", (-1.5, 9, -13), (1.5, 11, -11.5), mix(K, W, 0.35), muzzle_d)
+    m.box("charm", "Head", (-0.7, 7.3, -11), (0.7, 8.7, -10.2), GD, lambda c: c.face == "north" and c.px(0, 0, WHITE), noise=0)
+    ears(m, (-3.5, 14, -9.2), (-1.7, 16.6, -8), pointed(K, PK, D))
+    HP, HR = (0, 14.4, -10.2), (-10, 0, -8)
+    m.box("hat-brim", "Head", (-2.9, 14.4, -12.6), (2.9, 15.1, -8.4), hat, rot=HR, origin=HP)
+    m.box("hat-a", "Head", (-1.7, 15, -11.6), (1.7, 17.6, -9), hat, rot=HR, origin=HP)
+    m.box("hat-b", "Head", (-0.9, 17.4, -11), (0.9, 20.2, -9.4), hat, rot=(-10, 0, -30), origin=(0, 17.2, -10.2))
+    four_legs(m, -2.5, -0.7, -6.5, 4.5, 2, 6, lambda p: W if p.y < 1.6 else K)
+    return m
+
+
+def spellbook():
+    m = Model("spellbook", 513, noise=5)
+    LE, LD, GD, GDD, PG, PS, INK, RB, EY = (126, 52, 78), (88, 34, 56), (238, 198, 92), (188, 148, 54), (246, 238, 212), (214, 204, 176), (96, 74, 66), (206, 52, 62), (150, 240, 255)
+
+    def cover(p):
+        if p.face in ("up", "down"):
+            ei, ej = min(p.i, p.w - 1 - p.i), min(p.j, p.h - 1 - p.j)
+            if ei + ej < 3:
+                return GD if ei + ej < 2 else GDD
+            if p.face == "down":
+                d = abs(p.i - (p.w - 1) / 2.0) + abs(p.j - (p.h - 1) / 2.0)
+                if abs(d - 2.5) < 0.6 or d < 0.6:
+                    return GD
+            if ei == 1 or ej == 1:
+                return LD
+        return LD if (p.i + p.j) % 5 == 0 else LE
+
+    def pages(p):
+        if p.face == "up":
+            if min(p.i, p.w - 1 - p.i) == 0 or min(p.j, p.h - 1 - p.j) == 0:
+                return PG
+            if p.x < 0:
+                # a column of text on the left page
+                return INK if p.j % 2 == 1 and hsh(513, p.i, p.j) > 0.25 else PG
+            d = abs(p.i - (p.w - 1) / 2.0) + abs(p.j - 4)
+            if p.j < 8:
+                return (150, 70, 170) if abs(d - 2.2) < 0.6 else (230, 170, 60) if d < 0.6 else PG
+            return INK if p.j % 2 == 1 and hsh(514, p.i, p.j) > 0.3 else PG
+        return PS if p.j % 2 else PG
+
+    def spine(p):
+        if p.face in ("up", "down") and p.j % 4 == 1:
+            return GD
+        return LD if p.face == "up" else LE
+
+    def clasp_d(c):
+        if c.face == "north":
+            c.rect(0, 0, c.w, c.h, GDD)
+            c.rect(1, 1, c.w - 2, c.h - 2, EY)
+            c.px(c.w // 2, c.h // 2, BLACK)
+
+    def ribbon(p):
+        if p.j >= p.h - 2 and p.i == p.w // 2 and p.face in ("north", "south"):
+            return RB + (0,)
+        return mul(RB, 0.82) if p.j % 3 == 0 else RB
+
+    WP, WR = (-0.8, 8.6, 0), (0, 0, -20)
+    m.box("spine", "Body", (-1, 8, -6.6), (1, 9.2, 6.6), spine)
+    m.box("clasp", "Body", (-1.5, 7.6, -7.4), (1.5, 10.6, -6.5), GD, clasp_d)
+    wings(m, WP, (-9.8, 8.2, -6.6), (-0.8, 9, 6.6), cover, rot=WR, name="cover")
+    m.pair("pages", ("wing-l", "wing-r"), (-9.3, 9, -6), (-0.8, 10.8, 6), pages, rot=WR, origin=WP, skip=("down",))
+    m.bone("tail", (0, 8.2, 6.3))
+    m.box("ribbon", "tail", (-1, 0, 6.2), (1, 8.4, 6.6), ribbon, skip=("up", "down", "east", "west"))
+    for k, (x, y, z) in enumerate(((-5, 15.5, -2), (4, 17, 2.5), (0.5, 14, -4.5))):
+        m.box("spark-%d" % k, "Body", (x - 0.5, y - 0.5, z - 0.5), (x + 0.5, y + 0.5, z + 0.5), (255, 244, 170) if k % 2 else EY, noise=0)
+    return m
+
+
+SPELLS_N_MAGIC = [dragon, wyvern, phoenix, unicorn, griffin, wisp, imp, mimic, fairy, golem_crystal, wizard, familiar_cat, spellbook]
+
+
 ANIMALS = [cow, pig, chicken, cat, dog, tiger, elephant, bear, gator, snake, fish, squid, worm, ant, sheep, horse, frog, duck]
 VEHICLES = [boat, cargo_boat, cart, chest_cart, plane, car]
+
+# Where each set of models is written: (output directory, model functions). A
+# plain run writes them all; add a pack by adding a folder and its list here.
+OUTPUTS = [
+    (OUT_DIR, ANIMALS + MORE_ANIMALS + VEHICLES + FARM + MONSTERS),
+    (PACK_DIR, SPELLS_N_MAGIC),
+]
 
 # ---------------------------------------------------------------- creatures.txt
 
@@ -3326,14 +5308,14 @@ def contact_sheet(models, path, cell=190, cols=2, views=("iso", "side", "front",
 def main(argv):
     sheet = argv[argv.index("--sheet") + 1] if "--sheet" in argv else None
     only = argv[argv.index("--only") + 1].split(",") if "--only" in argv else None
-    os.makedirs(OUT_DIR, exist_ok=True)
     built = []
-    for fn in ANIMALS + MORE_ANIMALS + VEHICLES:
+    for out_dir, fn in [(d, fn) for d, fns in OUTPUTS for fn in fns]:
         if only and fn.__name__ not in only:
             continue
+        os.makedirs(out_dir, exist_ok=True)
         m = fn()
         assert m.id == fn.__name__
-        path = os.path.join(OUT_DIR, m.id + ".bbmodel")
+        path = os.path.join(out_dir, m.id + ".bbmodel")
         with open(path, "w") as f:
             json.dump(m.to_json(), f, separators=(",", ":"))
             f.write("\n")

@@ -66,6 +66,10 @@ fn tree_colour(biome: Biome, roll: u32) -> Option<[u8; 3]> {
 /// on each column that would have trees.
 pub fn build(seed: u32, tx: i32, tz: i32, step: i32) -> MeshData {
     let step = step.clamp(2, 32);
+    // Empty space and sky islands have no far-off ground to draw.
+    if worldgen::shape() >= 2 {
+        return MeshData::default();
+    }
     let n = (TILE / step) as usize;
     let (ox, oz) = (tx * TILE, tz * TILE);
     // One sample per cell, taken at its middle.

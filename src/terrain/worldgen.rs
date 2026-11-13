@@ -73,6 +73,26 @@ pub fn set_kind(kind: WorldKind) {
 
 static PROJ: AtomicPtr<crate::earth::Proj> = AtomicPtr::new(core::ptr::null_mut());
 
+/// The lie of the land in the dimension being played: 0 the world's own
+/// terrain, 1 flat, 2 empty, 3 islands in the sky.
+static SHAPE: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+pub const SHAPES: [&str; 4] = ["normal", "flat", "void", "islands"];
+
+pub fn set_shape(shape: u8) {
+    SHAPE.store(shape, Ordering::Release);
+}
+
+pub fn shape() -> u8 {
+    SHAPE.load(Ordering::Acquire)
+}
+
+/// Whether there is an island at (x, z) of an islands dimension, and how
+/// thick it is there.
+fn island(seed: u32, x: i32, z: i32) -> i32 {
+    let n = crate::noise::noise2(seed ^ 0x15A, x, z, 46) * 0.7 + crate::noise::noise2(seed ^ 0x15B, x, z, 13) * 0.3;
+    (((n - 0.56) * 90.0) as i32).clamp(0, 22)
+}
+
 /// The map projection of the open world, if it is an Earth world.
 pub fn earth_proj() -> Option<&'static crate::earth::Proj> {
     unsafe { PROJ.load(Ordering::Acquire).as_ref() }
@@ -129,6 +149,16 @@ fn stretch(v: f32, k: f32) -> f32 {
 }
 
 pub fn column(seed: u32, x: i32, z: i32) -> Column {
+    let plain = |height: i32| Column { height, biome: Biome::Plains, river: false, paved: false, building: 0, road: false, farm: false };
+    match shape() {
+        1 => return plain(SEA + 3),
+        2 => return plain(0),
+        3 => {
+            let t = island(seed, x, z);
+            return plain(if t > 0 { 80 + t / 4 } else { 0 });
+        }
+        _ => {}
+    }
     match earth_proj() {
         Some(p) => crate::earth::column(p, x, z),
         None => invented_column(seed, x, z),
@@ -570,6 +600,55 @@ pub fn generate(seed: u32, cx: i32, cz: i32) -> ChunkData {
     let wk = &reg().wk;
     let mut data = ChunkData::new();
     let (ox, oz) = (cx * CW, cz * CW);
+    // Other dimensions are simple enough to make right here.
+    match shape() {
+        1 => {
+            for lx in 0..CW {
+                for lz in 0..CW {
+                    for y in 0..=SEA + 3 {
+                        let b = if y == 0 { wk.deepstone } else if y == SEA + 3 { wk.grass } else if y >= SEA { wk.dirt } else { wk.stone };
+                        data.set(lx, y, lz, b);
+                    }
+                }
+            }
+            return data;
+        }
+        2 => return data,
+        3 => {
+            for lx in 0..CW {
+                for lz in 0..CW {
+                    let (x, z) = (ox + lx, oz + lz);
+                    let t = island(seed, x, z);
+                    if t == 0 {
+                        continue;
+                    }
+                    let top = 80 + t / 4;
+                    for y in (top - t).max(1)..=top {
+                        let b = if y == top { wk.grass } else if y >= top - 2 { wk.dirt } else { ore_at(wk, seed, x, y, z) };
+                        data.set(lx, y, lz, b);
+                    }
+                    let roll = hash2(seed ^ 0x15C, x, z) % 100;
+                    if roll < 6 && top + 1 < CH {
+                        data.set(lx, top + 1, lz, if roll < 3 { wk.tall_grass } else { wk.flower_yellow });
+                    }
+                }
+            }
+            // A tree here and there, as in the world below.
+            let mut w = Writer { data: &mut data, ox, oz };
+            for gx in (ox - 3).div_euclid(6)..=(ox + CW + 2).div_euclid(6) {
+                for gz in (oz - 3).div_euclid(6)..=(oz + CW + 2).div_euclid(6) {
+                    let h = hash2(seed ^ 0xC1, gx, gz);
+                    let (tx, tz) = (gx * 6 + 1 + (h % 4) as i32, gz * 6 + 1 + ((h >> 4) % 4) as i32);
+                    let t = island(seed, tx, tz);
+                    if t > 6 && (h >> 12) % 1000 < 160 {
+                        tree(&mut w, wk, h, tx, 80 + t / 4, tz, Biome::Forest, false);
+                    }
+                }
+            }
+            return data;
+        }
+        _ => {}
+    }
     let mut cols = [Column { height: 0, biome: Biome::Plains, river: false, paved: false, building: 0, road: false, farm: false }; (CW * CW) as usize];
 
     for lx in 0..CW {

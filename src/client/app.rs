@@ -1040,9 +1040,12 @@ impl App {
             (0.18 + 0.82 * day) * if covered { 0.55 } else { 1.0 }
         };
         let rel = |pos: [f64; 3]| [(pos[0] - cam.pos[0]) as f32, (pos[1] - cam.pos[1]) as f32, (pos[2] - cam.pos[2]) as f32];
+        // What is behind the camera is not drawn at all.
+        let ahead = crate::math::forward(cam.yaw, cam.pitch);
+        let behind = |p: [f32; 3], size: f32| p[0] * ahead.x + p[1] * ahead.y + p[2] * ahead.z < -size;
         for m in &g.mobs.list {
             let p = rel(m.body.pos);
-            if p[0] * p[0] + p[2] * p[2] > 72.0 * 72.0 {
+            if p[0] * p[0] + p[2] * p[2] > 72.0 * 72.0 || behind(p, 4.0) {
                 continue;
             }
             let d = &reg.entities[m.kind];
@@ -1060,7 +1063,7 @@ impl App {
         r.draw_sparks(&sparks);
         for (i, v) in g.vehicles.list.iter().enumerate() {
             let p = rel(v.body.pos);
-            if p[0] * p[0] + p[2] * p[2] > 96.0 * 96.0 {
+            if p[0] * p[0] + p[2] * p[2] > 96.0 * 96.0 || behind(p, 4.0) {
                 continue;
             }
             // From inside, your own vehicle is only drawn in third person.
@@ -1694,7 +1697,10 @@ impl App {
             let (px, pz) = ((i % MINIMAP) as i32, (i / MINIMAP) as i32);
             let (x, z) = (self.minimap_origin.0 + (px - half) * scale, self.minimap_origin.1 + (pz - half) * scale);
             let seen = g.explored.contains(&(x.div_euclid(crate::session::EXPLORE), z.div_euclid(crate::session::EXPLORE)));
-            let c = if seen {
+            // An Earth world has a map to begin with: ground not yet
+            // visited shows too, only dimmer.
+            let charted = crate::worldgen::earth_proj().is_some() && crate::worldgen::shape() == 0;
+            let c = if seen || charted {
                 let col = crate::worldgen::column(seed, x, z);
                 let base = if col.river {
                     [44, 104, 198]
@@ -1713,7 +1719,12 @@ impl App {
                 // catch the light, which makes hills readable.
                 let north = crate::worldgen::column(seed, x - scale, z - scale).height;
                 let lift = ((col.height - crate::worldgen::SEA).clamp(0, 60) / 3 + (col.height - north).clamp(-3, 3) * 9) as i32;
-                [0, 1, 2].map(|k| (base[k] as i32 + if col.height >= crate::worldgen::SEA { lift } else { 0 }).clamp(0, 255) as u8)
+                let lit = [0, 1, 2].map(|k| (base[k] as i32 + if col.height >= crate::worldgen::SEA { lift } else { 0 }).clamp(0, 255) as u8);
+                if seen {
+                    lit
+                } else {
+                    lit.map(|v| (v as u16 * 45 / 100 + 14) as u8)
+                }
             } else {
                 [24, 26, 32]
             };

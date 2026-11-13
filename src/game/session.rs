@@ -108,6 +108,12 @@ pub struct Session {
     pub sitting: Option<[i32; 3]>,
     /// The cart a chain has been hooked to, waiting for the second one.
     coupling: Option<usize>,
+    /// Which dimension of the world is being played (empty = the world itself).
+    pub dim: String,
+    pending_dim: Option<String>,
+    /// The world's own seed (each dimension's is made from it) and file prefix.
+    base_seed: u32,
+    file_prefix: String,
     /// Rain set by `/weather` (0 clear ..= 1 storm), overriding the sky.
     pub forced_sky: Option<f32>,
     /// Skin images that arrived from other players, for the renderer.
@@ -213,6 +219,7 @@ impl Session {
             Some("survival") => GameMode::Survival,
             _ => new.mode,
         };
+        worldgen::set_shape(0);
         worldgen::set_kind(kind.clone());
         // Numbers that are not numbers (a damaged file) are left out, so
         // the fallbacks below apply.
@@ -313,6 +320,10 @@ impl Session {
             call_timer: 3.0,
             sitting: None,
             coupling: None,
+            dim: String::new(),
+            pending_dim: crate::settings::kv(&meta, "dim").filter(|d| !d.is_empty()).map(String::from),
+            base_seed: seed,
+            file_prefix: alloc::format!("{}{}.", base, name),
             forced_sky: None,
             skin_events: Vec::new(),
             inv,
@@ -596,10 +607,86 @@ impl Session {
                 }
                 _ => String::from("USE  /SET X Y Z BLOCK"),
             },
-            "/seed" => alloc::format!("SEED {}", self.world.seed),
-            "/time" | "/spawn" | "/mode" | "/weather" | "/set" => String::from("NOT ON A SERVER"),
+            // /dim NAME: step into another dimension of this world
+            // (/dim alone, or /dim home, comes back).
+            "/dim" if !online => {
+                let id = if arg(1) == "home" { "" } else { arg(1) };
+                if id.is_empty() || r.dimensions.iter().any(|d| d.0 == id) {
+                    self.pending_dim = Some(String::from(id));
+                    String::new()
+                } else {
+                    let names: Vec<&str> = r.dimensions.iter().map(|d| d.0.as_str()).collect();
+                    alloc::format!("DIMENSIONS: HOME {}", names.join(" ").to_ascii_uppercase())
+                }
+            }
+            "/seed" => alloc::format!("SEED {}", self.base_seed),
+            "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" => String::from("NOT ON A SERVER"),
             _ => return None,
         })
+    }
+
+    /// Step into another dimension of this world (`""` is the world
+    /// itself). Each has its own terrain and its own saved chunks.
+    fn enter_dimension(&mut self, id: &str, sink: &mut dyn MeshSink) {
+        let r = reg();
+        let shape = match r.dimensions.iter().find(|d| d.0 == id) {
+            Some(d) => d.1,
+            None if id.is_empty() => 0,
+            None => return,
+        };
+        if id == self.dim || self.net.is_some() {
+            return;
+        }
+        // Put away where we are.
+        self.world.save_all(&mut self.store);
+        self.store.flush();
+        sys::write_file(&self.vehicles_path, self.vehicles.save_text().as_bytes());
+        self.world.free_meshes(sink);
+        let seed = if id.is_empty() { self.base_seed } else { self.base_seed ^ id.bytes().fold(0x9E37_79B9u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32)) };
+        let threads = self.pool.thread_count();
+        // The old workers finish and go before the land changes under them.
+        self.pool = crate::jobs::Pool::new(0, seed);
+        worldgen::set_shape(shape);
+        self.pool = crate::jobs::Pool::new(threads, seed);
+        let far = self.world.far_radius;
+        self.world = crate::world::World::new(seed);
+        self.world.far_radius = far;
+        let prefix = if id.is_empty() { self.file_prefix.clone() } else { alloc::format!("{}{}.", self.file_prefix, id) };
+        self.store = crate::save::RegionStore::new(crate::save::DiskIo, prefix.clone());
+        self.vehicles_path = alloc::format!("{}vehicles.txt", prefix);
+        self.vehicles = crate::vehicle::Vehicles::default();
+        if let Some(text) = sys::read_file(&self.vehicles_path) {
+            self.vehicles.load_text(&String::from_utf8_lossy(&text));
+        }
+        // Wild things stay behind; pets come along.
+        self.mobs.list.retain(|m| m.tamed);
+        self.shots.clear();
+        self.sitting = None;
+        self.target = None;
+        self.mining = None;
+        self.dim = String::from(id);
+        // Somewhere to stand on arriving.
+        let (x, z) = (floord(self.player.pos[0]), floord(self.player.pos[2]));
+        let ground = worldgen::column(seed, x, z).height;
+        let y = if shape >= 2 && ground < 4 {
+            // Nothing there: a small platform to arrive on.
+            for dx in -2..=2 {
+                for dz in -2..=2 {
+                    self.world.apply_remote(x + dx, 80, z + dz, r.wk.stone);
+                }
+            }
+            81
+        } else {
+            ground + 1
+        };
+        self.player.pos = [x as f64 + 0.5, y as f64 + 0.05, z as f64 + 0.5];
+        self.player.vel = [0.0; 3];
+        self.peak_y = self.player.pos[1];
+        self.was_airborne = false;
+        for m in self.mobs.list.iter_mut() {
+            m.body.pos = [self.player.pos[0] + 1.0, self.player.pos[1], self.player.pos[2] + 1.0];
+        }
+        self.fire("dimension", id);
     }
 
     /// Send something flying from the player's eye the way they look.
@@ -1109,6 +1196,9 @@ impl Session {
             }
         }
 
+        if let Some(id) = self.pending_dim.take() {
+            self.enter_dimension(&id, sink);
+        }
         self.block_updates(dt);
         self.fly_shots(dt);
         // Scripts: once at the start, and those that run on a clock.
@@ -1741,8 +1831,9 @@ impl Session {
             sys::write_file(&self.pets_path, self.mobs.save_pets().as_bytes());
         }
         let text = alloc::format!(
-            "seed={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\ninventory={}\n",
-            self.world.seed,
+            "seed={}\ndim={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\ninventory={}\n",
+            self.base_seed,
+            self.dim,
             self.kind.to_text(),
             if self.mode == GameMode::Creative { "creative" } else { "survival" },
             p.pos[0],

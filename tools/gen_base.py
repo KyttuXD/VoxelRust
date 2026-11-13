@@ -469,6 +469,17 @@ for line in ["step steps 0.09 0.95 90 60 0.10 0.55 Footsteps", "break effects 0.
              "whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh", "sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling"]:
     w("sound " + line)
 
+w("""
+# ---- Dimensions ----
+# Other worlds inside each world, with their own land and their own saved
+# chunks: /dim NAME goes there, /dim home comes back. Packs add their own
+# and may send players through with scripts (a portal block, say).
+#   dimension <name> <normal|flat|void|islands>
+dimension sky islands
+dimension flatland flat
+dimension void void
+dimension mirror normal""")
+
 # ---- Doors, gates and hatches ----
 w("""
 # ---- Things that open ----

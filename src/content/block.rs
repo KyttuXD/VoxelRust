@@ -530,6 +530,9 @@ pub struct Registry {
     /// Commands packs add to the chat, and things they make happen.
     pub commands: Vec<(String, Vec<String>)>,
     pub scripts: Vec<Script>,
+    /// Other worlds inside a world: a name and the lie of its land
+    /// (an index into `worldgen::SHAPES`).
+    pub dimensions: Vec<(String, u8)>,
     pub plants: Vec<PlantRule>,
     /// Per-state lookup tables for the hot loops.
     pub opaque: Vec<u8>,
@@ -928,7 +931,7 @@ impl Parser<'_> {
                     cur = Cur::Vehicle(i);
                 }
                 // (Inside a block or creature, `sound <id>` names the sound it makes.)
-                "ore" | "plant" | "sound" | "command" | "when" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
+                "ore" | "plant" | "sound" | "command" | "when" | "dimension" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
                     cur = Cur::None;
                     let mut words: Vec<String> = args.iter().map(|a| a.to_string()).collect();
                     words.insert(0, key.to_string());
@@ -1729,6 +1732,7 @@ impl Registry {
         let mut sounds: Vec<SoundDef> = Vec::new();
         let mut commands: Vec<(String, Vec<String>)> = Vec::new();
         let mut scripts: Vec<Script> = Vec::new();
+        let mut dimensions: Vec<(String, u8)> = Vec::new();
         for (at, w) in &raw_rules {
             let f = |k: usize| w.get(k).and_then(|v| v.parse::<f32>().ok());
             match w[0].as_str() {
@@ -1773,6 +1777,18 @@ impl Registry {
                     _ => warnings.push(alloc::format!("{}: when needs <event> [what] do <commands>", at)),
                 },
                 "command" => warnings.push(alloc::format!("{}: command needs <name> <what it does>", at)),
+                // dimension <id> <normal|flat|void|islands>
+                "dimension" => {
+                    let id = w.get(1).map(|s| s.to_ascii_lowercase()).unwrap_or_default();
+                    let shape = crate::worldgen::SHAPES.iter().position(|s| Some(*s) == w.get(2).map(|x| x.as_str()));
+                    match shape {
+                        Some(k) if !id.is_empty() && id.len() <= 12 && id.chars().all(|c| c.is_ascii_alphanumeric()) => {
+                            dimensions.retain(|d| d.0 != id);
+                            dimensions.push((id, k as u8));
+                        }
+                        _ => warnings.push(alloc::format!("{}: dimension needs <name of letters and digits> <normal|flat|void|islands>", at)),
+                    }
+                }
                 _ => {}
             }
         }
@@ -1930,6 +1946,7 @@ impl Registry {
             sounds,
             commands,
             scripts,
+            dimensions,
             plants,
             by_id,
             warnings,

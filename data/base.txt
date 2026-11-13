@@ -2469,6 +2469,16 @@ sound rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails
 sound whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh
 sound sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling
 
+# ---- Dimensions ----
+# Other worlds inside each world, with their own land and their own saved
+# chunks: /dim NAME goes there, /dim home comes back. Packs add their own
+# and may send players through with scripts (a portal block, say).
+#   dimension <name> <normal|flat|void|islands>
+dimension sky islands
+dimension flatland flat
+dimension void void
+dimension mirror normal
+
 # ---- Things that open ----
 #   toggle <block>   right click swaps the block for another (and back)
 #   tall             two blocks high: placed, broken and toggled together
