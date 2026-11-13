@@ -63,6 +63,8 @@ pub struct Renderer {
     light: u32,
     /// Five stages of cracks side by side, for blocks being dug.
     cracks: u32,
+    /// Colour the next 2D model is multiplied by (then white again).
+    pub tint_2d: [u8; 3],
     /// Which step of the water animation is in the atlas now.
     water_phase: i32,
     font: u32,
@@ -259,6 +261,7 @@ impl Renderer {
             atlas,
             light,
             water_phase: 0,
+            tint_2d: [255; 3],
             cracks: make_texture(80, 16, &crack_pixels(), gl::NEAREST, gl::CLAMP_TO_EDGE),
             font,
             clouds,
@@ -808,6 +811,17 @@ impl Renderer {
 
     /// Draw a model flat on the screen (inventory portrait). `x`, `y` is
     /// where its feet go, in pixels; `height` its height in pixels.
+    /// How tall a model is and how far it spreads sideways, in its own units.
+    pub fn model_extent(&self, model: usize) -> (f32, f32) {
+        match self.models.get(model) {
+            Some(d) => {
+                let m = &d.model;
+                (d.height(), (m.max[0] - m.min[0]).max(m.max[2] - m.min[2]).max(0.001))
+            }
+            None => (1.0, 1.0),
+        }
+    }
+
     pub fn draw_model_2d(&mut self, model: usize, pose: &crate::model::Pose, x: f32, y: f32, yaw: f32, height: f32) {
         let def = match self.models.get(model) {
             Some(d) => d,
@@ -828,11 +842,13 @@ impl Renderer {
         for q in quads {
             for k in 0..4 {
                 let v = self.model_verts[q * 4 + k];
-                let c = v.shade;
-                self.batch.push(V2 { pos: [v.pos[0], v.pos[1], 0.0], uv: v.uv, col: [c, c, c, 255] });
+                let c = v.shade as u16;
+                let t = self.tint_2d;
+                self.batch.push(V2 { pos: [v.pos[0], v.pos[1], 0.0], uv: v.uv, col: [(c * t[0] as u16 / 255) as u8, (c * t[1] as u16 / 255) as u8, (c * t[2] as u16 / 255) as u8, 255] });
             }
         }
         self.flush(gl::QUADS);
+        self.tint_2d = [255; 3];
         unsafe { (gl().Disable)(gl::ALPHA_TEST) };
     }
 

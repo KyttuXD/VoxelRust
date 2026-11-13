@@ -82,6 +82,7 @@ own procedurally painted textures and its own terrain generator.
 | [docs/DATA.md](docs/DATA.md) | the content file format |
 | [docs/BUILDING.md](docs/BUILDING.md) | building for each platform, build names and updating, tests, CI, icons |
 | [docs/PORTING.md](docs/PORTING.md) | how it stays portable, old Macs, PowerPC, measurements |
+| [docs/WEB.md](docs/WEB.md) | the browser build |
 
 ## How it stays portable
 
@@ -177,7 +178,8 @@ are not touched.
   workflows (CI and nightly builds) have not been able to run: the account's
   Actions budget blocks them on private repositories. So there are no
   nightly files yet.
-- The website is not deployed.
+- The browser build is described in [docs/WEB.md](docs/WEB.md). The website
+  is not deployed.
 - In Earth worlds, building heights are guesses from the size of the
   footprint: the map tiles carry no heights.
 

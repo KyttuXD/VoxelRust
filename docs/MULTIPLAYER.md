@@ -81,7 +81,8 @@ Your name comes from SETTINGS > GAME (letters, digits, `-` and `_`, 16 at
 most). If someone on the server already has it, a number is added.
 
 The server refuses a player whose game speaks a different version of the
-network protocol (currently version 3), and anyone beyond the player limit.
+network protocol (currently version 4; it changed when creatures, vehicles
+and chest contents became shared), and anyone beyond the player limit.
 Everyone should run the same version of the game.
 
 ## What is shared, and what is not
@@ -96,21 +97,54 @@ Shared between everyone on a server:
   seed, place and time, so everyone sees the same sky).
 - **Content**: the server's packs (next section).
 
-Not shared yet. Each of these exists only in your own game:
+- **Creatures.** Everyone sees the same animals, monsters and villagers.
+- **Vehicles**, including trains and what they carry.
+- **Chest contents.**
 
-- **Creatures.** Every player sees their own animals, villagers and
-  monsters. Villagers' farming and building is not applied to the shared
-  world.
-- **Vehicles.** A boat you place is invisible to others.
-- **Chest contents.** The chest block is shared; what you put in it is not.
+### How creatures, vehicles and chests are shared
+
+The server does not run creatures or vehicles itself: it only passes
+messages on. Instead **one player's game runs them for everybody**: the
+player with the lowest player number of those present (normally whoever
+joined first). When that player
+leaves, the next lowest takes over.
+
+- That game moves the creatures and the vehicles nobody is riding, and
+  tells the others where everything is five times a second. The others
+  only animate what they are told.
+- When another player hits a creature, their game sends the hit to that
+  player, whose game decides what becomes of it. Arrows work the same way.
+- When another player sets down or picks up a vehicle, their game asks
+  that player to do it. A vehicle you are riding is steered by your own
+  game, which reports where it is.
+- A hostile creature's bite is judged in the game of the player being
+  bitten.
+- Chest contents are sent when a player changes what is in a chest, and
+  **the server keeps the latest contents of each chest** and sends them to
+  players who join later. It keeps them in memory, not in a file: they last
+  as long as the server runs.
+- `/spawn` works only for the player whose game runs the creatures.
+
+This has been tested only between two copies of the game on one machine. It
+has not been tried over a real network, with slow connections, or with
+many players.
+
+### Not shared
+
 - **Inventories, health and hunger.** These are per player and are not kept
   by the server. You join in creative mode with the creative starting items,
   and nothing you carry is saved when you leave.
+- **Villagers' work.** Villagers are shared like other creatures, but their
+  farming and building is not applied to a shared world.
+- **Pets** are not saved on a server.
+- **Dimensions.** `/dim` does not work on a server.
 
 Natural disasters do not happen on servers. Sleeping in a bed sets where you
-come back to but does not skip the night, and the commands `/time`,
-`/spawn`, `/mode`, `/weather`, `/set` and `/reload` do not work
-(see [PLAYING.md](PLAYING.md#chat-and-commands)).
+come back to but does not skip the night. The commands `/time`, `/mode`,
+`/weather`, `/set`, `/dim`, `/shoot`, `/aim`, `/strike` and `/reload` do not
+work, and `/spawn` only for one player (see
+[PLAYING.md](PLAYING.md#chat-and-commands)). Pack scripts run in each
+player's own game.
 
 ## Server-hosted packs
 
@@ -155,7 +189,8 @@ Be clear about what the server does **not** have:
 
 - **No accounts and no passwords.** Anyone who can reach the port can join
   under any free name, build and break anything, and use the relay.
-- **No encryption.** Positions, chat, skins and edits travel as plain data.
+- **No encryption.** Positions, chat, skins, edits and chest contents travel
+  as plain data.
 - **No moderation tools**: no kick, ban or protected areas.
 
 Host for people you trust, keep backups of the two server files, and close

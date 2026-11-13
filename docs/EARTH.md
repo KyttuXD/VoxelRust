@@ -70,6 +70,11 @@ to travel** to the spot under the mouse, M or Esc to close. The top line
 shows the latitude, longitude and block position under the mouse; the red
 marker is you. Travelling sets you down above the ground at that spot.
 
+The minimap in the corner works differently in Earth worlds too. The land
+is known from the start, so the minimap shows all of it: ground you have
+been near at full brightness, the rest dimmed. (In another dimension of an
+Earth world it goes back to showing only what you have explored.)
+
 ## Place notices
 
 As you move, the game can tell you where you are (`YOU ARE IN ...`,

@@ -2303,6 +2303,23 @@ fn label_coloured(r: &mut Renderer, x: f32, y: f32, s: f32, line: &str, alpha: u
 
 fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Color) {
     let it = &reg().items[index];
+    // A spawn egg shows the creature itself, standing in half an eggshell.
+    if let Some(e) = it.x.egg.and_then(|k| reg().entities.get(k)) {
+        let shell = |r: &mut Renderer, k: f32, c: Color| {
+            // A rounded bowl out of three bars.
+            r.rect(x + size * (0.5 - 0.42 * k), y + size * 0.70, size * 0.84 * k, size * 0.12, c);
+            r.rect(x + size * (0.5 - 0.36 * k), y + size * 0.80, size * 0.72 * k, size * 0.10, c);
+            r.rect(x + size * (0.5 - 0.24 * k), y + size * 0.88, size * 0.48 * k, size * 0.08, c);
+        };
+        shell(r, 1.0, [(232u16 * tint[0] as u16 / 255) as u8, (224u16 * tint[1] as u16 / 255) as u8, (200u16 * tint[2] as u16 / 255) as u8, tint[3]]);
+        let (tall, wide) = r.model_extent(e.model);
+        // As big as fits the slot, whichever way the creature is long.
+        let height = (size * 0.78).min(size * 0.92 * tall / wide);
+        let pose = crate::model::Pose::default();
+        r.tint_2d = e.tint;
+        r.draw_model_2d(e.model, &pose, x + size * 0.5, y + size * 0.84, PI - 0.6, height);
+        return;
+    }
     // Blocks are shown as small 3D blocks; everything else as its picture.
     match it.place.map(block::def).filter(|_| it.brush == 0 && it.x.turns.is_empty()) {
         Some(d) if d.kind == Kind::Boxes => {
@@ -2637,6 +2654,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
     }
     if scripted {
+        // "items:<tab>" opens the creative list at that tab.
+        if let Some(tab) = opts.show.split(',').find_map(|w| w.strip_prefix("items:")) {
+            app.inv_tab = reg().categories.iter().position(|c| c.eq_ignore_ascii_case(tab)).unwrap_or(0);
+        }
         for (word, screen) in [
             ("pause", Screen::Pause),
             ("items", Screen::Inventory),

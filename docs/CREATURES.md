@@ -1,6 +1,6 @@
 # Creatures
 
-The game has 58 kinds of creature: farm animals, pets, wildlife, things that
+The game has 75 kinds of creature: farm animals, pets, wildlife, things that
 fly and swim, night monsters, cave dwellers and villagers. All of them are
 declared in [data/wildlife.txt](../data/wildlife.txt) (written by
 `tools/gen_creatures.py`), so a pack can change any of them or add more; the
@@ -25,15 +25,21 @@ format is in [DATA.md](DATA.md#creatures).
   around you.
 
 Creatures are not saved with the world: when you come back, new ones appear.
-In multiplayer every player has their own (see
+The exception is [pets](#taming-and-pets), which are saved. In multiplayer
+everyone sees the same creatures; one player's game runs them for all (see
 [MULTIPLAYER.md](MULTIPLAYER.md#what-is-shared-and-what-is-not)).
+
+Creatures behind the camera are not drawn. Many kinds have a call (a cow
+lows, a wolf howls, a skeleton rattles) that you hear now and then when one
+is within 24 blocks; SETTINGS > AUDIO > SUBTITLES FOR SOUNDS names them on
+screen.
 
 ## Dealing with them
 
 | Action | What happens |
 | --- | --- |
-| Left click | Hit it. A bare hand does 3 damage, a sword 6 to 15 (see [PLAYING.md](PLAYING.md#swords)). In survival a killed creature leaves its drop; in creative one hit removes it and gives nothing |
-| Right click | Collect what it gives (milk, wool, an egg), trade, or hear what it has to say |
+| Left click | Hit it. A bare hand does 3 damage, a sword 6 to 15 (see [PLAYING.md](PLAYING.md#swords)); bows hit from a distance (see [PLAYING.md](PLAYING.md#bows)). In survival a killed creature leaves its drop; in creative one hit removes it and gives nothing |
+| Right click | Tame it (holding its favourite food), tell a pet to wait or follow, collect what it gives (milk, wool, an egg), trade, or hear what it has to say |
 | Hold its favourite food | Some animals walk after you while you hold it, from up to 10 blocks away |
 
 ### Milk, wool and eggs
@@ -44,11 +50,14 @@ animals give nothing.
 
 | Animal | Gives | Ready again after |
 | --- | --- | --- |
-| Cow | Milk | 3 minutes |
-| Goat | Milk | 3 minutes 20 seconds |
+| Cow, Highland Cow | Milk | 3 minutes |
+| Goat, Yak | Milk | 3 minutes 20 seconds |
 | Sheep | White Wool | 4 minutes |
+| Merino Sheep | White Wool | 2 minutes 30 seconds |
+| Llama | White Wool | 5 minutes |
 | Chicken | Egg | 2 minutes 30 seconds |
 | Duck | Egg | 3 minutes 20 seconds |
+| Goose | Egg | 3 minutes 40 seconds |
 
 The animal is not harmed. Milk and eggs are used in cooking (see
 [PLAYING.md](PLAYING.md#the-oven-and-baking)); four String also make one
@@ -58,11 +67,43 @@ White Wool at a crafting table.
 
 | Animal | Follows you for |
 | --- | --- |
-| Cow, Sheep | Wheat |
-| Pig | Carrot |
+| Cow, Highland Cow, Sheep, Merino Sheep, Camel | Wheat |
+| Pig, Donkey, Lop Rabbit | Carrot |
 | Chicken | Wheat Seeds |
+| Horse | Apple |
 | Dog | Raw Meat |
 | Cat | Raw Fish |
+
+### Taming and pets
+
+Eight kinds can be tamed. Hold the animal's favourite food and right click
+a grown one: the game says `THE ... IS NOW YOURS` and, in survival, one of
+the food is used up.
+
+| Animal | Tamed with |
+| --- | --- |
+| Dog, Wolf | Raw Meat |
+| Cat | Raw Fish |
+| Fox | Berries |
+| Horse | Apple |
+| Donkey, Lop Rabbit | Carrot |
+| Camel | Wheat |
+
+A pet:
+
+- follows you, and catches up by itself if you leave it more than 40
+  blocks behind;
+- no longer runs from you or attacks you;
+- if it can bite (dog, wolf, cat, fox), goes for hostile creatures within
+  12 blocks;
+- waits where it is when you right click it with anything but its food in
+  hand (`... WILL WAIT HERE`), and follows again after another right click
+  (`... WILL FOLLOW YOU`);
+- comes with you into other dimensions;
+- is saved with the world, in `<world>.pets.txt`, and is there when you
+  come back. On a server pets are not saved.
+
+Pets cannot be ridden.
 
 ### Young
 
@@ -100,9 +141,23 @@ kinds.
 | Goat | mountain, badlands | herd, hops, pack (hits back for 3); milk; drops 2 Raw Meat |
 | Chicken | plains, forest, savanna | prey, flees; eggs; drops 1 Raw Meat; follows Wheat Seeds |
 | Duck | swamp, plains, forest | herd, flees; eggs; drops 1 Raw Meat |
-| Horse | plains, savanna | herd, flees; fast; drops 2 Raw Meat. Horses cannot be ridden |
+| Horse | plains, savanna | herd, flees; fast; drops 2 Raw Meat; follows Apple. Horses cannot be ridden |
 | Dog | plains, forest, savanna | follows Raw Meat; several breeds |
 | Cat | plains, forest, savanna, desert | lazy, hunts small prey; follows Raw Fish |
+| Turkey | forest, plains | herd, flees, prey; drops 2 Raw Meat |
+| Goose | swamp, plains | herd, territorial (1 damage); eggs; drops 1 Raw Meat |
+| Donkey | plains, savanna, badlands | herd; follows Carrot |
+| Llama | mountain, badlands | herd, pack (hits back for 2); wool |
+| Bison | plains | herd, pack (6 damage); 40 health; drops 4 Raw Meat |
+| Yak | mountain, tundra | herd, pack (5 damage); milk; drops 3 Raw Meat |
+| Camel | desert | herd; follows Wheat |
+| Bull | plains, savanna | territorial (6 damage); drops 3 Raw Meat |
+| Highland Cow | mountain, taiga, tundra | herd; milk; drops 2 Raw Meat; follows Wheat |
+| Merino Sheep | plains, mountain | herd, prey; wool, ready sooner than a sheep's; drops 2 Raw Meat; follows Wheat |
+| Lop Rabbit | plains, forest | flees, prey, hops; follows Carrot |
+
+The horse, dog, cat, donkey, camel and lop rabbit can be tamed, and so can
+the wolf and the fox below; see [Taming and pets](#taming-and-pets).
 
 ## Wildlife
 
@@ -118,8 +173,8 @@ kinds.
 | Crab | desert, swamp | territorial (1 damage) |
 | Frog | swamp, jungle | hops |
 | Wild Boar | forest, taiga, jungle | territorial, pack (4 damage); drops 3 Raw Meat |
-| Wolf | taiga, forest, tundra, mountain | hunter, pack (4 damage) |
-| Fox | forest, taiga, plains, tundra | hunter, flees from you |
+| Wolf | taiga, forest, tundra, mountain | hunter, pack (4 damage); tamed with Raw Meat |
+| Fox | forest, taiga, plains, tundra | hunter, flees from you; tamed with Berries |
 | Bear | taiga, forest, mountain | territorial (6 damage); drops 3 Raw Meat |
 | Polar Bear | tundra | territorial, hunter (7 damage); drops 3 Raw Meat |
 | Tiger | jungle | **hostile** by day and night (7 damage); drops 2 Raw Meat |
@@ -156,9 +211,19 @@ stay close).
 
 | Creature | Where | Notes |
 | --- | --- | --- |
-| Lurker | anywhere | 3 damage; the commonest |
+| Lurker | anywhere | 3 damage; common |
+| Skeleton | anywhere | an archer: shoots arrows (3 damage) from up to 20 blocks away, and hits for 2 up close; drops 2 Arrows; common |
+| Zombie | anywhere | 4 damage, 18 health; slow; common |
 | Wraith | swamp, forest, taiga, tundra, badlands | 4 damage; floats and glows faintly |
 | Bone Hound | plains, savanna, desert, mountain, badlands | 3 damage; fast, hunts in packs |
+| Werewolf | forest, taiga, mountain | 7 damage, 30 health; very fast, hunts in packs; uncommon |
+| Ghoul | swamp, badlands, desert | 4 damage; quick |
+| Ogre | mountain, badlands, taiga | 11 damage, 70 health; drops 4 Raw Meat; rare |
+| Scarecrow | plains, savanna | 3 damage; drops 3 Wheat; uncommon |
+
+A skeleton's arrows fly like yours: they drop, and a wall stops them. A
+creature that flies and shoots (none in the base game; packs can add them,
+a dragon for instance) circles overhead and shoots from above.
 
 Hostile creatures find their way around walls and up steps. A bed lets you
 skip the night (see [PLAYING.md](PLAYING.md#beds)).
@@ -226,7 +291,7 @@ of the villager's home:
 The other jobs (baker, smith, trader, shepherd, fisher) only trade.
 
 Villagers' farming and building happen in singleplayer only. On a server
-every player has their own villagers, so their work is not applied to the
+the villagers themselves are shared, but their work is not applied to the
 shared world.
 
 ## Seeing them all

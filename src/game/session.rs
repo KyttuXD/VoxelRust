@@ -1884,6 +1884,19 @@ impl Session {
                 self.fire("eat", &item.id);
                 return;
             }
+            // Spawn eggs hatch where they are pointed.
+            if let (Some(kind), Some(hit)) = (item.x.egg, &self.target) {
+                self.cooldown[1] = 0.35;
+                let at = [hit.prev[0] as f64 + 0.5, hit.prev[1] as f64 + 0.05, hit.prev[2] as f64 + 0.5];
+                if self.runs_the_world() && self.mobs.list.len() < 200 {
+                    self.mobs.spawn(kind, at);
+                    audio.play(Sound::Pop, 0.9);
+                    if !creative {
+                        self.inv.take_one(self.selected);
+                    }
+                }
+                return;
+            }
             // Bows and the like.
             if let Some((damage, speed, wait, ammo)) = item.x.shoots {
                 let loaded = creative || ammo.map_or(true, |a| self.inv.remove(a as u16, 1));

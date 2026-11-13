@@ -1,7 +1,7 @@
 # Content files
 
-Textures, blocks, items, recipes, models, creatures and vehicles are declared
-in plain text. The game's own content is [data/base.txt](../data/base.txt),
+Textures, blocks, items, recipes, models, creatures, vehicles, sounds,
+dimensions, chat commands and scripts are declared in plain text. The game's own content is [data/base.txt](../data/base.txt),
 which includes [data/creatures.txt](../data/creatures.txt) (models) and
 [data/wildlife.txt](../data/wildlife.txt) (every creature); all three are
 built into the program. Packs are read after it:
@@ -25,16 +25,19 @@ One declaration per line; `#` starts a comment. Words are separated by spaces
 or tabs; indentation is optional.
 
 These keywords start something new: `texture`, `block`, `item`, `recipe`,
-`craft`, `bake`, `ore`, `plant`, `model`, `entity`, `vehicle`, `include`. Any other line sets a
+`craft`, `bake`, `smelt`, `ore`, `plant`, `model`, `entity`, `vehicle`,
+`sound`, `command`, `when`, `dimension`, `include`. Any other line sets a
 property of the block, item, entity or vehicle most recently started.
+(`sound` with a single word, inside a block or an entity, is a property; see
+[Sounds](#sounds).)
 
 Ids are single words. Declaring an id a second time replaces the first
 declaration completely (it keeps its place in the order).
 
 Properties that are switches (`rotate`, `flip`, `hidden`, `unbreakable`,
-`night`, `storage`, and `solid`) are on when written alone or with `yes`, and
-off when followed by `no`, `false` or `0`. `falls` and `tall` are on when
-written alone and off only when followed by `no`.
+`night`, `storage`, `powered` and `solid`) are on when written alone or with
+`yes`, and off when followed by `no`, `false` or `0`. `falls`, `tall` and
+`tamable` are on when written alone and off only when followed by `no`.
 
 ```
 include other-file.txt        # path relative to this file
@@ -64,8 +67,9 @@ tall_grass deepstone clay sun moon wand`. An unknown painter name gives a
 pink and black checkerboard.
 
 **`paint` styles for blocks:** `concrete wool terracotta glass rock polished
-bricks tiles planks bark rings leaves blossom farmland magma door`. (`rings`
-is the cut end of a log; `glass`, `leaves` and `blossom` have holes.) One line per colour is how
+bricks tiles planks bark rings leaves blossom farmland magma door glassdoor`.
+(`rings` is the cut end of a log; `glass`, `leaves`, `blossom` and
+`glassdoor` have holes.) One line per colour is how
 the base data makes sixteen colours of several materials and six kinds of
 wood.
 
@@ -76,7 +80,7 @@ stages of a crop).
 **`paint` styles for item pictures** (a shape in the given colour on a clear
 background): `stick pick axe shovel hoe sword gem meat fruit fishfood rail
 vehicle hull wings chest workbench seeds sheaf loaf pizza wedge root tuber jar
-egg sack cookie pie bowl`.
+egg sack cookie pie bowl bow crossbow arrow ingot`.
 
 **`file`:** TGA files must be 16 x 16, uncompressed true colour, 24 or 32
 bits per pixel. An alpha of zero is a hole (use with `shape cutout` or
@@ -101,8 +105,13 @@ block <id>
   drops <item> [<chance>]        what breaking it gives in survival
   drops nothing
   also <item> [<chance>] [<count>]   a second thing given when broken
-  use craft | chest | oven | bed what right-clicking it does
+  use craft | chest | oven | furnace | bed   what right-clicking it does
   toggle <block>                 right click swaps it for that block
+  seat <sixteenths>              right click sits on it, that high
+  eat <points>                   right click eats it where it stands
+  track <percent>                rail vehicles run on it, at this share of their speed
+  station <seconds>              track where a cart running by itself stops that long
+  sound <sound id>               heard when it is broken, placed or toggled
   tall                           two blocks high
   falls                          drops when nothing is under it
   on <blocks...>                 may only stand on these blocks
@@ -132,8 +141,27 @@ category is `Blocks`; `solid` is yes for everything except `cross` and
 - `use craft`: right click opens the crafting-table recipe list.
 - `use chest`: right click opens 27 slots of storage belonging to that block.
 - `use oven`: right click opens the `bake` recipes.
+- `use furnace`: right click opens the `smelt` recipes. In the base data the
+  furnace, blast furnace and kiln have it; the oven, stove, smoker and
+  campfire have `use oven`.
 - `use bed`: right click makes this the place the player comes back to after
   dying, and at night (in singleplayer) skips to morning.
+- `seat <sixteenths>`: 1..16 (8 if written alone): the height of the seat
+  above the bottom of the block. Right click sits the player there; jump or
+  the get-out key stands them up. The base chair has `seat 8`, a couch
+  `seat 7`.
+- `eat <points>`: 1..40 (4 if written alone). Right click restores that much
+  hunger and half as much health, and removes the block.
+- `track <percent>`: 10..400 (100 if written alone). The block counts as
+  rail, and rail vehicles on it move at that percentage of their speed
+  (`speed_rail` has 220, `slow_rail` 40).
+- `station <seconds>`: 1..120 (5 if written alone). Also makes the block
+  track (at 100 percent unless `track` says otherwise). A rail vehicle that
+  nobody is driving and that is not chained behind another stops on it for
+  that long, then goes on. `station_rail` has 6, `depot_rail` 30.
+- `sound <sound id>`: the sound played when the block is broken, placed, or
+  toggled. Without it a block uses `break`, `place` and (for `toggle`)
+  `door`.
 - `toggle <block>`: for doors, hatches and gates. Declare two blocks that
   name each other; the open one is usually `hidden` and `drops` the shut
   one. If both have the same `rotate` and `flip`, the facing is kept.
@@ -241,6 +269,7 @@ item <id>
   food <1..20>          eating it restores this much hunger and half as much health
   damage <n>            what it does to a creature per hit (a bare hand does 3)
   turns <from block> <to block>   right click turns one block into the other
+  shoots <damage> [speed] [seconds between shots] [ammunition item]
   category <tab name>   default: Tools
 ```
 
@@ -260,6 +289,22 @@ Left click breaks, right click places.
 - `damage`: 0..1000. Anything below 3 hits like a bare hand.
 - `turns`: may be given several times. The base hoes have
   `turns dirt farmland` and `turns grass farmland`.
+- `shoots`: right click looses a shot the way the player looks. Damage is
+  0..500; speed is in blocks per second, 4..80 (32 if left out); the wait
+  between shots is 0.1..10 seconds (0.6 if left out). With an ammunition
+  item, each shot uses one in survival and the item says `OUT OF AMMUNITION`
+  when there are none; without one it never runs out. Shots fall as they
+  fly, last five seconds at most, stop at solid blocks and hurt the first
+  creature they meet. The base data has:
+
+  ```
+  item bow
+    shoots 6 34 0.7 arrow
+  item longbow
+    shoots 9 46 1.1 arrow
+  item crossbow
+    shoots 13 54 1.8 arrow
+  ```
 
 ```
 item copper_pick
@@ -286,6 +331,7 @@ drawn as the first item of its category; its name appears when pointed at.
 recipe <item> <count> <ingredient> <count> [<ingredient> <count> ...]
 craft  <item> <count> <ingredient> <count> [<ingredient> <count> ...]
 bake   <item> <count> <ingredient> <count> [<ingredient> <count> ...]
+smelt  <item> <count> <ingredient> <count> [<ingredient> <count> ...]
 ```
 
 - `recipe`: can be made **by hand**, in the inventory screen (and also at a
@@ -293,12 +339,16 @@ bake   <item> <count> <ingredient> <count> [<ingredient> <count> ...]
 - `craft`: needs a **crafting table** (a block with `use craft`).
 - `bake`: needs an **oven** (a block with `use oven`), and is offered only
   there.
+- `smelt`: needs a **furnace** (a block with `use furnace`), and is offered
+  only there. Fuel is not special: list coal as an ingredient if the recipe
+  should need it.
 
 ```
 recipe planks 4 log 1
 craft lamp 1 glass 1 crystal 1
 craft rail 16 iron_ore 3 stick 2
 bake bread 1 dough 1
+smelt iron_ingot 1 iron_ore 1 coal 1
 ```
 
 Counts are 1..999. Every name must be an existing item (blocks count, through
@@ -318,12 +368,13 @@ model <id> file <model.bbmodel>      a file, path relative to this file
 ```
 
 Built-in names (every file in `data/models/`): `player grazer ant bat bear
-bee beetle bird boat butterfly car cargo_boat cart cat cat_fluffy cat_lynx
-chest_cart chicken chicken_rooster cow cow_longhorn crab crawler deer dog
-dog_hound dog_shepherd dog_terrier duck elephant fish fox frog gator goat
-golem horse horse_pony monkey mouse owl penguin pig pig_boar plane rabbit
-sheep sheep_ram skeleton_hound slime snake spider squid tiger turtle wolf
-worm wraith`.
+bee beetle bird bison boat bull butterfly camel car cargo_boat cart cat
+cat_fluffy cat_lynx chest_cart chicken chicken_rooster cow cow_highland
+cow_longhorn crab crawler deer dog dog_hound dog_shepherd dog_terrier donkey
+duck elephant fish fox frog gator ghoul goat golem goose horse horse_pony
+llama monkey mouse ogre owl penguin pig pig_boar plane rabbit rabbit_lop
+scarecrow sheep sheep_merino sheep_ram skeleton skeleton_hound slime snake
+spider squid tiger turkey turtle werewolf wolf worm wraith yak zombie`.
 
 Bones are animated by name (capitals do not matter):
 
@@ -366,6 +417,9 @@ entity <id>
   baby <size> <seconds>     it has young: how small, and how long they take to grow
   gives <item> <seconds>    right click collects one, then again after that long
   likes <item>              the food it follows a player for (with trait follows)
+  tamable                   feeding it what it likes makes it a pet
+  shoots <damage>           it looses shots at the player from a distance
+  sound <sound id>          its call
   trade <item> <n> <item> <n>   takes the first from a player, hands over the second
   job <word>                what a villager does
   glow <0..15>              not dimmed by the dark
@@ -419,6 +473,24 @@ not `give`, hunt or defend territory until grown.
 holding enough of the first item who right clicks the creature gets the
 second. Any creature can trade, not only villagers.
 
+`tamable`: needs a `likes` item. A player who right clicks a grown one
+with that item in hand tames it (the item is used up in survival). A pet
+follows its owner, catches up when left far behind, no longer flees or
+attacks them, and, if it has a `damage`, goes for hostile creatures within
+12 blocks. Right click it with anything else in hand to make it wait or
+follow again. Pets are saved with the world (`<world>.pets.txt`) and come
+along into other dimensions.
+
+`shoots <damage>`: 0..100 (3 if written alone). A creature that is
+attacking the player (a `hostile` one, or an angry `territorial` or `pack`
+one) looses a shot from 3 to 20 blocks away, about every two seconds, as
+well as hitting up close; the base Skeleton has `shoots 3`. A `fly`
+creature with `shoots` circles the player and shoots from above, from up
+to 26 blocks away. Like other attackers they only go for survival players.
+
+`sound <sound id>`: now and then a creature within 24 blocks of the player
+makes its call, quieter the further away it is.
+
 `job`: any word. `farmer`, `builder` and `guard` do work in the world
 (tilling and sowing, building a hut, fighting hostile creatures; see
 [CREATURES.md](CREATURES.md#villagers)). Any other word is just a title,
@@ -452,19 +524,107 @@ vehicle <id>
   width <0.2..3>            blocks, for collision (default 1.2)
   seat <0..5>               height of the rider's eyes above its base (default 0.9)
   storage                   it carries 27 slots of cargo
+  powered                   a rail vehicle that keeps going with nobody driving
 ```
 
 Each vehicle gets an item with the same id (stack of 1, tab `Travel`) that
 sets it down, so recipes can make it: `craft boat 1 planks 5`.
 
 - `water`: floats on the block `water`; barely moves aground.
-- `rail`: runs only along the block `rail`, turning with the track and
-  climbing one block at a time.
+- `rail`: runs only along the block `rail` and blocks with a `track`
+  property, turning with the track and climbing one block at a time. With
+  `powered` it holds the direction and throttle it was last driven at,
+  waits on `station` blocks, and turns back at the end of the line. Rail
+  vehicles can be chained into trains with the item `chain` (see
+  [PLAYING.md](PLAYING.md#railways)).
 - `land`: drives on the ground. The default.
 - `air`: rolls slowly until near full throttle, then flies where the rider
   looks.
 
 How they are driven is in [PLAYING.md](PLAYING.md#vehicles).
+
+## Sounds
+
+Every sound is made when it is played, from a burst of noise and a tone
+that glides from one pitch to another. There are no sound files.
+
+```
+sound <id> <effects|steps|ui> <seconds> <noise> <hz from> <hz to> <low-pass> <loudness> [caption]
+```
+
+| Part | Meaning | Range |
+| --- | --- | --- |
+| `effects`, `steps` or `ui` | which volume setting governs it (EFFECTS, FOOTSTEPS, INTERFACE) | |
+| seconds | how long it lasts | 0.01..6 |
+| noise | how much of it is noise rather than tone | 0..1 |
+| hz from, hz to | the tone's pitch at the start and at the end | 10..8000 |
+| low-pass | how much is let through: small numbers are dull and rumbling, 1 is bright | 0.005..1 |
+| loudness | | 0..2 |
+| caption | the rest of the line: what SUBTITLES FOR SOUNDS shows. A sound without one has no subtitle | |
+
+All eight parts before the caption are needed. Pitch varies by a tenth
+either way each time, so repeats do not sound identical. Twelve sounds can
+play at once.
+
+```
+sound thunder effects 1.80 1.00 60 40 0.04 1.00 Thunder
+sound chirp effects 0.10 0.02 2400 3200 0.90 0.30 Bird chirps
+```
+
+Declaring an id again retunes that sound. The game itself plays these ids,
+so a pack may restyle them: `step break place hurt click pop splash thunder
+rain rumble wave door bow rail`. The base data also defines `glass wood moo
+baa oink cluck bark meow howl growl hiss chirp buzz groan rattle roar chime
+whoosh sizzle` for blocks, creatures and packs to use.
+
+A sound is used by naming it:
+
+- in a block: `sound <id>` (broken, placed, toggled);
+- in an entity: `sound <id>` (its call);
+- from a script or the chat line: `/sound <id>`.
+
+A name that no `sound` line defines plays nothing.
+
+## Dimensions
+
+```
+dimension <name> <normal|flat|void|islands>
+```
+
+A dimension is another world inside each world, with its own land, its own
+saved chunks and its own vehicles. The name is letters and digits, 12 at
+most. The base data declares four:
+
+```
+dimension sky islands
+dimension flatland flat
+dimension void void
+dimension mirror normal
+```
+
+- `normal`: ordinary terrain, from a seed derived from the world's seed and
+  the dimension's name.
+- `flat`: flat ground.
+- `void`: nothing; a player arriving gets a 5 x 5 stone platform.
+- `islands`: islands in the sky.
+
+Players move with `/dim <name>` and `/dim home`; a pack usually wraps that
+in a script (`when use my_portal do /dim sky`). Not available on a server.
+
+## Commands and scripts
+
+```
+command <name> <commands separated by ;>
+when <event> [what] do <commands separated by ;>
+```
+
+`command` adds a chat command (`$1`..`$9` and `$*` stand for what was typed
+after it). `when` runs commands when something happens: `start`, `every
+<seconds>`, `break <block>`, `place <block>`, `use <block>`, `useitem
+<item>`, `eat <item>`, `kill <entity>`, `tame <entity>`, `dimension
+<name>`. `when` lines are added, never replaced; a `command` with a name
+already used replaces the earlier one. The full description, and what this
+system cannot do, is in [MODDING.md](MODDING.md#scripts-and-commands).
 
 ## Terrain
 

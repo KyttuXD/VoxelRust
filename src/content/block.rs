@@ -200,6 +200,8 @@ pub struct ItemExtra {
     /// A bow: damage, speed, seconds between shots, and the item each
     /// shot uses up (none = needs no ammunition).
     pub shoots: Option<(i32, f32, f32, Option<usize>)>,
+    /// A spawn egg: using it brings out one of this creature.
+    pub egg: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -1804,6 +1806,29 @@ impl Registry {
             }
         }
         let raw_rules: Vec<(String, Vec<String>)> = raw_rules.into_iter().filter(|r| r.1[0] == "ore" || r.1[0] == "plant").collect();
+        // An egg for every creature, to set one down in creative mode (or
+        // as a prize): `<id>_egg`. Its picture is the creature itself.
+        for (k, e) in entities.iter().enumerate() {
+            let id = alloc::format!("{}_egg", e.id);
+            if items.iter().any(|it| it.id == id) || items.len() >= 60_000 {
+                continue;
+            }
+            items.push(ItemDef {
+                id,
+                name: alloc::format!("{} Egg", e.name),
+                icon: 0,
+                place: None,
+                brush: 0,
+                reach: 0.0,
+                stack: 64,
+                tool: 0,
+                speed: 1.0,
+                food: 0,
+                vehicle: None,
+                category: String::from("Eggs"),
+                x: ItemExtra { egg: Some(k), ..ItemExtra::default() },
+            });
+        }
         // What packs add to the terrain.
         let (mut ores, mut plants) = (Vec::new(), Vec::new());
         for (at, w) in &raw_rules {

@@ -135,8 +135,12 @@ against `std` so that plain `cargo test` works.)
 
 ## GitHub workflows
 
-Two workflows are in `.github/workflows`. **Neither has been run on GitHub
-yet**; treat them as untested until a first run has passed.
+The repository is on GitHub as `KyttuXD/VoxelRust`, and it is private. Two
+workflows are in `.github/workflows`. **Neither has been able to run yet**:
+the account's GitHub Actions budget blocks runs on private repositories.
+(Public repositories run Actions free of charge.) Treat both workflows as
+untested until a first run has passed; until then there are no nightly
+files.
 
 ### `ci.yml`
 
@@ -189,7 +193,7 @@ program (`build.rs` embeds them). Three scripts write those files:
 
 | Script | Writes | Needs |
 | --- | --- | --- |
-| `python3 tools/gen_base.py` | `data/base.txt`: the textures, blocks, items, recipes and vehicles, generated from tables (sixteen colours times several materials, six woods, stairs and slabs of each, doors, beds, crops, tools, food) | Python 3 |
+| `python3 tools/gen_base.py` | `data/base.txt`: the textures, blocks, items, recipes and vehicles, generated from tables (sixteen colours times several materials, six woods, stairs and slabs of each, doors, beds, furniture, rail track, crops, tools, food, sounds, dimensions) | Python 3 |
 | `python3 tools/gen_models.py` | `data/models/*.bbmodel` (creature and vehicle models). With `--creatures` it also rewrites `data/creatures.txt`, the list of base models | Python 3 with Pillow |
 | `python3 tools/gen_creatures.py` | `data/wildlife.txt`: every creature, where it lives and how it behaves | Python 3 |
 

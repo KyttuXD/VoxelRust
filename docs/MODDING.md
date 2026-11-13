@@ -95,7 +95,8 @@ dimension (`when break do /sound chime`). `use` and `useitem` need a `what`.
 A block with a `use` script does that instead of opening and shutting
 (`toggle`); a block that already opens a screen (`use chest` and so on), a
 seat, and food set out keep their own behaviour and the script is not run.
-`useitem` is not run for food or for an item that `shoots`.
+Eating (in survival) and shooting come before `useitem`, so it suits
+items that are neither food nor weapons.
 
 ```
 when use arcane_portal do /sound portal; /dim arcane; /say &dYOU STEP THROUGH
@@ -115,7 +116,8 @@ command summon /spawn $1 $2
 
 `/summon wolf 3` then runs `/spawn wolf 3`. The player sees the reply of the
 last command in the list. A pack command may call other pack commands, six
-deep at most, and one with the name of a built-in command replaces it.
+deep at most, and one with the name of a built-in command replaces it
+(except `/help` and `/reload`).
 
 The commands meant for scripts are `/say`, `/sound`, `/heal`, `/feed`,
 `/hurt`, `/launch`, `/shoot`, `/aim`, `/strike` and `/dim`, beside `/give`,
