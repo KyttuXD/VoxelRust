@@ -313,6 +313,25 @@ fn draw_loading(r: &mut Renderer, w: f32, h: f32, s: f32, g: &Session) {
     r.label((w - Renderer::text_width(&line, s)) * 0.5, y + 22.0 * s, s, &line, WHITE);
 }
 
+/// The hand after a click in the creative list. `pick` is the stack under
+/// the pointer when it is a palette cell that was clicked. An empty hand
+/// takes that stack; a full hand is emptied (the item is thrown away); a
+/// click over the list with something carried lets it go. A click that
+/// picks an item up is not also a letting go, because `hand` is the hand
+/// from before the click.
+fn creative_hand(hand: Option<Stack>, pick: Option<Stack>, over_list: bool, clicked: bool) -> Option<Stack> {
+    if !clicked {
+        return hand;
+    }
+    if pick.is_some() {
+        return if hand.is_some() { None } else { pick };
+    }
+    if over_list && hand.is_some() {
+        return None;
+    }
+    hand
+}
+
 fn skin_pixels(base: &str, r: &Renderer, name: &str) -> Option<Vec<u8>> {
     if name == "custom" {
         let img = crate::png::decode(&sys::read_file(&alloc::format!("{}skin.png", base))?)?;
@@ -2404,6 +2423,10 @@ impl App {
             let total_rows = (list.len() + cols - 1) / cols;
             let max_scroll = total_rows.saturating_sub(upper_rows) as i32;
             self.inv_scroll = (self.inv_scroll - ui.inp.wheel).clamp(0, max_scroll);
+            // The hand before this click, and the stack a click on a palette
+            // cell would take (see creative_hand).
+            let hand_before = g.cursor;
+            let mut pick: Option<Stack> = None;
             for row in 0..upper_rows {
                 for col in 0..cols {
                     let idx = (row + self.inv_scroll as usize) * cols + col;
@@ -2415,12 +2438,7 @@ impl App {
                             if hot {
                                 tip = Some(r.items[item].name.clone());
                                 if click_l || click_r {
-                                    // Clicking with something in hand throws it away.
-                                    g.cursor = match g.cursor {
-                                        Some(_) => None,
-                                        None => Some(Stack { item: item as u16, count: if click_l { r.items[item].stack } else { 1 } }),
-                                    };
-                                    ui.clicked_any = true;
+                                    pick = Some(Stack { item: item as u16, count: if click_l { r.items[item].stack } else { 1 } });
                                 }
                             }
                         }
@@ -2428,10 +2446,10 @@ impl App {
                     }
                 }
             }
-            // Carrying something (dragged out of the inventory) and letting it go
-            // over the list deletes it, empty spaces in the list included.
-            if (click_l || click_r) && g.cursor.is_some() && ui.hot(gx, uy, cols as f32 * cell, upper_rows as f32 * cell) {
-                g.cursor = None;
+            let over_list = ui.hot(gx, uy, cols as f32 * cell, upper_rows as f32 * cell);
+            let clicked = click_l || click_r;
+            g.cursor = creative_hand(hand_before, pick, over_list, clicked);
+            if clicked && (pick.is_some() || (over_list && hand_before.is_some())) {
                 ui.clicked_any = true;
             }
             // The wheel scrolls a row at a time; the bar at the side shows
@@ -3735,6 +3753,25 @@ pub fn main(argc: c_int, argv: *const *const c_char) -> c_int {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_click_on_the_creative_list_picks_up_or_lets_go_but_not_both() {
+        let stone = Stack { item: 3, count: 64 };
+        let dirt = Stack { item: 4, count: 1 };
+        // Empty hand on a palette cell: the item is picked up, and stays.
+        assert_eq!(creative_hand(None, Some(stone), true, true), Some(stone));
+        // Carrying something and clicking a palette cell: thrown away.
+        assert_eq!(creative_hand(Some(dirt), Some(stone), true, true), None);
+        // Carrying something and clicking empty space in the list: deleted.
+        assert_eq!(creative_hand(Some(dirt), None, true, true), None);
+        // Empty hand on empty space: nothing happens.
+        assert_eq!(creative_hand(None, None, true, true), None);
+        // No click: the hand is unchanged, carried or not.
+        assert_eq!(creative_hand(Some(dirt), Some(stone), true, false), Some(dirt));
+        assert_eq!(creative_hand(None, None, false, false), None);
+        // Carrying something and clicking outside the list: kept (it is dropped elsewhere).
+        assert_eq!(creative_hand(Some(dirt), None, false, true), Some(dirt));
+    }
+
     use super::*;
     use alloc::string::ToString;
 
