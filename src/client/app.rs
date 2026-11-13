@@ -3325,7 +3325,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
         }
         inp.mouse = (-100.0, -100.0);
-        if opts.show.contains("map") {
+        if opts.show.split(|c: char| !c.is_alphanumeric()).any(|w| w == "map") {
             app.open_map();
         }
         // "atlas" opens the block map itself, on any world.
