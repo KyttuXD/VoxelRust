@@ -36,6 +36,28 @@ fn same_or_partner(b: Block, first: Block) -> bool {
     d.first == first || d.x.toggle == Some(first) || block::def(first).x.toggle == Some(d.first)
 }
 
+/// The cell one step the way a block faces (0 looks down -Z, 1 down -X, 2 down +Z, 3 down +X).
+fn step_of(rotation: u8) -> [i32; 3] {
+    match rotation % 4 {
+        0 => [0, 0, -1],
+        1 => [-1, 0, 0],
+        2 => [0, 0, 1],
+        _ => [1, 0, 0],
+    }
+}
+
+/// Where the other half of a two-block-long block (a bed) at `c` is, if it is there.
+fn long_partner(world: &World, c: [i32; 3]) -> Option<[i32; 3]> {
+    let b = world.get(c[0], c[1], c[2]);
+    let d = block::def(b);
+    let (ahead, other) = d.x.long?;
+    let rotation = if d.rotations > 1 { ((b - d.first) % d.rotations as Block) as u8 } else { 0 };
+    let s = step_of(rotation);
+    let k = if ahead { 1 } else { -1 };
+    let at = [c[0] + s[0] * k, c[1], c[2] + s[2] * k];
+    (block::def(world.get(at[0], at[1], at[2])).first == other).then_some(at)
+}
+
 /// The other half of a two-block-high block at `c`, if it is there.
 fn other_half(world: &World, c: [i32; 3]) -> Option<[i32; 3]> {
     let d = block::def(world.get(c[0], c[1], c[2]));
@@ -113,7 +135,27 @@ pub fn remove(world: &mut World, c: [i32; 3]) {
     if let Some(o) = other_half(world, c) {
         world.set_block(o[0], o[1], o[2], AIR);
     }
+    if let Some(o) = long_partner(world, c) {
+        world.set_block(o[0], o[1], o[2], AIR);
+    }
     world.set_block(c[0], c[1], c[2], AIR);
+}
+
+/// Let the block at `c` change if it has a `react` line and one of the
+/// blocks it names is beside it (above, below or on a side).
+pub fn react(world: &mut World, c: [i32; 3]) {
+    let b = world.get(c[0], c[1], c[2]);
+    let reacts = &block::def(b).x.reacts;
+    if reacts.is_empty() {
+        return;
+    }
+    for [dx, dy, dz] in [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] {
+        let near = block::def(world.get(c[0] + dx, c[1] + dy, c[2] + dz)).first;
+        if let Some(&(_, becomes)) = reacts.iter().find(|r| r.0 == near) {
+            world.set_block(c[0], c[1], c[2], becomes);
+            return;
+        }
+    }
 }
 
 /// Swap a block for its other form (open or shut a door). Returns whether
@@ -212,6 +254,16 @@ pub fn place_at(world: &mut World, player: &Player, item: &ItemDef, hit: &Hit) -
                 world.set_block(f[0], f[1], f[2], reg().part);
             });
         }
+        if let Some((true, other)) = extra.long {
+            // A bed: its far half goes one block ahead, the way the player faces.
+            let s = step_of(facing(player.yaw));
+            let far = [c[0] + s[0], c[1], c[2] + s[2]];
+            if !replaceable(world.get(far[0], far[1], far[2])) || (solid && player.overlaps_cell(far)) {
+                return;
+            }
+            let half = r.placed_state(other, facing(player.yaw), upper);
+            world.set_block(far[0], far[1], far[2], half);
+        }
         if extra.tall {
             // Doors need room for their upper half.
             let up = [c[0], c[1] + 1, c[2]];
@@ -278,6 +330,49 @@ mod tests {
     }
 
     const DOWN: Vec3 = Vec3::new(0.0, -1.0, 0.0);
+
+    #[test]
+    fn a_bed_is_two_blocks_long_the_way_you_face_and_breaks_as_one() {
+        let bed = reg().block("red_bed").unwrap();
+        let head = reg().block("red_bed_head").unwrap();
+        // (yaw in quarter turns, where the head ends up relative to the foot)
+        for (turns, step) in [(0, [0, -1]), (1, [-1, 0]), (2, [0, 1]), (3, [1, 0])] {
+            let mut w = world();
+            let mut p = Player::new([2.5, 121.0, 2.5]);
+            p.yaw = turns as f32 * core::f32::consts::FRAC_PI_2;
+            let hit = aim(&w, [8.5, 126.0, 8.5], DOWN);
+            assert!(place_at(&mut w, &p, item("red_bed"), &hit), "facing {turns}");
+            let foot = [8, 121, 8];
+            let far = [8 + step[0], 121, 8 + step[1]];
+            assert_eq!(block::def(w.get(foot[0], foot[1], foot[2])).first, bed, "foot, facing {turns}");
+            assert_eq!(block::def(w.get(far[0], far[1], far[2])).first, head, "head, facing {turns}");
+            // Breaking either half takes both.
+            remove(&mut w, far);
+            assert_eq!(w.get(foot[0], foot[1], foot[2]), AIR);
+            assert_eq!(w.get(far[0], far[1], far[2]), AIR);
+            assert!(place_at(&mut w, &p, item("red_bed"), &hit));
+            remove(&mut w, foot);
+            assert_eq!(w.get(far[0], far[1], far[2]), AIR);
+        }
+        // No room for the head: nothing is placed.
+        let mut w = world();
+        let p = Player::new([2.5, 121.0, 2.5]);
+        w.set_block(8, 121, 7, reg().wk.stone);
+        let hit = aim(&w, [8.5, 126.0, 8.5], DOWN);
+        assert!(!place_at(&mut w, &p, item("red_bed"), &hit));
+        assert_eq!(w.get(8, 121, 8), AIR);
+    }
+
+    #[test]
+    fn a_block_with_a_react_line_changes_beside_its_trigger() {
+        let r = block::Registry::from_sources(
+            &[("base.txt", block::BASE_DATA), ("p", "block wet_sand\n  tex sand\nblock mud\n  tex dirt\nblock dry_dirt\n  tex dirt\n  react wet_sand mud\n")],
+            &mut |_| None,
+        );
+        assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+        let (dry, wet, mud) = (r.block("dry_dirt").unwrap(), r.block("wet_sand").unwrap(), r.block("mud").unwrap());
+        assert_eq!(r.blocks[dry as usize].x.reacts, alloc::vec![(wet, mud)]);
+    }
 
     #[test]
     fn big_props_take_their_room_and_break_as_one() {

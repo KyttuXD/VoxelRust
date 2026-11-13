@@ -1376,6 +1376,10 @@ impl Session {
         // Water and lava move on from whatever just changed (see game::fluid).
         crate::game::fluid::tick(&mut self.world, &pending);
         for c in pending {
+            // Blocks that react to a neighbour: the changed cell and what touches it.
+            for [dx, dy, dz] in [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] {
+                interact::react(&mut self.world, [c[0] + dx, c[1] + dy, c[2] + dz]);
+            }
             for cell in [c, [c[0], c[1] + 1, c[2]]] {
                 let b = self.world.get(cell[0], cell[1], cell[2]);
                 if b == AIR {

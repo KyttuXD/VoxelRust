@@ -2986,13 +2986,28 @@ block white_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead white_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block white_bed_head
+  name White Bed
+  tex white_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind white_bed
+  drops white_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft white_bed 1 white_wool 3 planks 3
 block light_gray_bed
   name Light Gray Bed
@@ -3002,13 +3017,28 @@ block light_gray_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead light_gray_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block light_gray_bed_head
+  name Light Gray Bed
+  tex light_gray_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind light_gray_bed
+  drops light_gray_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft light_gray_bed 1 light_gray_wool 3 planks 3
 block gray_bed
   name Gray Bed
@@ -3018,13 +3048,28 @@ block gray_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead gray_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block gray_bed_head
+  name Gray Bed
+  tex gray_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind gray_bed
+  drops gray_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft gray_bed 1 gray_wool 3 planks 3
 block black_bed
   name Black Bed
@@ -3034,13 +3079,28 @@ block black_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead black_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block black_bed_head
+  name Black Bed
+  tex black_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind black_bed
+  drops black_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft black_bed 1 black_wool 3 planks 3
 block brown_bed
   name Brown Bed
@@ -3050,13 +3110,28 @@ block brown_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead brown_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block brown_bed_head
+  name Brown Bed
+  tex brown_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind brown_bed
+  drops brown_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft brown_bed 1 brown_wool 3 planks 3
 block red_bed
   name Red Bed
@@ -3066,13 +3141,28 @@ block red_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead red_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block red_bed_head
+  name Red Bed
+  tex red_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind red_bed
+  drops red_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft red_bed 1 red_wool 3 planks 3
 block orange_bed
   name Orange Bed
@@ -3082,13 +3172,28 @@ block orange_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead orange_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block orange_bed_head
+  name Orange Bed
+  tex orange_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind orange_bed
+  drops orange_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft orange_bed 1 orange_wool 3 planks 3
 block yellow_bed
   name Yellow Bed
@@ -3098,13 +3203,28 @@ block yellow_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead yellow_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block yellow_bed_head
+  name Yellow Bed
+  tex yellow_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind yellow_bed
+  drops yellow_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft yellow_bed 1 yellow_wool 3 planks 3
 block lime_bed
   name Lime Bed
@@ -3114,13 +3234,28 @@ block lime_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead lime_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block lime_bed_head
+  name Lime Bed
+  tex lime_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind lime_bed
+  drops lime_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft lime_bed 1 lime_wool 3 planks 3
 block green_bed
   name Green Bed
@@ -3130,13 +3265,28 @@ block green_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead green_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block green_bed_head
+  name Green Bed
+  tex green_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind green_bed
+  drops green_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft green_bed 1 green_wool 3 planks 3
 block cyan_bed
   name Cyan Bed
@@ -3146,13 +3296,28 @@ block cyan_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead cyan_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block cyan_bed_head
+  name Cyan Bed
+  tex cyan_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind cyan_bed
+  drops cyan_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft cyan_bed 1 cyan_wool 3 planks 3
 block light_blue_bed
   name Light Blue Bed
@@ -3162,13 +3327,28 @@ block light_blue_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead light_blue_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block light_blue_bed_head
+  name Light Blue Bed
+  tex light_blue_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind light_blue_bed
+  drops light_blue_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft light_blue_bed 1 light_blue_wool 3 planks 3
 block blue_bed
   name Blue Bed
@@ -3178,13 +3358,28 @@ block blue_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead blue_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block blue_bed_head
+  name Blue Bed
+  tex blue_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind blue_bed
+  drops blue_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft blue_bed 1 blue_wool 3 planks 3
 block purple_bed
   name Purple Bed
@@ -3194,13 +3389,28 @@ block purple_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead purple_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block purple_bed_head
+  name Purple Bed
+  tex purple_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind purple_bed
+  drops purple_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft purple_bed 1 purple_wool 3 planks 3
 block magenta_bed
   name Magenta Bed
@@ -3210,13 +3420,28 @@ block magenta_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead magenta_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block magenta_bed_head
+  name Magenta Bed
+  tex magenta_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind magenta_bed
+  drops magenta_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft magenta_bed 1 magenta_wool 3 planks 3
 block pink_bed
   name Pink Bed
@@ -3226,13 +3451,28 @@ block pink_bed
   tool axe
   use bed
   rotate
-  box 0 0 0 2 3 2
-  box 14 0 0 16 3 2
+  long ahead pink_bed_head
   box 0 0 14 2 3 16
   box 14 0 14 16 3 16
   box 0 3 0 16 6 16
-  box 0 6 0 16 10 16
-  box 0 10 0 16 16 3
+  box 0 6 0 16 9 16
+  box 0 9 14 16 12 16
+block pink_bed_head
+  name Pink Bed
+  tex pink_wool planks planks
+  hardness 0.6
+  tool axe
+  use bed
+  rotate
+  hidden
+  long behind pink_bed
+  drops pink_bed
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 3 0 16 6 16
+  box 0 6 0 16 9 16
+  box 3 9 4 13 11 12
+  box 0 9 0 16 16 3
 craft pink_bed 1 pink_wool 3 planks 3
 
 # Doors come hung on the edge of their block (the plain ones above), set in

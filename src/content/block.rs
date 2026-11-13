@@ -90,6 +90,8 @@ pub struct BlockDef {
     pub arms: Vec<Bx>,
     /// Blocks with the same non-zero group connect to each other.
     pub connect_group: u8,
+    /// Whether it also reaches toward full cubes (fences and walls do).
+    pub join_cubes: bool,
     /// Seconds to break by hand in survival mode.
     pub hardness: f32,
     /// Item given when broken in survival (an index into the items), if any.
@@ -218,6 +220,12 @@ pub struct BlockExtra {
     pub fills: (u8, u8),
     /// The hidden filler itself: solid, never drawn, part of a big prop.
     pub part: bool,
+    /// Two blocks long: the other half stands one block ahead of this one
+    /// (`true`) or one behind it (`false`), the way it faces.
+    pub long: Option<(bool, Block)>,
+    /// `react <next to> <becomes>`: turns into the second block when the first
+    /// is next to it.
+    pub reacts: Vec<(Block, Block)>,
 }
 
 impl BlockExtra {
@@ -700,7 +708,7 @@ pub fn connects(d: &BlockDef, nb: Block) -> bool {
         return false;
     }
     let n = def(nb);
-    n.kind == Kind::Cube || n.connect_group == d.connect_group
+    (d.join_cubes && n.kind == Kind::Cube) || n.connect_group == d.connect_group
 }
 
 /// Which sides a fence or wall is connected on: bit 0 north (-z), bit 1
@@ -759,6 +767,10 @@ struct RawBlock {
     tool: u8,
     usable: Usable,
     category: String,
+    /// `connect <group> [cubes]` and `arm` boxes: joins neighbours of its group.
+    connect: String,
+    join_cubes: bool,
+    arms: Vec<Bx>,
     /// Behaviour lines, resolved once every block and item is known.
     extra: Vec<(String, Vec<String>)>,
 }
@@ -885,6 +897,9 @@ impl Parser<'_> {
                             tool: 0,
                             usable: Usable::Nothing,
                             category: String::new(),
+                            connect: String::new(),
+                            join_cubes: false,
+                            arms: Vec::new(),
                             extra: Vec::new(),
                         };
                         // Redefining an id replaces it in place, keeping its position.
@@ -1153,10 +1168,10 @@ impl Parser<'_> {
                     Some(t) => b.tool = t as u8,
                     None => bad = Some("tool must be none, pick, axe, shovel or hoe"),
                 },
-                "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "fluid" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
+                "long" | "react" | "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "fluid" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
                     // Said twice, the later line wins; except marks, of
                     // which a block may carry several.
-                    b.extra.retain(|e| e.0 != key || (key == "tag" && e.1.first().map(|x| x.as_str()) != a.first().copied()));
+                    b.extra.retain(|e| e.0 != key || key == "react" || (key == "tag" && e.1.first().map(|x| x.as_str()) != a.first().copied()));
                     b.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "use" => match a.first() {
@@ -1168,6 +1183,27 @@ impl Parser<'_> {
                     _ => bad = Some("use must be craft, chest, oven, furnace or bed"),
                 },
                 "category" => b.category = rest.to_string(),
+                // connect <group> [cubes]: joins blocks of the same group (and full cubes)
+                "connect" => match a.first() {
+                    Some(g) if g.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => {
+                        b.connect = g.to_string();
+                        b.join_cubes = a.get(1) == Some(&"cubes");
+                    }
+                    _ => bad = Some("connect needs a group name (letters, digits, _) and may add `cubes`"),
+                },
+                // arm x0 y0 z0 x1 y1 z1: drawn toward a joined neighbour, written for the north (-z) side
+                "arm" => {
+                    let v: Vec<u8> = a.iter().filter_map(|s| s.parse::<u8>().ok()).filter(|&v| v <= 16).collect();
+                    if v.len() == 6 && a.len() == 6 && v[0] < v[3] && v[1] < v[4] && v[2] < v[5] {
+                        if b.arms.len() < 4 {
+                            b.arms.push(Bx { min: [v[0], v[1], v[2]], max: [v[3], v[4], v[5]] });
+                        } else {
+                            bad = Some("a block may have 4 arms at most");
+                        }
+                    } else {
+                        bad = Some("arm needs x0 y0 z0 x1 y1 z1, each 0..16, with x0<x1 y0<y1 z0<z1");
+                    }
+                }
                 "box" => {
                     let v: Vec<u8> = a.iter().filter_map(|s| s.parse::<u8>().ok()).filter(|&v| v <= 16).collect();
                     if v.len() == 6 && a.len() == 6 && v[0] < v[3] && v[1] < v[4] && v[2] < v[5] {
@@ -1351,6 +1387,7 @@ impl Registry {
             boxes: Vec::new(),
             arms: Vec::new(),
             connect_group: 0,
+            join_cubes: false,
             hardness: 0.0,
             drop: None,
             drop_chance: 100,
@@ -1365,12 +1402,29 @@ impl Registry {
         let mut by_id = BTreeMap::new();
         by_id.insert(String::from("air"), 0 as Block);
 
+        let mut connect_groups: Vec<String> = Vec::new();
         for rb in &raw_blocks {
             let bx = |a: [u8; 3], b: [u8; 3]| Bx { min: a, max: b };
-            let (arms, connect_group) = match rb.shape.as_str() {
-                "fence" => (alloc::vec![bx([7, 6, 0], [9, 9, 6]), bx([7, 12, 0], [9, 15, 6])], 1),
-                "wall" => (alloc::vec![bx([5, 0, 0], [11, 14, 4])], 2),
-                _ => (Vec::new(), 0),
+            // Groups by name: `fence` and `wall` are the built-in ones, so a
+            // custom block can join them; others are numbered as they appear.
+            let group_of = |name: &str, groups: &mut Vec<String>| -> u8 {
+                match name {
+                    "" => 0,
+                    "fence" => 1,
+                    "wall" => 2,
+                    _ => match groups.iter().position(|g| g == name) {
+                        Some(i) => 3 + i as u8,
+                        None => {
+                            groups.push(name.to_string());
+                            3 + (groups.len() - 1) as u8
+                        }
+                    },
+                }
+            };
+            let (arms, connect_group, join_cubes) = match rb.shape.as_str() {
+                "fence" => (alloc::vec![bx([7, 6, 0], [9, 9, 6]), bx([7, 12, 0], [9, 15, 6])], 1, true),
+                "wall" => (alloc::vec![bx([5, 0, 0], [11, 14, 4])], 2, true),
+                _ => (rb.arms.clone(), group_of(&rb.connect, &mut connect_groups), rb.join_cubes),
             };
             let (kind, mut boxes, mut rotate, mut flip) = match rb.shape.as_str() {
                 "cube" => (Kind::Cube, Vec::new(), rb.rotate, rb.flip),
@@ -1441,6 +1495,7 @@ impl Registry {
                         boxes: bs,
                         arms: arms.clone(),
                         connect_group,
+                        join_cubes,
                         hardness: rb.hardness.unwrap_or(match kind {
                             Kind::Cross => 0.0,
                             Kind::Cutout | Kind::Translucent => 0.3,
@@ -1582,6 +1637,15 @@ impl Registry {
                 match key.as_str() {
                     "falls" => x.falls = word(0) != "no",
                     "tall" => x.tall = word(0) != "no",
+                    "long" => match (word(0), other(1)) {
+                        ("ahead", Some(b)) => x.long = Some((true, b)),
+                        ("behind", Some(b)) => x.long = Some((false, b)),
+                        _ => ok = false,
+                    },
+                    "react" => match (other(0), other(1)) {
+                        (Some(next), Some(becomes)) if x.reacts.len() < 8 => x.reacts.push((next, becomes)),
+                        _ => ok = false,
+                    },
                     "toggle" => {
                         x.toggle = other(0);
                         ok = x.toggle.is_some();

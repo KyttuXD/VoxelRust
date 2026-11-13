@@ -459,13 +459,17 @@ for wid, wname, (r, g, b), planks in DOOR_WOODS:
     w(f"craft {wid}_trapdoor 2 {planks} 3")
     w(f"craft {wid}_gate 1 {planks} 2 stick 4")
 
-# Beds: sleep through the night, and wake up there after dying.
+# Beds: two blocks long. The foot goes where you place it and the head one block
+# ahead of it (`long`); breaking either takes both. Sleep through the night,
+# and wake up there after dying.
 for id, name, _ in COLOURS:
-    # A bed as seen from above and the side: a wooden frame with legs, a mattress,
-    # and a pillow at the head (the -z end; rotate turns it to face the player).
+    # Seen with the player facing north: the head is the -z end of the second block.
     block(f"{id}_bed", f"{name} Bed", f"{id}_wool planks planks", cat="Furniture", hardness=0.6, tool="axe", use="bed",
-          rotate=True, box=["0 0 0 2 3 2", "14 0 0 16 3 2", "0 0 14 2 3 16", "14 0 14 16 3 16",
-                            "0 3 0 16 6 16", "0 6 0 16 10 16", "0 10 0 16 16 3"])
+          rotate=True, long=f"ahead {id}_bed_head",
+          box=["0 0 14 2 3 16", "14 0 14 16 3 16", "0 3 0 16 6 16", "0 6 0 16 9 16", "0 9 14 16 12 16"])
+    block(f"{id}_bed_head", f"{name} Bed", f"{id}_wool planks planks", hardness=0.6, tool="axe", use="bed",
+          rotate=True, hidden=True, long=f"behind {id}_bed", drops=f"{id}_bed",
+          box=["0 0 0 2 3 2", "14 0 0 16 3 2", "0 3 0 16 6 16", "0 6 0 16 9 16", "3 9 4 13 11 12", "0 9 0 16 16 3"])
     w(f"craft {id}_bed 1 {id}_wool 3 planks 3")
 
 # More doors: set in the middle of the block, glazed, sliding, revolving.
