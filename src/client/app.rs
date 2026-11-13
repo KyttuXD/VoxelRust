@@ -3761,6 +3761,20 @@ fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u1
     }
     let meta_path = alloc::format!("{}{}.server.txt", crate::session::world_dir(base), name);
     let edits_path = alloc::format!("{}{}.server-edits.txt", crate::session::world_dir(base), name);
+    // A server world saved before `worlds/` existed sits loose in the data
+    // folder: bring its files over, or the server would start a new world.
+    if sys::read_file(&meta_path).is_none() {
+        sys::make_dir(&crate::session::world_dir(base));
+        for f in sys::list_dir(base) {
+            if f.starts_with(&alloc::format!("{}.server", name)) {
+                if let Some(data) = sys::read_file(&alloc::format!("{}{}", base, f)) {
+                    if sys::write_file(&alloc::format!("{}{}", crate::session::world_dir(base), f), &data) {
+                        sys::remove_file(&alloc::format!("{}{}", base, f));
+                    }
+                }
+            }
+        }
+    }
     let meta = sys::read_file(&meta_path).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
     let seed = crate::settings::kv(&meta, "seed").and_then(|v| v.parse().ok()).unwrap_or_else(|| seed.unwrap_or(sys::now().to_bits() as u32 ^ 0x5EED_1234));
     let kind = crate::settings::kv(&meta, "kind").map(String::from).unwrap_or_else(|| new_kind.unwrap_or_else(|| WorldKind::Normal.to_text()));
