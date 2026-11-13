@@ -233,6 +233,8 @@ pub struct Shot {
     pub colour: [u8; 3],
     /// Shot at the player rather than by them.
     pub hostile: bool,
+    /// The kind of creature that loosed it, for mod code (`Native::hurt`).
+    pub shooter: Option<usize>,
 }
 
 /// Size of the squares in which explored ground is remembered.
@@ -1294,6 +1296,7 @@ impl Session {
             leaves,
             colour,
             hostile: false,
+            shooter: None,
         });
     }
 
@@ -1328,6 +1331,8 @@ impl Session {
                 let (lo, hi) = self.player.aabb();
                 if (0..3).all(|a| pos[a] > lo[a] - 0.2 && pos[a] < hi[a] + 0.2) {
                     self.pending_hurt += damage;
+                    // Who loosed it, for the mods' `hurt` hook.
+                    self.mobs.last_biter = self.shots[i].shooter;
                     self.shots.swap_remove(i);
                 } else if done {
                     self.shots.swap_remove(i);
@@ -2123,9 +2128,9 @@ impl Session {
                 crate::entity::Action::Set(c, b) if self.net.is_none() => {
                     self.world.set_block(c[0], c[1], c[2], b);
                 }
-                crate::entity::Action::Shoot(from, dir, damage) => {
+                crate::entity::Action::Shoot(from, dir, damage, shooter) => {
                     if self.shots.len() < 64 {
-                        self.shots.push(Shot { pos: from, vel: [dir[0] * 26.0, dir[1] * 26.0, dir[2] * 26.0], damage, life: 4.0, leaves: AIR, colour: [255, 120, 90], hostile: true });
+                        self.shots.push(Shot { pos: from, vel: [dir[0] * 26.0, dir[1] * 26.0, dir[2] * 26.0], damage, life: 4.0, leaves: AIR, colour: [255, 120, 90], hostile: true, shooter: Some(shooter) });
                     }
                     audio.play_named("bow", 0.6);
                 }

@@ -4,6 +4,8 @@
 //! not use), so the few we need are written here. They are plain arithmetic,
 //! which also makes world generation bit-identical on every machine.
 
+pub mod noise;
+
 use core::ops::{Add, Mul, Sub};
 
 pub const PI: f32 = core::f32::consts::PI;

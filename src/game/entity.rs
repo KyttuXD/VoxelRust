@@ -103,7 +103,7 @@ pub enum Action {
     /// A creature hurt another (hunters and guards): its id and the damage.
     Bite(u32, i32, [f64; 3]),
     /// A creature shot at the player: from where, which way, how hard.
-    Shoot([f64; 3], [f32; 3], i32),
+    Shoot([f64; 3], [f32; 3], i32, usize),
 }
 
 /// What right-clicking a creature comes to.
@@ -615,7 +615,7 @@ impl Mobs {
                         let from = [m.body.pos[0], m.body.pos[1] + d.height as f64 * 0.5, m.body.pos[2]];
                         let aim = [dx, dy + 1.0 - d.height * 0.5, dz];
                         let len = sqrtf(aim[0] * aim[0] + aim[1] * aim[1] + aim[2] * aim[2]).max(0.01);
-                        self.actions.push(Action::Shoot(from, [aim[0] / len, aim[1] / len, aim[2] / len], d.x.shoots));
+                        self.actions.push(Action::Shoot(from, [aim[0] / len, aim[1] / len, aim[2] / len], d.x.shoots, m.kind));
                     }
                 }
                 // Frightened flyers scatter upward.
@@ -797,7 +797,7 @@ impl Mobs {
                 let from = [m.body.pos[0], m.body.pos[1] + d.height as f64 * 0.8, m.body.pos[2]];
                 let aim = [dx, dy + 1.2 - d.height * 0.8 + dist * 0.06, dz];
                 let len = sqrtf(aim[0] * aim[0] + aim[1] * aim[1] + aim[2] * aim[2]).max(0.01);
-                self.actions.push(Action::Shoot(from, [aim[0] / len, aim[1] / len, aim[2] / len], d.x.shoots));
+                self.actions.push(Action::Shoot(from, [aim[0] / len, aim[1] / len, aim[2] / len], d.x.shoots, m.kind));
             }
             // Hunters and guards strike what they caught up with.
             if let Some((id, p)) = quarry {

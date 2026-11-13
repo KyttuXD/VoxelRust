@@ -624,9 +624,9 @@ pub fn base64_decode(s: &str) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
 
-    const TERRARIUM: &[u8] = include_bytes!("../../tests/fixtures/terrarium_8_40_97.png");
-    const MAP_TILE: &[u8] = include_bytes!("../../tests/fixtures/map_8_40_97.png");
-    const ATLAS: &[u8] = include_bytes!("../../tests/fixtures/player_atlas.png");
+    const TERRARIUM: &[u8] = include_bytes!("../../../tests/fixtures/terrarium_8_40_97.png");
+    const MAP_TILE: &[u8] = include_bytes!("../../../tests/fixtures/map_8_40_97.png");
+    const ATLAS: &[u8] = include_bytes!("../../../tests/fixtures/player_atlas.png");
 
     fn px(img: &Image, x: usize, y: usize) -> [u8; 4] {
         let i = (y * img.w + x) * 4;

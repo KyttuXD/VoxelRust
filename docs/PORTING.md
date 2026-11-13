@@ -20,7 +20,7 @@ embedded Chromium (see [WEB.md](WEB.md#what-has-been-tested)).
 | Rust's standard library needs thread-local storage from the loader, which Mac OS X gained in 10.7. Current Rust requires 10.12. | The game is `no_std`. Memory comes from `malloc`; threads, files, timing, window and input come from SDL2. |
 | A 2008 Mac Pro on 10.6 offers OpenGL 2.1 at most. | Fixed-function OpenGL 1.5: vertex buffers and two texture units, no shaders. Every later OpenGL still provides this (macOS through its legacy context, Mesa and Windows drivers through the compatibility profile). |
 | Old systems have old SDL2 builds. | Only functions present in SDL 2.0.0 are required. SDL2 is opened with `dlopen` / `LoadLibraryA`, so no headers or import libraries are needed to build. |
-| No `std` means no `sin`, `sqrt`, `floor`. | They are implemented in `src/util/math.rs`. As a side effect, worlds are bit-identical across machines. |
+| No `std` means no `sin`, `sqrt`, `floor`. | They are implemented in `src/util/math/mod.rs`. As a side effect, worlds are bit-identical across machines. |
 
 What the finished program imports from the system on macOS is a few dozen
 `libSystem` functions (memory, `dlopen`, sockets, `system`); the full list
