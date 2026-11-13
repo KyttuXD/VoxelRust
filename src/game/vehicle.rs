@@ -285,6 +285,32 @@ impl Vehicles {
         })
     }
 
+    /// Take another player's list as the truth, keeping hold of the one
+    /// being ridden here (its place is ours to say).
+    pub fn apply_snapshot(&mut self, text: &str) {
+        let mine = self.riding.and_then(|i| self.list.get(i)).map(|v| (v.body.pos, v.body.yaw, v.throttle));
+        let riding = self.riding;
+        let mut fresh = Vehicles::default();
+        fresh.load_text(text);
+        // Glide rather than jump to where the others have got to.
+        for (i, v) in fresh.list.iter_mut().enumerate() {
+            if let Some(old) = self.list.get(i).filter(|o| o.kind == v.kind) {
+                let k = 0.5;
+                for a in 0..3 {
+                    v.body.pos[a] = old.body.pos[a] + (v.body.pos[a] - old.body.pos[a]) * k;
+                }
+                v.phase = old.phase;
+            }
+        }
+        self.list = fresh.list;
+        self.riding = riding.filter(|&i| i < self.list.len());
+        if let (Some(i), Some((pos, yaw, throttle))) = (self.riding, mine) {
+            self.list[i].body.pos = pos;
+            self.list[i].body.yaw = yaw;
+            self.list[i].throttle = throttle;
+        }
+    }
+
     /// One line per vehicle: `id x y z yaw <storage>`.
     pub fn save_text(&self) -> String {
         let r = reg();

@@ -7,12 +7,27 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub const VERSION: u16 = 3;
+pub const VERSION: u16 = 4;
 pub const DEFAULT_PORT: u16 = 25590;
 /// Most bytes of pack text in one message.
 pub const MAX_PACK_PART: usize = 40_000;
 /// Largest skin image, in bytes of PNG.
 pub const MAX_SKIN: usize = 24_000;
+/// Most bytes of shared state in one message.
+pub const MAX_STATE: usize = 60_000;
+/// Channels of [`Msg::State`].
+pub mod channel {
+    /// Every creature, from the player who runs them.
+    pub const MOBS: u8 = 1;
+    /// "I hit creature N for D", to the player who runs them.
+    pub const HIT: u8 = 2;
+    /// What is in the chest at `key` ("x y z"); kept.
+    pub const CHEST: u8 = 3;
+    /// Every vehicle, from the player who runs them.
+    pub const VEHICLES: u8 = 4;
+    /// "place ..." / "remove N" / "ride N x y z yaw", to that player.
+    pub const VEHICLE_ASK: u8 = 5;
+}
 /// Longest message body accepted.
 pub const MAX_BODY: usize = 60_000;
 
@@ -41,6 +56,11 @@ pub enum Msg {
     /// A piece of the server's content pack (text); `last` ends it. Every
     /// player gets this on joining, so all use the same blocks and items.
     Pack { last: bool, data: Vec<u8> },
+    /// Shared state of the game, passed between players through the
+    /// server (sent by a client, relayed with its id): creatures, vehicles,
+    /// what is in a chest. `channel` says which; `key` names the thing;
+    /// with `keep` the server remembers the latest for players who join later.
+    State { id: u16, channel: u8, keep: bool, key: String, data: Vec<u8> },
 }
 
 struct W(Vec<u8>);
@@ -157,6 +177,16 @@ impl Msg {
                 w.u16(n as u16);
                 w.0.extend_from_slice(&png[..n]);
             }
+            Msg::State { id, channel, keep, key, data } => {
+                w.u8(6);
+                w.u16(*id);
+                w.u8(*channel);
+                w.u8(*keep as u8);
+                w.str(key);
+                let n = data.len().min(MAX_STATE);
+                w.u16(n as u16);
+                w.0.extend_from_slice(&data[..n]);
+            }
             Msg::Welcome { id, seed, time, kind } => {
                 w.u8(10);
                 w.u16(*id);
@@ -219,6 +249,14 @@ impl Msg {
                     return None;
                 }
                 Msg::Skin { id, png: r.take(n)?.to_vec() }
+            }
+            6 => {
+                let (id, channel, keep, key) = (r.u16()?, r.u8()?, r.u8()? != 0, r.str()?);
+                let n = r.u16()? as usize;
+                if n > MAX_STATE || key.len() > 64 {
+                    return None;
+                }
+                Msg::State { id, channel, keep, key, data: r.take(n)?.to_vec() }
             }
             10 => Msg::Welcome { id: r.u16()?, seed: r.u32()?, time: r.f32()?, kind: r.str()? },
             11 => Msg::Refuse { reason: r.str()? },
@@ -314,6 +352,7 @@ mod tests {
             Msg::SetBlock { x: -100_000, y: 127, z: 5, block: 4095 },
             Msg::Chat { id: 2, text: String::from("hello there") },
             Msg::Skin { id: 4, png: alloc::vec![1, 2, 3, 250] },
+            Msg::State { id: 4, channel: 3, keep: true, key: String::from("1 2 3"), data: b"chest".to_vec() },
             Msg::Welcome { id: 3, seed: 42, time: 0.25, kind: String::from("earth 46.8 -121.7 30 75") },
             Msg::Refuse { reason: String::from("server full") },
             Msg::Join { id: 9, name: String::from("Bob") },

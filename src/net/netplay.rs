@@ -28,6 +28,8 @@ pub enum Event {
     Pack(bool, Vec<u8>),
     /// A player's skin image arrived.
     Skin(u16, Vec<u8>),
+    /// Shared state from another player: who, channel, key, data.
+    State(u16, u8, String, Vec<u8>),
     /// The connection is gone.
     Lost,
 }
@@ -152,6 +154,7 @@ impl Client {
                     }
                     Msg::Time { time } => events.push(Event::Time(time)),
                     Msg::Skin { id, png } => events.push(Event::Skin(id, png)),
+                    Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
                     _ => {}
                 },
@@ -190,6 +193,18 @@ impl Client {
     pub fn send_skin(&mut self, png: &[u8]) {
         let id = self.id;
         self.send(&Msg::Skin { id, png: png.to_vec() });
+    }
+
+    /// Share a piece of state with the other players (see [`Msg::State`]).
+    pub fn send_state(&mut self, channel: u8, keep: bool, key: &str, data: &[u8]) {
+        let id = self.id;
+        self.send(&Msg::State { id, channel, keep, key: String::from(key), data: data.to_vec() });
+    }
+
+    /// Whether this player is the one who runs the creatures and vehicles
+    /// for everybody: the one with the lowest number of those present.
+    pub fn runs_the_world(&self) -> bool {
+        self.players.keys().all(|&other| self.id < other)
     }
 
     pub fn send_chat(&mut self, text: &str) {

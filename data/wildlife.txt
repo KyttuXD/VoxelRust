@@ -23,13 +23,17 @@ model bear file models/bear.bbmodel
 model bee file models/bee.bbmodel
 model beetle file models/beetle.bbmodel
 model bird file models/bird.bbmodel
+model bison file models/bison.bbmodel
+model bull file models/bull.bbmodel
 model butterfly file models/butterfly.bbmodel
+model camel file models/camel.bbmodel
 model cat file models/cat.bbmodel
 model cat_fluffy file models/cat_fluffy.bbmodel
 model cat_lynx file models/cat_lynx.bbmodel
 model chicken file models/chicken.bbmodel
 model chicken_rooster file models/chicken_rooster.bbmodel
 model cow file models/cow.bbmodel
+model cow_highland file models/cow_highland.bbmodel
 model cow_longhorn file models/cow_longhorn.bbmodel
 model crab file models/crab.bbmodel
 model crawler file models/crawler.bbmodel
@@ -38,35 +42,48 @@ model dog file models/dog.bbmodel
 model dog_hound file models/dog_hound.bbmodel
 model dog_shepherd file models/dog_shepherd.bbmodel
 model dog_terrier file models/dog_terrier.bbmodel
+model donkey file models/donkey.bbmodel
 model duck file models/duck.bbmodel
 model elephant file models/elephant.bbmodel
 model fish file models/fish.bbmodel
 model fox file models/fox.bbmodel
 model frog file models/frog.bbmodel
 model gator file models/gator.bbmodel
+model ghoul file models/ghoul.bbmodel
 model goat file models/goat.bbmodel
 model golem file models/golem.bbmodel
+model goose file models/goose.bbmodel
 model horse file models/horse.bbmodel
 model horse_pony file models/horse_pony.bbmodel
+model llama file models/llama.bbmodel
 model monkey file models/monkey.bbmodel
 model mouse file models/mouse.bbmodel
+model ogre file models/ogre.bbmodel
 model owl file models/owl.bbmodel
 model penguin file models/penguin.bbmodel
 model pig file models/pig.bbmodel
 model pig_boar file models/pig_boar.bbmodel
 model rabbit file models/rabbit.bbmodel
+model rabbit_lop file models/rabbit_lop.bbmodel
+model scarecrow file models/scarecrow.bbmodel
 model sheep file models/sheep.bbmodel
+model sheep_merino file models/sheep_merino.bbmodel
 model sheep_ram file models/sheep_ram.bbmodel
+model skeleton file models/skeleton.bbmodel
 model skeleton_hound file models/skeleton_hound.bbmodel
 model slime file models/slime.bbmodel
 model snake file models/snake.bbmodel
 model spider file models/spider.bbmodel
 model squid file models/squid.bbmodel
 model tiger file models/tiger.bbmodel
+model turkey file models/turkey.bbmodel
 model turtle file models/turtle.bbmodel
+model werewolf file models/werewolf.bbmodel
 model wolf file models/wolf.bbmodel
 model worm file models/worm.bbmodel
 model wraith file models/wraith.bbmodel
+model yak file models/yak.bbmodel
+model zombie file models/zombie.bbmodel
 
 entity cow
   name Cow
@@ -623,7 +640,7 @@ entity beetle
   variant Gold 240 200 80
 entity turkey
   name Turkey
-  model chicken
+  model turkey
   height 0.9
   width 0.6
   speed 1.5
@@ -638,7 +655,7 @@ entity turkey
   sound cluck
 entity goose
   name Goose
-  model duck
+  model goose
   height 0.8
   width 0.5
   speed 1.7
@@ -654,7 +671,7 @@ entity goose
   baby 0.45 360
 entity donkey
   name Donkey
-  model horse
+  model donkey
   height 1.6
   width 0.9
   speed 3.6
@@ -669,7 +686,7 @@ entity donkey
   variant Grey 170 170 176
 entity llama
   name Llama
-  model horse
+  model llama
   height 1.9
   width 0.9
   speed 3.0
@@ -685,7 +702,7 @@ entity llama
   variant Black 80 76 80
 entity bison
   name Bison
-  model cow
+  model bison
   height 1.9
   width 1.3
   speed 3.2
@@ -700,7 +717,7 @@ entity bison
   sound moo
 entity yak
   name Yak
-  model cow
+  model yak
   height 1.7
   width 1.2
   speed 2.2
@@ -716,7 +733,7 @@ entity yak
   sound moo
 entity camel
   name Camel
-  model horse
+  model camel
   height 2.3
   width 1.1
   speed 3.4
@@ -730,7 +747,7 @@ entity camel
   baby 0.5 720
 entity bull
   name Bull
-  model cow
+  model bull
   height 1.6
   width 1.0
   speed 3.4
@@ -744,7 +761,7 @@ entity bull
   sound moo
 entity highland_cow
   name Highland Cow
-  model cow
+  model cow_highland
   height 1.5
   width 1.0
   speed 1.5
@@ -760,7 +777,7 @@ entity highland_cow
   sound moo
 entity merino
   name Merino Sheep
-  model sheep
+  model sheep_merino
   height 1.3
   width 0.95
   speed 1.5
@@ -778,7 +795,7 @@ entity merino
   variant Brown 190 150 120
 entity lop_rabbit
   name Lop Rabbit
-  model rabbit
+  model rabbit_lop
   height 0.45
   width 0.4
   speed 3.0
@@ -866,7 +883,7 @@ entity bone_hound
   trait pack
 entity skeleton
   name Skeleton
-  model player
+  model skeleton
   height 1.9
   width 0.6
   speed 2.8
@@ -878,10 +895,9 @@ entity skeleton
   shoots 3
   sound rattle
   drops arrow 2
-  tint 236 236 226
 entity zombie
   name Zombie
-  model player
+  model zombie
   height 1.9
   width 0.6
   speed 2.2
@@ -891,10 +907,9 @@ entity zombie
   night
   damage 4
   sound groan
-  tint 110 150 110
 entity werewolf
   name Werewolf
-  model bear
+  model werewolf
   height 2.1
   width 0.8
   speed 5.2
@@ -908,7 +923,7 @@ entity werewolf
   sound howl
 entity ghoul
   name Ghoul
-  model player
+  model ghoul
   height 2.0
   width 0.6
   speed 3.8
@@ -921,7 +936,7 @@ entity ghoul
   sound hiss
 entity ogre
   name Ogre
-  model bear
+  model ogre
   height 3.0
   width 1.5
   speed 2.4
@@ -935,7 +950,7 @@ entity ogre
   drops raw_meat 4
 entity scarecrow
   name Scarecrow
-  model player
+  model scarecrow
   height 2.0
   width 0.6
   speed 2.6

@@ -36,6 +36,8 @@ pub struct Mob {
     pub tamed: bool,
     /// Told to wait where it is.
     pub stay: bool,
+    /// Where another player's game says it is (shared games).
+    pub goal: Option<[f64; 3]>,
     give_timer: f32,
     job_timer: f32,
     /// How far along its building work a builder is.
@@ -184,6 +186,7 @@ impl Mobs {
             anger: 0.0,
             tamed: false,
             stay: false,
+            goal: None,
             give_timer,
             job_timer: 3.0,
             job_step: 0,
@@ -555,6 +558,20 @@ impl Mobs {
                     }
                     m.idle = ((roll >> 9) % 3) as f32 - 1.0;
                 }
+                // Flyers that shoot (dragons) circle the player and loose
+                // at them from above.
+                if d.x.shoots > 0 && hostile_ok && !m.tamed && dist < 40.0 {
+                    if dist > 14.0 && roll % 30 == 0 {
+                        m.body.yaw = atan2f(-dx, -dz);
+                    }
+                    if dist < 26.0 && m.attack_cooldown <= 0.0 {
+                        m.attack_cooldown = 2.6;
+                        let from = [m.body.pos[0], m.body.pos[1] + d.height as f64 * 0.5, m.body.pos[2]];
+                        let aim = [dx, dy + 1.0 - d.height * 0.5, dz];
+                        let len = sqrtf(aim[0] * aim[0] + aim[1] * aim[1] + aim[2] * aim[2]).max(0.01);
+                        self.actions.push(Action::Shoot(from, [aim[0] / len, aim[1] / len, aim[2] / len], d.x.shoots));
+                    }
+                }
                 // Frightened flyers scatter upward.
                 let scared = t & traits::FLEES != 0 && dist < 4.0;
                 let low = !open(0.0, -1.0, 0.0) || !open(0.0, -2.0, 0.0);
@@ -761,6 +778,82 @@ impl Mobs {
             }
         }
         damage
+    }
+
+    /// Every creature as text, for the other players of a shared game.
+    pub fn snapshot(&self) -> String {
+        let r = reg();
+        let mut out = String::new();
+        for m in self.list.iter().take(64) {
+            out.push_str(&alloc::format!(
+                "{} {} {} {:.2} {:.2} {:.2} {:.2} {:.0} {} {}\n",
+                m.id, r.entities[m.kind].id, m.variant, m.body.pos[0], m.body.pos[1], m.body.pos[2], m.body.yaw, m.young, m.health, m.tamed as i32
+            ));
+        }
+        out
+    }
+
+    /// Take another player's [`Mobs::snapshot`] as the truth: creatures in
+    /// it appear or move (smoothly, see [`Mobs::animate`]); the rest go.
+    pub fn apply_snapshot(&mut self, text: &str) {
+        let r = reg();
+        let mut seen: Vec<u32> = Vec::new();
+        for line in text.lines() {
+            let w: Vec<&str> = line.split(' ').collect();
+            let num = |k: usize| w.get(k).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
+            let (id, kind) = match (w.first().and_then(|v| v.parse::<u32>().ok()), w.get(1).and_then(|id| r.entities.iter().position(|e| e.id == *id))) {
+                (Some(id), Some(kind)) => (id, kind),
+                _ => continue,
+            };
+            let (pos, yaw) = match (num(3), num(4), num(5), num(6)) {
+                (Some(x), Some(y), Some(z), Some(yaw)) => ([x, y, z], yaw as f32),
+                _ => continue,
+            };
+            let i = match self.list.iter().position(|m| m.id == id) {
+                Some(i) if self.list[i].kind == kind => i,
+                other => {
+                    if let Some(i) = other {
+                        self.list.swap_remove(i);
+                    }
+                    let i = self.spawn(kind, pos);
+                    self.list[i].id = id;
+                    i
+                }
+            };
+            let m = &mut self.list[i];
+            m.variant = (num(2).unwrap_or(0.0) as u8).min(r.entities[kind].x.variants.len() as u8);
+            m.goal = Some(pos);
+            m.body.yaw = yaw;
+            m.young = num(7).unwrap_or(0.0) as f32;
+            m.health = num(8).unwrap_or(1.0) as i32;
+            m.tamed = num(9) == Some(1.0);
+            seen.push(id);
+        }
+        self.list.retain(|m| seen.contains(&m.id));
+    }
+
+    /// Move creatures run by another player toward where they were last
+    /// said to be, and keep their legs going.
+    pub fn animate(&mut self, dt: f32) {
+        for m in self.list.iter_mut() {
+            m.hurt = (m.hurt - dt).max(0.0);
+            m.clock += dt;
+            if let Some(goal) = m.goal {
+                let k = (dt * 10.0).min(1.0) as f64;
+                let before = m.body.pos;
+                for a in 0..3 {
+                    m.body.pos[a] += (goal[a] - m.body.pos[a]) * k;
+                }
+                let (dx, dz) = ((m.body.pos[0] - before[0]) as f32, (m.body.pos[2] - before[2]) as f32);
+                let speed = if dt > 0.0 { sqrtf(dx * dx + dz * dz) / dt } else { 0.0 };
+                let top = reg().entities[m.kind].speed.max(0.1);
+                m.stride += ((speed / top).min(1.0) - m.stride) * (dt * 8.0).min(1.0);
+                m.phase += speed * dt * 3.2;
+                if m.phase > TAU {
+                    m.phase -= TAU;
+                }
+            }
+        }
     }
 
     /// The player's pets as text, one per line, to keep with the world.

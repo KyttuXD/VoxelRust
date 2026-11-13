@@ -108,6 +108,12 @@ pub struct Session {
     pub sitting: Option<[i32; 3]>,
     /// The cart a chain has been hooked to, waiting for the second one.
     coupling: Option<usize>,
+    /// Shared games: when state was last sent, the chest last opened and
+    /// what was last said about it.
+    share_timer: f32,
+    bite_timer: f32,
+    open_chest: Option<[i32; 3]>,
+    chest_sent: Option<([i32; 3], String)>,
     /// Which dimension of the world is being played (empty = the world itself).
     pub dim: String,
     pending_dim: Option<String>,
@@ -320,6 +326,10 @@ impl Session {
             call_timer: 3.0,
             sitting: None,
             coupling: None,
+            share_timer: 0.0,
+            bite_timer: 0.0,
+            open_chest: None,
+            chest_sent: None,
             dim: String::new(),
             pending_dim: crate::settings::kv(&meta, "dim").filter(|d| !d.is_empty()).map(String::from),
             base_seed: seed,
@@ -557,7 +567,8 @@ impl Session {
                 }
                 _ => String::from("USE  /TP X Y Z"),
             },
-            "/spawn" if !online => match r.entities.iter().position(|e| e.id == arg(1)) {
+            // (In a shared game, whoever runs the creatures may add to them.)
+            "/spawn" if !online || self.runs_the_world() => match r.entities.iter().position(|e| e.id == arg(1)) {
                 Some(kind) => {
                     let n = arg(2).parse::<usize>().unwrap_or(1).clamp(1, 20);
                     let f = forward(self.player.yaw, 0.0);
@@ -689,6 +700,31 @@ impl Session {
         self.fire("dimension", id);
     }
 
+    /// Whether this program runs the creatures and vehicles: always when
+    /// playing alone; in a shared game, for one player only.
+    pub fn runs_the_world(&self) -> bool {
+        self.net.as_ref().map_or(true, |n| n.runs_the_world())
+    }
+
+    /// Hit creature `i`. In a shared game run by someone else, they are
+    /// told, and decide what becomes of it. Returns whether it died.
+    fn strike(&mut self, i: usize, amount: i32, from: [f64; 3]) -> bool {
+        if self.runs_the_world() {
+            return self.mobs.hurt(i, amount, from);
+        }
+        let (id, health) = match self.mobs.list.get_mut(i) {
+            Some(m) => {
+                m.hurt = 0.35;
+                (m.id, m.health)
+            }
+            None => return false,
+        };
+        if let Some(n) = self.net.as_mut() {
+            n.send_state(crate::proto::channel::HIT, false, "", alloc::format!("{} {}", id, amount).as_bytes());
+        }
+        health - amount <= 0
+    }
+
     /// Send something flying from the player's eye the way they look.
     pub fn loose(&mut self, damage: i32, speed: f32, leaves: block::Block, colour: [u8; 3]) {
         if self.shots.len() >= 64 {
@@ -753,7 +789,7 @@ impl Session {
             });
             if let Some(k) = struck {
                 let kind = self.mobs.list[k].kind;
-                if self.mobs.hurt(k, damage, self.player.pos) {
+                if self.strike(k, damage, self.player.pos) {
                     if let (GameMode::Survival, Some((drop, n))) = (self.mode, reg().entities[kind].drop) {
                         self.inv.add(drop as u16, n);
                     }
@@ -1101,6 +1137,62 @@ impl Session {
                 crate::netplay::Event::Time(t) => self.time = t,
                 crate::netplay::Event::Lost => self.lost = true,
                 crate::netplay::Event::Skin(id, png) => self.skin_events.push((id, png)),
+                crate::netplay::Event::State(_, channel, key, data) => {
+                    use crate::proto::channel as ch;
+                    let text = String::from_utf8_lossy(&data).into_owned();
+                    let host = self.runs_the_world();
+                    match channel {
+                        ch::MOBS if !host => self.mobs.apply_snapshot(&text),
+                        ch::VEHICLES if !host => self.vehicles.apply_snapshot(&text),
+                        ch::HIT if host => {
+                            let mut w = text.split(' ');
+                            if let (Some(id), Some(n)) = (w.next().and_then(|v| v.parse::<u32>().ok()), w.next().and_then(|v| v.parse::<i32>().ok())) {
+                                if let Some(i) = self.mobs.list.iter().position(|m| m.id == id) {
+                                    let from = self.mobs.list[i].body.pos;
+                                    self.mobs.hurt(i, n.clamp(0, 1000), [from[0], from[1], from[2] + 1.0]);
+                                }
+                            }
+                        }
+                        ch::CHEST => {
+                            let c: Vec<i32> = key.split(' ').filter_map(|v| v.parse().ok()).collect();
+                            if let [x, y, z] = c[..] {
+                                if text.is_empty() {
+                                    self.chests.remove(&[x, y, z]);
+                                } else {
+                                    self.chests.insert([x, y, z], Inventory::load(&text));
+                                }
+                                self.chest_sent = Some(([x, y, z], text));
+                            }
+                        }
+                        ch::VEHICLE_ASK if host => {
+                            let w: Vec<&str> = text.split(' ').collect();
+                            let num = |k: usize| w.get(k).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
+                            match (w.first().copied(), num(2), num(3), num(4), num(5)) {
+                                (Some("place"), Some(x), Some(y), Some(z), Some(yaw)) => {
+                                    if let Some(kind) = reg().vehicles.iter().position(|v| Some(&v.id.as_str()) == w.get(1)) {
+                                        if self.vehicles.list.len() < 200 {
+                                            self.vehicles.place(kind, [x, y, z], yaw as f32);
+                                        }
+                                    }
+                                }
+                                (Some("ride"), Some(x), Some(y), Some(z), Some(yaw)) => {
+                                    if let Some(v) = num(1).and_then(|i| self.vehicles.list.get_mut(i as usize)) {
+                                        v.body.pos = [x, y, z];
+                                        v.body.yaw = yaw as f32;
+                                        v.body.vel = [0.0; 3];
+                                    }
+                                }
+                                (Some("remove"), ..) => {
+                                    if let Some(i) = num(1) {
+                                        self.vehicles.remove(i as usize);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 crate::netplay::Event::Pack(last, data) => {
                     if self.pack_buffer.len() + data.len() <= 16 << 20 {
                         self.pack_buffer.extend_from_slice(&data);
@@ -1301,7 +1393,55 @@ impl Session {
         // Creatures. Hunters only come for players in survival mode.
         let hunted = self.mode == GameMode::Survival && !self.dead;
         let held_item = self.held().map(|h| h.0);
-        let bitten = self.mobs.update(dt, &self.world, self.player.pos, self.time, hunted, held_item);
+        // In a shared game one player's program runs the creatures and
+        // the empty vehicles; the others are told where everything is.
+        let host = self.runs_the_world();
+        let bitten = if host {
+            self.mobs.update(dt, &self.world, self.player.pos, self.time, hunted, held_item)
+        } else {
+            self.mobs.animate(dt);
+            // Their bite is still judged here, where the player is.
+            self.bite_timer -= dt;
+            let reach = self.mobs.list.iter().find(|m| {
+                let d = &reg().entities[m.kind];
+                let (dx, dy, dz) = (m.body.pos[0] - self.player.pos[0], m.body.pos[1] - self.player.pos[1], m.body.pos[2] - self.player.pos[2]);
+                d.behavior == crate::block::Behavior::Hostile && !m.tamed && dx * dx + dz * dz < 1.7 && dy > -1.6 && dy < 2.0
+            });
+            match reach {
+                Some(m) if hunted && self.bite_timer <= 0.0 => {
+                    self.bite_timer = 1.0;
+                    reg().entities[m.kind].damage
+                }
+                _ => 0,
+            }
+        };
+        self.share_timer -= dt;
+        if self.share_timer <= 0.0 && self.net.is_some() {
+            self.share_timer = 0.2;
+            use crate::proto::channel as ch;
+            let riding = self.vehicles.riding.and_then(|i| self.vehicles.list.get(i).map(|v| (i, v.body.pos, v.body.yaw)));
+            // The chest in front of the player, when what is in it changed.
+            let chest = self.open_chest.filter(|c| self.chests.contains_key(c)).map(|c| (c, self.chests[&c].save()));
+            let chest = chest.filter(|c| self.chest_sent.as_ref() != Some(c));
+            let (mobs, vehicles) = if host { (Some(self.mobs.snapshot()), Some(self.vehicles.save_text())) } else { (None, None) };
+            if let Some(n) = self.net.as_mut() {
+                if let Some(text) = mobs {
+                    n.send_state(ch::MOBS, false, "", text.as_bytes());
+                }
+                if let Some(text) = vehicles {
+                    n.send_state(ch::VEHICLES, false, "", text.as_bytes());
+                }
+                if let (false, Some((i, p, yaw))) = (host, riding) {
+                    n.send_state(ch::VEHICLE_ASK, false, "", alloc::format!("ride {} {} {} {} {}", i, p[0], p[1], p[2], yaw).as_bytes());
+                }
+                if let Some((c, text)) = &chest {
+                    n.send_state(ch::CHEST, true, &alloc::format!("{} {} {}", c[0], c[1], c[2]), text.as_bytes());
+                }
+            }
+            if chest.is_some() {
+                self.chest_sent = chest;
+            }
+        }
         // Now and then a creature nearby makes its call.
         self.call_timer -= dt;
         if self.call_timer <= 0.0 && dt > 0.0 {
@@ -1491,6 +1631,11 @@ impl Session {
                 }
                 if c.break_held && self.cooldown[0] <= 0.0 {
                     self.cooldown[0] = 0.4;
+                    if !self.runs_the_world() {
+                        if let Some(n) = self.net.as_mut() {
+                            n.send_state(crate::proto::channel::VEHICLE_ASK, false, "", alloc::format!("remove {}", i).as_bytes());
+                        }
+                    }
                     if let Some(v) = self.vehicles.remove(i) {
                         let id = &reg().vehicles[v.kind].id;
                         if let Some(item) = reg().items.iter().position(|it| it.id == *id) {
@@ -1520,7 +1665,13 @@ impl Session {
                 }
                 if let Some((pos, _)) = spot {
                     self.cooldown[1] = 0.5;
-                    self.vehicles.place(kind, pos, self.player.yaw);
+                    if self.runs_the_world() {
+                        self.vehicles.place(kind, pos, self.player.yaw);
+                    } else if let Some(n) = self.net.as_mut() {
+                        // The player who runs the vehicles sets it down for all.
+                        let id = &reg().vehicles[kind].id;
+                        n.send_state(crate::proto::channel::VEHICLE_ASK, false, "", alloc::format!("place {} {} {} {} {}", id, pos[0], pos[1], pos[2], self.player.yaw).as_bytes());
+                    }
                     audio.play(Sound::Place, 1.0);
                     if !creative {
                         self.inv.take_one(self.selected);
@@ -1593,7 +1744,7 @@ impl Session {
                     struck = true;
                     self.cooldown[0] = 0.35;
                     let kind = self.mobs.list[i].kind;
-                    let killed = self.mobs.hurt(i, if creative { 1000 } else { item.x.damage.max(3) }, eye);
+                    let killed = self.strike(i, if creative { 1000 } else { item.x.damage.max(3) }, eye);
                     if let (true, false, Some((drop, n))) = (killed, creative, reg().entities[kind].drop) {
                         self.inv.add(drop as u16, n);
                     }
@@ -1684,6 +1835,9 @@ impl Session {
                 if u != Usable::Nothing {
                     self.cooldown[1] = 0.3;
                     self.opened = Some((u, hit.cell));
+                    if u == Usable::Chest {
+                        self.open_chest = Some(hit.cell);
+                    }
                     return;
                 }
                 // Chairs and couches: sit down.

@@ -2704,6 +2704,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     let ready = g.world.chunks.values().filter(|c| c.mesh.is_some()).count();
                     logf!("voxelrust: {} chunks ready in {:.2} s", ready, sys::now() - load_start);
                 }
+                if let Some(g) = app.session.as_ref().filter(|g| g.net.is_some()) {
+                    logf!("voxelrust: shared: {} creatures, {} vehicles, {} chests, {}", g.mobs.list.len(), g.vehicles.list.len(), g.chests.len(), if g.runs_the_world() { "run from here" } else { "run by another player" });
+                }
                 if let Some(net) = app.session.as_ref().and_then(|g| g.net.as_ref()) {
                     for p in net.players.values() {
                         logf!("voxelrust: player {} at {:.1} {:.1} {:.1}{}", p.name, p.pos[0], p.pos[1], p.pos[2], if p.seen { "" } else { " (no position yet)" });

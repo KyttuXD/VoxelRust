@@ -58,6 +58,8 @@ pub struct Server {
     time_timer: f32,
     /// Edits have changed since the last save.
     pub dirty: bool,
+    /// The latest of each piece of kept state, for players who join later.
+    kept: BTreeMap<(u8, String), Vec<u8>>,
 }
 
 const SEND_TIMEOUT: u32 = 3000;
@@ -65,7 +67,8 @@ const SEND_TIMEOUT: u32 = 3000;
 impl Server {
     pub fn bind(cfg: Config) -> Result<Server, NetError> {
         let listener = TcpListener::bind(cfg.port)?;
-        Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false })
+        Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
+            kept: BTreeMap::new() })
     }
 
     pub fn port(&self) -> u16 {
@@ -212,6 +215,9 @@ impl Server {
                         for part in all.chunks(4000) {
                             out.extend(Msg::Edits { list: part.to_vec() }.encode());
                         }
+                        for ((channel, key), data) in &self.kept {
+                            out.extend(Msg::State { id: 0, channel: *channel, keep: true, key: key.clone(), data: data.clone() }.encode());
+                        }
                         if self.conns[i].stream.send_all(&out, 4_000).is_err() {
                             self.conns[i].gone = true;
                             break;
@@ -232,6 +238,16 @@ impl Server {
                             self.dirty = true;
                             self.broadcast(&Msg::SetBlock { x, y, z, block }, id);
                         }
+                    }
+                    Msg::State { channel, keep, key, data, .. } if joined => {
+                        if keep {
+                            if data.is_empty() {
+                                self.kept.remove(&(channel, key.clone()));
+                            } else if self.kept.len() < 8192 || self.kept.contains_key(&(channel, key.clone())) {
+                                self.kept.insert((channel, key.clone()), data.clone());
+                            }
+                        }
+                        self.broadcast(&Msg::State { id, channel, keep, key, data }, id);
                     }
                     Msg::Skin { png, .. } if joined => {
                         self.conns[i].skin = png.clone();

@@ -3503,7 +3503,7 @@ def yak():
     m.box("skirt-f", "Body", (-6, 4, -11), (6, 14, -9.9), ragged_hem(408, hair, 4), skip=("up", "down", "south"))
     m.box("skirt-b", "Body", (-6, 3, 9.9), (6, 14, 11), ragged_hem(409, hair, 4), skip=("up", "down", "north"))
     m.bone("tail", (0, 21, 10.5))
-    m.box("tail", "tail", (-2, 5, 10.6), (2, 21.5, 13.4), ragged_hem(410, shag(410, LK, K, GY), 3), rot=(-6, 0, 0), origin=(0, 21, 10.5), skip=("down",))
+    m.box("tail", "tail", (-2, 5, 10.6), (2, 21.5, 13.4), ragged_hem(410, shag(410, LK, K, (150, 130, 116)), 3), rot=(-6, 0, 0), origin=(0, 21, 10.5), skip=("down",))
     m.bone("Head", (0, 18, -10))
     m.box("head", "Head", (-4, 11, -17.5), (4, 20.5, -9.5), lambda p: VD if p.face == "down" else K, head_d)
     m.box("forelock", "Head", (-4.4, 18.5, -18.1), (4.4, 22, -11), ragged_hem(411, hair, 2))
@@ -4477,6 +4477,9 @@ def phoenix():
         m.box(name, name, (-w, 12.6 + 0.02 * k, z0), (w, 13.4 - 0.02 * k, z1), tail(k), rot=TR, origin=TP, skip=("north",))
         par = name
     bird_legs(m, 1.7, 8, 0, BK, BK, th=0.5, foot=1.5)
+    for tag, sx in (("l", -1), ("r", 1)):
+        m.box("thigh-" + tag, "Leg-" + tag.upper(), (1.7 * sx - 1.2, 4.6, -0.8), (1.7 * sx + 1.2, 9, 1.8),
+              ragged_hem(503, lambda p: OR if (p.i + p.j) % 3 else RD, 1), skip=("down",))
     return m
 
 
