@@ -2981,146 +2981,258 @@ craft dark_oak_gate 1 dark_oak_planks 2 stick 4
 block white_bed
   name White Bed
   tex white_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft white_bed 1 white_wool 3 planks 3
 block light_gray_bed
   name Light Gray Bed
   tex light_gray_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft light_gray_bed 1 light_gray_wool 3 planks 3
 block gray_bed
   name Gray Bed
   tex gray_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft gray_bed 1 gray_wool 3 planks 3
 block black_bed
   name Black Bed
   tex black_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft black_bed 1 black_wool 3 planks 3
 block brown_bed
   name Brown Bed
   tex brown_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft brown_bed 1 brown_wool 3 planks 3
 block red_bed
   name Red Bed
   tex red_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft red_bed 1 red_wool 3 planks 3
 block orange_bed
   name Orange Bed
   tex orange_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft orange_bed 1 orange_wool 3 planks 3
 block yellow_bed
   name Yellow Bed
   tex yellow_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft yellow_bed 1 yellow_wool 3 planks 3
 block lime_bed
   name Lime Bed
   tex lime_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft lime_bed 1 lime_wool 3 planks 3
 block green_bed
   name Green Bed
   tex green_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft green_bed 1 green_wool 3 planks 3
 block cyan_bed
   name Cyan Bed
   tex cyan_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft cyan_bed 1 cyan_wool 3 planks 3
 block light_blue_bed
   name Light Blue Bed
   tex light_blue_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft light_blue_bed 1 light_blue_wool 3 planks 3
 block blue_bed
   name Blue Bed
   tex blue_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft blue_bed 1 blue_wool 3 planks 3
 block purple_bed
   name Purple Bed
   tex purple_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft purple_bed 1 purple_wool 3 planks 3
 block magenta_bed
   name Magenta Bed
   tex magenta_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft magenta_bed 1 magenta_wool 3 planks 3
 block pink_bed
   name Pink Bed
   tex pink_wool planks planks
-  category Doors
+  category Furniture
   hardness 0.6
   tool axe
   use bed
-  box 0 0 0 16 9 16
+  rotate
+  box 0 0 0 2 3 2
+  box 14 0 0 16 3 2
+  box 0 0 14 2 3 16
+  box 14 0 14 16 3 16
+  box 0 3 0 16 6 16
+  box 0 6 0 16 10 16
+  box 0 10 0 16 16 3
 craft pink_bed 1 pink_wool 3 planks 3
 
 # Doors come hung on the edge of their block (the plain ones above), set in

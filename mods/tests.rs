@@ -65,3 +65,21 @@ fn vehicles_need_the_vehicles_mod() {
     // Without any of them the game has no vehicles at all.
     assert!(load(&[]).sections.is_empty());
 }
+
+#[test]
+fn every_item_is_in_the_creative_list_and_beds_are_there() {
+    let r = load(&shipped());
+    // Every item sits in a category, and every category is a tab.
+    for it in &r.items {
+        assert!(r.categories.contains(&it.category), "{} is in no tab", it.id);
+    }
+    let mut tabs: Vec<(&String, usize)> = r.categories.iter().map(|c| (c, r.items.iter().filter(|i| &i.category == c).count())).collect();
+    tabs.sort();
+    eprintln!("{} items in {} tabs: {:?}", r.items.len(), tabs.len(), tabs);
+    for bed in ["white_bed", "red_bed", "black_bed"] {
+        assert!(r.items.iter().any(|i| i.id == bed), "{bed} is not in the creative list");
+    }
+    // Every block that is not hidden is offered somewhere.
+    let missing: Vec<&str> = r.blocks.iter().filter(|b| !b.id.is_empty()).map(|b| b.id.as_str()).filter(|id| !r.items.iter().any(|i| i.id == *id) && !r.items.iter().any(|i| i.place.map_or(false, |p| r.blocks[p as usize].id == *id))).collect();
+    let mut u: Vec<&str> = missing.iter().copied().filter(|i| !i.ends_with("_open")).collect(); u.sort(); u.dedup(); eprintln!("blocks without an item: {:?}", u);
+}

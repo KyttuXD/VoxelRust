@@ -496,6 +496,8 @@ struct App {
     rebinding: Option<usize>,
     inv_tab: usize,
     inv_scroll: i32,
+    /// What the creative list is searched for (empty: show the open tab).
+    inv_search: String,
     chest_at: [i32; 3],
     /// When the chest screen shows storage a mod's code keeps instead
     /// of a chest: whose, and which.
@@ -804,9 +806,9 @@ impl App {
                 }
             }
             Screen::Inventory | Screen::Craft | Screen::Chest => {
-                if sc == key::ESCAPE || sc == k_inv {
+                if sc == key::ESCAPE || (sc == k_inv && !typing) {
                     self.set_screen(Screen::Game);
-                } else if (key::N1..=key::N9).contains(&sc) {
+                } else if !typing && (key::N1..=key::N9).contains(&sc) {
                     if let Some(g) = self.session.as_mut() {
                         g.selected = (sc - key::N1) as usize;
                     }
@@ -2429,7 +2431,9 @@ impl App {
         let cols = 9usize;
         let upper_rows = 5usize;
         let pw = cols as f32 * cell + 12.0 * s;
-        let ph = 32.0 * s + upper_rows as f32 * cell + 16.0 * s + 4.0 * cell + 14.0 * s;
+        // The creative list has a search field under its tabs.
+        let search_h = if g.mode == GameMode::Creative && self.screen == Screen::Inventory { 14.0 * s } else { 0.0 };
+        let ph = 32.0 * s + search_h + upper_rows as f32 * cell + 16.0 * s + 4.0 * cell + 14.0 * s;
         let (px, py) = ((ui.w() - pw) * 0.5, ((ui.h() - ph) * 0.5).max(12.0 * s));
         ui.panel(px, py, pw, ph);
         let gx = px + 6.0 * s;
@@ -2437,7 +2441,7 @@ impl App {
         let (click_l, click_r) = (ui.inp.clicked[1], ui.inp.clicked[3]);
 
         // Upper part: every item (creative) or what can be made (survival).
-        let uy = py + 32.0 * s;
+        let uy = py + 32.0 * s + search_h;
         let at_table = self.screen == Screen::Craft;
         if self.screen == Screen::Chest {
             // The chest's own 27 slots.
@@ -2492,7 +2496,15 @@ impl App {
                 }
             }
             let tab = tabs.get(self.inv_tab).cloned().unwrap_or_default();
-            let list: Vec<usize> = (0..r.items.len()).filter(|&i| r.items[i].category == tab).collect();
+            // Search the whole list by name, or show the open tab.
+            ui.text_field(44, gx, py + 31.0 * s, pw - 12.0 * s, 11.0 * s, &mut self.inv_search, 24, ui::any_char);
+            if self.inv_search.is_empty() {
+                ui.text(gx + 3.0 * s, py + 33.0 * s, "TYPE HERE TO SEARCH EVERY ITEM", ui::DIM);
+            }
+            let needle = self.inv_search.to_ascii_lowercase();
+            let list: Vec<usize> = (0..r.items.len())
+                .filter(|&i| if needle.is_empty() { r.items[i].category == tab } else { r.items[i].name.to_ascii_lowercase().contains(&needle) || r.items[i].id.contains(&needle) })
+                .collect();
             let total_rows = (list.len() + cols - 1) / cols;
             let max_scroll = total_rows.saturating_sub(upper_rows) as i32;
             self.inv_scroll = (self.inv_scroll - ui.inp.wheel).clamp(0, max_scroll);
@@ -3243,6 +3255,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         rebinding: None,
         inv_tab: 0,
         inv_scroll: 0,
+        inv_search: String::new(),
         chest_at: [0; 3],
         chest_ext: None,
         scripted,
@@ -3294,9 +3307,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
     }
     if scripted {
-        // "items:<tab>" opens the creative list at that tab.
+        // "items:<tab>" opens the creative list at that tab, or searching for that word.
         if let Some(tab) = opts.show.split(',').find_map(|w| w.strip_prefix("items:")) {
-            app.inv_tab = reg().categories.iter().position(|c| c.eq_ignore_ascii_case(tab)).unwrap_or(0);
+            match reg().categories.iter().position(|c| c.eq_ignore_ascii_case(tab)) {
+                Some(i) => app.inv_tab = i,
+                // Not a tab: what to search for ("items:bed").
+                None => app.inv_search = String::from(tab),
+            }
         }
         for (word, screen) in [
             ("pause", Screen::Pause),

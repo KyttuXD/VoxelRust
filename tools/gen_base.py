@@ -463,7 +463,7 @@ for wid, wname, (r, g, b), planks in DOOR_WOODS:
 for id, name, _ in COLOURS:
     # A bed as seen from above and the side: a wooden frame with legs, a mattress,
     # and a pillow at the head (the -z end; rotate turns it to face the player).
-    block(f"{id}_bed", f"{name} Bed", f"{id}_wool planks planks", cat="Doors", hardness=0.6, tool="axe", use="bed",
+    block(f"{id}_bed", f"{name} Bed", f"{id}_wool planks planks", cat="Furniture", hardness=0.6, tool="axe", use="bed",
           rotate=True, box=["0 0 0 2 3 2", "14 0 0 16 3 2", "0 0 14 2 3 16", "14 0 14 16 3 16",
                             "0 3 0 16 6 16", "0 6 0 16 10 16", "0 10 0 16 16 3"])
     w(f"craft {id}_bed 1 {id}_wool 3 planks 3")
