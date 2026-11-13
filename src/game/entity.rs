@@ -1094,6 +1094,23 @@ mod tests {
     }
 
     #[test]
+    fn a_cow_takes_several_survival_blows_not_one() {
+        // Survival hits with bare hands do 3; a cow has 10 health, so it
+        // takes four blows. (Creative mode does 1000: one blow.)
+        let mut mobs = Mobs::new(4);
+        mobs.spawn_timer = 1e9;
+        mobs.spawn(kind("cow"), [8.5, 121.01, 5.5]);
+        let eye = [8.5, 122.0, 9.5];
+        let (i, _) = mobs.hit_test(eye, Vec3::new(0.0, -0.05, -1.0).norm(), 6.0).expect("ray missed");
+        let health = mobs.list[0].health;
+        assert!(health >= 6, "a cow has {health} health");
+        for blow in 0..3 {
+            assert!(!mobs.hurt(i, 3, eye), "dead after blow {}", blow + 1);
+        }
+        assert!(mobs.hurt(i, 3, eye), "still alive after four blows");
+    }
+
+    #[test]
     fn creatures_can_be_hit_and_die() {
         let w = arena();
         let mut mobs = Mobs::new(9);

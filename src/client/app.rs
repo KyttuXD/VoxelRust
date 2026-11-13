@@ -198,7 +198,7 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--world-op" => {
                 let op = next(&mut i, a)?;
                 let name = next(&mut i, a)?;
-                let to = if op == "delete" { String::new() } else { next(&mut i, a)? };
+                let to = if op == "delete" || op == "new" { String::new() } else { next(&mut i, a)? };
                 o.world_op = Some((op, name, to));
             }
             "--import" => o.import = Some(next(&mut i, a)?),
@@ -260,6 +260,8 @@ enum Screen {
     Craft,
     /// A chest's contents, at this position.
     Chest,
+    /// One world's options: export, rename, copy, delete.
+    EditWorld,
 }
 
 /// Which build this is: the name its download carries. An update must
@@ -387,6 +389,11 @@ struct App {
     /// Seconds and frames counted while timing full screen.
     tune: (f32, u32),
     worlds_scroll: i32,
+    /// The world the edit screen is for, its name as typed for a rename,
+    /// and whether the next click on DELETE will delete it.
+    edit_world: String,
+    edit_name: String,
+    edit_confirm: bool,
     /// The minimap: its texture, the picture being painted bit by bit,
     /// how far that has got, and where each is centred (blocks).
     minimap_tex: u32,
@@ -719,6 +726,7 @@ impl App {
             Screen::Pause if sc == key::ESCAPE => self.set_screen(Screen::Game),
             Screen::Chat if sc == key::ESCAPE => self.set_screen(Screen::Game),
             Screen::Join if sc == key::ESCAPE && !typing => self.set_screen(Screen::Title),
+            Screen::EditWorld if sc == key::ESCAPE && !typing => self.set_screen(Screen::Worlds),
             Screen::AddServer if sc == key::ESCAPE => self.set_screen(Screen::Join),
             Screen::Map if sc == key::ESCAPE || sc == k_map => self.set_screen(Screen::Game),
             Screen::Settings if sc == key::ESCAPE && !typing => self.leave_settings(),
@@ -1101,6 +1109,7 @@ impl App {
                 Screen::Game => {}
                 Screen::Title => self.screen_title(&mut ui),
                 Screen::Worlds => self.screen_worlds(&mut ui),
+                Screen::EditWorld => self.screen_edit_world(&mut ui),
                 Screen::NewWorld => self.screen_new_world(&mut ui),
                 Screen::Settings => self.screen_settings(&mut ui),
                 Screen::Pause => self.screen_pause(&mut ui),
@@ -1457,13 +1466,83 @@ impl App {
         ui.text(hx + heart + 4.0 * s, y0, b, ui::DIM);
     }
 
+    /// One world's options: export it, rename it, copy it, or delete it.
+    fn screen_edit_world(&mut self, ui: &mut Ui) {
+        let s = ui.s;
+        let name = self.edit_world.clone();
+        let (x, y, bw, bh, _step) = Self::column(ui, 9);
+        let side = 46.0 * s;
+        ui.centered(ui.w() * 0.5, y - 26.0 * s, 2.0, &name.to_ascii_uppercase(), WHITE);
+        if ui.button(x, y, bw, bh, "EXPORT TO A FILE") {
+            // One file holding the whole world, to copy to another machine.
+            let path = alloc::format!("{}{}.vxworld", self.base, name);
+            self.status = match crate::save::export_world(&mut crate::save::DiskIo, &self.base, &name) {
+                Some(data) if sys::write_file(&path, &data) => alloc::format!("WROTE {}", path.to_ascii_uppercase()),
+                _ => String::from("COULD NOT EXPORT THAT WORLD"),
+            };
+        }
+        // Each field has its label above it and room below, so nothing overlaps.
+        ui.text(x, y + 46.0 * s, "NEW NAME (RENAME)", ui::DIM);
+        ui.text_field(42, x, y + 56.0 * s, bw - side - 3.0 * s, bh, &mut self.edit_name, 24, ui::world_char);
+        if ui.button(x + bw - side, y + 56.0 * s, side, bh, "RENAME") {
+            let to = crate::settings::clean_world_name(&self.edit_name, 24);
+            if to.is_empty() || to == name {
+                self.status = String::from("TYPE A DIFFERENT NAME");
+            } else if crate::session::world_exists(&self.base, &to) {
+                self.status = String::from("A WORLD WITH THAT NAME EXISTS");
+            } else if crate::session::rename_world(&self.base, &name, &to) {
+                self.worlds = crate::session::list_worlds(&self.base);
+                self.edit_world = to.clone();
+                self.status = alloc::format!("RENAMED TO {}", to.to_ascii_uppercase());
+            } else {
+                self.status = String::from("COULD NOT RENAME THAT WORLD");
+            }
+        }
+        ui.text(x, y + 92.0 * s, "COPY AS", ui::DIM);
+        ui.text_field(43, x, y + 102.0 * s, bw - side - 3.0 * s, bh, &mut self.form_import, 24, ui::world_char);
+        if ui.button(x + bw - side, y + 102.0 * s, side, bh, "COPY") {
+            let to = crate::settings::clean_world_name(&self.form_import, 24);
+            if to.is_empty() || to == name {
+                self.status = String::from("TYPE A DIFFERENT NAME");
+            } else if crate::session::copy_world(&self.base, &name, &to) {
+                self.worlds = crate::session::list_worlds(&self.base);
+                self.status = alloc::format!("COPIED AS {}", to.to_ascii_uppercase());
+            } else {
+                self.status = String::from("COULD NOT COPY THAT WORLD (THE NAME MAY BE TAKEN)");
+            }
+        }
+        // Deleting takes two clicks, so one slip does not lose a world.
+        let label = if self.edit_confirm { "CLICK AGAIN TO DELETE" } else { "DELETE THIS WORLD" };
+        if ui.button(x, y + 140.0 * s, bw, bh, label) {
+            if self.edit_confirm {
+                if crate::session::delete_world(&self.base, &name) {
+                    self.worlds = crate::session::list_worlds(&self.base);
+                    self.status = alloc::format!("DELETED {}", name.to_ascii_uppercase());
+                    self.set_screen(Screen::Worlds);
+                    return;
+                }
+                self.status = String::from("COULD NOT DELETE THAT WORLD");
+                self.edit_confirm = false;
+            } else {
+                self.edit_confirm = true;
+                self.status = String::from("CLICK AGAIN TO DELETE IT FOR GOOD");
+            }
+        }
+        if ui.button(x, y + 166.0 * s, bw, bh, "BACK") {
+            self.edit_confirm = false;
+            self.worlds = crate::session::list_worlds(&self.base);
+            self.set_screen(Screen::Worlds);
+        }
+        ui.centered(ui.w() * 0.5, y + 192.0 * s, 1.0, &self.status, ui::ACCENT);
+    }
+
     fn screen_worlds(&mut self, ui: &mut Ui) {
         let s = ui.s;
         let shown = self.worlds.len().min(8);
         let (x, y, bw, bh, step) = Self::column(ui, shown.max(1) + 6);
         ui.centered(ui.w() * 0.5, y - 26.0 * s, 2.0, "WORLDS", WHITE);
         let mut open = None;
-        let mut export = None;
+        let mut edit = None;
         let side = 46.0 * s;
         // More worlds than fit: the wheel scrolls the list.
         let hidden = self.worlds.len().saturating_sub(8) as i32;
@@ -1475,17 +1554,17 @@ impl App {
             if ui.button(x, y + i as f32 * step, bw - side - 3.0 * s, bh, &name.to_ascii_uppercase()) {
                 open = Some(name.clone());
             }
-            if ui.button(x + bw - side, y + i as f32 * step, side, bh, "EXPORT") {
-                export = Some(name.clone());
+            if ui.button(x + bw - side, y + i as f32 * step, side, bh, "EDIT") {
+                edit = Some(name.clone());
             }
         }
-        if let Some(name) = export {
-            // One file holding the whole world, to copy to another machine.
-            let path = alloc::format!("{}{}.vxworld", self.base, name);
-            self.status = match crate::save::export_world(&mut crate::save::DiskIo, &self.base, &name) {
-                Some(data) if sys::write_file(&path, &data) => alloc::format!("WROTE {}", path.to_ascii_uppercase()),
-                _ => String::from("COULD NOT EXPORT THAT WORLD"),
-            };
+        if let Some(name) = edit {
+            self.edit_name = name.clone();
+            self.edit_world = name;
+            self.edit_confirm = false;
+            self.status.clear();
+            self.set_screen(Screen::EditWorld);
+            return;
         }
         if self.worlds.is_empty() {
             ui.centered(ui.w() * 0.5, y + 4.0 * s, 1.0, "NO WORLDS YET", ui::DIM);
@@ -2717,6 +2796,17 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         let done = match op.as_str() {
             "delete" => crate::session::delete_world(&base, name),
+            "new" => {
+                if crate::session::world_exists(&base, name) {
+                    false
+                } else {
+                    let new = crate::session::NewWorld { seed: 13, mode: GameMode::Creative, kind: WorldKind::Normal };
+                    let mut s = Session::open(&base, name, &new, 0);
+                    let ok = s.save();
+                    crate::session::remember_world(&base, name);
+                    ok
+                }
+            }
             "copy" => crate::session::copy_world(&base, name, to),
             "rename" => crate::session::rename_world(&base, name, to),
             _ => return Err(alloc::format!("--world-op: unknown operation {} (delete, copy, rename)", op)),
@@ -2946,6 +3036,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
         at_furnace: false,
         tune: (0.0, 0),
         worlds_scroll: 0,
+        edit_world: String::new(),
+        edit_name: String::new(),
+        edit_confirm: false,
         minimap_tex: 0,
         minimap_px: alloc::vec![0u8; MINIMAP * MINIMAP * 4],
         minimap_cursor: 0,
@@ -3036,6 +3129,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
             app.tab = TABS.iter().position(|x| *x == t).unwrap_or(0);
         }
         app.worlds = session::list_worlds(&app.base);
+        if opts.show.contains("editworld") {
+            if let Some(first) = app.worlds.first().cloned() {
+                app.edit_name = first.clone();
+                app.edit_world = first;
+                app.screen = Screen::EditWorld;
+            }
+        }
         inp.mouse = (-100.0, -100.0);
         if opts.show.contains("map") {
             app.open_map();
