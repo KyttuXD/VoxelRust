@@ -244,8 +244,9 @@ Worlds and settings live in the data folder and are not touched. Details:
   when you come back. (Pets, vehicles and chests are saved.)
 - There are no generated villages, and no breeding: villagers and young
   animals simply turn up.
-- Servers have no accounts, passwords or encryption, and **the project hosts
-  no public server**. You play with people you give an address to.
+- Servers have no accounts, passwords or encryption. The project runs one
+  public server; everyone else can host their own (see
+  [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md)).
 - The updater cannot work while the repository is private, and never on
   Mac OS X 10.6 (see [Builds and updating](#builds-and-updating)). It
   replaces the program only, not the mods that came with it.
@@ -253,10 +254,9 @@ Worlds and settings live in the data folder and are not touched. Details:
 - Modern macOS has been run on one Intel Mac (macOS 12.7.6). Apple silicon
   is untested.
 - PowerPC is only compile-checked (`cargo check`); it has never been run.
-- The repository is on GitHub (private, `KyttuXD/VoxelRust`), and its
-  workflows (CI and nightly builds) cannot run: the account's Actions budget
-  blocks them on private repositories. The nightly files are built on the
-  author's machine and uploaded by hand.
+- The repository is on GitHub (`KyttuXD/VoxelRust`). Its workflows (CI and
+  nightly builds) cannot run: the account's Actions budget blocks them. The
+  nightly files are built on the author's machine and uploaded by hand.
 - The browser build has no folders to read mods from, so none of the mods that
   come with the game are in it.
 - The browser build ([docs/WEB.md](docs/WEB.md)) has been built and run
