@@ -91,6 +91,8 @@ pub struct Renderer {
     /// When not 0, the next model is drawn with this texture instead of
     /// its own (player skins). Reset after each model.
     pub tex_override: u32,
+    /// Pictures of creatures and players by name (see `pack_entities`), uploaded when first asked for.
+    entity_tex: alloc::collections::BTreeMap<alloc::string::String, u32>,
     model_verts: Vec<crate::model::ModelVert>,
     pass: Option<Pass>,
 }
@@ -280,6 +282,7 @@ impl Renderer {
             scaled: None,
             models: Vec::new(),
             tex_override: 0,
+            entity_tex: alloc::collections::BTreeMap::new(),
             model_verts: Vec::new(),
             pass: None,
         }
@@ -1150,18 +1153,39 @@ impl Renderer {
         self.batch_tex = 0;
     }
 
+    /// The texture of the creature picture `name` (a texture pack's, or the game's own),
+    /// or 0 if there is none. For `tex_override`.
+    pub fn entity_texture(&mut self, name: &str) -> u32 {
+        if name.is_empty() {
+            return 0;
+        }
+        if let Some(t) = self.entity_tex.get(name) {
+            return *t;
+        }
+        let t = match crate::pack_entities::image(name) {
+            Some(img) => self.add_texture(img.w, img.h, &img.rgba),
+            None => 0,
+        };
+        self.entity_tex.insert(alloc::string::String::from(name), t);
+        t
+    }
+
     /// Parse every model the data files declare and upload its texture.
     /// Indices match the registry's. A model that fails to load is logged
     /// and replaced by the first good one, so creatures never vanish.
     pub fn load_models(&mut self) {
         let r = reg();
+        self.entity_tex.clear();
         let mut loaded: Vec<Option<crate::model::ModelDef>> = Vec::new();
         for spec in &r.models {
             match crate::model::ModelDef::from_bbmodel(&spec.id, &spec.text) {
                 Ok(mut def) => {
-                    def.tex = match &def.model.texture {
-                        Some(img) => make_texture(img.w, img.h, &img.rgba, gl::NEAREST, gl::CLAMP_TO_EDGE),
-                        None => make_texture(1, 1, &[255, 255, 255, 255], gl::NEAREST, gl::CLAMP_TO_EDGE),
+                    // The picture named after the model (a pack's or the game's own, see
+                    // `pack_entities`) comes before the one inside the model file, if it has the same shape.
+                    let named = crate::pack_entities::image(&spec.id).filter(|i| crate::pack_entities::fits(i, def.model.tex_w, def.model.tex_h));
+                    def.tex = match (&named, &def.model.texture) {
+                        (Some(img), _) | (None, Some(img)) => make_texture(img.w, img.h, &img.rgba, gl::NEAREST, gl::CLAMP_TO_EDGE),
+                        (None, None) => make_texture(1, 1, &[255, 255, 255, 255], gl::NEAREST, gl::CLAMP_TO_EDGE),
                     };
                     loaded.push(Some(def));
                 }

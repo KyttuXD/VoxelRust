@@ -324,12 +324,13 @@ Runs every night at 03:00 UTC, and by hand from the Actions tab.
 ## Regenerating data
 
 The game only ever reads the files under `data/`, which are compiled into the
-program (`build.rs` embeds them). Three scripts write those files:
+program (`build.rs` embeds them). Four scripts write those files:
 
 | Script | Writes | Needs |
 | --- | --- | --- |
 | `python3 tools/gen_base.py` | `data/base.txt`: the textures, blocks, items and recipes, generated from tables (sixteen colours times several materials, six woods, stairs and slabs of each, doors, beds, furniture, rail track, crops, tools, food, sounds, dimensions) | Python 3 |
 | `python3 tools/gen_models.py` | `data/models/*.bbmodel` (creature models; the vehicle models and those of the other mods go to `mods/<name>/models`). With `--creatures` it also rewrites `data/creatures.txt`, the list of base models | Python 3 with Pillow |
+| `python3 tools/entity_textures.py` | `data/textures/entity/*.png`: the picture of every creature look and player skin, painted in the OCD style from the colour table `tools/entity_palettes.py` (see [TEXTURING.md](TEXTURING.md#creatures-and-players)) | Python 3 with Pillow |
 | `python3 tools/gen_creatures.py` | `data/wildlife.txt`: every creature, where it lives and how it behaves | Python 3 |
 
 `tools/gen_models.py --sheet out.png` also renders a contact sheet of the
@@ -337,7 +338,8 @@ models, and `--only wolf,fox` remakes just those. `data/base.txt` and
 `data/wildlife.txt` may be edited by hand as well, but a later run of their
 script will overwrite such edits; change the script instead. Run
 `gen_models.py` before `gen_creatures.py` when adding a model, since the
-latter only uses models whose files exist.
+latter only uses models whose files exist, and `entity_textures.py` before
+`gen_creatures.py` when adding a look, since the latter checks the pictures exist.
 
 Rebuild after changing anything under `data/`.
 

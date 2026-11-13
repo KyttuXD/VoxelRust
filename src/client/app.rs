@@ -396,22 +396,14 @@ fn import_skin(base: &str, path: &str) -> Result<(), String> {
     }
 }
 
-fn skin_pixels(base: &str, r: &Renderer, name: &str) -> Option<Vec<u8>> {
+fn skin_pixels(base: &str, name: &str, player: &str) -> Option<Vec<u8>> {
     if name == "custom" {
         let img = crate::png::decode(&sys::read_file(&alloc::format!("{}skin.png", base))?)?;
         return if img.w == 64 && img.h == 64 { Some(img.rgba) } else { None };
     }
-    let model = r.models.iter().find(|m| m.id == "player")?;
-    let img = model.model.texture.as_ref()?;
-    let tint = crate::settings::SKINS.iter().find(|s| s.0 == name).map_or([255, 255, 255], |s| s.1);
-    let mut px = img.rgba.clone();
-    for p in px.chunks_exact_mut(4) {
-        for c in 0..3 {
-            // "snow" brightens instead of tinting.
-            p[c] = if name == "snow" { 128 + p[c] / 2 } else { (p[c] as u32 * tint[c] as u32 / 255) as u8 };
-        }
-    }
-    Some(px)
+    // `default` is one of the built-in skins, picked by the player's name; the others are chosen by name.
+    let skin = if name != "default" && crate::settings::SKINS.iter().any(|s| *s == name) { name } else { crate::pack_entities::default_skin_for(player) };
+    Some(crate::pack_entities::skin_image(skin)?.rgba)
 }
 
 /// Everything except the renderer and the frame's input, which are passed
@@ -479,6 +471,8 @@ struct App {
     /// The player's own skin texture, other players' by id, and the PNG to
     /// send to a server.
     skin_tex: u32,
+    /// The player name the built-in skin was picked for.
+    skin_for: String,
     remote_skins: BTreeMap<u16, u32>,
     /// Which other players have slim arms.
     remote_slim: BTreeMap<u16, bool>,
@@ -576,12 +570,14 @@ impl App {
 
     /// (Re)build the player's skin texture from the settings.
     fn load_skin(&mut self, r: &mut Renderer) {
-        let px = match skin_pixels(&self.base, r, &self.settings.skin) {
+        self.skin_for = self.settings.player_name.clone();
+        let who = crate::settings::clean_name(&self.settings.player_name, 16);
+        let px = match skin_pixels(&self.base, &self.settings.skin, &who) {
             Some(px) => px,
             None => {
                 self.status = String::from("NO USABLE SKIN.PNG (64 X 64) IN THE DATA FOLDER");
                 self.settings.skin = String::from("default");
-                match skin_pixels(&self.base, r, "default") {
+                match skin_pixels(&self.base, "default", &who) {
                     Some(px) => px,
                     None => return,
                 }
@@ -1080,6 +1076,10 @@ impl App {
                 g.world.update(cx, cz, distance, &mut g.pool, r, &mut g.store);
             }
         }
+        // A new name may mean another of the built-in skins.
+        if self.settings.skin != "custom" && self.skin_for != self.settings.player_name {
+            self.load_skin(r);
+        }
         if let Some(g) = self.session.as_mut() {
             if let (Some(net), false) = (g.net.as_mut(), self.skin_sent) {
                 if self.skin_png.len() <= crate::proto::MAX_SKIN {
@@ -1364,6 +1364,7 @@ impl App {
                 tint = [255, tint[1] / 3, tint[2] / 3];
             }
             let pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, ..Default::default() };
+            r.tex_override = r.entity_texture(m.tex());
             r.draw_model(model, &pose, p, m.body.yaw, height, tint);
         }
         // Props: blocks that are models (furniture, statues, plants). Only
@@ -1430,7 +1431,11 @@ impl App {
                 };
                 let l = (light_at(p.pos) * 255.0) as u8;
                 let pose = crate::model::Pose { phase: p.phase, stride: p.stride, head_pitch: -p.pitch * 180.0 / PI, head_yaw: 0.0, ..Default::default() };
-                r.tex_override = self.remote_skins.get(id).copied().unwrap_or(0);
+                // A player whose skin has not arrived wears the built-in one their name picks.
+                r.tex_override = match self.remote_skins.get(id) {
+                    Some(t) => *t,
+                    None => r.entity_texture(&crate::pack_entities::skin_picture(crate::pack_entities::default_skin_for(&p.name))),
+                };
                 r.draw_model(model, &pose, at, p.yaw, crate::player::HEIGHT as f32, [l, l, l]);
                 // What they hold, out to the right of the body.
                 let held = if p.held == 0 { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(Some(p.held as usize - 1)) };
@@ -2042,10 +2047,10 @@ impl App {
                     }
                     let (cx, cw) = (x + 108.0 * s, bw - 108.0 * s);
                     let list = crate::settings::SKINS;
-                    let mut i = list.iter().position(|k| k.0 == st.skin).map_or(list.len() as i32, |i| i as i32);
+                    let mut i = list.iter().position(|k| *k == st.skin).map_or(list.len() as i32, |i| i as i32);
                     let label = alloc::format!("LOOK  < {} >", st.skin.to_ascii_uppercase());
                     if ui.stepper_text(cx, row(0), cw, bh, &label, &mut i, 0, list.len() as i32, 1) {
-                        st.skin = String::from(if (i as usize) < list.len() { list[i as usize].0 } else { "custom" });
+                        st.skin = String::from(if (i as usize) < list.len() { list[i as usize] } else { "custom" });
                         skin_changed = true;
                     }
                     ui.text(cx, row(1) + 2.0 * s, "YOUR OWN: A 64 X 64 PICTURE IN", ui::DIM);
@@ -2932,6 +2937,7 @@ fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Co
         let height = (size * 0.78).min(size * 0.92 * tall / wide);
         let pose = crate::model::Pose::default();
         r.tint_2d = e.tint;
+        r.tex_override = r.entity_texture(&e.x.tex);
         r.draw_model_2d(e.model, &pose, x + size * 0.5, y + size * 0.84, PI - 0.6, height);
         return;
     }
@@ -3354,6 +3360,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         form_chat: String::new(),
         text_selected: false,
         skin_tex: 0,
+        skin_for: String::new(),
         remote_skins: BTreeMap::new(),
         remote_slim: BTreeMap::new(),
         skin_png: Vec::new(),

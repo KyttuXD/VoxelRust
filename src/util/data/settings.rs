@@ -38,17 +38,9 @@ pub const ACTIONS: [(Action, &str, &str, i32); 13] = [
     (Action::Drop, "drop", "DROP THE HELD ITEM", 20),
 ];
 
-/// Built-in skins: a name and the colour the default body is tinted with.
-pub const SKINS: [(&str, [u8; 3]); 8] = [
-    ("default", [255, 255, 255]),
-    ("clay", [230, 150, 130]),
-    ("moss", [150, 210, 140]),
-    ("slate", [150, 170, 215]),
-    ("charcoal", [95, 95, 105]),
-    ("snow", [255, 255, 255]),
-    ("rose", [240, 160, 200]),
-    ("gold", [255, 220, 120]),
-];
+/// Built-in skins by name (the pictures are `skin_<name>` in `data/textures/entity`,
+/// see `pack_entities`). `default` is the one a player's name picks.
+pub const SKINS: [&str; 9] = ["default", "explorer", "miner", "farmer", "sailor", "knight", "mage", "ranger", "baker"];
 
 /// Full-screen resolutions on offer; (0, 0) is "whatever the desktop uses".
 pub const FULLSCREEN_MODES: [(i32, i32); 8] = [(0, 0), (1600, 900), (1280, 800), (1280, 720), (1024, 768), (960, 600), (800, 600), (640, 480)];

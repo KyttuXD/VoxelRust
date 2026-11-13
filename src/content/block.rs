@@ -342,12 +342,17 @@ pub struct Variant {
     pub tint: [u8; 3],
     /// Scale relative to the entity's height (a pony next to a horse).
     pub size: f32,
+    /// Its picture (`data/textures/entity/<tex>.png`, see `pack_entities`);
+    /// empty = the model's own.
+    pub tex: String,
 }
 
 /// The parts of a creature that only some have.
 #[derive(Clone, Debug, Default)]
 pub struct EntityExtra {
     pub traits: u32,
+    /// The picture it is painted with, or empty for its model's own.
+    pub tex: String,
     pub anim: Anim,
     /// Other looks; one is picked for each creature. Empty = just the one.
     pub variants: Vec<Variant>,
@@ -1289,7 +1294,7 @@ impl Parser<'_> {
                     Some(&"villager") => e.behavior = Behavior::Villager,
                     _ => bad = Some("behavior must be wander, npc, hostile, swim, fly or villager"),
                 },
-                "trait" | "anim" | "variant" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" => {
+                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" => {
                     e.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "tint" => {
@@ -1804,10 +1809,10 @@ impl Registry {
                                     Some(t) => x.anim = t.1,
                                     None => ok = false,
                                 },
-                                // variant <name> <r> <g> <b> [model <id>] [size <factor>]
+                                // variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>]
                                 "variant" => {
                                     let num = |k: usize| word(k).parse::<u8>().ok();
-                                    let mut v = Variant { name: word(0).replace('_', " "), model, tint: e.tint, size: 1.0 };
+                                    let mut v = Variant { name: word(0).replace('_', " "), model, tint: e.tint, size: 1.0, tex: String::new() };
                                     let mut k = 1;
                                     if let (Some(r), Some(g), Some(b)) = (num(1), num(2), num(3)) {
                                         v.tint = [r, g, b];
@@ -1820,6 +1825,7 @@ impl Registry {
                                                 None => ok = false,
                                             },
                                             "size" => v.size = word(k + 1).parse::<f32>().unwrap_or(1.0).clamp(0.2, 3.0),
+                                            "tex" => v.tex = crate::pack_entities::clean_name(word(k + 1)),
                                             _ => ok = false,
                                         }
                                         k += 2;
@@ -1838,6 +1844,7 @@ impl Registry {
                                     (Some(w), Ok(n), Some(g), Ok(m)) if n > 0 && m > 0 => x.trades.push((w, n, g, m)),
                                     _ => ok = false,
                                 },
+                                "tex" => x.tex = crate::pack_entities::clean_name(word(0)),
                                 "job" => x.job = word(0).to_string(),
                                 "likes" => {
                                     x.likes = item(word(0));
