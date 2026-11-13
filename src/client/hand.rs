@@ -116,11 +116,6 @@ fn rot_y(p: [f32; 3], a: f32) -> [f32; 3] {
     [p[0] * c + p[2] * s, p[1], -p[0] * s + p[2] * c]
 }
 
-fn rot_z(p: [f32; 3], a: f32) -> [f32; 3] {
-    let (c, s) = (cosf(a), sinf(a));
-    [p[0] * c - p[1] * s, p[0] * s + p[1] * c, p[2]]
-}
-
 fn map(quads: &mut [Quad], f: impl Fn([f32; 3]) -> [f32; 3]) {
     for q in quads {
         q.p = q.p.map(&f);
