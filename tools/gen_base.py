@@ -94,7 +94,6 @@ tex("icon_boat", "paint hull 150 110 66")
 tex("icon_cargo_boat", "paint hull 110 84 56")
 tex("icon_cart", "paint vehicle 132 134 142")
 tex("icon_chest_cart", "paint vehicle 160 120 70")
-tex("icon_buggy", "paint vehicle 54 130 76")
 tex("icon_plane", "paint wings 206 52 48")
 tex("stick", "paint stick 122 88 52")
 tex("ruby", "paint gem 226 60 110")
@@ -392,7 +391,6 @@ VEHICLES = [("boat", "Boat", "boat", "water", 7, 0.7, 1.4, 0.9, False),
             ("locomotive", "Locomotive", "chest_cart", "rail", 12, 1.1, 1.0, 1.1, False),
             ("passenger_cart", "Passenger Cart", "cart", "rail", 12, 0.8, 1.0, 0.9, False),
             ("hopper_cart", "Freight Cart", "chest_cart", "rail", 12, 1.0, 1.0, 1.0, True),
-            ("buggy", "Buggy", "car", "land", 10, 1.2, 1.6, 1.3, True),
             ("plane", "Plane", "plane", "air", 22, 1.3, 1.8, 1.2, False)]
 MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "models")
 for vid, name, model, medium, speed, height, width, seat, storage in VEHICLES:
@@ -409,7 +407,6 @@ w("craft boat 1 planks 5")
 w("craft cargo_boat 1 boat 1 oak_chest 1")
 w("craft cart 1 iron_ore 5")
 w("craft chest_cart 1 cart 1 oak_chest 1")
-w("craft buggy 1 iron_ore 6 planks 4 oak_chest 1")
 w("craft plane 1 iron_ore 10 planks 8 white_wool 4")
 
 

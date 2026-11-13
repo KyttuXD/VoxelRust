@@ -564,7 +564,16 @@ pub fn reg() -> &'static Registry {
     if !p.is_null() {
         return unsafe { &*p };
     }
-    install(Registry::from_sources(&[("base.txt", BASE_DATA)], &mut |_| None));
+    // Nothing installed yet (tests, tools): the base data and the mods
+    // that come with the game.
+    let packs: Vec<(&str, String)> = embedded::FILES
+        .iter()
+        .filter(|f| f.0.starts_with("packs/") && f.0.ends_with("/pack.txt"))
+        .map(|f| (f.0, String::from_utf8_lossy(f.1).into_owned()))
+        .collect();
+    let mut sources: Vec<(&str, &str)> = alloc::vec![("base.txt", BASE_DATA)];
+    sources.extend(packs.iter().map(|p| (p.0, p.1.as_str())));
+    install(Registry::from_sources(&sources, &mut |_| None));
     unsafe { &*REG.load(Ordering::Acquire) }
 }
 

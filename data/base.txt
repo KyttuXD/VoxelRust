@@ -68,7 +68,6 @@ texture icon_boat paint hull 150 110 66
 texture icon_cargo_boat paint hull 110 84 56
 texture icon_cart paint vehicle 132 134 142
 texture icon_chest_cart paint vehicle 160 120 70
-texture icon_buggy paint vehicle 54 130 76
 texture icon_plane paint wings 206 52 48
 texture stick paint stick 122 88 52
 texture ruby paint gem 226 60 110
@@ -2299,17 +2298,6 @@ vehicle hopper_cart
   width 1.0
   seat 1.0
   storage
-model car file models/car.bbmodel
-vehicle buggy
-  name Buggy
-  model car
-  icon icon_buggy
-  medium land
-  speed 10
-  height 1.2
-  width 1.6
-  seat 1.3
-  storage
 model plane file models/plane.bbmodel
 vehicle plane
   name Plane
@@ -2336,7 +2324,6 @@ craft boat 1 planks 5
 craft cargo_boat 1 boat 1 oak_chest 1
 craft cart 1 iron_ore 5
 craft chest_cart 1 cart 1 oak_chest 1
-craft buggy 1 iron_ore 6 planks 4 oak_chest 1
 craft plane 1 iron_ore 10 planks 8 white_wool 4
 
 # ---- Caves ----

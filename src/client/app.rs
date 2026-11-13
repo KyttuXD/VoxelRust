@@ -70,7 +70,7 @@ Run it with no options for the title screen. Options:
                       (camera behind the player) or creatures (one of each)
 
 Controls (all can be changed in Settings): WASD move, mouse look, Space jump,
-Ctrl sprint, F fly, left click break, right click place, middle click pick,
+Ctrl sprint, Space twice to fly (creative), left click break, right click place, middle click pick,
 1-9 or wheel select, E inventory, M map, T chat, F1 hide the HUD,
 F2 screenshot, F3 details, F5 third-person view, F11 full screen, Esc menu.";
 
@@ -279,7 +279,7 @@ pub const BUILD: &str = match option_env!("VOXELRUST_BUILD") {
 
 /// The minimap is this many pixels square.
 const MINIMAP: usize = 64;
-const TABS: [&str; 5] = ["VIDEO", "AUDIO", "CONTROLS", "GAME", "SKIN"];
+const TABS: [&str; 6] = ["VIDEO", "AUDIO", "CONTROLS", "GAME", "SKIN", "MODS"];
 
 /// The player's skin as 64 x 64 RGBA: a tinted copy of the default body, or
 /// `skin.png` from the data folder. `None` if a custom skin cannot be used.
@@ -367,6 +367,7 @@ struct App {
     want_reload: bool,
     /// The crafting screen was opened at an oven, not a table.
     at_oven: bool,
+    mods_scroll: i32,
     at_furnace: bool,
     /// Seconds and frames counted while timing full screen.
     tune: (f32, u32),
@@ -831,7 +832,7 @@ impl App {
         if let Some(g) = self.session.as_mut() {
             if playing {
                 g.update(dt, &controls, distance, self.settings.far_distance, r, &mut self.audio);
-                g.weather_update(dt, self.settings.weather, self.settings.disasters, &mut self.audio);
+                g.weather_update(dt, self.settings.weather, self.settings.disasters && reg().has("disasters"), &mut self.audio);
                 g.place_level = self.settings.place_notices;
                 died = g.dead;
             } else {
@@ -1582,6 +1583,29 @@ impl App {
                         skin_import = true;
                     }
                 }
+                5 => {
+                    // Every mod, built in or from a mods folder, with a
+                    // switch. Changes take effect at once.
+                    let names = all_mods(&self.pack_paths);
+                    let hidden = names.len().saturating_sub(8) as i32;
+                    self.mods_scroll = (self.mods_scroll - ui.inp.wheel).clamp(0, hidden);
+                    ui.text(x, row(0) - 9.0 * s, if names.is_empty() { "NO MODS FOUND" } else { "MODS (PUT YOUR OWN IN THE MODS FOLDER)" }, ui::DIM);
+                    for (k, name) in names.iter().skip(self.mods_scroll as usize).take(8).enumerate() {
+                        let mut on = !st.mods_off.split(',').any(|o| o == name);
+                        if ui.toggle(x, row(k), bw, bh, &name.to_ascii_uppercase().replace('_', " "), &mut on) {
+                            let mut off: Vec<&str> = st.mods_off.split(',').filter(|o| !o.is_empty() && o != name).collect();
+                            if !on {
+                                off.push(name);
+                            }
+                            st.mods_off = off.join(",");
+                            changed = true;
+                            self.want_reload = true;
+                        }
+                    }
+                    if hidden > 0 {
+                        ui.text(x, row(8) + 4.0 * s, "SCROLL FOR MORE", ui::DIM);
+                    }
+                }
                 _ => {
                     ui.text(x, row(0) + 4.0 * s, "PLAYER NAME", ui::DIM);
                     ui.text_field(10, x + 80.0 * s, row(0), bw - 80.0 * s, bh, &mut st.player_name, 16, ui::name_char);
@@ -1589,7 +1613,9 @@ impl App {
                     let half = (bw - 4.0 * s) * 0.5;
                     changed |= ui.toggle(x, row(2), half, bh, "VIEW BOBBING", &mut st.view_bobbing);
                     changed |= ui.toggle(x + half + 4.0 * s, row(2), half, bh, "WEATHER", &mut st.weather);
-                    changed |= ui.toggle(x, row(6), half, bh, "NATURAL DISASTERS", &mut st.disasters);
+                    if reg().has("disasters") {
+                        changed |= ui.toggle(x, row(6), half, bh, "NATURAL DISASTERS", &mut st.disasters);
+                    }
                     let pn = alloc::format!("PLACE NOTICES  < {} >", ["OFF", "COUNTRIES", "REGIONS", "TOWNS"][st.place_notices as usize]);
                     changed |= ui.stepper_text(x + half + 4.0 * s, row(6), half, bh, &pn, &mut st.place_notices, 0, 3, 1);
                     if let Some(g) = self.session.as_mut() {
@@ -1760,7 +1786,7 @@ impl App {
             }
             return;
         }
-        let (new, text) = load_content(&self.pack_paths);
+        let (new, text) = load_content(&self.pack_paths, &self.settings.mods_off);
         for w in &new.warnings {
             logf!("voxelrust: data: {}", w);
         }
@@ -1800,7 +1826,8 @@ impl App {
                 if let Some(g) = self.session.as_mut() {
                     g.push_chat(String::from("/RELOAD   /GIVE ITEM [N]   /TIME DAY|NIGHT   /TP X Y Z"));
                     g.push_chat(String::from("/SPAWN CREATURE [N] [YOUNG]   /MODE CREATIVE|SURVIVAL   /WEATHER CLEAR|RAIN|STORM   /SEED"));
-                    g.push_chat(String::from("/SET X Y Z BLOCK [TURNS]"));
+                    g.push_chat(String::from("/SET X Y Z BLOCK [TURNS]   /DIM NAME|HOME   /SAY   /SOUND   /HEAL   /FEED   /HURT"));
+                    g.push_chat(String::from("/LAUNCH UP [AHEAD]   /SHOOT DAMAGE [SPEED] [BLOCK]   /AIM BLOCK   /STRIKE   (~ = WHERE YOU STAND)"));
                 }
             } else if let Some(g) = self.session.as_mut() {
                 // Commands are typed in lower case ids; anything else is talk.
@@ -2442,7 +2469,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
             return Err(alloc::format!("cannot read the pack file {}", p));
         }
     }
-    let (first, pack_text) = load_content(&pack_paths);
+    // (The settings are read properly further down; which mods are off is
+    // needed now.)
+    let mods_off: String = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| crate::settings::Settings::parse(&String::from_utf8_lossy(&b)).mods_off).unwrap_or_default();
+    let (first, pack_text) = load_content(&pack_paths, &mods_off);
     block::install(first);
     let registry = reg();
     for w in &registry.warnings {
@@ -2452,6 +2482,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
         return Err(String::from("the data files define no items"));
     }
 
+    if opts.earth.is_some() && !registry.has("earth") {
+        return Err(String::from("--earth needs the Earth mod, which is switched off (Settings > MODS)"));
+    }
     if opts.server {
         return run_server(&opts, &base, &pack_text);
     }
@@ -2577,6 +2610,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         server_content: false,
         want_reload: false,
         at_oven: false,
+        mods_scroll: 0,
         at_furnace: false,
         tune: (0.0, 0),
         worlds_scroll: 0,
@@ -2875,14 +2909,50 @@ fn mods_in(folder: &str) -> Vec<String> {
     found
 }
 
-fn load_content(pack_paths: &[String]) -> (Registry, Vec<u8>) {
+/// The name a mod goes by: its folder, or its file without `.txt`.
+fn mod_name(path: &str) -> String {
+    let p = path.strip_suffix("/pack.txt").unwrap_or(path);
+    let p = p.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(p);
+    String::from(p.strip_suffix(".txt").unwrap_or(p))
+}
+
+/// The mods that come inside the program (`data/packs/<name>/pack.txt`).
+fn bundled_mods() -> Vec<(String, &'static [u8])> {
+    block::embedded::FILES.iter().filter(|f| f.0.starts_with("packs/") && f.0.ends_with("/pack.txt")).map(|f| (String::from(f.0), f.1)).collect()
+}
+
+/// Every mod there is to switch on or off: those built in, then those in
+/// the mods folders.
+fn all_mods(pack_paths: &[String]) -> Vec<String> {
+    let mut names: Vec<String> = bundled_mods().iter().map(|m| mod_name(&m.0)).collect();
+    for p in pack_paths {
+        if let Some(folder) = p.strip_suffix("/*") {
+            for m in mods_in(&alloc::format!("{}/", folder)) {
+                let n = mod_name(&m);
+                if !names.contains(&n) {
+                    names.push(n);
+                }
+            }
+        }
+    }
+    names
+}
+
+fn load_content(pack_paths: &[String], off: &str) -> (Registry, Vec<u8>) {
     let mut sources: Vec<(String, String)> = alloc::vec![(String::from("base.txt"), String::from(block::BASE_DATA))];
+    let is_off = |name: &str| off.split(',').any(|o| o == name);
+    // The mods built into the program come first.
+    for (path, bytes) in bundled_mods() {
+        if !is_off(&mod_name(&path)) {
+            sources.push((path, String::from_utf8_lossy(bytes).into_owned()));
+        }
+    }
     // Mods are looked for afresh each time, so one dropped into the folder
     // while the game runs is there after a reload.
     let mut all: Vec<String> = Vec::new();
     for p in pack_paths {
         match p.strip_suffix("/*") {
-            Some(folder) => all.extend(mods_in(&alloc::format!("{}/", folder))),
+            Some(folder) => all.extend(mods_in(&alloc::format!("{}/", folder)).into_iter().filter(|m| !is_off(&mod_name(m)))),
             None => all.push(p.clone()),
         }
     }

@@ -1,0 +1,9 @@
+# Earth - a mod that comes with the game.
+#
+# Worlds made from the real planet: heights from elevation data, land cover,
+# roads, buildings and farmland from the map, the world map screen (M) and
+# place-name notices. The code for it is part of the program; this pack is
+# what switches it on. Turn the mod off in Settings > MODS and the EARTH
+# terrain choice and the --earth option go away (worlds already made stay
+# playable). Needs the internet; see docs/EARTH.md.
+feature earth

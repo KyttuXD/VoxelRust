@@ -103,6 +103,8 @@ pub struct Settings {
     /// `host:port` of a VoxelRust server used to fetch map data on machines
     /// that cannot make HTTPS requests themselves. Empty = fetch directly.
     pub relay: String,
+    /// Names of mods that are switched off, separated by commas.
+    pub mods_off: String,
 }
 
 impl Default for Settings {
@@ -142,6 +144,7 @@ impl Default for Settings {
             disasters: false,
             place_notices: 1,
             relay: String::new(),
+            mods_off: String::new(),
         }
     }
 }
@@ -209,6 +212,7 @@ impl Settings {
             disasters: flag("disasters", false),
             place_notices: int("place_notices", 1, 0, 3),
             relay: kv(text, "relay").unwrap_or("").chars().filter(|c| c.is_ascii_graphic()).take(80).collect(),
+            mods_off: kv(text, "mods_off").unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, ',' | '_' | '-')).take(400).collect(),
         }
     }
 
@@ -238,7 +242,7 @@ impl Settings {
             self.relay,
         );
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\ndisasters={}\nplace_notices={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.disasters as i32, self.place_notices));
-        s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\n", self.auto_tuned as i32, self.subtitles as i32));
+        s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off));
         for (i, a) in ACTIONS.iter().enumerate() {
             s.push_str(&alloc::format!("key_{}={}\n", a.1, self.keys[i]));
         }

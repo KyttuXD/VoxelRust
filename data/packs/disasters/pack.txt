@@ -1,0 +1,10 @@
+# Natural Disasters - a mod that comes with the game.
+#
+# Earthquakes, tornadoes and tsunamis. They are part of the program, and
+# this pack is what switches them on: turn the mod off in Settings > MODS
+# and they cannot happen at all. With it on, they still only happen when
+# NATURAL DISASTERS is on in Settings > GAME.
+feature disasters
+
+sound quake effects 1.20 0.95 40 30 0.03 1.00 An earthquake
+sound twister effects 1.60 1.00 100 100 0.10 0.70 A tornado howls
