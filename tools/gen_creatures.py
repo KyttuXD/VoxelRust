@@ -58,35 +58,36 @@ def model_or(name, fallback):
 
 # ---- Farm animals: herds, young, and something to collect.
 entity("cow", "Cow", "cow", 1.4, 0.9, 1.6, 10, biomes="plains forest savanna mountain", weight=22, drops="raw_meat 2",
-       trait="herd follows", likes="wheat", gives="milk 180", baby="0.5 600",
+       trait="herd follows", likes="wheat", gives="milk 180", baby="0.5 600", sound="moo",
        variant=["Brown 190 140 100", "Red 220 130 90", f"Longhorn 214 170 130 model {model_or('cow_longhorn', 'cow')}"])
 entity("pig", "Pig", "pig", 0.9, 0.8, 1.7, 8, biomes="plains forest swamp", weight=20, drops="raw_meat 2",
-       trait="herd follows", likes="carrot", baby="0.5 480", variant=["Spotted 200 170 160", "Black 95 85 90"])
+       trait="herd follows", likes="carrot", baby="0.5 480", sound="oink", variant=["Spotted 200 170 160", "Black 95 85 90"])
 entity("boar", "Wild Boar", model_or("pig_boar", "pig"), 1.0, 0.85, 2.6, 16, biomes="forest taiga jungle", weight=6,
        drops="raw_meat 3", trait="territorial pack", damage=4, tint="150 120 100", baby="0.5 480")
 entity("sheep", "Sheep", "sheep", 1.25, 0.9, 1.6, 8, biomes="plains mountain tundra", weight=20, drops="raw_meat 2",
-       trait="herd prey follows", likes="wheat", gives="white_wool 240", baby="0.5 540",
+       trait="herd prey follows", likes="wheat", gives="white_wool 240", baby="0.5 540", sound="baa",
        variant=["Black 88 84 88", "Brown 176 136 104", f"Ram model {model_or('sheep_ram', 'sheep')} size 1.1"])
 entity("goat", "Goat", model_or("goat", "sheep"), 1.1, 0.7, 2.4, 10, biomes="mountain badlands", weight=10,
        drops="raw_meat 2", trait="herd jumps pack", damage=3, gives="milk 200", baby="0.5 480",
        variant=["Brown 170 130 100", "Black 80 78 84"])
 entity("chicken", "Chicken", "chicken", 0.6, 0.4, 1.4, 4, biomes="plains forest savanna", weight=22, drops="raw_meat 1",
-       trait="prey flees follows", likes="wheat_seeds", gives="egg 150", baby="0.45 300", anim="waddle",
+       trait="prey flees follows", likes="wheat_seeds", gives="egg 150", baby="0.45 300", anim="waddle", sound="cluck",
        variant=["Brown 205 150 100", "Black 100 100 110", f"Rooster model {model_or('chicken_rooster', 'chicken')} size 1.15"])
 entity("duck", "Duck", "duck", 0.6, 0.45, 1.5, 4, biomes="swamp plains forest", weight=10, drops="raw_meat 1",
        trait="herd flees", gives="egg 200", baby="0.45 300", anim="waddle", variant=["Mallard 150 190 150"])
 entity("horse", "Horse", "horse", 2.0, 1.0, 5.0, 24, biomes="plains savanna", weight=10, drops="raw_meat 2",
-       trait="herd flees", baby="0.55 720",
+       trait="herd flees follows", baby="0.55 720", tamable=True, likes="apple",
        variant=["Bay 190 124 84", "Black 92 86 90", "Palomino 255 214 150", f"Pony 200 160 120 model {model_or('horse_pony', 'horse')} size 0.7"])
 
 # ---- Pets: they come to you for their favourite food.
 entity("dog", "Dog", "dog", 0.75, 0.5, 3.0, 10, biomes="plains forest savanna", weight=8, trait="follows", likes="raw_meat",
+       tamable=True, damage=3, sound="bark",
        baby="0.5 420",
        variant=["Golden 255 214 140", "Brown 176 130 100", "Grey 170 176 190",
                 f"Shepherd model {model_or('dog_shepherd', 'dog')} size 1.15", f"Terrier model {model_or('dog_terrier', 'dog')} size 0.7",
                 f"Hound model {model_or('dog_hound', 'dog')} size 1.05"])
 entity("cat", "Cat", "cat", 0.5, 0.4, 2.6, 6, biomes="plains forest savanna desert", weight=8, trait="lazy follows hunter",
-       likes="raw_fish", damage=2, baby="0.5 360",
+       likes="raw_fish", damage=2, baby="0.5 360", tamable=True, sound="meow",
        variant=["Ginger 255 176 104", "Black 84 82 92", "Cream 255 236 204",
                 f"Fluffy model {model_or('cat_fluffy', 'cat')} size 1.1", f"Lynx 214 180 140 model {model_or('cat_lynx', 'cat')} size 1.4"])
 
@@ -114,10 +115,10 @@ entity("frog", "Frog", "frog", 0.35, 0.4, 1.5, 3, biomes="swamp jungle", weight=
 # ---- Hunters. Wolves and foxes go after prey; most leave you alone
 # unless you crowd them or hit one.
 entity("wolf", "Wolf", model_or("wolf", "dog"), 0.95, 0.6, 4.4, 16, biomes="taiga forest tundra mountain", weight=9,
-       trait="pack hunter", damage=4, baby="0.5 480", tint="186 190 200" if not os.path.exists(os.path.join(MODELS, "wolf.bbmodel")) else None,
+       trait="pack hunter", damage=4, baby="0.5 480", tamable=True, likes="raw_meat", sound="howl", tint="186 190 200" if not os.path.exists(os.path.join(MODELS, "wolf.bbmodel")) else None,
        variant=["Arctic 250 250 255", "Black 70 70 80"])
 entity("fox", "Fox", model_or("fox", "dog"), 0.55, 0.45, 3.8, 8, biomes="forest taiga plains tundra", weight=8,
-       trait="hunter flees", damage=2, baby="0.5 360", variant=["Arctic 245 248 255", "Silver 120 124 136"])
+       trait="hunter flees", damage=2, baby="0.5 360", tamable=True, likes="berries", variant=["Arctic 245 248 255", "Silver 120 124 136"])
 entity("bear", "Bear", "bear", 1.5, 1.1, 3.0, 40, biomes="taiga forest mountain", weight=5, drops="raw_meat 3",
        trait="territorial", damage=6, baby="0.45 720", variant=["Black 70 64 66"])
 entity("polar_bear", "Polar Bear", "bear", 1.7, 1.2, 3.0, 46, biomes="tundra", weight=5, drops="raw_meat 3",
@@ -133,12 +134,12 @@ entity("spider", "Spider", model_or("spider", "ant"), 0.35, 0.6, 2.4, 5, biomes=
 
 # ---- In the air.
 entity("bird", "Songbird", model_or("bird", "duck"), 0.3, 0.3, 4.0, 2, behavior="fly", biomes="plains forest savanna jungle taiga",
-       weight=16, trait="flees", anim="flap", variant=["Blue 110 160 250", "Red 230 80 70", "Yellow 250 220 90", "Green 110 200 110"])
+       weight=16, trait="flees", anim="flap", sound="chirp", variant=["Blue 110 160 250", "Red 230 80 70", "Yellow 250 220 90", "Green 110 200 110"])
 entity("owl", "Owl", model_or("owl", "duck"), 0.5, 0.4, 3.2, 4, behavior="fly", biomes="forest taiga", weight=8, night=True,
        anim="flap", variant=["Snowy 250 250 250"])
 entity("butterfly", "Butterfly", model_or("butterfly", "duck"), 0.22, 0.25, 1.6, 1, behavior="fly", biomes="plains forest jungle savanna",
        weight=14, anim="flap", variant=["Blue 110 170 255", "Orange 255 160 60", "White 250 250 250", "Violet 190 120 240", "Lime 170 240 110"])
-entity("bee", "Bee", model_or("bee", "ant"), 0.2, 0.2, 2.4, 1, behavior="fly", biomes="plains forest", weight=10, anim="flap")
+entity("bee", "Bee", model_or("bee", "ant"), 0.2, 0.2, 2.4, 1, behavior="fly", biomes="plains forest", weight=10, anim="flap", sound="buzz")
 entity("firefly", "Firefly", model_or("bee", "ant"), 0.12, 0.15, 1.2, 1, behavior="fly", biomes="swamp forest jungle", weight=10,
        night=True, anim="flap", tint="230 255 120", glow=15)
 entity("bat", "Bat", model_or("bat", "duck"), 0.35, 0.4, 3.6, 3, behavior="fly", weight=18, anim="flap",
@@ -151,6 +152,32 @@ entity("ant", "Ant", "ant", 0.2, 0.25, 1.2, 1, biomes="desert savanna jungle bad
 entity("beetle", "Beetle", model_or("beetle", "ant"), 0.22, 0.3, 0.9, 2, biomes="forest jungle swamp plains", weight=8,
        anim="scuttle", variant=["Green 90 200 120", "Blue 80 120 230", "Gold 240 200 80"])
 
+# ---- More of the farmyard and the range.
+entity("turkey", "Turkey", model_or("turkey", "chicken"), 0.9, 0.6, 1.5, 6, biomes="forest plains", weight=8, drops="raw_meat 2",
+       trait="prey flees herd", anim="waddle", baby="0.45 360", sound="cluck")
+entity("goose", "Goose", model_or("goose", "duck"), 0.8, 0.5, 1.7, 6, biomes="swamp plains", weight=7, drops="raw_meat 1",
+       trait="herd territorial", damage=1, anim="waddle", gives="egg 220", baby="0.45 360")
+entity("donkey", "Donkey", model_or("donkey", "horse"), 1.6, 0.9, 3.6, 20, biomes="plains savanna badlands", weight=6,
+       trait="herd follows", likes="carrot", tamable=True, baby="0.55 720", variant=["Grey 170 170 176"])
+entity("llama", "Llama", model_or("llama", "horse"), 1.9, 0.9, 3.0, 18, biomes="mountain badlands", weight=6,
+       trait="herd pack", damage=2, gives="white_wool 300", baby="0.5 600", variant=["Brown 170 130 100", "Black 80 76 80"])
+entity("bison", "Bison", model_or("bison", "cow"), 1.9, 1.3, 3.2, 40, biomes="plains", weight=5, drops="raw_meat 4",
+       trait="herd pack", damage=6, baby="0.5 720", sound="moo")
+entity("yak", "Yak", model_or("yak", "cow"), 1.7, 1.2, 2.2, 34, biomes="mountain tundra", weight=5, drops="raw_meat 3",
+       trait="herd pack", damage=5, gives="milk 200", baby="0.5 720", sound="moo")
+entity("camel", "Camel", model_or("camel", "horse"), 2.3, 1.1, 3.4, 26, biomes="desert", weight=7, trait="herd follows",
+       likes="wheat", tamable=True, baby="0.5 720")
+entity("bull", "Bull", model_or("bull", "cow"), 1.6, 1.0, 3.4, 26, biomes="plains savanna", weight=4, drops="raw_meat 3",
+       trait="territorial", damage=6, sound="moo")
+entity("highland_cow", "Highland Cow", model_or("cow_highland", "cow"), 1.5, 1.0, 1.5, 14, biomes="mountain taiga tundra",
+       weight=6, drops="raw_meat 2", trait="herd follows", likes="wheat", gives="milk 180", baby="0.5 600", sound="moo")
+entity("merino", "Merino Sheep", model_or("sheep_merino", "sheep"), 1.3, 0.95, 1.5, 9, biomes="plains mountain", weight=6,
+       drops="raw_meat 2", trait="herd prey follows", likes="wheat", gives="white_wool 150", baby="0.5 540", sound="baa",
+       variant=["Grey 180 180 186", "Brown 190 150 120"])
+entity("lop_rabbit", "Lop Rabbit", model_or("rabbit_lop", model_or("rabbit", "cat")), 0.45, 0.4, 3.0, 4, biomes="plains forest",
+       weight=5, trait="flees prey jumps follows", likes="carrot", tamable=True, anim="hop", baby="0.5 240",
+       variant=["Grey 170 170 176", "Sandy 220 190 150"])
+
 # ---- In the water.
 entity("fish", "Fish", "fish", 0.4, 0.3, 2.0, 3, behavior="swim", weight=40, drops="raw_fish 1", anim="float",
        variant=["Orange 255 160 80", "Blue 120 180 255", "Green 150 215 130", "Big 200 200 220 size 1.6", "Tiny 255 230 120 size 0.6"])
@@ -158,12 +185,25 @@ entity("squid", "Squid", "squid", 1.1, 0.7, 1.6, 10, behavior="swim", weight=8, 
        variant=["Red 240 110 100", "Giant 180 140 200 size 1.8"])
 
 # ---- Night: these hunt players in survival, and are gone by morning.
-entity("lurker", "Lurker", "player", 1.9, 0.6, 3.1, 14, behavior="hostile", weight=26, night=True, damage=3, tint="70 110 90",
+entity("lurker", "Lurker", "player", 1.9, 0.6, 3.1, 14, behavior="hostile", weight=14, night=True, damage=3, tint="70 110 90", sound="growl",
        variant=["Pale 150 170 160", "Ashen 96 96 104"])
 entity("wraith", "Wraith", model_or("wraith", "player"), 2.0, 0.6, 3.6, 10, behavior="hostile", weight=10, night=True, damage=4,
        anim="float", glow=7, biomes="swamp forest taiga tundra badlands")
 entity("bone_hound", "Bone Hound", model_or("skeleton_hound", "dog"), 0.9, 0.6, 5.0, 10, behavior="hostile", weight=10, night=True,
        damage=3, trait="pack", biomes="plains savanna desert badlands mountain")
+
+entity("skeleton", "Skeleton", model_or("skeleton", "player"), 1.9, 0.6, 2.8, 12, behavior="hostile", weight=14, night=True,
+       damage=2, shoots=3, sound="rattle", drops="arrow 2", tint=None if model_or("skeleton", "") else "236 236 226")
+entity("zombie", "Zombie", model_or("zombie", "player"), 1.9, 0.6, 2.2, 18, behavior="hostile", weight=14, night=True,
+       damage=4, sound="groan", tint=None if model_or("zombie", "") else "110 150 110")
+entity("werewolf", "Werewolf", model_or("werewolf", "bear"), 2.1, 0.8, 5.2, 30, behavior="hostile", weight=5, night=True,
+       damage=7, trait="pack", sound="howl", biomes="forest taiga mountain")
+entity("ghoul", "Ghoul", model_or("ghoul", "player"), 2.0, 0.6, 3.8, 14, behavior="hostile", weight=7, night=True,
+       damage=4, sound="hiss", biomes="swamp badlands desert")
+entity("ogre", "Ogre", model_or("ogre", "bear"), 3.0, 1.5, 2.4, 70, behavior="hostile", weight=3, night=True, damage=11,
+       sound="roar", biomes="mountain badlands taiga", drops="raw_meat 4")
+entity("scarecrow", "Scarecrow", model_or("scarecrow", "player"), 2.0, 0.6, 2.6, 16, behavior="hostile", weight=4, night=True,
+       damage=3, biomes="plains savanna", drops="wheat 3")
 
 # ---- Caves: each kind of cave has its own dwellers.
 entity("slime", "Slime", model_or("slime", "frog"), 0.8, 0.8, 2.0, 10, behavior="hostile", weight=14, damage=2,

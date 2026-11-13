@@ -32,6 +32,10 @@ pub struct Mob {
     pub home: Cell,
     /// Seconds it stays angry at the player after being hit.
     pub anger: f32,
+    /// It belongs to the player: it follows, guards, and is kept.
+    pub tamed: bool,
+    /// Told to wait where it is.
+    pub stay: bool,
     give_timer: f32,
     job_timer: f32,
     /// How far along its building work a builder is.
@@ -91,6 +95,8 @@ pub enum Action {
     Set(Cell, Block),
     /// A creature hurt another (hunters and guards): its id and the damage.
     Bite(u32, i32, [f64; 3]),
+    /// A creature shot at the player: from where, which way, how hard.
+    Shoot([f64; 3], [f32; 3], i32),
 }
 
 /// What right-clicking a creature comes to.
@@ -102,6 +108,8 @@ pub enum Interaction {
     Trade((usize, u16), (usize, u16)),
     /// Something to tell the player.
     Say(String),
+    /// It took the food and is now the player's: the item to use up.
+    Tame(usize),
 }
 
 pub struct Mobs {
@@ -174,6 +182,8 @@ impl Mobs {
             young: 0.0,
             home: [floord(pos[0]), floord(pos[1]), floord(pos[2])],
             anger: 0.0,
+            tamed: false,
+            stay: false,
             give_timer,
             job_timer: 3.0,
             job_step: 0,
@@ -300,6 +310,19 @@ impl Mobs {
             None => return Interaction::Nothing,
         };
         let d = &r.entities[m.kind];
+        // Winning it over with its favourite food; then a pat tells it to
+        // wait or to come along.
+        if d.x.tamable && m.young <= 0.0 {
+            if !m.tamed && held.is_some() && held == d.x.likes {
+                m.tamed = true;
+                m.anger = 0.0;
+                return Interaction::Tame(held.unwrap_or(0));
+            }
+            if m.tamed && held != d.x.likes {
+                m.stay = !m.stay;
+                return Interaction::Say(alloc::format!("{} WILL {}", m.title(), if m.stay { "WAIT HERE" } else { "FOLLOW YOU" }).to_ascii_uppercase());
+            }
+        }
         if let Some((want, n, give, count)) = d.x.trades.iter().copied().find(|t| Some(t.0) == held && have(t.0) >= t.1 as u32) {
             return Interaction::Trade((want, n), (give, count));
         }
@@ -445,7 +468,14 @@ impl Mobs {
             // Gone: dead, far away, fallen out of the world, or a night
             // creature caught by the morning out of the player's sight.
             let burned = d.night && day && !d.x.cave && (dist > 20.0 || roll % 600 == 0);
-            if m.health <= 0 || dist > 96.0 || m.body.pos[1] < -8.0 || burned || (d.behavior == Behavior::Hostile && !hostile_ok) {
+            if m.tamed && m.health > 0 {
+                // A pet is never lost: left far behind, it catches up.
+                if (dist > 40.0 || m.body.pos[1] < -8.0) && !m.stay {
+                    m.body.pos = [target[0] + 1.0, target[1] + 0.2, target[2] + 1.0];
+                    m.body.vel = [0.0; 3];
+                    m.path.clear();
+                }
+            } else if m.health <= 0 || dist > 96.0 || m.body.pos[1] < -8.0 || burned || (d.behavior == Behavior::Hostile && !hostile_ok) {
                 self.list.swap_remove(i);
                 continue;
             }
@@ -559,17 +589,27 @@ impl Mobs {
                 best.map(|b| (b.1, b.2))
             };
             let angry = (t & (traits::TERRITORIAL | traits::PACK) != 0 && m.anger > 0.0) || (t & traits::TERRITORIAL != 0 && dist < 4.5 && m.young <= 0.0);
-            let attacks = hostile_ok && (d.behavior == Behavior::Hostile || angry);
-            let flees = !attacks && t & traits::FLEES != 0 && dist < 7.0;
+            let attacks = hostile_ok && !m.tamed && (d.behavior == Behavior::Hostile || angry);
+            let flees = !attacks && !m.tamed && t & traits::FLEES != 0 && dist < 7.0;
             let guard = d.behavior == Behavior::Villager && d.x.job == "guard";
-            let quarry = if t & traits::HUNTER != 0 && !attacks && m.young <= 0.0 {
+            let quarry = if m.tamed && !m.stay && d.damage > 0 {
+                // Pets with teeth see off whatever threatens their owner.
+                near_kin(m.body.pos, &|k| r.entities[k].behavior == Behavior::Hostile, 12.0)
+            } else if m.tamed {
+                None
+            } else if t & traits::HUNTER != 0 && !attacks && m.young <= 0.0 {
                 near_kin(m.body.pos, &|k| r.entities[k].x.traits & traits::PREY != 0, 16.0)
             } else if guard {
                 near_kin(m.body.pos, &|k| r.entities[k].behavior == Behavior::Hostile, 18.0)
             } else {
                 None
             };
-            let tempted = t & traits::FOLLOWS != 0 && held.is_some() && held == d.x.likes && dist < 10.0;
+            let tempted = (t & traits::FOLLOWS != 0 && held.is_some() && held == d.x.likes && dist < 10.0) || (m.tamed && !m.stay && dist > 3.0);
+            if m.tamed && m.stay {
+                // Waiting: no wandering off.
+                m.path.clear();
+                m.idle = 2.0;
+            }
             let at_home = d.behavior == Behavior::Villager;
             let from_home = sqrtf(((m.home[0] - px) * (m.home[0] - px) + (m.home[2] - pz) * (m.home[2] - pz)) as f32);
 
@@ -682,6 +722,14 @@ impl Mobs {
                 m.attack_cooldown = 1.0;
                 damage += d.damage;
             }
+            // Archers and spell-throwers loose at the player from a distance.
+            if attacks && d.x.shoots > 0 && dist > 3.0 && dist < 20.0 && m.attack_cooldown <= 0.0 {
+                m.attack_cooldown = 2.2;
+                let from = [m.body.pos[0], m.body.pos[1] + d.height as f64 * 0.8, m.body.pos[2]];
+                let aim = [dx, dy + 1.2 - d.height * 0.8 + dist * 0.06, dz];
+                let len = sqrtf(aim[0] * aim[0] + aim[1] * aim[1] + aim[2] * aim[2]).max(0.01);
+                self.actions.push(Action::Shoot(from, [aim[0] / len, aim[1] / len, aim[2] / len], d.x.shoots));
+            }
             // Hunters and guards strike what they caught up with.
             if let Some((id, p)) = quarry {
                 let reach = ((p[0] - m.body.pos[0]) * (p[0] - m.body.pos[0]) + (p[2] - m.body.pos[2]) * (p[2] - m.body.pos[2])) as f32;
@@ -713,6 +761,31 @@ impl Mobs {
             }
         }
         damage
+    }
+
+    /// The player's pets as text, one per line, to keep with the world.
+    pub fn save_pets(&self) -> String {
+        let mut out = String::new();
+        for m in self.list.iter().filter(|m| m.tamed && m.health > 0) {
+            let id = &reg().entities[m.kind].id;
+            out.push_str(&alloc::format!("{} {} {:.2} {:.2} {:.2} {} {}\n", id, m.variant, m.body.pos[0], m.body.pos[1], m.body.pos[2], m.stay as i32, m.health));
+        }
+        out
+    }
+
+    pub fn load_pets(&mut self, text: &str) {
+        for line in text.lines() {
+            let w: Vec<&str> = line.split(' ').collect();
+            let num = |k: usize| w.get(k).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
+            if let (Some(kind), Some(x), Some(y), Some(z)) = (reg().entities.iter().position(|e| Some(&e.id.as_str()) == w.first()), num(2), num(3), num(4)) {
+                let i = self.spawn(kind, [x, y, z]);
+                let m = &mut self.list[i];
+                m.variant = (num(1).unwrap_or(0.0) as u8).min(reg().entities[kind].x.variants.len() as u8);
+                m.tamed = true;
+                m.stay = num(5) == Some(1.0);
+                m.health = (num(6).unwrap_or(1.0) as i32).clamp(1, reg().entities[kind].health);
+            }
+        }
     }
 
     /// The creature a ray hits first, and how far along the ray.

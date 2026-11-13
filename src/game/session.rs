@@ -61,6 +61,7 @@ pub struct Session {
     /// minimap shows.
     pub explored: alloc::collections::BTreeSet<(i32, i32)>,
     explored_path: String,
+    pets_path: String,
     explore_timer: f32,
     /// A vehicle whose storage the player just asked to open.
     pub opened_vehicle: Option<usize>,
@@ -159,6 +160,8 @@ pub struct Shot {
     /// Block left where it lands (AIR = none).
     pub leaves: block::Block,
     pub colour: [u8; 3],
+    /// Shot at the player rather than by them.
+    pub hostile: bool,
 }
 
 /// Size of the squares in which explored ground is remembered.
@@ -252,7 +255,13 @@ impl Session {
             store: RegionStore::new(DiskIo, alloc::format!("{}{}.", base, name)),
             peak_y: player.pos[1],
             player,
-            mobs: Mobs::new(seed ^ 0xA5A5_1234),
+            mobs: {
+                let mut m = Mobs::new(seed ^ 0xA5A5_1234);
+                if let Some(text) = sys::read_file(&alloc::format!("{}{}.pets.txt", base, name)) {
+                    m.load_pets(&String::from_utf8_lossy(&text));
+                }
+                m
+            },
             vehicles: {
                 let mut v = crate::vehicle::Vehicles::default();
                 if let Some(text) = sys::read_file(&alloc::format!("{}{}.vehicles.txt", base, name)) {
@@ -273,6 +282,7 @@ impl Session {
                 })
                 .unwrap_or_default(),
             explored_path: alloc::format!("{}{}.explored.txt", base, name),
+            pets_path: alloc::format!("{}{}.pets.txt", base, name),
             explore_timer: 0.0,
             opened_vehicle: None,
             net: None,
@@ -603,6 +613,7 @@ impl Session {
             life: 5.0,
             leaves,
             colour,
+            hostile: false,
         });
     }
 
@@ -632,6 +643,19 @@ impl Session {
                 done |= s.life <= 0.0 || s.pos[1] < -4.0;
             }
             let (pos, damage, leaves) = (self.shots[i].pos, self.shots[i].damage, self.shots[i].leaves);
+            if self.shots[i].hostile {
+                // Meant for the player.
+                let (lo, hi) = self.player.aabb();
+                if (0..3).all(|a| pos[a] > lo[a] - 0.2 && pos[a] < hi[a] + 0.2) {
+                    self.pending_hurt += damage;
+                    self.shots.swap_remove(i);
+                } else if done {
+                    self.shots.swap_remove(i);
+                } else {
+                    i += 1;
+                }
+                continue;
+            }
             // A creature in the way takes the hit.
             let struck = self.mobs.list.iter().position(|m| {
                 let (lo, hi) = m.body.aabb();
@@ -1204,8 +1228,17 @@ impl Session {
         for a in core::mem::take(&mut self.mobs.actions) {
             // On a server each player has their own villagers, so their
             // building stays imaginary there.
-            if let (crate::entity::Action::Set(c, b), true) = (a, self.net.is_none()) {
-                self.world.set_block(c[0], c[1], c[2], b);
+            match a {
+                crate::entity::Action::Set(c, b) if self.net.is_none() => {
+                    self.world.set_block(c[0], c[1], c[2], b);
+                }
+                crate::entity::Action::Shoot(from, dir, damage) => {
+                    if self.shots.len() < 64 {
+                        self.shots.push(Shot { pos: from, vel: [dir[0] * 26.0, dir[1] * 26.0, dir[2] * 26.0], damage, life: 4.0, leaves: AIR, colour: [255, 120, 90], hostile: true });
+                    }
+                    audio.play_named("bow", 0.6);
+                }
+                _ => {}
             }
         }
         if bitten > 0 {
@@ -1411,6 +1444,16 @@ impl Session {
                         }
                         Interaction::Say(text) => {
                             self.say(&text);
+                            return;
+                        }
+                        Interaction::Tame(item) => {
+                            if !creative {
+                                self.inv.remove(item as u16, 1);
+                            }
+                            audio.play(Sound::Pop, 1.0);
+                            let name = self.mobs.list.get(i).map(|m| m.title().to_ascii_uppercase()).unwrap_or_default();
+                            self.say(&alloc::format!("THE {} IS NOW YOURS", name));
+                            self.fire("tame", &reg().entities[self.mobs.list[i].kind].id);
                             return;
                         }
                         Interaction::Nothing => {}
@@ -1664,6 +1707,7 @@ impl Session {
                 text.push_str(&alloc::format!("{} {}\n", x, z));
             }
             sys::write_file(&self.explored_path, text.as_bytes());
+            sys::write_file(&self.pets_path, self.mobs.save_pets().as_bytes());
         }
         let text = alloc::format!(
             "seed={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\ninventory={}\n",

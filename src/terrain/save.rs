@@ -184,7 +184,7 @@ fn unbundle_with(d: &[u8], file_names: bool) -> Option<Vec<(String, Vec<u8>)>> {
 }
 
 /// The suffixes of the small files every world has besides its regions.
-pub const WORLD_FILES: [&str; 5] = ["meta.txt", "chests.txt", "vehicles.txt", "regions.txt", "explored.txt"];
+pub const WORLD_FILES: [&str; 6] = ["meta.txt", "chests.txt", "vehicles.txt", "regions.txt", "explored.txt", "pets.txt"];
 
 /// Gather a world's files into one bundle. `None` if there is no such world.
 pub fn export_world(io: &mut dyn FileIo, base: &str, name: &str) -> Option<Vec<u8>> {
