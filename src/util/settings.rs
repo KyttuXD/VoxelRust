@@ -17,9 +17,10 @@ pub enum Action {
     Inventory,
     Map,
     Chat,
+    Drop,
 }
 
-pub const ACTIONS: [(Action, &str, &str, i32); 11] = [
+pub const ACTIONS: [(Action, &str, &str, i32); 12] = [
     (Action::Forward, "forward", "MOVE FORWARD", 26),
     (Action::Back, "back", "MOVE BACK", 22),
     (Action::Left, "left", "MOVE LEFT", 4),
@@ -31,6 +32,7 @@ pub const ACTIONS: [(Action, &str, &str, i32); 11] = [
     (Action::Inventory, "inventory", "INVENTORY", 8),
     (Action::Map, "map", "WORLD MAP", 16),
     (Action::Chat, "chat", "CHAT", 23),
+    (Action::Drop, "drop", "DROP THE HELD ITEM", 20),
 ];
 
 /// Built-in skins: a name and the colour the default body is tinted with.

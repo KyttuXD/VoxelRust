@@ -38,6 +38,8 @@ pub struct Controls {
     pub toggle_fly: bool,
     /// Get out of the vehicle being ridden.
     pub leave: bool,
+    /// Drop one of what is held.
+    pub drop: bool,
 }
 
 /// How a new world should be made.
@@ -100,6 +102,8 @@ pub struct Session {
     pending_hurt: i32,
     /// Things in flight: arrows, bolts, spells.
     pub shots: Vec<Shot>,
+    /// Items on the ground.
+    pub drops: Vec<Dropped>,
     /// Seconds each `when every N` script has left.
     script_timers: Vec<f32>,
     started: bool,
@@ -171,6 +175,17 @@ pub struct Session {
     autosave: f32,
     meta_path: String,
     pub is_new: bool,
+}
+
+/// Something dropped and lying about until it is picked up again.
+pub struct Dropped {
+    pub pos: [f64; 3],
+    vel: [f32; 3],
+    pub item: u16,
+    pub count: u16,
+    /// Seconds it has lain there (it cannot be picked up at once, and
+    /// is gone after five minutes).
+    age: f32,
 }
 
 /// Something flying through the air: an arrow, a bolt, a spell.
@@ -330,6 +345,7 @@ impl Session {
             sound_queue: Vec::new(),
             pending_hurt: 0,
             shots: Vec::new(),
+            drops: Vec::new(),
             script_timers: Vec::new(),
             started: false,
             call_timer: 3.0,
@@ -1459,6 +1475,40 @@ impl Session {
         }
         self.block_updates(dt);
         self.fly_shots(dt);
+        // Dropping the held item: it is tossed a little way ahead, falls,
+        // and can be picked up again by walking over it.
+        if c.drop && !self.dead {
+            if let Some(item) = self.inv.take_one(self.selected) {
+                let dir = forward(self.player.yaw, self.player.pitch);
+                let eye = self.player.eye();
+                if self.drops.len() >= 128 {
+                    self.drops.remove(0);
+                }
+                self.drops.push(Dropped { pos: [eye[0], eye[1] - 0.3, eye[2]], vel: [dir.x * 5.0, dir.y * 5.0 + 2.0, dir.z * 5.0], item, count: 1, age: 0.0 });
+            }
+        }
+        let (px, py, pz) = (self.player.pos[0], self.player.pos[1], self.player.pos[2]);
+        let mut k = 0;
+        while k < self.drops.len() {
+            let d = &mut self.drops[k];
+            d.age += dt;
+            d.vel[1] -= 18.0 * dt;
+            let next = [d.pos[0] + (d.vel[0] * dt) as f64, d.pos[1] + (d.vel[1] * dt) as f64, d.pos[2] + (d.vel[2] * dt) as f64];
+            if block::is_solid(self.world.get(floord(next[0]), floord(next[1]), floord(next[2]))) {
+                d.vel = [0.0; 3];
+            } else {
+                d.pos = next;
+            }
+            let near = (d.pos[0] - px) * (d.pos[0] - px) + (d.pos[2] - pz) * (d.pos[2] - pz) < 1.6 && d.pos[1] > py - 1.0 && d.pos[1] < py + 2.2;
+            if d.age > 300.0 || d.pos[1] < -8.0 {
+                self.drops.swap_remove(k);
+            } else if near && d.age > 1.2 && !self.dead && self.inv.add(d.item, d.count) == 0 {
+                self.drops.swap_remove(k);
+                audio.play(Sound::Pop, 0.6);
+            } else {
+                k += 1;
+            }
+        }
         // Scripts: once at the start, and those that run on a clock.
         if !self.started {
             self.started = true;

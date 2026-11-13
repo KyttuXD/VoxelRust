@@ -60,6 +60,13 @@ pub struct Server {
     pub dirty: bool,
     /// The latest of each piece of kept state, for players who join later.
     kept: BTreeMap<(u8, String), Vec<u8>>,
+    /// Names of the operators: players who may use the server's commands.
+    /// The first player ever to join becomes one.
+    pub ops: Vec<String>,
+    /// Names that may not join.
+    pub banned: Vec<String>,
+    /// `ops` or `banned` changed since they were last written out.
+    pub ops_dirty: bool,
 }
 
 const SEND_TIMEOUT: u32 = 3000;
@@ -68,7 +75,7 @@ impl Server {
     pub fn bind(cfg: Config) -> Result<Server, NetError> {
         let listener = TcpListener::bind(cfg.port)?;
         Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
-            kept: BTreeMap::new() })
+            kept: BTreeMap::new(), ops: Vec::new(), banned: Vec::new(), ops_dirty: false })
     }
 
     pub fn port(&self) -> u16 {
@@ -77,6 +84,76 @@ impl Server {
 
     pub fn players(&self) -> usize {
         self.conns.iter().filter(|c| c.joined && !c.gone).count()
+    }
+
+    /// A command typed by the player `who`. Anyone may ask /list and
+    /// /help; the rest are for operators. Returns what to tell them.
+    pub fn command(&mut self, who: &str, line: &str) -> String {
+        let w: Vec<&str> = line.split_whitespace().collect();
+        let arg = |k: usize| w.get(k).copied().unwrap_or("");
+        let is_op = self.ops.iter().any(|o| o.eq_ignore_ascii_case(who));
+        let online = |s: &Server, name: &str| s.conns.iter().position(|c| c.joined && !c.gone && c.name.eq_ignore_ascii_case(name));
+        match arg(0).to_ascii_lowercase().as_str() {
+            "/list" => {
+                let names: Vec<String> = self.conns.iter().filter(|c| c.joined && !c.gone).map(|c| if self.ops.iter().any(|o| o.eq_ignore_ascii_case(&c.name)) { alloc::format!("{}*", c.name) } else { c.name.clone() }).collect();
+                alloc::format!("online ({}): {}   (* = operator)", names.len(), names.join(", "))
+            }
+            "/help" => String::from("server: /list   operators: /op NAME  /deop NAME  /kick NAME  /ban NAME  /pardon NAME  /say TEXT  /time 0..1"),
+            _ if !is_op => String::from("only operators may do that"),
+            "/op" if !arg(1).is_empty() => {
+                if !self.ops.iter().any(|o| o.eq_ignore_ascii_case(arg(1))) {
+                    self.ops.push(String::from(arg(1)));
+                    self.ops_dirty = true;
+                }
+                alloc::format!("{} is an operator", arg(1))
+            }
+            "/deop" if !arg(1).is_empty() => {
+                // The last operator cannot be removed: someone must hold the keys.
+                if self.ops.len() <= 1 && self.ops.iter().any(|o| o.eq_ignore_ascii_case(arg(1))) {
+                    return String::from("that is the only operator");
+                }
+                self.ops.retain(|o| !o.eq_ignore_ascii_case(arg(1)));
+                self.ops_dirty = true;
+                alloc::format!("{} is no longer an operator", arg(1))
+            }
+            "/kick" | "/ban" => match online(self, arg(1)) {
+                Some(k) => {
+                    let bytes = Msg::Refuse { reason: String::from("an operator removed you from the server") }.encode();
+                    let _ = self.conns[k].stream.send_all(&bytes, SEND_TIMEOUT);
+                    self.conns[k].gone = true;
+                    if arg(0).eq_ignore_ascii_case("/ban") {
+                        self.banned.push(String::from(arg(1)));
+                        self.ops_dirty = true;
+                    }
+                    alloc::format!("{} was removed", arg(1))
+                }
+                None if arg(0).eq_ignore_ascii_case("/ban") && !arg(1).is_empty() => {
+                    self.banned.push(String::from(arg(1)));
+                    self.ops_dirty = true;
+                    alloc::format!("{} may not join", arg(1))
+                }
+                None => String::from("nobody of that name is here"),
+            },
+            "/pardon" => {
+                self.banned.retain(|b| !b.eq_ignore_ascii_case(arg(1)));
+                self.ops_dirty = true;
+                alloc::format!("{} may join again", arg(1))
+            }
+            "/say" => {
+                let text = alloc::format!("[server] {}", w[1.min(w.len())..].join(" "));
+                self.broadcast(&Msg::Chat { id: 0, text: text.clone() }, u16::MAX);
+                String::new()
+            }
+            "/time" => match arg(1).parse::<f32>() {
+                Ok(t) if (0.0..1.0).contains(&t) => {
+                    self.time = t;
+                    self.broadcast(&Msg::Time { time: t }, u16::MAX);
+                    String::from("time set")
+                }
+                _ => String::from("use /time with a number from 0 to 1 (0.25 is noon)"),
+            },
+            _ => String::from("no such server command; try /help"),
+        }
     }
 
     fn broadcast(&mut self, msg: &Msg, except: u16) {
@@ -169,6 +246,8 @@ impl Server {
                         let _ = content;
                         let refuse = if version != VERSION {
                             Some("this server runs a different version of the game")
+                        } else if self.banned.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
+                            Some("you may not join this server")
                         } else if self.players() >= self.cfg.max_players {
                             Some("the server is full")
                         } else {
@@ -193,6 +272,11 @@ impl Server {
                         }
                         let id = self.next_id;
                         self.next_id = self.next_id.wrapping_add(1).max(1);
+                        // Whoever is first through the door holds the keys.
+                        if self.ops.is_empty() {
+                            self.ops.push(name.clone());
+                            self.ops_dirty = true;
+                        }
                         // Tell the newcomer about the world and who is here.
                         let mut out = Msg::Welcome { id, seed: self.cfg.seed, time: self.time, kind: self.cfg.kind.clone() }.encode();
                         // The content pack first (even when empty), so the
@@ -253,6 +337,15 @@ impl Server {
                         self.conns[i].skin = png.clone();
                         self.broadcast(&Msg::Skin { id, png }, id);
                     }
+                    Msg::Chat { text, .. } if joined && text.starts_with('/') => {
+                        let name = self.conns[i].name.clone();
+                        log.push(alloc::format!("{} ran {}", name, text));
+                        let reply = self.command(&name, &text);
+                        let bytes = Msg::Chat { id: 0, text: reply }.encode();
+                        if self.conns[i].stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+                            self.conns[i].gone = true;
+                        }
+                    }
                     Msg::Chat { text, .. } if joined => {
                         let text: String = text.chars().take(120).collect();
                         log.push(alloc::format!("<{}> {}", self.conns[i].name, text));
@@ -302,5 +395,33 @@ impl Server {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn operators_and_their_commands() {
+        let cfg = Config { port: 0, seed: 1, kind: String::new(), max_players: 4, content: 0, states: 1, pack: Vec::new() };
+        let mut s = Server::bind(cfg).unwrap();
+        s.ops.push(String::from("Ann"));
+        // Anyone may look; only operators may act.
+        assert!(s.command("Bob", "/list").starts_with("online (0)"));
+        assert_eq!(s.command("Bob", "/op Bob"), "only operators may do that");
+        assert_eq!(s.command("ann", "/op Bob"), "Bob is an operator");
+        assert!(s.ops_dirty && s.ops.len() == 2);
+        assert_eq!(s.command("Bob", "/deop Ann"), "Ann is no longer an operator");
+        // The last operator stays.
+        assert_eq!(s.command("Bob", "/deop Bob"), "that is the only operator");
+        assert_eq!(s.command("Bob", "/ban Mallory"), "Mallory may not join");
+        assert!(s.banned.iter().any(|b| b == "Mallory"));
+        assert_eq!(s.command("Bob", "/pardon mallory"), "mallory may join again");
+        assert!(s.banned.is_empty());
+        assert_eq!(s.command("Bob", "/time 0.25"), "time set");
+        assert_eq!(s.time, 0.25);
+        assert!(s.command("Bob", "/time later").starts_with("use /time"));
+        assert!(s.command("Bob", "/dance").starts_with("no such server command"));
     }
 }

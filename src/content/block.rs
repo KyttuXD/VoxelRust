@@ -327,6 +327,9 @@ pub struct EntityExtra {
     pub shoots: i32,
     /// Players may ride it (once tamed, if it is the taming kind).
     pub rideable: bool,
+    /// The creatures it hunts, by id: its place in the food chain. (With
+    /// none named, a `hunter` goes after anything marked `prey`.)
+    pub hunts: Vec<String>,
 }
 
 /// What a vehicle travels on.
@@ -1207,7 +1210,7 @@ impl Parser<'_> {
                     Some(&"villager") => e.behavior = Behavior::Villager,
                     _ => bad = Some("behavior must be wander, npc, hostile, swim, fly or villager"),
                 },
-                "trait" | "anim" | "variant" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" => {
+                "trait" | "anim" | "variant" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" => {
                     e.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "tint" => {
@@ -1749,6 +1752,10 @@ impl Registry {
                                 "tamable" => x.tamable = word(0) != "no",
                                 "shoots" => x.shoots = word(0).parse::<i32>().unwrap_or(3).clamp(0, 100),
                                 "rideable" => x.rideable = word(0) != "no",
+                                "hunts" => {
+                                    x.hunts.extend(a.iter().cloned());
+                                    x.traits |= traits::HUNTER;
+                                }
                                 _ => {}
                             }
                             if !ok {

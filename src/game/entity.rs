@@ -651,7 +651,12 @@ impl Mobs {
             } else if m.tamed {
                 None
             } else if t & traits::HUNTER != 0 && !attacks && m.young <= 0.0 {
-                near_kin(m.body.pos, &|k| r.entities[k].x.traits & traits::PREY != 0, 16.0)
+                // Its own named quarry, or failing a list, anything that is prey.
+                if d.x.hunts.is_empty() {
+                    near_kin(m.body.pos, &|k| r.entities[k].x.traits & traits::PREY != 0, 16.0)
+                } else {
+                    near_kin(m.body.pos, &|k| d.x.hunts.iter().any(|h| *h == r.entities[k].id), 18.0)
+                }
             } else if guard {
                 near_kin(m.body.pos, &|k| r.entities[k].behavior == Behavior::Hostile, 18.0)
             } else {

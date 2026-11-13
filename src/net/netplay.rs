@@ -149,8 +149,15 @@ impl Client {
                     Msg::SetBlock { x, y, z, block } => events.push(Event::Block(x, y, z, block)),
                     Msg::Edits { list } => events.extend(list.into_iter().map(|(x, y, z, b)| Event::Block(x, y, z, b))),
                     Msg::Chat { id, text } => {
-                        let who = self.players.get(&id).map_or("?", |p| p.name.as_str());
-                        events.push(Event::Chat(alloc::format!("<{}> {}", who, text).to_ascii_uppercase()));
+                        if id == 0 {
+                            // From the server itself (an answer to a command).
+                            if !text.is_empty() {
+                                events.push(Event::Chat(alloc::format!("&E{}", text).to_ascii_uppercase()));
+                            }
+                        } else {
+                            let who = self.players.get(&id).map_or("?", |p| p.name.as_str());
+                            events.push(Event::Chat(alloc::format!("<{}> {}", who, text).to_ascii_uppercase()));
+                        }
                     }
                     Msg::Time { time } => events.push(Event::Time(time)),
                     Msg::Skin { id, png } => events.push(Event::Skin(id, png)),

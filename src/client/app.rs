@@ -324,6 +324,7 @@ struct App {
     pick: bool,
     toggle_fly: bool,
     leave: bool,
+    drop_item: bool,
     /// When the jump key was last pressed, to notice a double tap.
     last_jump_tap: f64,
     quit: bool,
@@ -658,6 +659,8 @@ impl App {
                     self.set_screen(Screen::Inventory);
                 } else if sc == k_map {
                     self.open_map();
+                } else if sc == self.settings.key(Action::Drop) {
+                    self.drop_item = true;
                 } else if sc == k_chat {
                     self.form_chat.clear();
                     self.set_screen(Screen::Chat);
@@ -829,10 +832,12 @@ impl App {
             pick: in_game && self.pick,
             toggle_fly: self.toggle_fly,
             leave: self.leave,
+            drop: self.drop_item,
         };
         self.pick = false;
         self.toggle_fly = false;
         self.leave = false;
+        self.drop_item = false;
         let distance = self.distance;
         let mut died = false;
         if let Some(g) = self.session.as_mut() {
@@ -1129,7 +1134,9 @@ impl App {
                 }
             }
         }
-        let sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
+        let mut sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
+        // Things lying on the ground glint.
+        sparks.extend(g.drops.iter().map(|d| (rel([d.pos[0], d.pos[1] + 0.25, d.pos[2]]), [255, 236, 150])));
         r.draw_sparks(&sparks);
         for (i, v) in g.vehicles.list.iter().enumerate() {
             let p = rel(v.body.pos);
@@ -1907,6 +1914,13 @@ impl App {
                 match if command.starts_with('/') { g.command(&command) } else { None } {
                     Some(reply) if reply.is_empty() => {}
                     Some(reply) => g.push_chat(reply),
+                    // On a server, what the game does not know the server may
+                    // (/list, /op, /kick...): pass it on.
+                    None if command.starts_with('/') && g.net.is_some() => {
+                        if let Some(n) = g.net.as_mut() {
+                            n.send_chat(&text);
+                        }
+                    }
                     None if command.starts_with('/') => g.push_chat(String::from("NO SUCH COMMAND. TRY /HELP")),
                     None => g.send_chat(&name, &text),
                 }
@@ -2720,6 +2734,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         pick: false,
         toggle_fly: false,
         leave: false,
+        drop_item: false,
         last_jump_tap: 0.0,
         quit: false,
         fps: 0.0,
@@ -3205,6 +3220,16 @@ fn open_server(name: &str, seed: Option<u32>, earth: Option<String>, port: u16, 
         pack: pack.to_vec(),
     };
     let mut server = Server::bind(cfg).map_err(|e| alloc::format!("could not listen on port {}: {:?}", port, e))?;
+    // Operators and bans are kept beside the world: "op NAME" / "ban NAME".
+    if let Some(text) = sys::read_file(&alloc::format!("{}{}.server-ops.txt", base, name)) {
+        for line in String::from_utf8_lossy(&text).lines() {
+            match line.split_once(' ') {
+                Some(("op", n)) => server.ops.push(String::from(n)),
+                Some(("ban", n)) => server.banned.push(String::from(n)),
+                _ => {}
+            }
+        }
+    }
     if let Some(text) = sys::read_file(&edits_path) {
         server.load_text(&String::from_utf8_lossy(&text));
     }
@@ -3251,6 +3276,17 @@ fn server_loop(mut server: crate::server::Server, edits_path: String, quiet: boo
             for l in lines {
                 logf!("voxelrust: {}", l);
             }
+        }
+        if server.ops_dirty {
+            server.ops_dirty = false;
+            let mut text = String::new();
+            for o in &server.ops {
+                text.push_str(&alloc::format!("op {}\n", o));
+            }
+            for b in &server.banned {
+                text.push_str(&alloc::format!("ban {}\n", b));
+            }
+            sys::write_file(&edits_path.replace(".server-edits.txt", ".server-ops.txt"), text.as_bytes());
         }
         save_timer += dt;
         if save_timer > 20.0 && server.dirty {
