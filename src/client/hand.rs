@@ -31,6 +31,11 @@ pub enum Held {
     Cube([u16; 6]),
     /// A picture, as a flat card (items, flowers, eggs, props).
     Card(u16),
+    /// A tool or weapon: a bigger card, gripped by its handle (the picture's
+    /// bottom-left corner), so the blade stands out of the fist.
+    Tool(u16),
+    /// A bow: a bigger card held by its middle, where the hand grips it.
+    Bow(u16),
 }
 
 /// What an item in the hand looks like. `item` is an index into the items.
@@ -47,6 +52,12 @@ pub fn held_of(item: Option<usize>) -> Held {
             let [top, side, bottom] = d.tex;
             return Held::Cube([side, side, side, side, top, bottom]);
         }
+    }
+    if it.place.is_none() && it.x.shoots.is_some() {
+        return Held::Bow(it.icon);
+    }
+    if it.place.is_none() && (it.tool != 0 || it.x.damage > 0) {
+        return Held::Tool(it.icon);
     }
     Held::Card(it.icon)
 }
@@ -96,6 +107,7 @@ fn boxq(out: &mut Vec<Quad>, lo: [f32; 3], hi: [f32; 3], tiles: [u16; 6], tint: 
 
 /// The held item, centred on the origin, facing forward (-z).
 fn item_geometry(held: Held, white: u16, out: &mut Vec<Quad>) {
+    let start = out.len();
     match held {
         Held::Nothing => {}
         Held::Cube(tiles) => {
@@ -108,6 +120,21 @@ fn item_geometry(held: Held, white: u16, out: &mut Vec<Quad>) {
             let (lo, hi, z) = ([-0.08, -0.08], [0.08, 0.08], 0.0);
             let front = [[lo[0], lo[1], z], [hi[0], lo[1], z], [hi[0], hi[1], z], [lo[0], hi[1], z]];
             quad(out, front, tile, [255, 255, 255, 255], UPRIGHT);
+        }
+        Held::Tool(tile) => {
+            // The handle (bottom-left of the picture) is in the fist and the
+            // blade stands out of it, tipped a little toward the viewer's far side.
+            let (lo, hi, z) = ([-0.025, -0.025], [0.19, 0.19], 0.0);
+            let front = [[lo[0], lo[1], z], [hi[0], lo[1], z], [hi[0], hi[1], z], [lo[0], hi[1], z]];
+            quad(out, front, tile, [255, 255, 255, 255], UPRIGHT);
+            // Turn it about the grip so the flat of the blade faces forward-left.
+            map(&mut out[start..], |p| rot_y(p, -0.5));
+        }
+        Held::Bow(tile) => {
+            let (lo, hi, z) = ([-0.1, -0.1], [0.1, 0.1], 0.0);
+            let front = [[lo[0], lo[1], z], [hi[0], lo[1], z], [hi[0], hi[1], z], [lo[0], hi[1], z]];
+            quad(out, front, tile, [255, 255, 255, 255], UPRIGHT);
+            map(&mut out[start..], |p| rot_y(p, -0.5));
         }
     }
     let _ = white;
