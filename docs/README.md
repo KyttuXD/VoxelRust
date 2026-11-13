@@ -10,5 +10,6 @@
 | [DATA.md](DATA.md) | The content file format: every keyword |
 | [BUILDING.md](BUILDING.md) | Building for each platform, build names and updating, tests, the GitHub workflows, packaging, icons |
 | [PORTING.md](PORTING.md) | Why the game is built the way it is, old Macs, PowerPC, measurements |
+| [WEB.md](WEB.md) | The browser version: building, serving and publishing it, what works there and what does not, how it is put together |
 
 The project overview is in [../README.md](../README.md).

@@ -186,6 +186,9 @@ const NAMES: &[&[u8]] = &[
 ];
 #[cfg(windows)]
 const NAMES: &[&[u8]] = &[b"SDL2.dll\0"];
+// In a browser "SDL2" is the handful of its functions in `sys/web/sdl.rs`.
+#[cfg(target_arch = "wasm32")]
+const NAMES: &[&[u8]] = &[b"web\0"];
 
 /// Find and load SDL2. `VOXELRUST_SDL2` may name the library file to use.
 pub fn load() -> Result<(), String> {

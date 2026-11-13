@@ -6,9 +6,23 @@
 //! than Mac OS X 10.4, Windows XP or any glibc.
 
 pub mod gl;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod net;
 pub mod sdl;
 pub mod thread;
+
+// The browser build (docs/WEB.md): the C functions declared below, SDL2 and
+// OpenGL do not exist there, so `web/` supplies them, and sockets that
+// always fail take the place of `net`.
+#[cfg(target_arch = "wasm32")]
+pub mod web;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/net.rs"]
+pub mod net;
+// Its allocator is plain Rust: test it on every platform.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "web/heap.rs"]
+mod web_heap;
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -297,6 +311,8 @@ impl Lib {
         };
         #[cfg(windows)]
         let h = unsafe { LoadLibraryA(name.as_ptr() as *const c_char) };
+        #[cfg(target_arch = "wasm32")]
+        let h = web::open(name);
         if h.is_null() {
             None
         } else {
@@ -314,6 +330,10 @@ impl Lib {
         #[cfg(windows)]
         unsafe {
             GetProcAddress(self.0, name.as_ptr() as *const c_char)
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            web::sym(self.0, name)
         }
     }
 }
@@ -375,6 +395,9 @@ pub fn list_dir(path: &str) -> Vec<String> {
             FindClose(h);
         }
     }
+    // A page has no folders to look in.
+    #[cfg(target_arch = "wasm32")]
+    let _ = path;
     names.retain(|n| n != "." && n != ".." && !n.is_empty());
     names.sort();
     names

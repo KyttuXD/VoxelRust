@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VoxelRust</title>
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #10141c; color: #e8ecf2; font: 16px/1.5 system-ui, sans-serif; }
+  #screen { display: block; width: 100vw; height: 100vh; outline: none; image-rendering: pixelated; }
+  .cover { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; box-sizing: border-box; }
+  .cover[hidden] { display: none; }
+  #start { background: #10141c; }
+  #start.ready { cursor: pointer; }
+  #start img { width: 128px; height: 128px; image-rendering: pixelated; }
+  #start h1 { margin: 16px 0 4px; font-size: 40px; letter-spacing: 2px; }
+  #start-note { font-size: 22px; color: #f2c14e; margin: 8px 0 28px; }
+  #start p { margin: 4px 0; max-width: 46em; color: #aab3c0; }
+  #notice { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); max-width: 40em; padding: 10px 16px; border: 1px solid #f2c14e; background: rgba(27, 31, 41, 0.94); text-align: center; pointer-events: none; }
+  #notice[hidden] { display: none; }
+  #error { background: rgba(8, 10, 14, 0.92); }
+  #error-text { max-width: 46em; padding: 20px 24px; border: 1px solid #c8553d; background: #1b1f29; white-space: pre-wrap; text-align: left; }
+</style>
+</head>
+<body>
+<canvas id="screen" tabindex="0"></canvas>
+<div id="start" class="cover">
+  <img src="icon.png" alt="">
+  <h1>VoxelRust</h1>
+  <div id="start-note">Loading...</div>
+  <p>WASD move, mouse look, Space jump, Ctrl sprint, left click break, right click place,
+     1-9 or wheel select, E inventory, T chat, F11 full screen, Esc menu.</p>
+  <p>Worlds are kept in this browser. Multiplayer and Earth worlds need the desktop version.</p>
+</div>
+<div id="notice" hidden></div>
+<div id="error" class="cover" hidden>
+  <div id="error-text"></div>
+</div>
+<noscript><div class="cover">VoxelRust needs JavaScript and WebGL.</div></noscript>
+<script src="voxelrust.js"></script>
+</body>
+</html>
