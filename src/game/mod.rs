@@ -4,6 +4,8 @@ pub mod player;
 pub mod inventory;
 pub mod interact;
 pub mod entity;
+pub mod entity_explode;
+pub mod entity_variant;
 pub mod path;
 pub mod session;
 pub mod waypoints;

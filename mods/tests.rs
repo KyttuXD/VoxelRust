@@ -122,7 +122,9 @@ fn the_wildlife_mod_has_its_species_with_looks_and_working_models() {
         assert!(new.iter().any(|e| e.id == id), "{id} is missing");
     }
     for e in &new {
-        assert!(e.x.variants.len() >= 2 && e.x.variants.len() <= 4, "{} has {} variants", e.id, e.x.variants.len());
+        // Looks made for particular biomes (camouflage) may be more than the usual few.
+        let most = if e.x.variants.iter().any(|v| !v.biomes.is_empty()) { 8 } else { 4 };
+        assert!(e.x.variants.len() >= 2 && e.x.variants.len() <= most, "{} has {} variants", e.id, e.x.variants.len());
         let mut models: Vec<usize> = e.x.variants.iter().map(|v| v.model).collect();
         models.push(e.model);
         models.sort();
@@ -139,4 +141,44 @@ fn the_wildlife_mod_has_its_species_with_looks_and_working_models() {
         }
     }
     assert!(new.iter().filter(|e| e.x.baby.is_some()).count() >= 8);
+}
+
+#[test]
+fn boomers_explode_and_wear_the_colours_of_their_biome() {
+    let r = load(&["wildlife"]);
+    let find = |id: &str| r.entities.iter().find(|e| e.id == id).unwrap_or_else(|| panic!("{id} is missing"));
+    for id in ["boomer", "cave_boomer"] {
+        let e = find(id);
+        assert_eq!(e.behavior, crate::block::Behavior::Hostile, "{id}");
+        let (power, fuse, range) = e.x.explodes.unwrap_or_else(|| panic!("{id} does not explode"));
+        assert!(power > 0.5 && power < 6.0 && fuse > 0.5 && fuse < 5.0 && range > 1.0 && range < 8.0, "{id}: {power} {fuse} {range}");
+        for v in &e.x.variants {
+            assert!(!v.biomes.is_empty(), "{id} {} is for no biome", v.name);
+            let spec = &r.models[v.model];
+            let def = crate::model::ModelDef::from_bbmodel(&spec.id, &spec.text).unwrap();
+            assert!(def.model.texture.is_some(), "{} has no texture", spec.id);
+        }
+    }
+    // Every surface biome gets a look: its own, or the plain one.
+    let boomer = find("boomer");
+    for (biome, look) in [("desert", "Desert"), ("savanna", "Desert"), ("tundra", "Snow"), ("swamp", "Swamp"), ("badlands", "Badlands"), ("mountain", "Mountain"), ("jungle", "Jungle")] {
+        for roll in 0..8 {
+            let v = crate::entity_variant::pick(&boomer.x.variants, biome, roll);
+            assert_eq!(boomer.x.variants[v as usize - 1].name, look, "{biome}");
+        }
+    }
+    for biome in ["forest", "plains", "taiga"] {
+        assert!((0..8).all(|roll| crate::entity_variant::pick(&boomer.x.variants, biome, roll) == 0), "{biome}");
+    }
+    let cave = find("cave_boomer");
+    let name = |biome: &str| match crate::entity_variant::pick(&cave.x.variants, biome, 0) {
+        0 => "plain",
+        n => cave.x.variants[n as usize - 1].name.as_str(),
+    };
+    assert_eq!((name("magma_cave"), name("crystal_cave"), name("frozen_cave"), name("cave")), ("Ember", "Crystal", "Crystal", "plain"));
+    assert!(cave.x.glow > 0);
+    // Their sounds exist.
+    for s in ["rustle", "fuse_hiss", "boomer_boom"] {
+        assert!(r.sounds.iter().any(|x| x.id == s), "{s}");
+    }
 }

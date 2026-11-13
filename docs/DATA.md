@@ -525,7 +525,7 @@ entity <id>
   drops <item> [<count>]    left behind when killed in survival (count 1..64, default 1)
   trait <names...>          flees herd jumps territorial hunter prey lazy pack follows
   anim walk | hop | slither | flap | scuttle | waddle | float
-  variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>]   another look
+  variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>] [biomes <names...>]   another look
   baby <size> <seconds>     it has young: how small, and how long they take to grow
   gives <item> <seconds>    right click collects one, then again after that long
   likes <item>              the food it follows a player for (with trait follows)
@@ -536,6 +536,7 @@ entity <id>
   trade <item> <n> <item> <n>   takes the first from a player, hands over the second
   job <word>                what a villager does
   glow <0..15>              not dimmed by the dark
+  explodes <power> <seconds> <range>   it blows up when a player stays within range for that long
 ```
 
 Behaviours:
@@ -575,6 +576,21 @@ entity sheep
   variant Ram model sheep_ram size 1.1
 ```
 
+`biomes <names...>` (last on the line; it takes every word up to the next
+keyword) makes the look a camouflage. A creature appearing in one of those
+biomes (surface or cave names, as for the entity's own `biomes`) is given one
+of the looks that name its biome, and always one of them; in any other biome
+it gets the entity's own look or a variant that names no biome. So the
+entity's own look is the fallback, and a spawn egg or `/spawn`, which have
+no biome, give any look at random.
+
+```
+entity bush
+  ...
+  variant Sandy model bush_sand biomes desert savanna
+  variant Snowy model bush_snow biomes tundra
+```
+
 **Pictures.** A creature is painted with the picture called `tex` (on the
 entity or on a variant), or else with the picture named after its model.
 A picture name is looked for in a texture pack's `textures/entity` folder,
@@ -590,6 +606,21 @@ tint. How the pictures are made, and how a pack replaces them, is in
 time at least 5 seconds. Young have half the health, grow steadily, and are
 shown as `Young <name>`. Young ones sometimes arrive with adults; they do
 not `give`, hunt or defend territory until grown.
+
+`explodes <power> <seconds> <range>`: for a `hostile` creature. When a
+player in survival mode stays within `range` blocks (0.5..16, also within 3
+blocks up or down) its fuse is lit: it stops, hisses, swells by a third and
+flashes. After `seconds` (0.2..30) it explodes with `power` (0.1..16: the
+blast reaches about twice that many blocks) and is gone; the explosion is the
+game's own (`crate::explosion::explode` with the source `Creature(<its
+kind>)`), so blocks, drops, damage and the script events `explode` and
+`blockexploded` are as for TNT. If the player gets further than 1.6 times the
+range, the fuse goes out and starts over. Tamed and young ones never explode.
+The wildlife mod's Boomer is `explodes 2.0 1.5 3.0` (see
+[CREATURES.md](CREATURES.md#boomers)).
+
+A creature whose `drops` names an item no pack defines still works: it
+just drops nothing, and the load says `drops unknown item` in its warnings.
 
 `gives <item> <seconds>`: at least 1 second (120 if left out).
 

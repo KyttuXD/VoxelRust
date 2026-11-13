@@ -2139,6 +2139,16 @@ impl Session {
                     }
                     audio.play_named("bow", 0.6);
                 }
+                // Creatures that explode (see `entity_explode`): the hiss of a lit
+                // fuse, and the blast itself, which the explosion code carries out.
+                crate::entity::Action::Fuse(at) => {
+                    let (dx, dz) = ((at[0] - self.player.pos[0]) as f32, (at[2] - self.player.pos[2]) as f32);
+                    audio.play_named("fuse_hiss", (1.0 - crate::math::sqrtf(dx * dx + dz * dz) / 32.0).clamp(0.1, 1.0));
+                }
+                crate::entity::Action::Explode(at, power, kind) => {
+                    audio.play_named("boomer_boom", 0.5);
+                    crate::explosion::explode(self, at, power, crate::explosion::ExplosionSource::Creature(kind));
+                }
                 _ => {}
             }
         }
