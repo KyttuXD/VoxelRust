@@ -298,6 +298,27 @@ const PUBLIC_SERVER: &str = "195.62.47.178";
 
 const TABS: [&str; 6] = ["VIDEO", "AUDIO", "CONTROLS", "GAME", "SKIN", "MODS"];
 
+/// A small arrow on the minimap at (cx, cy), its tip pointing the way `yaw`
+/// faces: a shaft of pixels and a head that widens back from the tip.
+fn minimap_arrow(r: &mut Renderer, cx: f32, cy: f32, yaw: f32, s: f32, col: Color) {
+    let (fx, fz) = (-crate::math::sinf(yaw), -crate::math::cosf(yaw));
+    let (px, pz) = (-fz, fx);
+    let mut dot = |along: f32, across: f32| {
+        let (x, y) = (cx + fx * along * s + px * across * s, cy + fz * along * s + pz * across * s);
+        r.rect(x - s * 0.5, y - s * 0.5, s, s, col);
+    };
+    for k in -2..=1 {
+        dot(k as f32, 0.0);
+    }
+    dot(3.0, 0.0);
+    for j in 1..=2 {
+        let along = (3 - j) as f32;
+        for a in -j..=j {
+            dot(along, a as f32);
+        }
+    }
+}
+
 /// The player model and the first-person hand for classic or slim arms.
 fn arm_models(slim: bool) -> (&'static str, &'static str) {
     if slim { ("player_slim", "hand_slim") } else { ("player", "hand") }
@@ -1455,11 +1476,18 @@ impl App {
                     }
                 }
             }
+            // Other players first, so the player's own arrow is on top.
+            if let Some(net) = g.net.as_ref() {
+                for p in net.players.values().filter(|p| p.seen) {
+                    let (ox, oz) = to_map(p.pos[0] as f32, p.pos[2] as f32);
+                    if ox > mx && ox < mx + size && oz > my && oz < my + size {
+                        minimap_arrow(r, ox, oz, p.yaw, s, [110, 220, 255, 255]);
+                    }
+                }
+            }
             let (cx, cy) = to_map(g.player.pos[0] as f32, g.player.pos[2] as f32);
             if cx > mx && cx < mx + size && cy > my && cy < my + size {
-                let (fx, fz) = (-crate::math::sinf(g.player.yaw), -crate::math::cosf(g.player.yaw));
-                r.rect(cx + fx * 3.0 * s - s * 0.5, cy + fz * 3.0 * s - s * 0.5, s, s, [255, 255, 255, 255]);
-                r.rect(cx - s, cy - s, 2.0 * s, 2.0 * s, [255, 70, 60, 255]);
+                minimap_arrow(r, cx, cy, g.player.yaw, s, [255, 255, 255, 255]);
             }
             let place = alloc::format!("{} {} {}", floord(g.player.pos[0]), floord(g.player.pos[1]), floord(g.player.pos[2]));
             let tw = Renderer::text_width(&place, s);
@@ -3479,7 +3507,16 @@ fn mods_in(folder: &str) -> Vec<String> {
     let mut found = Vec::new();
     for name in sys::list_dir(folder) {
         let path = alloc::format!("{}{}", folder, name);
-        if name.ends_with(".txt") && name != "mods.txt" {
+        if name.to_ascii_lowercase().ends_with(".zip") {
+            // A mod in a zip: each pack inside it, by a path that reads through the archive.
+            if let Some(entries) = sys::read_file(&path).and_then(|z| crate::util::zip::entries(&z)) {
+                for e in entries {
+                    if e.name == "pack.txt" || e.name.ends_with("/pack.txt") {
+                        found.push(alloc::format!("{}!/{}", path, e.name));
+                    }
+                }
+            }
+        } else if name.ends_with(".txt") && name != "mods.txt" {
             found.push(path);
         } else {
             let pack = alloc::format!("{}/pack.txt", path);
@@ -3500,11 +3537,26 @@ fn mods_in(folder: &str) -> Vec<String> {
     found
 }
 
-/// The name a mod goes by: its folder, or its file without `.txt`.
+/// The name a mod goes by: its folder, or its file without `.txt`, or the
+/// name of its zip.
 fn mod_name(path: &str) -> String {
     let p = path.strip_suffix("/pack.txt").unwrap_or(path);
+    // Inside a zip (`mods/name.zip!/folder`): the zip's name.
+    let p = match p.find(".zip!") {
+        Some(i) => &p[..i + 4],
+        None => p,
+    };
     let p = p.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(p);
+    let p = p.strip_suffix(".zip").unwrap_or(p);
     String::from(p.strip_suffix(".txt").unwrap_or(p))
+}
+
+/// A file a mod names: from disk, or from inside a zip (`mods/name.zip!/inner/file`).
+fn read_mod_file(path: &str) -> Option<Vec<u8>> {
+    match path.find(".zip!/") {
+        Some(i) => crate::util::zip::read(&sys::read_file(&path[..i + 4])?, &path[i + 6..]),
+        None => sys::read_file(path),
+    }
 }
 
 /// The mods that come inside the program (`data/packs/<name>/pack.txt`).
@@ -3609,7 +3661,7 @@ fn load_content(pack_paths: &[String], off: &str) -> (Registry, Vec<u8>) {
         fresh
     });
     for p in &all {
-        if let Some(bytes) = sys::read_file(p) {
+        if let Some(bytes) = read_mod_file(p) {
             logf!("voxelrust: content from {}", p);
             sources.push((p.clone(), String::from_utf8_lossy(&bytes).into_owned()));
         }
@@ -3618,7 +3670,7 @@ fn load_content(pack_paths: &[String], off: &str) -> (Registry, Vec<u8>) {
     // Remember every file the packs pull in (textures, models, includes).
     let mut used: Vec<(String, Vec<u8>)> = Vec::new();
     let registry = Registry::from_sources(&refs, &mut |p| {
-        let data = sys::read_file(p);
+        let data = read_mod_file(p);
         if let Some(d) = &data {
             if !used.iter().any(|u| u.0 == p) {
                 used.push((String::from(p), d.clone()));

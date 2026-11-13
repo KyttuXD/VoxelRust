@@ -276,7 +276,24 @@ fn inflate_limited(zlib: &[u8], limit: usize) -> Option<Vec<u8>> {
     if cmf & 0x0F != 8 || cmf >> 4 > 7 || (cmf << 8 | flg) % 31 != 0 || flg & 0x20 != 0 {
         return None;
     }
-    let mut br = Bits { data: zlib, pos: 2, buf: 0, cnt: 0 };
+    let (out, end) = inflate_blocks(zlib, 2, limit)?;
+    let tail = zlib.get(end..end.checked_add(4)?)?;
+    let want = u32::from_be_bytes([tail[0], tail[1], tail[2], tail[3]]);
+    if adler32(&out) != want {
+        return None;
+    }
+    Some(out)
+}
+
+/// Decompresses raw deflate data (no zlib header or checksum), as zip files
+/// store it. `None` for corrupt input or output larger than `limit`.
+pub fn inflate_raw(data: &[u8], limit: usize) -> Option<Vec<u8>> {
+    inflate_blocks(data, 0, limit).map(|(out, _)| out)
+}
+
+/// The deflate blocks from byte `start`: the output, and where the data ends.
+fn inflate_blocks(zlib: &[u8], start: usize, limit: usize) -> Option<(Vec<u8>, usize)> {
+    let mut br = Bits { data: zlib, pos: start, buf: 0, cnt: 0 };
     let mut out: Vec<u8> = Vec::new();
     loop {
         let last = br.bits(1)?;
@@ -312,12 +329,7 @@ fn inflate_limited(zlib: &[u8], limit: usize) -> Option<Vec<u8>> {
         }
     }
     br.align();
-    let tail = zlib.get(br.pos..br.pos.checked_add(4)?)?;
-    let want = u32::from_be_bytes([tail[0], tail[1], tail[2], tail[3]]);
-    if adler32(&out) != want {
-        return None;
-    }
-    Some(out)
+    Some((out, br.pos))
 }
 
 /// Decompresses a zlib stream (header, deflate data, Adler-32). Gives `None`
