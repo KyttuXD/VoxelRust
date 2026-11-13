@@ -842,7 +842,9 @@ after it). `when` runs commands when something happens: `start`, `every
 <seconds>`, `break <block>`, `place <block>`, `use <block>`, `useitem
 <item>`, `eat <item>`, `hit <entity>`, `kill <entity>`, `tame <entity>`,
 `ride <entity>`, `dimension <name>`, `night`, `day`, `death`, `episode <id>`,
-`episode_end <id>`. `when` lines
+`episode_end <id>`, and the newer events listed in
+[MODDING.md](MODDING.md#hooks-reference) (`entitydeath`, `playerhurt`, `chat`,
+`craft`, `weather`...). `when` lines
 are added, never replaced; a `command` with a name already used replaces the
 earlier one.
 
