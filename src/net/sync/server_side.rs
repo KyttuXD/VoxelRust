@@ -214,7 +214,7 @@ mod tests {
 
     fn conn_of(s: &Server, id: u16, name: &str, order: u64) -> Conn {
         let stream = crate::sys::net::TcpStream::connect("127.0.0.1", s.port(), 2000).unwrap();
-        let mut c = Conn { stream, inbox: Inbox::default(), id, name: String::from(name), joined: true, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default() };
+        let mut c = Conn { stream, inbox: Inbox::default(), id, name: String::from(name), joined: true, last_move: None, skin: Default::default(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default() };
         c.sync.order = order;
         c
     }
