@@ -1622,6 +1622,8 @@ impl Session {
         if let Some(rain) = self.forced_sky {
             self.sky = weather::Sky { rain, snow: self.sky.snow, storm: rain > 0.9 };
         }
+        // Embers rise off the lava near the player.
+        crate::game::fx::lava_embers::tick(self, dt);
         self.flash = (self.flash - dt).max(0.0);
         self.shake = (self.shake - dt * 0.5).max(0.0);
         self.weather_tick += dt;

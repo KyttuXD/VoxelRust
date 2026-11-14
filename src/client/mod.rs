@@ -30,3 +30,4 @@ pub mod modui;
 pub mod shaders;
 pub mod cull;
 pub mod cull_adapt;
+pub mod block_light;

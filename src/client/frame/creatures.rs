@@ -8,16 +8,14 @@ impl App {
     /// the camera is outside it.
     pub(super) fn draw_creatures(&self, r: &mut Renderer, g: &Session, cam: &Camera, tags: &mut Vec<(f32, f32, String, f32)>) {
         let reg = reg();
-        let look = crate::game::fx::sky::current(g);
-        let (_, _, day) = crate::render::sky_colors(look.time_of(g.time));
-        let day = look.light(day);
-        // Light at a spot: full daylight under open sky, dimmer under cover.
+        let day = Self::day_light(g);
+        // Light at a spot: the sky's (full daylight under open sky, dimmer under cover), or the block
+        // light of lava, lamps and the like nearby (client/block_light.rs), whichever is more.
+        let cache = core::cell::RefCell::new(crate::client::block_light::LightCache::default());
         let light_at = |pos: [f64; 3]| -> f32 {
-            let (x, z) = (floord(pos[0]), floord(pos[2]));
-            let covered = (floord(pos[1]) + 2..CH).any(|y| reg.opaque[g.world.get(x, y, z) as usize] != 0);
-            // Never so dark that a creature cannot be seen against a night sky (zombies and
-            // the like come out at night): about two fifths of daylight at the least.
-            (0.40 + 0.60 * day) * if covered { 0.75 } else { 1.0 }
+            let sky = Self::sky_light_at(g, day, pos);
+            let level = cache.borrow_mut().level(cam.pos, pos, || crate::client::block_light::level_in_world(&g.world, pos));
+            crate::client::block_light::lit(sky, level)
         };
         let rel = |pos: [f64; 3]| [(pos[0] - cam.pos[0]) as f32, (pos[1] - cam.pos[1]) as f32, (pos[2] - cam.pos[2]) as f32];
         // What is outside the view (the frustum of the world's drawing) is not drawn at all.
@@ -94,7 +92,10 @@ impl App {
             let held = crate::client::hand::held_of(Some(d.item as usize));
             let spin = g.clock * 1.6 + d.pos[0] as f32;
             let bob = (sinf(g.clock * 2.5 + d.pos[2] as f32) * 0.04) as f32;
+            let first = lying.len();
             crate::client::hand::dropped(held, white, rel([d.pos[0], d.pos[1] + 0.3, d.pos[2]]), spin + bob, &mut lying);
+            // In the dark (or the glow of lava) like everything else.
+            crate::client::block_light::scale_quads(&mut lying[first..], 0.45 + 0.55 * light_at(d.pos));
         }
         // Lit TNT, flashing white.
         crate::client::hand::primed_blocks(&g.primed.list, white, &rel, &mut lying);
