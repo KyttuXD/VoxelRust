@@ -89,7 +89,12 @@ pub struct Renderer {
     scene_tex_size: i32,
     /// Size the 3D view was drawn at this frame, if it still needs stretching.
     scaled: Option<(i32, i32)>,
-    pub models: Vec<crate::model::ModelDef>,
+    /// The models of the registry, by the registry's numbers; each is parsed and uploaded
+    /// the first time it is drawn (see `ensure_model`), so a mod with hundreds of
+    /// creature models does not hold up the start.
+    models: Vec<Option<crate::model::ModelDef>>,
+    /// Which models have been tried (a model that failed is not tried again).
+    model_tried: Vec<bool>,
     /// When not 0, the next model is drawn with this texture instead of
     /// its own (player skins). Reset after each model.
     pub tex_override: u32,
@@ -283,6 +288,7 @@ impl Renderer {
             scene_tex_size: 0,
             scaled: None,
             models: Vec::new(),
+            model_tried: Vec::new(),
             tex_override: 0,
             entity_tex: alloc::collections::BTreeMap::new(),
             model_verts: Vec::new(),
@@ -789,7 +795,8 @@ impl Renderer {
     /// [`Renderer::finish_world`]. `at` is relative to the camera, `tint`
     /// multiplies the texture (light level, team colour, hurt flash).
     pub fn draw_model(&mut self, model: usize, pose: &crate::model::Pose, at: [f32; 3], yaw: f32, height: f32, tint: [u8; 3]) {
-        let def = match self.models.get(model) {
+        self.ensure_model(model);
+        let def = match self.models.get(model).and_then(|m| m.as_ref()) {
             Some(d) => d,
             None => return,
         };
@@ -819,8 +826,9 @@ impl Renderer {
     /// Draw a model flat on the screen (inventory portrait). `x`, `y` is
     /// where its feet go, in pixels; `height` its height in pixels.
     /// How tall a model is and how far it spreads sideways, in its own units.
-    pub fn model_extent(&self, model: usize) -> (f32, f32) {
-        match self.models.get(model) {
+    pub fn model_extent(&mut self, model: usize) -> (f32, f32) {
+        self.ensure_model(model);
+        match self.models.get(model).and_then(|m| m.as_ref()) {
             Some(d) => {
                 let m = &d.model;
                 (d.height(), (m.max[0] - m.min[0]).max(m.max[2] - m.min[2]).max(0.001))
@@ -837,7 +845,8 @@ impl Renderer {
         let g = gl();
         self.flush(gl::QUADS);
         self.model_verts.clear();
-        if let Some(def) = self.models.get(model) {
+        self.ensure_model(model);
+        if let Some(def) = self.models.get(model).and_then(|m| m.as_ref()) {
             def.quads(&crate::model::Pose::default(), [0.0, 0.0, 0.0], 0.0, height, false, &mut self.model_verts);
         }
         let aspect = self.w as f32 / self.h.max(1) as f32;
@@ -909,7 +918,8 @@ impl Renderer {
     }
 
     pub fn draw_model_2d(&mut self, model: usize, pose: &crate::model::Pose, x: f32, y: f32, yaw: f32, height: f32) {
-        let def = match self.models.get(model) {
+        self.ensure_model(model);
+        let def = match self.models.get(model).and_then(|m| m.as_ref()) {
             Some(d) => d,
             None => return,
         };
@@ -1189,41 +1199,76 @@ impl Renderer {
         t
     }
 
-    /// Parse every model the data files declare and upload its texture.
-    /// Indices match the registry's. A model that fails to load is logged
-    /// and replaced by the first good one, so creatures never vanish.
+    /// Forget the models parsed so far (content was loaded or reloaded): they are parsed again,
+    /// each when it is first drawn. Indices match the registry's. A model that fails to load is
+    /// logged and replaced by the first good one, so creatures never vanish.
     pub fn load_models(&mut self) {
         let r = reg();
+        // The pictures of the models and creatures loaded before are given back to the card
+        // (reloading packs used to leave them there for good).
+        let mut old: Vec<u32> = self.entity_tex.values().copied().collect();
+        old.extend(self.models.iter().flatten().map(|m| m.tex));
+        self.delete_textures(&old);
         self.entity_tex.clear();
-        let mut loaded: Vec<Option<crate::model::ModelDef>> = Vec::new();
-        for spec in &r.models {
-            match crate::model::ModelDef::from_bbmodel(&spec.id, &spec.text) {
-                Ok(mut def) => {
-                    // The picture named after the model (a pack's or the game's own, see
-                    // `pack_entities`) comes before the one inside the model file, if it has the same shape.
-                    let named = crate::pack_entities::image(&spec.id).filter(|i| crate::pack_entities::fits(i, def.model.tex_w, def.model.tex_h));
-                    def.tex = match (&named, &def.model.texture) {
-                        (Some(img), _) | (None, Some(img)) => make_texture(img.w, img.h, &img.rgba, gl::NEAREST, gl::CLAMP_TO_EDGE),
-                        (None, None) => make_texture(1, 1, &[255, 255, 255, 255], gl::NEAREST, gl::CLAMP_TO_EDGE),
-                    };
-                    loaded.push(Some(def));
-                }
-                Err(e) => {
-                    logf!("voxelrust: data: model {}: {}", spec.id, e);
-                    loaded.push(None);
+        self.models = (0..r.models.len()).map(|_| None).collect();
+        self.model_tried = alloc::vec![false; r.models.len()];
+    }
+
+    /// Parse model `i` of the registry and upload its picture. `None` (and a line in the log) if it will not parse.
+    fn parse_model(&mut self, i: usize) -> Option<crate::model::ModelDef> {
+        let spec = reg().models.get(i)?;
+        match crate::model::ModelDef::from_bbmodel(&spec.id, &spec.text) {
+            Ok(mut def) => {
+                // The picture named after the model (a pack's or the game's own, see
+                // `pack_entities`) comes before the one inside the model file, if it has the same shape.
+                let named = crate::pack_entities::image(&spec.id).filter(|i| crate::pack_entities::fits(i, def.model.tex_w, def.model.tex_h));
+                def.tex = match (&named, &def.model.texture) {
+                    (Some(img), _) | (None, Some(img)) => make_texture(img.w, img.h, &img.rgba, gl::NEAREST, gl::CLAMP_TO_EDGE),
+                    (None, None) => make_texture(1, 1, &[255, 255, 255, 255], gl::NEAREST, gl::CLAMP_TO_EDGE),
+                };
+                // (Making a texture binds it: the batch must bind its own again.)
+                self.batch_tex = 0;
+                Some(def)
+            }
+            Err(e) => {
+                logf!("voxelrust: data: model {}: {}", spec.id, e);
+                None
+            }
+        }
+    }
+
+    /// Model `i`, parsed now if this is the first time it is wanted. One that will not parse
+    /// is a copy of the first one that does; `None` only if none does (or `i` is no model).
+    fn ensure_model(&mut self, i: usize) -> Option<&crate::model::ModelDef> {
+        if i >= self.models.len() || self.model_tried.len() != self.models.len() {
+            return None;
+        }
+        if self.models[i].is_none() && !self.model_tried[i] {
+            self.model_tried[i] = true;
+            match self.parse_model(i) {
+                Some(def) => self.models[i] = Some(def),
+                None => {
+                    // The first good model, whichever is found first (parsed now if need be).
+                    for j in 0..self.models.len() {
+                        if j == i {
+                            continue;
+                        }
+                        if self.models[j].is_none() && !self.model_tried[j] {
+                            self.model_tried[j] = true;
+                            self.models[j] = self.parse_model(j);
+                        }
+                        let Some(tex) = self.models[j].as_ref().map(|d| d.tex) else { continue };
+                        let spec = &reg().models[j];
+                        if let Ok(mut copy) = crate::model::ModelDef::from_bbmodel(&spec.id, &spec.text) {
+                            copy.tex = tex;
+                            self.models[i] = Some(copy);
+                            break;
+                        }
+                    }
                 }
             }
         }
-        let fallback = loaded.iter().position(|m| m.is_some());
-        self.models.clear();
-        for (i, m) in loaded.iter().enumerate() {
-            let src = if m.is_some() { Some(i) } else { fallback };
-            if let Some(Some(def)) = src.map(|j| &loaded[j]) {
-                let mut copy = crate::model::ModelDef::from_bbmodel(&def.id, &r.models[src.unwrap()].text).unwrap();
-                copy.tex = def.tex;
-                self.models.push(copy);
-            }
-        }
+        self.models[i].as_ref()
     }
 
     /// Clear the screen to one colour (menus without a world behind them).
@@ -1235,6 +1280,20 @@ impl Renderer {
             (g.DepthMask)(1);
             (g.Clear)(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
+    }
+
+    /// Give textures made with [`Renderer::add_texture`] back to the graphics card.
+    /// Handle 0 and repeats are ignored.
+    pub fn delete_textures(&mut self, ids: &[u32]) {
+        let mut v: Vec<u32> = ids.iter().copied().filter(|&t| t != 0 && t != self.atlas && t != self.font).collect();
+        v.sort_unstable();
+        v.dedup();
+        if v.is_empty() {
+            return;
+        }
+        self.flush(gl::QUADS);
+        unsafe { (gl().DeleteTextures)(v.len() as i32, v.as_ptr()) };
+        self.batch_tex = 0;
     }
 
     /// Upload a picture as a texture and return its handle.

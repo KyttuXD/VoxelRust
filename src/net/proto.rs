@@ -7,7 +7,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub const VERSION: u16 = 8;
+pub const VERSION: u16 = 10;
 
 /// What a player may do on a server (the flags of [`Msg::Perms`]).
 pub const PERM_BUILD: u8 = 1;
@@ -44,6 +44,23 @@ pub mod channel {
 /// Longest message body accepted.
 pub const MAX_BODY: usize = 60_000;
 
+/// One mod a server offers for download (see [`Msg::ModList`] and
+/// `net::modsync`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModInfo {
+    pub name: String,
+    /// What its pack.txt says (`version 1.2`); empty if it says nothing.
+    pub version: String,
+    /// First 8 bytes of the SHA-256 of the mod's bundle.
+    pub sum: u64,
+    /// Bytes of the bundle that will be sent, and how many files are in it.
+    pub size: u32,
+    pub files: u16,
+}
+
+/// Most mods in one [`Msg::ModList`].
+pub const MAX_MOD_LIST: usize = 64;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Msg {
     // Client to server.
@@ -52,7 +69,13 @@ pub enum Msg {
     Hello { version: u16, content: u32, name: String },
     /// Where I am (also relayed to everyone else, with my id).
     /// `held` is the item in hand as its index plus one (0 = empty hand).
-    Move { id: u16, pos: [f64; 3], yaw: f32, pitch: f32, held: u16 },
+    /// `pose` is the body's posture in the low four bits (sitting, lying,
+    /// crouching, swimming...) and what the arms are doing above (see
+    /// `content::pose::pack`).
+    Move { id: u16, pos: [f64; 3], yaw: f32, pitch: f32, held: u16, pose: u8 },
+    /// I started playing an emote (its place in the content's emote list
+    /// plus one), or stopped (0). Relayed to the others with my id.
+    Emote { id: u16, emote: u16 },
     /// A block changed (sent by whoever changed it, relayed to the rest).
     SetBlock { x: i32, y: i32, z: i32, block: u16 },
     Chat { id: u16, text: String },
@@ -68,6 +91,9 @@ pub enum Msg {
     /// to hear others and whether it may talk (its microphone is on). Players
     /// start with both off, so a client that never sends this costs nothing.
     VoiceState { flags: u8 },
+    /// "Send me these mods" (names from the [`Msg::ModList`]); answered with
+    /// [`Msg::ModPart`]s, one mod after the other in the order asked.
+    ModsWant { names: Vec<String> },
     // Server to client.
     Welcome { id: u16, seed: u32, time: f32, kind: String },
     /// The server will not let you in.
@@ -82,6 +108,12 @@ pub enum Msg {
     Pack { last: bool, data: Vec<u8> },
     /// What you may do here (`PERM_` flags), sent on joining and whenever it changes.
     Perms { flags: u8 },
+    /// The mods the server offers, sent on joining (after the pack, even
+    /// when there are none).
+    ModList { mods: Vec<ModInfo> },
+    /// A piece of one mod's bundle (`index` is its place in the list);
+    /// `last` ends it.
+    ModPart { index: u16, last: bool, data: Vec<u8> },
     /// Shared state of the game, passed between players through the
     /// server (sent by a client, relayed with its id): creatures, chests,
     /// what is in a chest. `channel` says which; `key` names the thing;
@@ -156,6 +188,16 @@ impl R<'_> {
             None
         }
     }
+    /// A world coordinate: finite and within what a block position can be (a
+    /// huge one would turn into infinity in the maths that follows).
+    fn coord(&mut self) -> Option<f64> {
+        let v = self.f64()?;
+        if v > -2.2e9 && v < 2.2e9 {
+            Some(v)
+        } else {
+            None
+        }
+    }
     fn str(&mut self) -> Option<String> {
         let n = self.u8()? as usize;
         let b = self.take(n)?;
@@ -175,7 +217,7 @@ impl Msg {
                 w.u32(*content);
                 w.str(name);
             }
-            Msg::Move { id, pos, yaw, pitch, held } => {
+            Msg::Move { id, pos, yaw, pitch, held, pose } => {
                 w.u8(2);
                 w.u16(*id);
                 for p in pos {
@@ -184,6 +226,12 @@ impl Msg {
                 w.f32(*yaw);
                 w.f32(*pitch);
                 w.u16(*held);
+                w.u8(*pose);
+            }
+            Msg::Emote { id, emote } => {
+                w.u8(20);
+                w.u16(*id);
+                w.u16(*emote);
             }
             Msg::SetBlock { x, y, z, block } => {
                 w.u8(3);
@@ -227,6 +275,34 @@ impl Msg {
             Msg::VoiceState { flags } => {
                 w.u8(8);
                 w.u8(*flags);
+            }
+            Msg::ModsWant { names } => {
+                w.u8(9);
+                let n = names.len().min(MAX_MOD_LIST);
+                w.u8(n as u8);
+                for name in &names[..n] {
+                    w.str(name);
+                }
+            }
+            Msg::ModList { mods } => {
+                w.u8(18);
+                let n = mods.len().min(MAX_MOD_LIST);
+                w.u8(n as u8);
+                for m in &mods[..n] {
+                    w.str(&m.name);
+                    w.str(&m.version);
+                    w.0.extend_from_slice(&m.sum.to_le_bytes());
+                    w.u32(m.size);
+                    w.u16(m.files);
+                }
+            }
+            Msg::ModPart { index, last, data } => {
+                w.u8(19);
+                w.u16(*index);
+                w.u8(*last as u8);
+                let n = data.len().min(MAX_PACK_PART);
+                w.u16(n as u16);
+                w.0.extend_from_slice(&data[..n]);
             }
             Msg::Welcome { id, seed, time, kind } => {
                 w.u8(10);
@@ -284,8 +360,9 @@ impl Msg {
         let mut r = R(body);
         let m = match kind {
             1 => Msg::Hello { version: r.u16()?, content: r.u32()?, name: r.str()? },
-            2 => Msg::Move { id: r.u16()?, pos: [r.f64()?, r.f64()?, r.f64()?], yaw: r.f32()?, pitch: r.f32()?, held: r.u16()? },
+            2 => Msg::Move { id: r.u16()?, pos: [r.coord()?, r.coord()?, r.coord()?], yaw: r.f32()?, pitch: r.f32()?, held: r.u16()?, pose: r.u8()? },
             3 => Msg::SetBlock { x: r.i32()?, y: r.i32()?, z: r.i32()?, block: r.u16()? },
+            20 => Msg::Emote { id: r.u16()?, emote: r.u16()? },
             4 => Msg::Chat { id: r.u16()?, text: r.str()? },
             5 => {
                 let id = r.u16()?;
@@ -313,6 +390,38 @@ impl Msg {
                 Msg::Voice { id, seq, gain, frame: r.take(n)?.to_vec() }
             }
             8 => Msg::VoiceState { flags: r.u8()? },
+            9 => {
+                let n = r.u8()? as usize;
+                if n > MAX_MOD_LIST {
+                    return None;
+                }
+                let mut names = Vec::with_capacity(n);
+                for _ in 0..n {
+                    names.push(r.str()?);
+                }
+                Msg::ModsWant { names }
+            }
+            18 => {
+                let n = r.u8()? as usize;
+                if n > MAX_MOD_LIST {
+                    return None;
+                }
+                let mut mods = Vec::with_capacity(n);
+                for _ in 0..n {
+                    let (name, version) = (r.str()?, r.str()?);
+                    let sum = u64::from_le_bytes(r.take(8)?.try_into().ok()?);
+                    mods.push(ModInfo { name, version, sum, size: r.u32()?, files: r.u16()? });
+                }
+                Msg::ModList { mods }
+            }
+            19 => {
+                let (index, last) = (r.u16()?, r.u8()? != 0);
+                let n = r.u16()? as usize;
+                if n > MAX_PACK_PART {
+                    return None;
+                }
+                Msg::ModPart { index, last, data: r.take(n)?.to_vec() }
+            }
             10 => Msg::Welcome { id: r.u16()?, seed: r.u32()?, time: r.f32()?, kind: r.str()? },
             11 => Msg::Refuse { reason: r.str()? },
             12 => Msg::Join { id: r.u16()?, name: r.str()? },
@@ -404,7 +513,9 @@ mod tests {
     fn every_message_round_trips() {
         let all = [
             Msg::Hello { version: VERSION, content: 0xDEAD_BEEF, name: String::from("Kyttu_1") },
-            Msg::Move { id: 7, pos: [1.5, -64.25, 1e6], yaw: -3.1, pitch: 0.5, held: 9 },
+            Msg::Move { id: 7, pos: [1.5, -64.25, 1e6], yaw: -3.1, pitch: 0.5, held: 9, pose: 0x23 },
+            Msg::Emote { id: 3, emote: 12 },
+            Msg::Emote { id: 3, emote: 0 },
             Msg::SetBlock { x: -100_000, y: 127, z: 5, block: 4095 },
             Msg::Chat { id: 2, text: String::from("hello there") },
             Msg::Skin { id: 4, png: alloc::vec![1, 2, 3, 250], slim: true },
@@ -420,6 +531,12 @@ mod tests {
             Msg::Voice { id: 5, seq: 65_535, gain: 200, frame: alloc::vec![9; 163] },
             Msg::Voice { id: 0, seq: 0, gain: 0, frame: Vec::new() },
             Msg::VoiceState { flags: VOICE_HEAR | VOICE_TALK },
+            Msg::ModsWant { names: alloc::vec![String::from("earth"), String::from("my-mod")] },
+            Msg::ModsWant { names: Vec::new() },
+            Msg::ModList { mods: alloc::vec![ModInfo { name: String::from("earth"), version: String::from("1.2"), sum: 0xDEAD_BEEF_0123_4567, size: 123_456, files: 40 }, ModInfo { name: String::from("x"), version: String::new(), sum: 0, size: 0, files: 0 }] },
+            Msg::ModList { mods: Vec::new() },
+            Msg::ModPart { index: 3, last: false, data: alloc::vec![7; 1000] },
+            Msg::ModPart { index: 0, last: true, data: Vec::new() },
         ];
         let mut inbox = Inbox::default();
         for m in &all {
@@ -448,6 +565,12 @@ mod tests {
             i.push(bad);
             assert_eq!(i.next(), Next::Bad, "{bad:?}");
         }
+        // A position no block could be at is not this protocol either.
+        let mut far = Msg::Move { id: 1, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, pose: 0 }.encode();
+        far[5..13].copy_from_slice(&1.0e300f64.to_le_bytes());
+        let mut i = Inbox::default();
+        i.push(&far);
+        assert_eq!(i.next(), Next::Bad);
         let mut nan = Msg::Time { time: 0.0 }.encode();
         nan[3..7].copy_from_slice(&f32::NAN.to_le_bytes());
         let mut i = Inbox::default();

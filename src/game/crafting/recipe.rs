@@ -2,10 +2,19 @@
 
 use alloc::vec::Vec;
 
-/// The biggest grid there is (the crafting table's).
-pub const MAX_SIDE: usize = 3;
+/// The biggest grid there is (the workshop's, 7 x 7).
+pub const MAX_SIDE: usize = 7;
 /// The grid of the player's own inventory screen.
 pub const HAND_SIDE: usize = 2;
+/// The crafting table's grid. A shapeless recipe never needs more room than
+/// this: its units get a cell each up to `TABLE_SIDE` squared, and are
+/// folded into fewer cells with bigger needs beyond that (see `parse`).
+pub const TABLE_SIDE: usize = 3;
+/// The crafting bench's grid (5 x 5).
+pub const BENCH_SIDE: usize = 5;
+/// Every grid there is, smallest first: the inventory's, the crafting
+/// table's, the bench's and the workshop's.
+pub const SIDES: [usize; 4] = [HAND_SIDE, TABLE_SIDE, BENCH_SIDE, MAX_SIDE];
 
 /// What one cell of the grid must hold: any one of `items`, at least `need`
 /// of it (the usual need is 1). A single-item list is a plain ingredient; a
@@ -51,7 +60,7 @@ pub struct GridRecipe {
 impl GridRecipe {
     /// A shaped recipe. Empty rows and columns around the edge are trimmed
     /// away. `None` when `cells` is not `w * h`, nothing is in it, or it is
-    /// bigger than the biggest grid once trimmed.
+    /// bigger than the biggest grid (7 x 7) once trimmed.
     pub fn shaped(out: (u16, u16), w: usize, h: usize, cells: Vec<Option<Ingredient>>) -> Option<GridRecipe> {
         if w == 0 || h == 0 || cells.len() != w * h {
             return None;
@@ -76,9 +85,9 @@ impl GridRecipe {
         Some(GridRecipe { out, pattern: Pattern::Shaped { w: nw, h: nh, cells: trimmed } })
     }
 
-    /// A shapeless recipe: one to nine ingredients.
+    /// A shapeless recipe: one to nine ingredients (a table's cells).
     pub fn shapeless(out: (u16, u16), ingredients: Vec<Ingredient>) -> Option<GridRecipe> {
-        if ingredients.is_empty() || ingredients.len() > MAX_SIDE * MAX_SIDE {
+        if ingredients.is_empty() || ingredients.len() > TABLE_SIDE * TABLE_SIDE {
             return None;
         }
         Some(GridRecipe { out, pattern: Pattern::Shapeless(ingredients) })
@@ -120,6 +129,13 @@ impl GridRecipe {
             Pattern::Shaped { w: pw, h: ph, .. } => *pw <= w && *ph <= h,
             Pattern::Shapeless(list) => list.len() <= w * h,
         }
+    }
+
+    /// The side of the smallest grid this can be made in: 2 (by hand), 3 (a
+    /// crafting table), 5 (a crafting bench) or 7 (a workshop). It follows
+    /// from the size of the pattern; nothing is written in the data.
+    pub fn min_side(&self) -> usize {
+        SIDES.iter().copied().find(|&n| self.fits(n, n)).unwrap_or(MAX_SIDE)
     }
 
     /// Whether the 2 x 2 grid of the inventory screen is too small for it.

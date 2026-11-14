@@ -107,20 +107,34 @@ fn override_dir() -> Option<&'static str> {
     if p.is_null() { None } else { Some(unsafe { &*p }.as_str()) }
 }
 
-/// The files in the textures folder when the atlas was last built (the old
-/// lists are kept for good: a few names each time packs are reloaded).
+/// Put `new` in `slot` for readers to find. What `slot` held before is kept
+/// in `retired` until the next swap, and what `retired` held is freed: a
+/// reader that took a reference from `slot` has all of a rebuild to finish
+/// with it. (These used to be leaked for good, one list per atlas rebuild.)
+fn swap_retiring<T>(slot: &core::sync::atomic::AtomicPtr<T>, retired: &core::sync::atomic::AtomicPtr<T>, new: *mut T) {
+    use core::sync::atomic::Ordering::AcqRel;
+    let old = slot.swap(new, AcqRel);
+    let older = retired.swap(old, AcqRel);
+    if !older.is_null() {
+        // SAFETY: made by `Box::into_raw` below, replaced two swaps ago.
+        unsafe { drop(alloc::boxed::Box::from_raw(older)) };
+    }
+}
+
+/// The files in the textures folder when the atlas was last built.
 static OVERRIDE_FILES: core::sync::atomic::AtomicPtr<Vec<alloc::string::String>> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+static OVERRIDE_FILES_OLD: core::sync::atomic::AtomicPtr<Vec<alloc::string::String>> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
 
 /// Look in the textures folder again (when the atlas is rebuilt).
 pub fn rescan_overrides() {
     let Some(dir) = override_dir() else { return };
     let files: Vec<alloc::string::String> = crate::sys::list_dir(dir);
-    OVERRIDE_FILES.store(alloc::boxed::Box::into_raw(alloc::boxed::Box::new(files)), core::sync::atomic::Ordering::Release);
+    swap_retiring(&OVERRIDE_FILES, &OVERRIDE_FILES_OLD, alloc::boxed::Box::into_raw(alloc::boxed::Box::new(files)));
 }
 
 fn override_files() -> &'static [alloc::string::String] {
     let p = OVERRIDE_FILES.load(core::sync::atomic::Ordering::Acquire);
-    // SAFETY: from a leaked box, never freed.
+    // SAFETY: from a boxed list, freed only two rebuilds after it was replaced.
     if p.is_null() { &[] } else { unsafe { &*p } }
 }
 
@@ -129,17 +143,18 @@ fn override_files() -> &'static [alloc::string::String] {
 /// just a folder of pictures). A texture the game has an id for is taken from
 /// a pack when the pack has a picture it matches (see [`pack_names`]).
 struct PackIndex {
-    /// `(file stem, full path)`; later packs come later and win.
-    files: Vec<(alloc::string::String, alloc::string::String)>,
+    /// file stem -> full path; later packs come later and win.
+    files: alloc::collections::BTreeMap<alloc::string::String, alloc::string::String>,
 }
 
 static PACKS: core::sync::atomic::AtomicPtr<PackIndex> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+static PACKS_OLD: core::sync::atomic::AtomicPtr<PackIndex> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
 
 /// Use these packs (folders), in order, and index their pictures. Returns how many pictures were found.
 pub fn set_texture_packs(paths: &[alloc::string::String]) -> usize {
     // The packs' pictures of creatures and players are looked for too.
     crate::pack_entities::set_packs(paths);
-    let mut files = Vec::new();
+    let mut files = alloc::collections::BTreeMap::new();
     for root in paths {
         let root = if root.ends_with('/') { root.clone() } else { alloc::format!("{}/", root) };
         // Every folder a pack might keep its pictures in.
@@ -155,23 +170,21 @@ pub fn set_texture_packs(paths: &[alloc::string::String]) -> usize {
         for d in dirs {
             for f in crate::sys::list_dir(&d) {
                 if let Some(stem) = f.strip_suffix(".png") {
-                    let name = alloc::string::String::from(stem);
-                    let path = alloc::format!("{}{}", d, f);
-                    files.retain(|e: &(alloc::string::String, alloc::string::String)| e.0 != name);
-                    files.push((name, path));
+                    // (A later folder's picture of the same name replaces the earlier one.)
+                    files.insert(alloc::string::String::from(stem), alloc::format!("{}{}", d, f));
                 }
             }
         }
     }
     let n = files.len();
     let p = if paths.is_empty() { core::ptr::null_mut() } else { alloc::boxed::Box::into_raw(alloc::boxed::Box::new(PackIndex { files })) };
-    PACKS.store(p, core::sync::atomic::Ordering::Release);
+    swap_retiring(&PACKS, &PACKS_OLD, p);
     n
 }
 
 fn packs() -> Option<&'static PackIndex> {
     let p = PACKS.load(core::sync::atomic::Ordering::Acquire);
-    // SAFETY: from a leaked box, never freed.
+    // SAFETY: from a boxed index, freed only two swaps after it was replaced.
     if p.is_null() { None } else { Some(unsafe { &*p }) }
 }
 
@@ -317,7 +330,7 @@ fn tint_of(name: &str) -> Option<[u8; 3]> {
 pub fn pack_pixels(id: &str) -> Option<Vec<u8>> {
     let index = packs()?;
     for name in pack_names(id) {
-        let Some((_, path)) = index.files.iter().find(|f| f.0 == name) else { continue };
+        let Some(path) = index.files.get(&name) else { continue };
         let Some(mut img) = crate::sys::read_file(path).and_then(|b| crate::image::decode(&b)) else { continue };
         // An animated picture is a tall strip of frames: the first one.
         if img.h > img.w && img.w > 0 && img.h % img.w == 0 {
@@ -342,6 +355,15 @@ pub fn pack_pixels(id: &str) -> Option<Vec<u8>> {
 /// the player has put in the textures folder if there is one, else what the
 /// data describes.
 pub fn tile_pixels(i: usize, t: &TileDef) -> Vec<u8> {
+    tile_pixels_with(i, t, &mut Vec::new())
+}
+
+/// The pack's iron tools as read so far (kind -> picture), so that a pack with big pictures is
+/// not decoded again for every metal a tool is made in.
+type ToolPictures = Vec<(&'static str, Option<Vec<u8>>)>;
+
+/// [`tile_pixels`] with a memory of the pack's tool pictures kept between calls.
+fn tile_pixels_with(i: usize, t: &TileDef, tools: &mut ToolPictures) -> Vec<u8> {
     if let Some(dir) = override_dir() {
         for ext in ["png", "jpg", "jpeg", "gif", "bmp", "tga"] {
             let name = alloc::format!("{}.{}", t.id, ext);
@@ -360,14 +382,14 @@ pub fn tile_pixels(i: usize, t: &TileDef) -> Vec<u8> {
     // A tool the pack has no picture of (ruby, tin, emberite...): the pack's iron
     // one in that material's colour, so it is in the pack's style too.
     if let TileSrc::Paint { style, rgb } = &t.src {
-        if let Some(px) = pack_tool(style, *rgb) {
+        if let Some(px) = pack_tool(style, *rgb, tools) {
             return px;
         }
     }
     // A palette of one flat colour is the same thing; one with several colours is the game's own drawing.
     if let TileSrc::Palette { style, pal } = &t.src {
         if pal.is_plain() {
-            if let Some(px) = pack_tool(style, pal.base()) {
+            if let Some(px) = pack_tool(style, pal.base(), tools) {
                 return px;
             }
         }
@@ -377,7 +399,7 @@ pub fn tile_pixels(i: usize, t: &TileDef) -> Vec<u8> {
 
 /// The pack's iron `kind` (pick, axe, shovel, hoe, sword) with its metal
 /// recoloured to `rgb`; its handle and outline stay.
-fn pack_tool(kind: &str, rgb: [u8; 3]) -> Option<Vec<u8>> {
+fn pack_tool(kind: &str, rgb: [u8; 3], tools: &mut ToolPictures) -> Option<Vec<u8>> {
     let theirs = match kind {
         "pick" => "iron_pickaxe",
         "axe" => "iron_axe",
@@ -386,7 +408,10 @@ fn pack_tool(kind: &str, rgb: [u8; 3]) -> Option<Vec<u8>> {
         "sword" => "iron_sword",
         _ => return None,
     };
-    let mut px = pack_pixels(theirs)?;
+    if !tools.iter().any(|t| t.0 == theirs) {
+        tools.push((theirs, pack_pixels(theirs)));
+    }
+    let mut px = tools.iter().find(|t| t.0 == theirs)?.1.clone()?;
     for p in px.chunks_mut(4) {
         if p[3] == 0 {
             continue;
@@ -496,6 +521,7 @@ pub fn described_pixels(_i: usize, t: &TileDef) -> Vec<u8> {
 /// The see-through-ness of every pixel of every texture as last built into
 /// the atlas, 256 bytes a texture: what held items are cut out by.
 static ALPHA: core::sync::atomic::AtomicPtr<Vec<u8>> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+static ALPHA_OLD: core::sync::atomic::AtomicPtr<Vec<u8>> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
 
 /// The alpha of texture `tile`, 16 x 16, top row first (`None` before the atlas exists).
 pub fn tile_alpha(tile: usize) -> Option<&'static [u8]> {
@@ -503,7 +529,7 @@ pub fn tile_alpha(tile: usize) -> Option<&'static [u8]> {
     if p.is_null() {
         return None;
     }
-    // SAFETY: from a leaked box, never freed.
+    // SAFETY: from a boxed list, freed only two atlas builds after it was replaced.
     unsafe { &*p }.get(tile * TILE * TILE..(tile + 1) * TILE * TILE)
 }
 
@@ -526,16 +552,17 @@ pub fn build_atlas(r: &Registry) -> Vec<u8> {
     rescan_overrides();
     let mut a = alloc::vec![0u8; ATLAS * ATLAS * 4];
     let mut mask: Vec<u8> = Vec::with_capacity(r.tiles.len() * TILE * TILE);
+    let mut tools: ToolPictures = Vec::new();
     for (i, t) in r.tiles.iter().enumerate() {
         let (tx, ty) = (i % PER_ROW, i / PER_ROW);
-        let px = tile_pixels(i, t);
+        let px = tile_pixels_with(i, t, &mut tools);
         mask.extend(px.chunks(4).map(|p| p[3]));
         for y in 0..TILE {
             let o = ((ty * TILE + y) * ATLAS + tx * TILE) * 4;
             a[o..o + TILE * 4].copy_from_slice(&px[y * TILE * 4..(y + 1) * TILE * 4]);
         }
     }
-    ALPHA.store(alloc::boxed::Box::into_raw(alloc::boxed::Box::new(mask)), core::sync::atomic::Ordering::Release);
+    swap_retiring(&ALPHA, &ALPHA_OLD, alloc::boxed::Box::into_raw(alloc::boxed::Box::new(mask)));
     a
 }
 
@@ -590,6 +617,42 @@ mod tests {
         // Tile 0 (grass_top) is opaque.
         assert_eq!(a[3], 255);
         assert_eq!(half_size(&a, ATLAS).len(), 256 * 256 * 4);
+    }
+
+    #[test]
+    fn replaced_lists_are_freed_two_swaps_later() {
+        use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
+        struct D;
+        impl Drop for D {
+            fn drop(&mut self) {
+                DROPS.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let (slot, old): (AtomicPtr<D>, AtomicPtr<D>) = (AtomicPtr::new(core::ptr::null_mut()), AtomicPtr::new(core::ptr::null_mut()));
+        for round in 1..=5usize {
+            swap_retiring(&slot, &old, alloc::boxed::Box::into_raw(alloc::boxed::Box::new(D)));
+            // The current one and the one before it are alive; everything older is gone.
+            assert_eq!(DROPS.load(Ordering::SeqCst), round.saturating_sub(2), "round {round}");
+        }
+        for p in [&slot, &old] {
+            let p = p.swap(core::ptr::null_mut(), Ordering::SeqCst);
+            // SAFETY: made above with `Box::into_raw`.
+            unsafe { drop(alloc::boxed::Box::from_raw(p)) };
+        }
+    }
+
+    #[test]
+    fn the_registry_finds_textures_and_models_by_id_as_a_search_would() {
+        let r = reg();
+        for (i, t) in r.tiles.iter().enumerate().step_by(7) {
+            assert_eq!(r.tile(&t.id), r.tiles.iter().position(|x| x.id == t.id), "{} ({i})", t.id);
+        }
+        for m in &r.models {
+            assert_eq!(r.model(&m.id), r.models.iter().position(|x| x.id == m.id), "{}", m.id);
+        }
+        assert_eq!(r.tile("no such texture"), None);
+        assert!(r.tile("white").is_some());
     }
 
     #[test]

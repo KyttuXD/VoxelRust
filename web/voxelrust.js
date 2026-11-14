@@ -420,6 +420,17 @@
         out.setUint32(ptr + i * 4, textures.length - 1, true);
       }
     },
+    glDeleteTextures(n, ptr) {
+      const ids = view();
+      for (let i = 0; i < n; i++) {
+        const id = ids.getUint32(ptr + i * 4, true);
+        const t = textures[id];
+        if (id && t && t.object) {
+          gl.deleteTexture(t.object);
+          t.object = null;
+        }
+      }
+    },
     glBindTexture(target, id) {
       if (target !== GL_TEXTURE_2D) {
         unimplemented("glBindTexture target 0x" + target.toString(16));

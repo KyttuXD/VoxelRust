@@ -6,6 +6,7 @@ is long and regular (sixteen colours times several materials, six woods,
 stairs and slabs of each). Edit the tables here and run it again, or edit
 base.txt by hand: both are fine.
 """
+import math
 import os
 import sys
 
@@ -150,8 +151,13 @@ for id, _, bark, wood, leaf in WOODS:
 
 CHESTS = [("oak", "Oak", (176, 136, 84))] + [(i, n, wd) for i, n, _, wd, _ in WOODS if i != "oak"] + \
          [(i, n, c) for i, n, c in COLOURS]
+# A chest block has a front (the latch, one face only, see `front` in docs/DATA.md), plain
+# sides and a lid top. `<id>_chest` is the front picture and the block's own id.
 for cid, _, (r, g, b) in CHESTS:
-    tex(f"{cid}_chest", f"paint chest {r} {g} {b}")
+    tex(f"{cid}_chest", f"paint chest_front {r} {g} {b}")
+    tex(f"{cid}_chest_side", f"paint chest_side {r} {g} {b}")
+    tex(f"{cid}_chest_top", f"paint chest_top {r} {g} {b}")
+tex("cupboard", "paint chest 176 136 84")
 
 w("\n# ---- Terrain ----")
 block("stone", "Stone", "stone", cat="Stone", hardness=2.0, drops="cobble")
@@ -238,9 +244,73 @@ for id, name, t in PLANKS:
 w("\n# ---- Furniture: a crafting table and chests ----")
 w("# `use craft` opens the full recipe list; `use chest` gives the block storage.")
 block("crafting_table", "Crafting Table", "workbench_top planks planks", cat="Shapes", hardness=1.4, use="craft")
+
+
+def chest_boxes(angle):
+    """The boxes of a chest (placed facing north, so its front is the +z side and the hinge the
+    -z side): a body 7 high and a lid 3 thick, raised `angle` degrees about the back edge. A tilted
+    lid is three steps (boxes cannot tilt), clamped to the block."""
+    body = "1 0 1 15 7 15"
+    if angle == 0:
+        return [body, "1 7 1 15 10 15"]
+    out = [body]
+    c, s_ = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+    for k in range(3):
+        zs, ys = [], []
+        for d in (14 * k / 3, 14 * (k + 1) / 3):
+            for t in (0, 3):
+                zs.append(1 + d * c - t * s_)
+                ys.append(7 + d * s_ + t * c)
+        z0, z1 = max(0, int(math.floor(min(zs)))), min(16, int(math.ceil(max(zs))))
+        y0, y1 = int(math.floor(min(ys))), min(16, int(math.ceil(max(ys))))
+        y0 = min(y0, y1 - 1)
+        out.append(f"1 {y0} {z0} 15 {y1} {max(z1, z0 + 1)}")
+    return out
+
+
+# The lid angles of a chest being opened: 0 is shut, the last is wide open. The three between
+# are what src/game/chest_anim.rs steps through. Each stage is a hidden block of its own that
+# is read back as the shut one when a world loads (`rest`).
+CHEST_ANGLES = [0, 12, 24, 36]
 for cid, cname, _ in CHESTS:
-    block(f"{cid}_chest", f"{cname} Chest", f"{cid}_chest", cat="Storage", hardness=1.4, use="chest",
-          box=["1 0 1 15 14 15"])
+    common = dict(hardness=1.4, tool="axe", use="chest", rotate=True, front=f"{cid}_chest")
+    tx = f"{cid}_chest_top {cid}_chest_side {cid}_chest_top"
+    block(f"{cid}_chest", f"{cname} Chest", tx, cat="Storage", box=chest_boxes(0), **common)
+    for n in (1, 2, 3):
+        block(f"{cid}_chest_lid{n}", f"{cname} Chest", tx, hidden=True, drops=f"{cid}_chest", rest=f"{cid}_chest",
+              tag=[f"chest_lid {n}"], box=chest_boxes(CHEST_ANGLES[n]), **common)
+
+w("""
+# ---- Crafting tiers ----
+# `use craft` is the crafting table's 3 x 3 grid; `use craft 5` a crafting
+# bench's 5 x 5 and `use craft 7` a workshop's 7 x 7. A recipe needs the
+# smallest grid its pattern fits in (nothing is written for that), and a
+# bigger bench makes everything a smaller one does. The bench is made from a
+# crafting table and the workshop from a bench.""")
+tex("bench5_top", "paint bench5 150 156 166")
+tex("bench5_side", "paint bench_side 150 156 166")
+tex("bench7_top", "paint bench7 100 118 150")
+tex("bench7_side", "paint bench_side 100 118 150")
+block("crafting_bench", "Crafting Bench", "bench5_top bench5_side bench5_side", cat="Shapes", hardness=2.0, tool="pick", use="craft 5")
+block("workshop", "Workshop", "bench7_top bench7_side bench7_side", cat="Shapes", hardness=2.4, tool="pick", use="craft 7")
+w("shaped crafting_bench 1 \"III\" \"ITI\" \"PPP\" with I iron_ingot T crafting_table P @planks")
+w("shaped workshop 1 \"IIIII\" \"IPPPI\" \"IPBPI\" \"IPPPI\" \"IIIII\" with I iron_ingot P @planks B crafting_bench")
+# Showcase recipes that need the bigger grids.
+block("big_chest", "Big Chest", "oak_chest", cat="Storage", hardness=1.6, use="chest", box=["0 0 0 16 15 16"])
+w("shaped big_chest 1 \"PPPPP\" \"P...P\" \"P.C.P\" \"P...P\" \"PPPPP\" with P @planks C oak_chest")
+block("bed_frame", "Four-poster Bed Frame", "planks", cat="Furniture", hardness=1.0, tool="axe",
+      box=["0 0 0 2 16 2", "14 0 0 16 16 2", "0 0 14 2 16 16", "14 0 14 16 16 16", "0 3 0 16 6 16",
+           "0 14 0 16 16 2", "0 14 14 16 16 16"])  # a block takes 8 boxes at most: 4 posts, the mattress and the head and foot rails
+w("shaped bed_frame 1 \"S...S\" \"SPPPS\" \"SPPPS\" \"S...S\" with S stick P @planks")
+block("banquet_table", "Banquet Table", "planks", cat="Furniture", hardness=1.4, tool="axe",
+      box=["0 13 0 16 16 16", "6 3 6 10 13 10", "2 0 2 14 3 14"])
+w("shaped banquet_table 1 \"PPPPPPP\" \".S...S.\" \".S...S.\" with P @planks S stick")
+w("shaped golem_statue 1 \"..S..\" \"SSSSS\" \"..S..\" \".S.S.\" \".S.S.\" with S stone")
+tex("heavy_tnt_side", "paint tnt_side 70 70 96")
+tex("heavy_tnt_top", "paint tnt_top 70 70 96")
+tex("heavy_tnt_bottom", "paint tnt_bottom 70 70 96")
+block("heavy_tnt", "Heavy TNT", "heavy_tnt_top heavy_tnt_side heavy_tnt_bottom", cat="Tools", hardness=0, tag="tnt 5")
+w("shaped heavy_tnt 1 \"..T..\" \".TGT.\" \"TGGGT\" \".TGT.\" \"..T..\" with T tnt G gunpowder")
 
 w("\n# ---- Custom shapes are just boxes ----")
 block("planks_post", "Oak Post", "planks", cat="Shapes", hardness=1.2, box=["6 0 6 10 16 10"])
@@ -278,7 +348,7 @@ for iid, name, food in [("apple", "Apple", 3), ("berries", "Berries", 2), ("raw_
 w("""
 # ---- Recipes (survival mode) ----
 # Recipes are laid out in the crafting grid (2 x 2 in the inventory screen,
-# 3 x 3 at a crafting table):
+# 3 x 3 at a crafting table, 5 x 5 at a bench, 7 x 7 at a workshop):
 #   craft  <item> <count> <ingredient> <count> [<ingredient> <count> ...]    shapeless
 #   shaped <item> <count> <row> [<row> ...] with <letter> <ingredient> [<letter> <ingredient> ...]
 #   group  <name> <item> [<item> ...]       @name in a recipe means any of them
@@ -344,28 +414,9 @@ w("""
 model player builtin player
 model player_slim builtin player_slim
 model grazer builtin grazer
-
-entity wanderer
-  name Wanderer
-  model player
-  height 1.8
-  width 0.6
-  speed 2.6
-  health 20
-  behavior npc
-  weight 6
-entity lurker
-  name Lurker
-  model player
-  tint 70 110 90
-  height 1.9
-  width 0.6
-  speed 3.1
-  health 14
-  damage 3
-  behavior hostile
-  night
-  weight 30""")
+#
+# The base game has no creatures of its own: the animals, monsters, villagers and the
+# Wanderer are the mods wildlife, monsters, villagers and wanderer (tools/export_mods.py).""")
 w("""
 # ---- Vehicles ----
 # The base game has none of its own: boats, trains, planes and cars are
@@ -395,7 +446,7 @@ block("brown_mushroom", "Mushroom", "brown_mushroom", shape="cross", cat="Nature
 block("crystal_cluster", "Crystal Cluster", "crystal_cluster", shape="cross", cat="Nature", light=11, drops="crystal", hardness=0.8, tool="pick")
 block("icicle", "Icicle", "icicle", shape="cross", cat="Nature", drops="nothing")
 block("magma", "Magma", "magma", cat="Nature", hardness=2.5, tool="pick", light=12, hurts=2)
-block("cave_vine", "Glow Vine", "cave_vine", shape="cross", cat="Nature", light=6, drops="berries 40")
+block("cave_vine", "Glow Vine", "cave_vine", shape="cross", cat="Nature", light=6, drops="berries 40", tag="climb")
 block("stalagmite", "Stalagmite", "stone", cat="Nature", hardness=1.0, tool="pick", drops="cobble",
       box=["5 0 5 11 6 11", "6 6 6 10 11 10", "7 11 7 9 16 9"])
 block("cobweb", "Cobweb", "cobweb", shape="cross", cat="Nature", hardness=0.6, drops="string", slow=25)
@@ -429,7 +480,8 @@ for line in ["step steps 0.09 0.95 90 60 0.10 0.55 Footsteps", "break effects 0.
              "rattle effects 0.30 0.85 900 700 0.85 0.45 Bones rattle", "roar effects 1.20 0.70 140 60 0.12 1.00 A roar",
              "chime effects 0.60 0.02 1200 1180 0.90 0.40 Chime", "rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails",
              "whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh", "sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling",
-             "explosion effects 1.10 1.00 90 30 0.06 1.00 Explosion"]:
+             "explosion effects 1.10 1.00 90 30 0.06 1.00 Explosion",
+             "chest_open effects 0.30 0.40 130 320 0.45 0.55 Chest opens", "chest_close effects 0.16 0.60 260 100 0.40 0.65 Chest closes"]:
     w("sound " + line)
 
 w("""
@@ -541,7 +593,7 @@ block("desk", "Desk", "planks", cat="Furniture", hardness=0.8, tool="axe", rotat
 block("shelf", "Shelf", "planks", cat="Furniture", hardness=0.6, tool="axe", rotate=True,
       box=["0 12 10 16 14 16", "0 4 10 16 6 16"])
 block("bookshelf", "Bookshelf", "planks books planks", cat="Furniture", hardness=1.2, tool="axe")
-block("cupboard", "Cupboard", "oak_chest", cat="Furniture", hardness=1.2, tool="axe", rotate=True, use="chest",
+block("cupboard", "Cupboard", "cupboard", cat="Furniture", hardness=1.2, tool="axe", rotate=True, use="chest",
       box=["0 0 4 16 16 16"])
 block("wardrobe", "Wardrobe", "oak_door", cat="Furniture", hardness=1.2, tool="axe", rotate=True, use="chest", tall=True,
       box=["0 0 4 16 16 16"])
@@ -813,29 +865,56 @@ effect("frozen", "Frozen", "bad", [
 effect("saturation", "Saturation", "good", ["hunger -1"], "220 130 60", 5)
 effect("night_vision", "Night Vision", "good", ["vision"], "60 60 200", 180)
 effect("jump_boost", "Jump Boost", "good", ["jump 40"], "100 220 110", 30)
+# ---- Emotes ----
+# The one emote the game ships; mods add the rest (docs/DATA.md, "Emotes").
+w("""
+# ---- Emotes ----
+#   emote <id> <name> <seconds> [loop]
+#     key <time> <bone> <x> <y> <z>     degrees added to the bone's own turn, eased between keys
+emote wave Wave 2.4
+  key 0.0 R-Arm 0 0 0
+  key 0.45 R-Arm 0 0 150
+  key 1.95 R-Arm 0 0 150
+  key 2.4 R-Arm 0 0 0
+  key 0.45 R-Forearm 0 0 0
+  key 0.7 R-Forearm 0 0 -24
+  key 0.95 R-Forearm 0 0 24
+  key 1.2 R-Forearm 0 0 -24
+  key 1.45 R-Forearm 0 0 24
+  key 1.7 R-Forearm 0 0 -24
+  key 1.95 R-Forearm 0 0 0
+  key 0.45 Head 0 0 6
+  key 1.95 Head 0 0 6
+  key 2.4 Head 0 0 0""")
 w("\ninclude effects.txt")
+w("include creatures.txt")
 
-if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "creatures.txt")):
-    w("\n# Models, then every creature, live in their own files.\ninclude creatures.txt")
-    if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "wildlife.txt")):
-        w("include wildlife.txt")
-else:
-    w("""entity grazer
-  name Grazer
-  model grazer
-  height 1.2
-  width 0.8
-  speed 1.8
-  health 8
-  behavior wander
-  drops raw_meat 2
-  biomes plains forest
-  weight 30""")
 
-fx_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "effects.txt")
-open(fx_path, "w").write("\n".join(fx) + "\n")
-path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "base.txt")
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 import craft_convert
-open(path, "w").write(craft_convert.convert_text("\n".join(out) + "\n"))
-print("wrote", os.path.normpath(path), len(out), "lines")
+import modsplit
+
+# Everything the game used to carry, converted to the crafting grid's syntax. tools/export_mods.py
+# cuts it with modsplit.py: the core goes to data/base.txt, the rest to the mods.
+FULL_TEXT = craft_convert.convert_text("\n".join(out) + "\n")
+FX_TEXT = "\n".join(fx) + "\n"
+
+
+def core_text():
+    """The text of data/base.txt: only what modsplit.py leaves to the core."""
+    parts, tail, owner, problems = modsplit.split(FULL_TEXT)
+    lines = []
+    for r in parts["core"]:
+        lines.extend(r.comments)
+        lines.extend(r.lines)
+    lines.extend(tail)
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+if __name__ == "__main__":
+    data = os.path.join(HERE, "..", "data")
+    open(os.path.join(data, "effects.txt"), "w").write(FX_TEXT)
+    text = core_text()
+    open(os.path.join(data, "base.txt"), "w").write(text)
+    print("wrote", os.path.normpath(os.path.join(data, "base.txt")), text.count("\n"), "lines (the core; tools/export_mods.py writes the mods)")

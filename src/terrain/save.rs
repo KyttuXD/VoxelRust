@@ -42,7 +42,8 @@ pub fn decode(d: &[u8], remap: &[Block]) -> Option<ChunkData> {
         if n == 0 || blocks.len() + n > VOLUME {
             return None;
         }
-        let b = remap.get(saved).copied().unwrap_or(0);
+        // What was left in motion (an open chest) is read back at rest.
+        let b = crate::block::at_rest(remap.get(saved).copied().unwrap_or(0));
         blocks.resize(blocks.len() + n, b);
     }
     // A chunk saved when worlds were half as high: each of its columns
@@ -274,7 +275,7 @@ impl FileIo for DiskIo {
         crate::sys::read_file(path)
     }
     fn write(&mut self, path: &str, data: &[u8]) -> bool {
-        crate::sys::write_file(path, data)
+        crate::sys::write_file_atomic(path, data)
     }
 }
 

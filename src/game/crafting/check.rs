@@ -4,20 +4,22 @@
 //! game's data and of the mods.
 
 use super::matcher;
-use super::recipe::GridRecipe;
+use super::recipe::{GridRecipe, TABLE_SIDE};
 use crate::inventory::{Slot, Stack};
 use alloc::vec::Vec;
 
-/// The grid (3 x 3) a recipe is laid out in at its top left, with the first
-/// item of each ingredient and as many of it as it needs.
-pub fn canonical(recipe: &GridRecipe) -> [Slot; 9] {
-    let mut cells: [Slot; 9] = [None; 9];
-    for (cell, ing) in recipe.layout(3) {
+/// The grid a recipe is laid out in at its top left, with the first item of
+/// each ingredient and as many of it as it needs: its side (at least 3, the
+/// crafting table's) and the cells.
+pub fn canonical(recipe: &GridRecipe) -> (usize, Vec<Slot>) {
+    let side = recipe.min_side().max(TABLE_SIDE);
+    let mut cells: Vec<Slot> = alloc::vec![None; side * side];
+    for (cell, ing) in recipe.layout(side) {
         if let (Some(&item), Some(slot)) = (ing.items.first(), cells.get_mut(cell)) {
             *slot = Some(Stack { item, count: ing.need });
         }
     }
-    cells
+    (side, cells)
 }
 
 /// Pairs `(a, b)` of recipe indices where `b` also matches what `a` is made
@@ -25,9 +27,9 @@ pub fn canonical(recipe: &GridRecipe) -> [Slot; 9] {
 pub fn clashes(recipes: &[GridRecipe]) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
     for (a, ra) in recipes.iter().enumerate() {
-        let cells = canonical(ra);
+        let (side, cells) = canonical(ra);
         for (b, rb) in recipes.iter().enumerate() {
-            if a != b && rb.out != ra.out && matcher::plan(rb, 3, 3, &cells).is_some() {
+            if a != b && rb.out != ra.out && matcher::plan(rb, side, side, &cells).is_some() {
                 out.push((a, b));
             }
         }
@@ -54,7 +56,7 @@ pub fn problem(recipe: &GridRecipe) -> Option<&'static str> {
             }
         }
         Pattern::Shapeless(list) => {
-            if list.is_empty() || list.len() > MAX_SIDE * MAX_SIDE {
+            if list.is_empty() || list.len() > TABLE_SIDE * TABLE_SIDE {
                 return Some("bad ingredient count");
             }
         }

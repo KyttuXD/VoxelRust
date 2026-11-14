@@ -187,6 +187,10 @@ pub fn explode(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSourc
             }
         }
     }
+    // Scripts (script/bridge.rs) may cancel it or change its power too.
+    if !crate::script::bridge::explode(g, &mut info) {
+        return;
+    }
     // A hook may have made it nonsense.
     if !(info.power > 0.0) || !info.at.iter().all(|v| v.is_finite()) {
         return;

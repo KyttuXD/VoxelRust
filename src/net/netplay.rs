@@ -19,6 +19,12 @@ pub struct Remote {
     pub stride: f32,
     /// False until their first position arrives.
     pub seen: bool,
+    /// Their pose byte (see `content::pose::unpack`), the posture they are
+    /// easing into, and the emote they are playing (a code, 0 = none) and for how long.
+    pub pose: u8,
+    pub body: crate::content::pose::Smoother,
+    pub emote: u16,
+    pub emote_t: f32,
 }
 
 pub enum Event {
@@ -30,6 +36,10 @@ pub enum Event {
     Perms(u8),
     /// A piece of the server's content pack; the flag marks the last one.
     Pack(bool, Vec<u8>),
+    /// The mods the server offers for download.
+    ModList(Vec<crate::proto::ModInfo>),
+    /// A piece of one mod's bundle: its place in the list, whether it is the last piece, the bytes.
+    ModPart(u16, bool, Vec<u8>),
     /// A player's skin image arrived, and whether their arms are slim.
     Skin(u16, Vec<u8>, bool),
     /// Shared state from another player: who, channel, key, data.
@@ -40,6 +50,8 @@ pub enum Event {
     Joined(String),
     /// Another player left.
     Left(String),
+    /// Another player started (code above 0) or stopped (0) an emote: who and which.
+    Emote(u16, u16),
 }
 
 pub struct Welcome {
@@ -56,7 +68,9 @@ pub struct Client {
     send_timer: f32,
     /// Time since a position was last sent at all.
     refresh_timer: f32,
-    last_sent: ([f64; 3], f32, f32, u16),
+    last_sent: ([f64; 3], f32, f32, u16, u8),
+    /// The pose byte to send with the next position (set by the session).
+    pub pose: u8,
     pub alive: bool,
     /// Voice frames that have arrived and not yet been played: who, sequence
     /// number, loudness (0..=255), the ADPCM frame. Taken by `client::voice`;
@@ -92,7 +106,7 @@ impl Client {
         for _ in 0..80 {
             match inbox.next() {
                 Next::Msg(Msg::Welcome { id, seed, time, kind }) => {
-                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0), alive: true, voice_in: Vec::new() };
+                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new() };
                     return Ok((c, Welcome { seed, time, kind }));
                 }
                 Next::Msg(Msg::Refuse { reason }) => return Err(reason.to_ascii_uppercase()),
@@ -141,7 +155,7 @@ impl Client {
                     Msg::Join { id, name } => {
                         events.push(Event::Chat(alloc::format!("{} JOINED", name.to_ascii_uppercase())));
                         events.push(Event::Joined(name.clone()));
-                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, seen: false });
+                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0 });
                     }
                     Msg::Leave { id } => {
                         if let Some(p) = self.players.remove(&id) {
@@ -149,9 +163,10 @@ impl Client {
                             events.push(Event::Left(p.name.clone()));
                         }
                     }
-                    Msg::Move { id, pos, yaw, pitch, held } => {
+                    Msg::Move { id, pos, yaw, pitch, held, pose } => {
                         if let Some(p) = self.players.get_mut(&id) {
                             p.held = held;
+                            p.pose = pose;
                             let (dx, dz) = ((pos[0] - p.pos[0]) as f32, (pos[2] - p.pos[2]) as f32);
                             let step = crate::math::sqrtf(dx * dx + dz * dz);
                             if p.seen {
@@ -162,6 +177,13 @@ impl Client {
                             p.yaw = yaw;
                             p.pitch = pitch;
                             p.seen = true;
+                        }
+                    }
+                    Msg::Emote { id, emote } => {
+                        if let Some(p) = self.players.get_mut(&id) {
+                            p.emote = emote;
+                            p.emote_t = 0.0;
+                            events.push(Event::Emote(id, emote));
                         }
                     }
                     Msg::SetBlock { x, y, z, block } => events.push(Event::Block(x, y, z, block)),
@@ -182,6 +204,8 @@ impl Client {
                     Msg::Skin { id, png, slim } => events.push(Event::Skin(id, png, slim)),
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
+                    Msg::ModList { mods } => events.push(Event::ModList(mods)),
+                    Msg::ModPart { index, last, data } => events.push(Event::ModPart(index, last, data)),
                     Msg::Voice { id, seq, gain, frame } => {
                         if self.voice_in.len() >= MAX_VOICE_WAITING {
                             self.voice_in.remove(0);
@@ -195,6 +219,14 @@ impl Client {
         // Players who stop moving stop walking.
         for p in self.players.values_mut() {
             p.stride *= 1.0 - (dt * 3.0).min(1.0);
+            p.body.update(crate::content::pose::unpack(p.pose).0, dt);
+            // An emote runs on while they stand still, and stops when they move off.
+            if p.emote != 0 {
+                p.emote_t += dt;
+                if p.stride > 0.3 {
+                    p.emote = 0;
+                }
+            }
         }
         if !self.alive {
             events.push(Event::Lost);
@@ -207,15 +239,22 @@ impl Client {
     pub fn send_move(&mut self, dt: f32, pos: [f64; 3], yaw: f32, pitch: f32, held: u16) {
         self.send_timer += dt;
         self.refresh_timer += dt;
-        let changed = self.last_sent != (pos, yaw, pitch, held);
+        let changed = self.last_sent != (pos, yaw, pitch, held, self.pose);
         if self.send_timer < 0.1 || (!changed && self.refresh_timer < 2.0) {
             return;
         }
         self.send_timer = 0.0;
         self.refresh_timer = 0.0;
-        self.last_sent = (pos, yaw, pitch, held);
+        self.last_sent = (pos, yaw, pitch, held, self.pose);
         let id = self.id;
-        self.send(&Msg::Move { id, pos, yaw, pitch, held });
+        let pose = self.pose;
+        self.send(&Msg::Move { id, pos, yaw, pitch, held, pose });
+    }
+
+    /// Tell the others which emote this player is playing (0 = stopped).
+    pub fn send_emote(&mut self, emote: u16) {
+        let id = self.id;
+        self.send(&Msg::Emote { id, emote });
     }
 
     pub fn send_block(&mut self, x: i32, y: i32, z: i32, block: u16) {
@@ -251,6 +290,11 @@ impl Client {
         self.send(&Msg::Voice { id, seq, gain: 255, frame: frame.to_vec() });
     }
 
+    /// Ask for these mods from the server's list (see [`Msg::ModsWant`]).
+    pub fn send_mods_want(&mut self, names: &[String]) {
+        self.send(&Msg::ModsWant { names: names.to_vec() });
+    }
+
     pub fn send_chat(&mut self, text: &str) {
         let id = self.id;
         self.send(&Msg::Chat { id, text: String::from(text) });
@@ -273,6 +317,13 @@ mod tests {
         assert_eq!(parse_address(":5"), None);
     }
 
+    /// A mod of one big file (so that it comes in several pieces) and a pack.
+    fn test_mod() -> crate::net::modsync::serve::ServedMod {
+        let files = alloc::vec![(String::from("pack.txt"), b"version 1.5\nblock m\n".to_vec()), (String::from("textures/big.png"), (0..100_000u32).map(|i| (i % 251) as u8).collect())];
+        let data = crate::net::modsync::bundle::encode(&files).unwrap();
+        crate::net::modsync::serve::ServedMod { name: String::from("testmod"), version: String::from("1.5"), sum: crate::net::modsync::bundle::sum_of(&data), files: 2, data }
+    }
+
     /// Run a server on a free port in a background thread.
     fn start_server(max_players: usize) -> (u16, Arc<AtomicBool>, std::thread::JoinHandle<Server>) {
         let cfg = Config {
@@ -283,6 +334,7 @@ mod tests {
             content: content_checksum(),
             states: crate::block::reg().blocks.len() as u16,
             pack: b"block server_special\n tex stone\n".to_vec(),
+            mods: alloc::vec![test_mod()],
         };
         let mut server = Server::bind(cfg).unwrap();
         let port = server.port();
@@ -305,6 +357,39 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         all
+    }
+
+    #[test]
+    fn mods_are_announced_and_sent_only_when_asked() {
+        let (port, stop, handle) = start_server(8);
+        let (mut c, _) = Client::connect("127.0.0.1", port, "Mia").unwrap();
+        let events = pump(&mut c, 120);
+        let list = events.iter().find_map(|e| if let Event::ModList(l) = e { Some(l.clone()) } else { None }).expect("no announcement");
+        assert_eq!(list.len(), 1);
+        assert_eq!((list[0].name.as_str(), list[0].version.as_str()), ("testmod", "1.5"));
+        // Nothing is sent unasked.
+        assert!(!events.iter().any(|e| matches!(e, Event::ModPart(..))));
+        c.send_mods_want(&[String::from("nosuchmod"), String::from("testmod"), String::from("testmod")]);
+        let mut got: Vec<u8> = Vec::new();
+        let mut ended = 0;
+        for _ in 0..40 {
+            for e in pump(&mut c, 50) {
+                if let Event::ModPart(index, last, data) = e {
+                    assert_eq!(index, 0);
+                    got.extend_from_slice(&data);
+                    ended += last as usize;
+                }
+            }
+            if ended > 0 {
+                break;
+            }
+        }
+        assert_eq!(ended, 1, "the mod is sent once, whole");
+        assert_eq!(got.len(), list[0].size as usize);
+        assert_eq!(crate::net::modsync::bundle::sum_of(&got), list[0].sum);
+        assert_eq!(crate::net::modsync::bundle::decode(&got).unwrap().len(), 2);
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
     }
 
     #[test]
@@ -339,6 +424,42 @@ mod tests {
         pump(&mut bob, 60);
         let ea = pump(&mut ann, 100);
         assert!(ea.iter().any(|e| matches!(e, Event::Block(2, 70, 2, _))), "no such event");
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn poses_and_emotes_reach_the_other_players() {
+        use crate::content::pose::{pack, unpack, Kind, SWING};
+        let (port, stop, handle) = start_server(8);
+        let (mut a, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
+        let (mut b, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
+        pump(&mut a, 80);
+        pump(&mut b, 80);
+        // Ann sits, swinging an arm.
+        a.pose = pack(Kind::Sit, SWING);
+        a.send_move(1.0, [3.5, 70.0, 9.5], 0.25, 0.0, 0);
+        pump(&mut a, 40);
+        pump(&mut b, 100);
+        let seen = b.players.values().find(|p| p.name == "Ann").expect("Ann is there");
+        assert_eq!(unpack(seen.pose), (Kind::Sit, SWING));
+        // A change of pose alone is sent, even though she did not move.
+        a.pose = pack(Kind::Stand, 0);
+        a.send_move(1.0, [3.5, 70.0, 9.5], 0.25, 0.0, 0);
+        pump(&mut b, 100);
+        assert_eq!(unpack(b.players.values().find(|p| p.name == "Ann").unwrap().pose).0, Kind::Stand);
+        // Her emote is relayed with her id, and stopping it too.
+        a.send_emote(2);
+        pump(&mut a, 40);
+        let eb = pump(&mut b, 100);
+        assert!(eb.iter().any(|e| matches!(e, Event::Emote(_, 2))), "no emote event");
+        assert_eq!(b.players.values().find(|p| p.name == "Ann").unwrap().emote, 2);
+        a.send_emote(0);
+        pump(&mut b, 100);
+        assert_eq!(b.players.values().find(|p| p.name == "Ann").unwrap().emote, 0);
+        // The sender does not hear herself.
+        let ea = pump(&mut a, 40);
+        assert!(!ea.iter().any(|e| matches!(e, Event::Emote(..))));
         stop.store(true, Ordering::Relaxed);
         handle.join().unwrap();
     }
@@ -408,7 +529,7 @@ mod tests {
         assert_eq!(server.edits.len(), 2);
         let text = server.save_text();
         assert!(text.contains("1 70 -3 stone"), "{text}");
-        let mut again = Server::bind(Config { port: 0, seed: 1, kind: String::new(), max_players: 1, content: 0, states: 1, pack: Vec::new() }).unwrap();
+        let mut again = Server::bind(Config { port: 0, seed: 1, kind: String::new(), max_players: 1, content: 0, states: 1, pack: Vec::new(), mods: Vec::new() }).unwrap();
         again.load_text(&text);
         assert_eq!(again.edits, server.edits);
     }

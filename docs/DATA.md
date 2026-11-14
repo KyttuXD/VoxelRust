@@ -1,20 +1,42 @@
 # Content files
 
 Textures, blocks, items, recipes, models, creatures, vehicles, sounds,
-dimensions, chat commands and scripts are declared in plain text. The game's own content is [data/base.txt](../data/base.txt),
-which includes [data/creatures.txt](../data/creatures.txt) (models),
-[data/wildlife.txt](../data/wildlife.txt) (every creature) and
-[data/effects.txt](../data/effects.txt) (status effects, written by
-`tools/gen_base.py`); all of them are built into the program. Packs are read after it:
+dimensions, chat commands and scripts are declared in plain text. The game's own content is a small **core**,
+[data/base.txt](../data/base.txt), which includes [data/creatures.txt](../data/creatures.txt) (the hand models) and
+[data/effects.txt](../data/effects.txt) (status effects); all of them are built into the program and written by
+`tools/gen_base.py`. The core is what the game needs to start and be played with no mod installed:
+terrain and natural blocks, the oak and pine, ores, glass, a lamp, the crafting table, the furnace, a chest, a door,
+stairs and slabs of stone, cobble and planks, wooden, stone and iron tools and swords, a bow and arrows, basic food,
+the player model and the sounds. **Everything else is a mod**, in the `VoxelRust-Mods` folder:
+
+| Mod | What it holds |
+| --- | --- |
+| `colours` | sixteen colours of concrete, wool, terracotta, glass, boards, chests, beds, couches |
+| `woods` | birch, maple, palm, blossom, acacia, dark oak, and the oak's and pine's extras: doors, gates, trapdoors, stairs, fences... |
+| `stonework` | marble, slate, granite, basalt, tiles, bricks; stairs, slabs and walls of them |
+| `furniture` | chairs, shelves, kitchen and bathroom, tables, lanterns, glass panes |
+| `farming` | farmland, crops, seeds, hoes |
+| `cooking` | ovens, kilns, smokers, campfires, flour to cake, dishes |
+| `caves` | moss, glowcaps, crystal clusters, icicles, magma, vines, cobwebs |
+| `explosives` | TNT, gunpowder, flint and steel |
+| `tools-extra` | copper, crystal and ruby tools and swords, longbow, crossbow |
+| `wildlife`, `monsters`, `villagers`, `wanderer` | every creature (the game has none of its own) |
+
+With none of them the game still runs: a bare world of core blocks and no creatures. The world generator asks for
+what it needs by name and falls back to a core block for what is missing (the extra woods grow oak, caves are
+undressed, there are no fields). `tools/export_mods.py` writes the mods from `tools/gen_base.py` and
+`tools/gen_creatures.py` (see [BUILDING.md](BUILDING.md#regenerating-data)). Packs are read after the core:
 
 1. `pack.txt` in the game's data folder, if it exists (the folder is printed
    at start-up; `--data DIR` chooses another).
-2. Every mod, unless switched off, in a `mods` folder beside the program,
-   in `../Resources/mods` (inside a Mac app), in the data folder's `mods`
-   folder, and in a `mods` folder where the game was started. The mods that
-   come with the game (the folders named in `SHIPPED` in the `VoxelRust-Mods` folder, which is outside this repository: see [BUILDING.md](BUILDING.md#mod-code))
-   are found this way; they are folders, not part of the program. A mod
-   found twice is loaded once.
+2. Every mod, unless switched off, in the data folder's `mods` folder (or the
+   one named by `--mods-dir`) and, without `--mods-dir`, in a `mods` folder
+   where the game was started. No mod comes with the game or is part of the
+   program (the author's are in the separate `VoxelRust-Mods` folder: see
+   [BUILDING.md](BUILDING.md#mod-code)). A mod found twice is loaded once.
+   A pack may also say `version 1.2` and `client no` at the top level; the
+   mods list and the server's mod download read them (see
+   [MODDING.md](MODDING.md#switching-mods-on-and-off)).
 3. Every file given with `--pack FILE`.
 
 Mods are switched on and off in SETTINGS > MODS (see
@@ -33,7 +55,7 @@ One declaration per line; `#` starts a comment (but not a `#rrggbb` colour in a 
 or tabs; indentation is optional.
 
 These keywords start something new: `texture`, `block`, `item`, `recipe`,
-`craft`, `shapeless`, `shaped`, `group`, `bake`, `smelt`, `ore`, `plant`, `model`, `entity`, `sound`,
+`craft`, `shapeless`, `shaped`, `group`, `bake`, `smelt`, `ore`, `plant`, `model`, `picture`, `entity`, `sound`,
 `command`, `when`, `dimension`, `feature`, `episode`, `setting`, `include`.
 Any other line sets a property of the block, item or entity most recently
 started, or of the mod section described below. (`sound` with a single word,
@@ -46,6 +68,10 @@ Claimed lines and sections are kept as written for that code to read; the
 indented lines under a section are its properties. Every section also becomes
 an item, with the section's `name`, `icon` and `category` (`Things` if none),
 and a stack size of 1.
+
+`picture <name> file <picture.png>` names a creature's picture (see [Creatures](#creatures));
+the path is relative to the file the line is in. `group <name> <items...>` adds to a group
+that an earlier file started, so a mod can put its own planks among `@planks`.
 
 Ids are single words. Declaring an id a second time replaces the first
 declaration completely (it keeps its place in the order).
@@ -120,6 +146,7 @@ stages of a crop).
 background): `stick pick axe shovel hoe sword gem meat fruit fishfood rail
 machine hull wings chest workbench seeds sheaf loaf pizza wedge root tuber jar
 egg sack cookie pie bowl bow crossbow arrow ingot`.
+The crafting blocks' tops and sides are `bench5`, `bench7` and `bench_side`.
 
 **`paint` styles for ores** (stone with the ore's colour; they take palettes):
 `ore` (four blobs; several palettes make a multi-gem ore) and `ore_vein` (two
@@ -149,7 +176,7 @@ block <id>
   drops <item> [<chance>]        what breaking it gives in survival
   drops nothing
   also <item> [<chance>] [<count>]   a second thing given when broken
-  use craft | chest | oven | furnace | bed   what right-clicking it does
+  use craft [3|5|7] | chest | oven | furnace | bed   what right-clicking it does
   toggle <block>                 right click swaps it for that block
   seat <sixteenths>              right click sits on it, that high
   eat <points>                   right click eats it where it stands
@@ -157,6 +184,8 @@ block <id>
   fills <wide> <tall>            a big prop: the room it takes (see Big props)
   part                           the hidden filler of a big prop
   long ahead|behind <block>      two blocks long: the other half, one block ahead of this one or behind it
+  front <texture>                a `rotate` block's picture for the face that looks the way it was placed (below)
+  rest <block>                   read as this block (same facing) when a saved world is loaded
   connect <group> [cubes]        joins neighbouring blocks of its group (and full cubes with `cubes`)
   arm x0 y0 z0 x1 y1 z1          drawn toward a joined neighbour, written for the north (-z) side (up to 4)
   react <next to> <becomes>      turns into the second block when the first is beside it
@@ -187,7 +216,10 @@ category is `Blocks`; `solid` is yes for everything except `cross` and
   always gives two.
 - `tool`: only matters together with items that have a `tool` property (see
   Items). Without the right tool the block still breaks, at hand speed.
-- `use craft`: right click opens the crafting table's 3 x 3 grid.
+- `use craft [3|5|7]`: right click opens a crafting grid of that size: 3 x 3
+  (the crafting table; plain `use craft` means this), 5 x 5 (`use craft 5`,
+  the crafting bench) or 7 x 7 (`use craft 7`, the workshop). Any block may
+  have any of the three, so a pack can add its own benches. See Recipes.
 - `use chest`: right click opens 27 slots of storage belonging to that block.
 - `use oven`: right click opens the `bake` recipes.
 - `use furnace`: right click opens the `smelt` recipes. In the base data the
@@ -217,6 +249,12 @@ category is `Blocks`; `solid` is yes for everything except `cross` and
 - `tag track <percent>`: the block is track. Rail vehicles on it move at
   that percentage of their speed (10..400; 100 if no number is given). The
   Trains mod's `speed_rail` has 220 and `slow_rail` 40.
+- `tag slope <1..4>`: the block is a ramp for rail vehicles; the number says
+  which side is the high one (1 north, 2 west, 3 south, 4 east), and the
+  vehicle rides up it a block across the cell. The Trains mod's slopes have it.
+- `tag chest_lid <1..3>`: a stage of a chest lid being opened (see
+  [Chests that open](#chests-that-open)). Written on hidden blocks that
+  `rest` as the shut chest.
 - `tag station <seconds>`: 1..120 (1 if no number is given). A rail vehicle
   that nobody is driving and that is not chained behind another stops on the
   block for that long, then goes on. The Trains mod's `station_rail` has 6
@@ -312,6 +350,34 @@ a block or at the upper half of a wall.
 Each facing is stored as its own block state, so rotated blocks cost nothing
 extra in memory or in saves. There can be 4096 states in total (air is one;
 a plain block uses one, a `slab` two, a `rotate` block four, `stairs` eight).
+
+### Faces of a rotating block
+
+`tex <top> <side> <bottom>` gives the four sides of a block one picture. A
+`rotate` block made of boxes can also say `front <texture>`: the face that
+looks the way the player was facing when placing it (toward the player) uses
+that picture instead of the side one, on every box it has. The front goes with
+the block's turns, so a chest's latch is on one face only. The block's item
+shows the front picture. `front` needs `rotate` and `box` lines and is
+ignored otherwise.
+
+`rest <block>` names the block this one is read as when a saved world is
+loaded, facing the same way (both blocks need the same number of turns). It is
+for states that only exist while something is going on: an open chest.
+
+### Chests that open
+
+The base data's chests (`tools/gen_base.py`, `oak_chest` and the other
+woods and colours) are four blocks each: the shut chest, which has the item, and
+hidden `<id>_lid1`, `_lid2`, `_lid3`, whose boxes lift the lid a little more
+each (the last at 36 degrees; boxes cannot tilt, so the lid is three steps).
+The lid stages carry `tag chest_lid <n>` and `rest <the shut chest>`, and
+drop the shut chest. The game steps through them while the chest screen is open
+([`src/game/chest_anim.rs`](../src/game/chest_anim.rs)), plays the sounds
+`chest_open` and `chest_close`, and writes each stage as an ordinary block edit
+(so other players see it). A pack can give its own `use chest` blocks the same
+by naming blocks `<id>_lid1..3` in the same way; a chest block without them just
+does not animate.
 
 ### Props
 
@@ -479,8 +545,9 @@ drawn as the first item of its category; its name appears when pointed at.
 ## Recipes
 
 Things are made in a **crafting grid**: 2 x 2 in the inventory screen, 3 x 3
-at a crafting table. A recipe says what items must be in the grid, and
-what comes out.
+at a crafting table, 5 x 5 at a crafting bench and 7 x 7 at a workshop (see
+`use craft`). A recipe says what items must be in the grid, and what comes
+out.
 
 ```
 craft     <item> <count> <ingredient> <count> [<ingredient> <count> ...]
@@ -503,10 +570,14 @@ smelt     <item> <count> <ingredient> <count> [<ingredient> <count> ...]
   there as a list. Fuel is not special: list coal as an ingredient if the
   recipe should need it.
 
-Whether a recipe can be made by hand or needs a table is not written down:
-it follows from its size. What fits the 2 x 2 grid (a shaped pattern no
-bigger than 2 x 2, or a shapeless list of at most 4 items) can be made by
-hand, and everything can be made at a table.
+Which grid a recipe needs is not written down: it follows from its size. What
+fits the 2 x 2 grid (a shaped pattern no bigger than 2 x 2, or a shapeless
+list of at most 4 items) can be made by hand. A shaped pattern up to 3 x 3 (or
+a shapeless list of up to 9 cells) needs a crafting table; one wider or taller
+than 3 (up to 5 x 5) needs a **crafting bench**; one wider or taller than 5
+(up to 7 x 7) needs a **workshop**. Each tier makes everything the smaller
+ones do, and a pattern bigger than 7 in either direction is refused with a
+warning. A shapeless `craft` line never needs more than a table.
 
 ### Shaped recipes
 
@@ -531,7 +602,8 @@ shaped glass_lamp 2 III .L. with I glass L lamp
   right (so an axe `II`/`IS`/`.S` also works the other way round). It may not
   be turned upside down, and no other items may be in the grid.
 - The recipe is as big as its pattern: a pattern of 3 x 3 or 3 x 2 needs a
-  table.
+  table, 5 x 3 or 4 x 4 a bench, 7 x 1 a workshop (the longer side counts).
+  Only the trimmed pattern counts: `"I.."` is 1 x 1 whatever its rows say.
 
 ### Ingredients, counts and groups
 
@@ -567,8 +639,9 @@ base data defines `@planks` (all eight woods' planks).
 - Taking the result uses up one of each ingredient, or the amount asked for
   with `*N` or by a recipe that was too big for the grid. Shift-click makes
   as many as the grid and the inventory allow.
-- The recipe book lists the recipes that fit the grid and can be made with
-  the items you carry; a click fills the grid from the inventory.
+- The recipe book lists the recipes that fit the open grid (so a bench lists
+  its own and every smaller recipe) and can be made with the items you carry;
+  a click fills the grid from the inventory.
 
 ```
 group gems ruby crystal
@@ -582,6 +655,24 @@ smelt iron_ingot 1 iron_ore 1 coal 1
 Every name must be an existing item. Recipes are added, never replaced: a pack
 cannot remove a base recipe. A recipe that does not read is left out, with a
 warning that names its file and line.
+
+The base game's own tiers, as an example of the syntax (`tools/gen_base.py`):
+
+```
+block crafting_bench            # tex bench5_top bench5_side bench5_side
+  use craft 5
+block workshop
+  use craft 7
+shaped crafting_bench 1 "III" "ITI" "PPP" with I iron_ingot T crafting_table P @planks
+shaped workshop 1 "IIIII" "IPPPI" "IPBPI" "IPPPI" "IIIII" with I iron_ingot P @planks B crafting_bench
+shaped big_chest 1 "PPPPP" "P...P" "P.C.P" "P...P" "PPPPP" with P @planks C oak_chest
+shaped banquet_table 1 "PPPPPPP" ".S...S." ".S...S." with P @planks S stick
+```
+
+The bench is made at a table and the workshop at a bench, so the tiers must
+be climbed in order. The painters `bench5`, `bench7` and `bench_side`
+(`src/content/painters/benches.rs`) draw the top with a 5 x 5 or 7 x 7 grid
+of cells and the plated side, in any colour.
 
 `tools/craft_convert.py` rewrites `craft` lines into `shaped` ones where the
 shape is well known (tools, stairs, slabs, doors, beds, chests, furnaces
@@ -599,14 +690,10 @@ model <id> builtin <name>            a model shipped with the game
 model <id> file <model.bbmodel>      a file, path relative to this file
 ```
 
-Built-in names (every file in `data/models/`): `player grazer ant bat bear
-bee beetle bird bison bull butterfly camel cat cat_fluffy cat_lynx chicken
-chicken_rooster cow cow_highland cow_longhorn crab crawler deer dog dog_hound
-dog_shepherd dog_terrier donkey duck elephant fish fox frog gator ghoul goat
-golem goose horse horse_pony llama monkey mouse ogre owl penguin pig pig_boar
-rabbit rabbit_lop scarecrow sheep sheep_merino sheep_ram skeleton
-skeleton_hound slime snake spider squid tiger turkey turtle werewolf wolf worm
-wraith yak zombie`.
+Built-in names (every file in `data/models/`): `player player_slim grazer hand
+hand_slim`. The creature models (`cow`, `wolf`, `zombie`...) are files of the
+wildlife, monsters, villagers and wanderer mods, declared with `model <id> file
+models/<id>.bbmodel`.
 
 Bones are animated by name (capitals do not matter):
 
@@ -626,7 +713,7 @@ Bones are animated by name (capitals do not matter):
 Other bones keep still. Shins and forearms are optional: a leg or an arm
 without one is a single stiff piece, as before. The name has to start with
 `Shin` or `Forearm` (a bone called `L-Forearm` keeps still). The base dog
-model (`data/models/dog.bbmodel`) is one with shins.
+model (`models/dog.bbmodel` of the wildlife mod) is one with shins.
 
 Redefining the model `player` replaces the player's own body (and the
 Lurker's and Wanderer's, which use it).
@@ -720,8 +807,11 @@ entity bush
 **Pictures.** A creature is painted with the picture called `tex` (on the
 entity or on a variant), or else with the picture named after its model.
 A picture name is looked for in a texture pack's `textures/entity` folder,
-then among the game's own (`data/textures/entity/<picture>.png`, written by
-`tools/entity_textures.py`). The picture must be laid out like the model's own
+then among the pictures that mods brought, then among the game's own
+(`data/textures/entity/<picture>.png`: the player and the skins).
+A mod brings a picture with a line `picture <name> file <picture.png>` (the path
+is relative to the pack file; the file goes to players of a server with the rest
+of the pack). The pictures are written by `tools/entity_textures.py`. The picture must be laid out like the model's own
 texture (the same shape, with each part where the model's faces say); a
 picture of another shape is ignored for a model's own picture. The tint still
 multiplies the picture, so a creature with a picture of its own usually has no
@@ -983,9 +1073,11 @@ says `feature <name>`. Changing it needs a rebuild. Its hooks are the table
 | `earth` | the EARTH terrain choice, the `--earth` and `--scale` options, the map screen and place-name notices | the Earth mod (`mods/earth`) |
 | `vehicles` | how vehicles move, board and are kept, the `/vehicle`, `/board` and `/vehicles` commands and the `driving` condition | the Vehicles mod (`mods/vehicles`) |
 
-Both mods come with the game, so they are on unless switched off. Any other
-name is accepted and does nothing: a `feature` line can only switch on code
-that is already built in.
+Both are mods of the author's (not shipped with the game) and their code is
+in the program only when it is built with `--features native-mods`. Their
+`feature` lines are on unless the mod is switched off. Any other name is
+accepted and does nothing: a `feature` line can only switch on code that is
+already built in.
 
 ## Effects
 
@@ -1060,6 +1152,97 @@ and `effect_<id>`, `effect_flame` (see
 [TEXTURING.md](TEXTURING.md#hearts-and-effect-icons)). Events and conditions:
 `when effectstart poison do ...`, `/if effect poison [level] then ...`
 (see [MODDING.md](MODDING.md)).
+
+## Emotes
+
+An emote is a short animation of the player's body that the emote wheel (B)
+plays. The game ships exactly one, `wave` (written by `tools/gen_base.py`
+into `data/base.txt`); every other comes from a pack or a mod. An emote is an
+`emote` line and the `key` lines under it:
+
+```
+emote <id> <name> <seconds> [loop]
+  key <time> <bone> <x> <y> <z>
+```
+
+| Part | Meaning |
+| --- | --- |
+| `<id>` | lower case letters, digits and `_`, 24 at most. Redefining an id replaces the emote |
+| `<name>` | what the wheel shows (one or more words, 16 characters at most, shown in capitals) |
+| `<seconds>` | how long it lasts, 0.2 to 60 |
+| `loop` | plays until the player moves or stops it, instead of ending after `<seconds>` |
+| `key <time> <bone> <x> <y> <z>` | at `<time>` seconds (0 to the emote's length) the bone is turned by x, y and z **degrees** on top of its own turn. `<bone>` is the name of a bone of the model (`R-Arm`, `L-Forearm`, `Head`, `Chest`, `L-Thigh`... case does not matter) |
+
+Between the keys of a bone the turn eases smoothly from one to the next.
+Before its first key and after its last, the bone eases from and back to no
+turn at all, so a key at 0 and one at the end are only needed to hold a pose;
+in a `loop` emote the last key eases round to the first. A key at a time a
+bone already has one replaces it. Up to 64 emotes, 24 bones in one and 64
+keys on a bone. Emotes are listed in the order they are defined (the base
+game's first), which is also what the network sends: everyone on a server
+reads the same pack, so the numbers agree.
+
+Turns are about the bone's pivot, in the model's own axes (front is -z):
+**x** swings the lower end of a hanging limb forward (and raises the face of
+the head), **y** turns the front toward the left, **z** swings a hanging limb
+toward +x, which is out to the side for the right arm (`R-Arm`) and across the
+body for the left one. The player model's bones are `Pelvis`, `Belly`,
+`Chest`, `Head`, `L-Arm`, `L-Forearm`, `L-Hand`, `R-Arm`, `R-Forearm`, `R-Hand`,
+`L-Thigh`, `L-Calf`, `L-Foot`, `R-Thigh`, `R-Calf` and `R-Foot`; a bone is the
+child of the one above it in that list's nesting (a forearm turns with its
+arm).
+
+An emote that moves an arm or a hand (a bone whose name has `arm` or `hand`
+in it) is shown in the first-person view, as the arm only. Others play on the
+body that other players, and you in the third-person view, see.
+
+The base game's wave:
+
+```
+emote wave Wave 2.4
+  key 0.0 R-Arm 0 0 0
+  key 0.45 R-Arm 0 0 150
+  key 1.95 R-Arm 0 0 150
+  key 2.4 R-Arm 0 0 0
+  key 0.7 R-Forearm 0 0 -24
+  key 0.95 R-Forearm 0 0 24
+  key 1.2 R-Forearm 0 0 -24
+  key 1.45 R-Forearm 0 0 24
+```
+
+A pack of two more (a bow, and a dance that goes on until you move):
+
+```
+emote bow Bow 2.0
+  key 0.5 Belly -45 0 0
+  key 0.5 Head 20 0 0
+  key 1.4 Belly -45 0 0
+  key 1.4 Head 20 0 0
+
+emote dance Dance 1.6 loop
+  key 0.0 Chest 0 -12 0
+  key 0.4 Chest 0 12 0
+  key 0.8 Chest 0 -12 0
+  key 0.4 L-Arm 0 0 -120
+  key 0.4 R-Arm 0 0 40
+  key 1.2 L-Arm 0 0 -40
+  key 1.2 R-Arm 0 0 120
+  key 0.0 Belly 0 8 0
+  key 0.8 Belly 0 -8 0
+```
+
+Problems (an unknown line, a time outside the emote, a number that is not a
+number) are reported in the log as pack warnings and the line is skipped.
+
+### Poses
+
+Bodies of a person's shape (a model with arms and legs: the player, and
+creatures such as the zombie or the skeleton) take postures by themselves,
+with no data: crouching, sitting, sleeping, swimming, climbing, falling, riding,
+and while drawing a bow, eating or striking. Bones are recognised by name
+(`content/pose`). A block with `tag climb` can be climbed (the base game's
+`cave_vine` has it). A block with `seat` (see Blocks) is sat on; a block
+with `use bed` is slept in; creatures standing still on them sit or lie.
 
 ## Commands and scripts
 

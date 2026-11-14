@@ -2,8 +2,10 @@
 //!
 //! Every creature is painted with a picture: its model's own (named after the
 //! model: `cow`), or the one its data names with `tex` (`cow_brown`,
-//! `villager_farmer`...). The game's own pictures are in `data/textures/entity/`,
-//! made by `tools/entity_textures.py` and carried inside the program. A texture
+//! `villager_farmer`...). The game's own pictures (the player and the skins) are in
+//! `data/textures/entity/`, carried inside the program; the creatures' pictures come
+//! with their mods, which name them with `picture <name> file <png>` lines (see
+//! [`mod_image`]). All are made by `tools/entity_textures.py`. A texture
 //! pack can replace any of them: a picture called the same (or one of the names
 //! in [`pack_names`]) in the pack's `assets/<namespace>/textures/entity/` folder
 //! (or `textures/entity/`, `entity/`, or the pack folder itself), also in a
@@ -91,16 +93,18 @@ pub fn pack_names(name: &str) -> Vec<String> {
 
 /// The pictures of the texture packs: `(name inside the entity folder, full path)`.
 struct PackIndex {
-    files: Vec<(String, String)>,
+    files: alloc::collections::BTreeMap<String, String>,
 }
 
 static PACKS: AtomicPtr<PackIndex> = AtomicPtr::new(core::ptr::null_mut());
+/// The index before the current one, freed at the next change (readers may still be using it for a moment).
+static PACKS_OLD: AtomicPtr<PackIndex> = AtomicPtr::new(core::ptr::null_mut());
 
 /// Look in these packs (folders), in order, for creature pictures. Later packs
 /// win. Returns how many pictures were found. Called when the packs are chosen
 /// (see `textures::set_texture_packs`).
 pub fn set_packs(paths: &[String]) -> usize {
-    let mut files: Vec<(String, String)> = Vec::new();
+    let mut files: alloc::collections::BTreeMap<String, String> = alloc::collections::BTreeMap::new();
     for root in paths {
         let root = if root.ends_with('/') { root.clone() } else { format!("{}/", root) };
         let mut dirs: Vec<String> = Vec::new();
@@ -116,23 +120,27 @@ pub fn set_packs(paths: &[String]) -> usize {
     }
     let n = files.len();
     let p = if paths.is_empty() { core::ptr::null_mut() } else { alloc::boxed::Box::into_raw(alloc::boxed::Box::new(PackIndex { files })) };
-    // The old index is left alone (a few names, once per change of packs).
-    PACKS.store(p, Ordering::Release);
+    // The index before this one is kept until the next change, and the one before that freed.
+    let old = PACKS.swap(p, Ordering::AcqRel);
+    let older = PACKS_OLD.swap(old, Ordering::AcqRel);
+    if !older.is_null() {
+        // SAFETY: made by `Box::into_raw` above, replaced two changes ago.
+        unsafe { drop(alloc::boxed::Box::from_raw(older)) };
+    }
     n
 }
 
 /// Index the pictures of a folder and of the folders in it, three deep. A
 /// picture is known by its name with its folders (`player/wide/steve`) and,
 /// unless a shallower picture already has it, by its name alone (`steve`).
-fn scan(dir: &str, prefix: &str, depth: u32, out: &mut Vec<(String, String)>) {
+fn scan(dir: &str, prefix: &str, depth: u32, out: &mut alloc::collections::BTreeMap<String, String>) {
     for f in crate::sys::list_dir(dir) {
         if let Some(stem) = f.strip_suffix(".png") {
             let path = format!("{}{}", dir, f);
             let full = format!("{}{}", prefix, stem);
-            out.retain(|e| e.0 != full);
-            out.push((full, path.clone()));
-            if !prefix.is_empty() && !out.iter().any(|e| e.0 == stem) {
-                out.push((stem.to_string(), path));
+            out.insert(full, path.clone());
+            if !prefix.is_empty() && !out.contains_key(stem) {
+                out.insert(stem.to_string(), path);
             }
         } else if depth < 3 && !f.contains('.') {
             scan(&format!("{}{}/", dir, f), &format!("{}{}/", prefix, f), depth + 1, out);
@@ -142,7 +150,7 @@ fn scan(dir: &str, prefix: &str, depth: u32, out: &mut Vec<(String, String)>) {
 
 fn index() -> Option<&'static PackIndex> {
     let p = PACKS.load(Ordering::Acquire);
-    // SAFETY: from a leaked box, never freed.
+    // SAFETY: from a boxed index, freed only two changes after it was replaced.
     if p.is_null() { None } else { Some(unsafe { &*p }) }
 }
 
@@ -150,7 +158,7 @@ fn index() -> Option<&'static PackIndex> {
 pub fn pack_image(name: &str) -> Option<Image> {
     let idx = index()?;
     for n in pack_names(name) {
-        if let Some((_, path)) = idx.files.iter().find(|f| f.0 == n) {
+        if let Some(path) = idx.files.get(&n) {
             if let Some(img) = crate::sys::read_file(path).and_then(|b| crate::image::decode(&b)) {
                 return Some(img);
             }
@@ -165,12 +173,19 @@ pub fn builtin_image(name: &str) -> Option<Image> {
     crate::png::decode(bytes)
 }
 
-/// The picture for `name`: a pack's if it has one, else the game's own.
+/// The picture a mod brought for `name` (`picture <name> file <png>` in its pack file).
+pub fn mod_image(name: &str) -> Option<Image> {
+    let name = clean_name(name);
+    let bytes = &crate::block::reg().pictures.iter().find(|p| p.0 == name)?.1;
+    crate::png::decode(bytes)
+}
+
+/// The picture for `name`: a texture pack's if it has one, else a mod's, else the game's own.
 pub fn image(name: &str) -> Option<Image> {
     if name.is_empty() {
         return None;
     }
-    pack_image(name).or_else(|| builtin_image(name))
+    pack_image(name).or_else(|| mod_image(name)).or_else(|| builtin_image(name))
 }
 
 /// The 64 x 64 skin picture of a built-in skin (`explorer`...): a pack's if it

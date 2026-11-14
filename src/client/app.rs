@@ -44,6 +44,9 @@ Run it with no options for the title screen. Options:
   --data DIR          where worlds and settings are kept
   --log FILE          also write what the game prints to FILE
   --pack FILE         extra content file (blocks, items, textures); repeatable
+  --mods-dir DIR      read mods from DIR instead of the data folder's mods
+  --serve-mods LIST   with --server (or --host): the mods players download,
+                      comma separated (default: every mod without `client no`)
   --screenshot FILE   load the world, save one BMP frame, and exit
   --bench N           load the world, time N frames, and exit
   --flypass N         like --bench, but flying straight ahead over the land
@@ -59,6 +62,8 @@ Run it with no options for the title screen. Options:
   --no-update         do not look for a newer version this time
   --add-mod PATH      copy a mod (a folder, a .zip or a pack file) into the
                       data folder's mods, and exit
+  --script-check FILE read a mod's script (a .rs file, see docs/SCRIPTING.md) the way
+                      the game would, say what is wrong with it, and exit
   --export FILE       with --world NAME: write that world as one file, and exit
   --texture-pack DIR  use a Minecraft-style texture pack folder (repeat for several, later ones win);
                       or list them in settings.txt as texture_pack=DIR|DIR
@@ -116,6 +121,10 @@ struct Opts {
     data: Option<String>,
     log: Option<String>,
     packs: Vec<String>,
+    /// `--mods-dir DIR`: where the player's mods are (default `<data>/mods`).
+    mods_dir: Option<String>,
+    /// `--serve-mods a,b`: the mods a server sends to players.
+    serve_mods: Option<String>,
     /// `--texture-pack DIR` (repeatable): texture pack folders to use this time.
     texture_packs: Vec<String>,
     screenshot: Option<String>,
@@ -126,7 +135,11 @@ struct Opts {
     run: Option<String>,
     write_icon: Option<String>,
     no_update: bool,
+    /// `--update-mirror URL`: fetch updates from this web folder (see the settings' `update_mirror`).
+    update_mirror: Option<String>,
     import_mod: Option<String>,
+    /// `--script-check FILE`: read a mod script and report its mistakes, and exit.
+    script_check: Option<String>,
     icon_size: usize,
     version: bool,
     /// `--stamp FILE`: write which build this is to FILE, and exit (the
@@ -209,6 +222,8 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--data" => o.data = Some(next(&mut i, a)?),
             "--log" => o.log = Some(next(&mut i, a)?),
             "--pack" => o.packs.push(next(&mut i, a)?),
+            "--mods-dir" => o.mods_dir = Some(next(&mut i, a)?),
+            "--serve-mods" => o.serve_mods = Some(next(&mut i, a)?),
             "--texture-pack" => o.texture_packs.push(next(&mut i, a)?),
             "--screenshot" => o.screenshot = Some(next(&mut i, a)?),
             "--write-icon" => o.write_icon = Some(next(&mut i, a)?),
@@ -218,7 +233,9 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             #[cfg(feature = "update-test")]
             "--update-now" => o.update_now = true,
             "--no-update" => o.no_update = true,
+            "--update-mirror" => o.update_mirror = Some(next(&mut i, a)?),
             "--add-mod" => o.import_mod = Some(next(&mut i, a)?),
+            "--script-check" => o.script_check = Some(next(&mut i, a)?),
             "--export" => o.export = Some(next(&mut i, a)?),
             "--export-textures" => o.export_textures = Some(next(&mut i, a)?),
             "--world-op" => {
@@ -294,6 +311,10 @@ enum Screen {
     EditWorld,
     /// The file browser (see `client::picker`), opened from the settings.
     Picker,
+    /// The emote wheel (see `client::emote_wheel`), over the game.
+    Emote,
+    /// Typing a web address to fetch a skin picture from (see `client::skinweb`).
+    SkinUrl,
 }
 
 /// Which build this is: the name its download carries. An update must
@@ -442,6 +463,8 @@ struct App {
     help_timer: f32,
     /// When the world started waiting for its first chunks (0 once playable).
     loading_since: f64,
+    /// The emote wheel's pointer and state.
+    wheel: crate::client::emote_wheel::Wheel,
     /// Camera behind the player instead of in their head.
     third_person: bool,
     /// In the third-person view, from the front (the camera faces the player).
@@ -485,8 +508,12 @@ struct App {
     skin_sent: bool,
     /// Pack files read at start-up, for reading again on request.
     pack_paths: Vec<String>,
+    /// Where the player's mods are (see `--mods-dir`), without a trailing slash.
+    mods_dir: String,
+    /// `--serve-mods`: the mods a game hosted from the menu sends to players (None: all that allow it).
+    serve_mods: Option<Vec<String>>,
     /// The packs in use, bundled; empty when there are none.
-    pack_text: Vec<u8>,
+    pack_text: crate::client::pack_text::PackText,
     /// Playing with content a server sent rather than our own packs.
     server_content: bool,
     /// Set by the settings button or `/reload`; acted on between frames.
@@ -517,6 +544,8 @@ struct App {
     full: Option<super::fullmap::FullMap>,
     /// World file name typed on the worlds screen.
     form_import: String,
+    /// The web address typed for a skin download.
+    skin_url: String,
     picker: crate::client::picker::Picker,
     /// Name tags to draw this frame: screen position and text.
     tags: Vec<(f32, f32, String)>,
@@ -572,7 +601,7 @@ impl App {
         self.rebinding = None;
         self.buttons = [false; 4];
         if !self.scripted {
-            unsafe { (sdl::sdl().SDL_SetRelativeMouseMode)((screen == Screen::Game) as c_int) };
+            unsafe { (sdl::sdl().SDL_SetRelativeMouseMode)((screen == Screen::Game || screen == Screen::Emote) as c_int) };
         }
     }
 
@@ -601,7 +630,12 @@ impl App {
                 }
             }
         };
-        self.skin_tex = r.add_texture(64, 64, &px);
+        // The texture made the last time is written over, not left on the card.
+        if self.skin_tex == 0 {
+            self.skin_tex = r.add_texture(64, 64, &px);
+        } else {
+            r.update_texture(self.skin_tex, 64, 64, &px);
+        }
         self.skin_png = crate::png::encode(64, 64, &px);
         self.skin_sent = false;
     }
@@ -641,7 +675,7 @@ impl App {
             }
         }
         logf!("voxelrust: full screen timed at {:.0} FPS; resolution {}", fps, if self.settings.fullscreen_mode == 2 { "set to 1280x800" } else { "kept" });
-        sys::write_file(&self.settings_path, self.settings.to_text().as_bytes());
+        sys::write_file_atomic(&self.settings_path, self.settings.to_text().as_bytes());
     }
 
     /// Put the window in the full-screen state the settings ask for.
@@ -684,6 +718,10 @@ impl App {
         // The map's selection, name box and view belong to the world it was in.
         self.full = None;
         if let Some(mut s) = self.session.take() {
+            // Leaving a server: its mods (downloaded for this visit only) go.
+            if let Some(sync) = s.mod_sync.as_mut() {
+                sync.end();
+            }
             // Items lying in the crafting grid are saved with the inventory.
             self.craft.put_away(&mut s.inv);
             if !self.scripted && !s.save() {
@@ -708,7 +746,7 @@ impl App {
         self.close_world(r);
         let name = crate::settings::clean_world_name(&self.form_host, 24);
         let port = crate::proto::DEFAULT_PORT;
-        let (server, edits) = match open_server(if name.is_empty() { "shared" } else { &name }, None, None, port, 16, &self.base, &self.pack_text, &self.settings) {
+        let (server, edits) = match open_server(if name.is_empty() { "shared" } else { &name }, None, None, port, 16, &self.base, self.pack_text.bytes(read_mod_file), crate::client::mods::serving::served(&self.pack_paths, &self.settings.mods_off, self.serve_mods.as_deref()), &self.settings) {
             Ok(v) => v,
             Err(e) => {
                 self.status = e.to_ascii_uppercase();
@@ -830,6 +868,9 @@ impl App {
                     self.swallow_text = true;
                 } else if sc == k_fly {
                     self.leave = true;
+                } else if sc == self.settings.key(Action::Emote) && !typing && self.session.as_ref().map_or(false, |g| !g.dead) {
+                    self.wheel.open();
+                    self.set_screen(Screen::Emote);
                 } else if sc == key::F5 {
                     // F5 cycles: first person, behind, in front.
                     if !self.third_person {
@@ -862,6 +903,7 @@ impl App {
             Screen::Chat if sc == key::ESCAPE => self.set_screen(Screen::Game),
             Screen::Join if sc == key::ESCAPE && !typing => self.set_screen(Screen::Title),
             Screen::EditWorld if sc == key::ESCAPE && !typing => self.set_screen(Screen::Worlds),
+            Screen::SkinUrl if sc == key::ESCAPE => self.set_screen(Screen::Settings),
             Screen::Picker if sc == key::ESCAPE => {
                 self.close_picker(None);
             }
@@ -894,7 +936,7 @@ impl App {
     fn close_picker(&mut self, chosen: Option<String>) -> bool {
         self.settings.picker_dir = self.picker.dir.clone();
         if !self.scripted {
-            sys::write_file(&self.settings_path, self.settings.to_text().as_bytes());
+            sys::write_file_atomic(&self.settings_path, self.settings.to_text().as_bytes());
         }
         self.set_screen(Screen::Settings);
         if let Some(path) = chosen {
@@ -925,13 +967,87 @@ impl App {
         }
     }
 
+    /// A file was dropped on the window: on the skin settings (or the web
+    /// address panel) a picture becomes the custom skin.
+    fn skin_dropped(&mut self, r: &mut Renderer, path: &str) {
+        if !(self.screen == Screen::SkinUrl || (self.screen == Screen::Settings && self.tab == 4)) {
+            return;
+        }
+        let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+        if !SKIN_EXTS.contains(&ext.as_str()) {
+            self.status = String::from("NOT A SKIN PICTURE");
+        } else {
+            match import_skin(&self.base, path) {
+                Ok(()) => {
+                    self.settings.skin = String::from("custom");
+                    self.status = String::from("SKIN LOADED");
+                    self.load_skin(r);
+                }
+                Err(e) => self.status = e,
+            }
+        }
+        if self.screen == Screen::SkinUrl {
+            self.set_screen(Screen::Settings);
+        }
+    }
+
+    /// Open the panel to type a web address for a skin picture.
+    fn open_skin_url(&mut self) {
+        crate::client::skinweb::reset();
+        self.status.clear();
+        self.set_screen(Screen::SkinUrl);
+        self.focus = 40;
+    }
+
+    /// The panel itself: a text box, GO and BACK, and what the download is doing.
+    fn screen_skin_url(&mut self, ui: &mut Ui) {
+        use crate::client::skinweb as web;
+        let s = ui.s;
+        ui.r.rect(0.0, 0.0, ui.w(), ui.h(), [8, 10, 18, 190]);
+        let (x, y, bw, bh, step) = Self::column(ui, 7);
+        ui.centered(ui.w() * 0.5, y - 30.0 * s, 2.0, "SKIN FROM A WEB ADDRESS", WHITE);
+        ui.text(x, y - 9.0 * s, "ADDRESS OF A 64 X 64 OR 64 X 32 PICTURE", ui::DIM);
+        let busy = web::state() == web::DOWNLOADING;
+        let enter = ui.text_field(40, x, y, bw, bh, &mut self.skin_url, web::MAX_URL, ui::any_char);
+        let half = bw * 0.5 - 2.0 * s;
+        let go = ui.button(x, y + step * 1.5, half, bh, "DOWNLOAD") || enter;
+        if ui.button(x + half + 4.0 * s, y + step * 1.5, half, bh, "BACK") {
+            self.set_screen(Screen::Settings);
+            return;
+        }
+        if go && !busy {
+            web::start(&self.skin_url, &self.base, BUILD);
+        }
+        if web::take_ok() {
+            let file = web::file(&self.base);
+            let result = import_skin(&self.base, &file);
+            sys::remove_file(&file);
+            match result {
+                Ok(()) => {
+                    self.settings.skin = String::from("custom");
+                    self.status = String::from("IMPORTED");
+                    self.set_screen(Screen::Settings);
+                    self.load_skin(ui.r);
+                    return;
+                }
+                Err(e) => self.status = e,
+            }
+        }
+        let st = web::state();
+        let text = if st == web::IDLE { self.status.clone() } else { String::from(web::message(st)) };
+        let colour = if web::is_failure(st) { [255, 120, 100, 255] } else { ui::ACCENT };
+        ui.centered(ui.w() * 0.5, y + step * 3.0, 1.0, &text, colour);
+        ui.centered(ui.w() * 0.5, y + step * 4.2, 1.0, "PASTE WITH CTRL+V (CMD+V ON A MAC)", ui::DIM);
+        ui.centered(ui.w() * 0.5, y + step * 5.0, 1.0, "A DIRECT LINK TO THE PICTURE, HTTP OR HTTPS", ui::DIM);
+    }
+
     fn leave_settings(&mut self) {
         self.settings.player_name = crate::settings::clean_name(&self.settings.player_name, 16);
         if self.settings.player_name.is_empty() {
             self.settings.player_name = String::from("Player");
         }
         if !self.scripted {
-            sys::write_file(&self.settings_path, self.settings.to_text().as_bytes());
+            sys::write_file_atomic(&self.settings_path, self.settings.to_text().as_bytes());
         }
         self.set_screen(if self.session.is_some() { Screen::Pause } else { Screen::Title });
     }
@@ -967,6 +1083,15 @@ impl App {
                     let sc = ev.i32_at(16);
                     if (0..512).contains(&sc) {
                         self.keys[sc as usize] = false;
+                    }
+                }
+                sdl::EV_DROPFILE => {
+                    // A picture dropped on the window: the pointer at offset 8, freed with SDL_free.
+                    let p = ev.ptr_at(8) as *mut core::ffi::c_char;
+                    if !p.is_null() {
+                        let path = unsafe { sys::from_cstr(p as *const core::ffi::c_char) };
+                        unsafe { (api.SDL_free)(p as *mut core::ffi::c_void) };
+                        self.skin_dropped(r, &path);
                     }
                 }
                 sdl::EV_TEXTINPUT if self.swallow_text => self.swallow_text = false,
@@ -1055,7 +1180,7 @@ impl App {
         self.ui_clock += real_dt;
         // In multiplayer the world never stops.
         let online = self.session.as_ref().map_or(false, |g| g.net.is_some());
-        let playing = online || matches!(self.screen, Screen::Game | Screen::Inventory | Screen::Dead | Screen::Chat | Screen::Map | Screen::FullMap | Screen::Craft | Screen::Chest);
+        let playing = online || matches!(self.screen, Screen::Game | Screen::Inventory | Screen::Dead | Screen::Chat | Screen::Map | Screen::FullMap | Screen::Craft | Screen::Chest | Screen::Emote);
         let in_game = self.screen == Screen::Game;
         let k = |a: Action| in_game && self.keys[(self.settings.key(a) as usize).min(511)];
         let controls = Controls {
@@ -1122,7 +1247,7 @@ impl App {
             }
             if let Some(pack) = g.server_pack.take() {
                 // Play with the server's blocks and items, not our own.
-                if pack != self.pack_text {
+                if pack.as_slice() != self.pack_text.bytes(read_mod_file) {
                     let new = server_content(&pack);
                     logf!("voxelrust: using the server's content ({} bytes of packs, {} block states)", pack.len(), new.blocks.len());
                     for w in &new.warnings {
@@ -1131,7 +1256,7 @@ impl App {
                     g.reload_content(new, r);
                     r.rebuild_atlas();
                     r.load_models();
-                    self.pack_text = pack;
+                    self.pack_text = crate::client::pack_text::PackText::ready(pack);
                     self.server_content = true;
                     g.say("USING THE SERVER'S CONTENT");
                 }
@@ -1139,8 +1264,14 @@ impl App {
             for (id, png, slim) in g.skin_events.drain(..) {
                 self.remote_slim.insert(id, slim);
                 if let Some(img) = crate::png::decode(&png).filter(|i| i.w == 64 && i.h == 64) {
-                    let tex = r.add_texture(64, 64, &img.rgba);
-                    self.remote_skins.insert(id, tex);
+                    // A player's new skin goes over their old picture on the card.
+                    match self.remote_skins.get(&id) {
+                        Some(&tex) => r.update_texture(tex, 64, 64, &img.rgba),
+                        None => {
+                            let tex = r.add_texture(64, 64, &img.rgba);
+                            self.remote_skins.insert(id, tex);
+                        }
+                    }
                 }
             }
         }
@@ -1166,7 +1297,13 @@ impl App {
             self.inv_scroll = 0;
             self.at_oven = what == block::Usable::Oven;
             self.at_furnace = what == block::Usable::Furnace;
+            self.craft.table_side = what.craft_side().unwrap_or(3);
             self.set_screen(if what == block::Usable::Chest { Screen::Chest } else { Screen::Craft });
+        }
+        // The chest being looked into has its lid up (game/chest_anim.rs).
+        let looking = if self.screen == Screen::Chest && self.chest_ext.is_none() { Some(self.chest_at) } else { None };
+        if let Some(g) = self.session.as_mut() {
+            g.chest_view = looking;
         }
         if self.session.as_ref().map_or(false, |g| g.lost) {
             self.close_world(r);
@@ -1210,7 +1347,12 @@ impl App {
         let mut new_tags = Vec::new();
         if let Some(g) = &self.session {
             let mut eye = g.player.eye();
-            if self.settings.view_bobbing && g.player.on_ground && !g.player.flying {
+            // Asleep: the view is from the eyes of the body lying in the bed, looking up.
+            let lying = g.posing.lying.filter(|_| g.sleeping);
+            if let Some(l) = lying {
+                eye = crate::content::pose::sleep::eye_at(l.middle, l.yaw);
+            }
+            if self.settings.view_bobbing && g.player.on_ground && !g.player.flying && lying.is_none() {
                 let speed = g.player.vel[0] * g.player.vel[0] + g.player.vel[2] * g.player.vel[2];
                 if speed > 1.0 {
                     eye[1] += (sinf(g.clock * 11.0) * 0.035) as f64;
@@ -1228,7 +1370,13 @@ impl App {
                 eye = [eye[0] + (back.x * room) as f64, eye[1] + (back.y * room) as f64, eye[2] + (back.z * room) as f64];
             }
             // From the front the camera turns round to face the player.
-            let (cam_yaw, cam_pitch) = if self.third_person && self.third_front { (g.player.yaw + PI, -g.player.pitch) } else { (g.player.yaw, g.player.pitch) };
+            let (cam_yaw, cam_pitch) = if self.third_person && self.third_front {
+                (g.player.yaw + PI, -g.player.pitch)
+            } else if let (Some(l), false) = (lying, self.third_person) {
+                (l.yaw, crate::content::pose::sleep::LOOK_UP)
+            } else {
+                (g.player.yaw, g.player.pitch)
+            };
             let cam = Camera { pos: eye, yaw: cam_yaw, pitch: cam_pitch, fov: self.settings.fov as f32 };
             let head = g.world.get(floord(eye[0]), floord(eye[1]), floord(eye[2]));
             underwater = crate::block::is_water(head);
@@ -1267,12 +1415,19 @@ impl App {
             }
             r.finish_world(&cam, &env);
             // The hand and what it holds, in their own close-up pass.
-            if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried {
-                if let Some(hand) = reg().models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).1) {
+            // (While emoting only the arm shows, and only for emotes that move it; the item is put away.)
+            let emoting = g.posing.emote.is_some();
+            let emote_arm = !emoting || crate::content::pose::emote::shows_arm(&g.posing.body(g.activity()));
+            if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried && lying.is_none() && emote_arm {
+                if let Some(hand) = reg().model(arm_models(self.settings.slim_arms).1) {
                     let v = g.player.vel;
                     let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
-                    let held = crate::client::hand::held_of(g.held().map(|h| h.0));
-                    let view = hand_view_of(g, held, speed);
+                    let held = if emoting { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(g.held().map(|h| h.0)) };
+                    let mut view = hand_view_of(g, held, speed);
+                    if let Some((_, t)) = g.posing.emote {
+                        // A wave: the hand swings to and fro.
+                        view.swing = (0.4 + 0.35 * sinf(t * 9.0)).max(0.001);
+                    }
                     let mut items = Vec::new();
                     crate::client::hand::first_person_view(held, &view, &mut items);
                     let to_view = |p: [f32; 3]| crate::client::hand::arm_point_view(p, &view, held);
@@ -1332,6 +1487,10 @@ impl App {
             if !g.playable && self.screen == Screen::Game && self.loading_since > 0.0 && sys::now() - self.loading_since > 0.35 {
                 draw_loading(r, w, h, s, g, self.distance);
             }
+            // The server's mods are still arriving.
+            if let Some((done, total)) = g.mod_sync.as_ref().and_then(|m| m.progress()) {
+                crate::client::mods::progress::draw(r, w, h, s, done, total, !g.playable);
+            }
         }
         let before = self.screen;
         let mut focus = self.focus;
@@ -1355,6 +1514,8 @@ impl App {
                 Screen::AddServer => self.screen_add_server(&mut ui),
                 Screen::Chat => self.screen_chat(&mut ui),
                 Screen::Picker => self.screen_picker(&mut ui),
+                Screen::Emote => self.screen_emote(&mut ui),
+                Screen::SkinUrl => self.screen_skin_url(&mut ui),
             }
             clicked = ui.clicked_any;
         }
@@ -1402,9 +1563,16 @@ impl App {
             if m.hurt > 0.0 {
                 tint = [255, tint[1] / 3, tint[2] / 3];
             }
-            let pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, ..Default::default() };
+            let mut pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, ..Default::default() };
+            // A person standing still on a seat sits; in a bed, sleeps.
+            let kind = crate::client::pose_view::creature_posture(&|x, y, z| g.world.get(x, y, z), m.body.pos, m.stride);
+            let mut at = p;
+            if kind != crate::content::pose::Kind::Stand {
+                pose.body = crate::content::pose::Body::steady(kind);
+                at = rel(crate::client::pose_view::creature_at(kind, m.body.pos, m.body.yaw));
+            }
             r.tex_override = r.entity_texture(m.tex());
-            r.draw_model(model, &pose, p, m.body.yaw, height, tint);
+            r.draw_model(model, &pose, at, m.body.yaw, height, tint);
         }
         // Props: blocks that are models (furniture, statues, plants). Only
         // those near enough to matter, and not the ones behind the camera.
@@ -1468,20 +1636,21 @@ impl App {
                     continue;
                 }
                 let slim = self.remote_slim.get(id).copied().unwrap_or(false);
-                let model = match reg.models.iter().position(|m| m.id == arm_models(slim).0) {
+                let model = match reg.model(arm_models(slim).0) {
                     Some(model) => model,
                     None => continue,
                 };
                 let l = (light_at(p.pos) * 255.0) as u8;
-                let pose = crate::model::Pose { phase: p.phase, stride: p.stride, head_pitch: -p.pitch * 180.0 / PI, head_yaw: 0.0, ..Default::default() };
+                let drawn = crate::client::pose_view::remote(p, g.clock);
                 // A player whose skin has not arrived wears the built-in one their name picks.
                 r.tex_override = match self.remote_skins.get(id) {
                     Some(t) => *t,
                     None => r.entity_texture(&crate::pack_entities::skin_picture(crate::pack_entities::default_skin_for(&p.name))),
                 };
-                r.draw_model(model, &pose, at, p.yaw, crate::player::HEIGHT as f32, [l, l, l]);
-                // What they hold, out to the right of the body.
-                let held = if p.held == 0 { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(Some(p.held as usize - 1)) };
+                r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                // What they hold, out to the right of the body (not while sitting, lying or emoting: the hand is elsewhere).
+                let busy = drawn.pose.body.walk_weight() < 0.5 || drawn.pose.body.emote != 0;
+                let held = if p.held == 0 || busy { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(Some(p.held as usize - 1)) };
                 let mut held_quads = Vec::new();
                 crate::client::hand::on_body(held, crate::client::hand::white_tile(), 0.0, at, p.yaw, crate::player::HEIGHT as f32, &mut held_quads);
                 r.draw_quads(&held_quads, None);
@@ -1491,20 +1660,13 @@ impl App {
             }
         }
         if self.third_person {
-            if let Some(model) = reg.models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).0) {
-                let v = g.player.vel;
-                let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
-                let pose = crate::model::Pose {
-                    phase: g.clock * 9.0,
-                    stride: if g.player.on_ground { (speed / 4.4).min(1.0) } else { 0.2 },
-                    head_pitch: -g.player.pitch * 180.0 / PI,
-                    head_yaw: 0.0,
-                    ..Default::default()
-                };
+            if let Some(model) = reg.model(arm_models(self.settings.slim_arms).0) {
+                let drawn = crate::client::pose_view::local(g);
                 let l = (light_at(g.player.pos) * 255.0) as u8;
                 r.tex_override = self.skin_tex;
-                r.draw_model(model, &pose, rel(g.player.pos), g.player.yaw, crate::player::HEIGHT as f32, [l, l, l]);
-                let held = crate::client::hand::held_of(g.held().map(|h| h.0));
+                r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                let busy = drawn.pose.body.walk_weight() < 0.5 || drawn.pose.body.emote != 0;
+                let held = if busy { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(g.held().map(|h| h.0)) };
                 let mut held_quads = Vec::new();
                 crate::client::hand::on_body(held, crate::client::hand::white_tile(), hand_swing(g), rel(g.player.pos), g.player.yaw, crate::player::HEIGHT as f32, &mut held_quads);
                 r.draw_quads(&held_quads, None);
@@ -2034,7 +2196,7 @@ impl App {
         let mut changed = false;
         let mut fullscreen_clicked = false;
         let mut mode_changed = false;
-        let (mut skin_changed, mut skin_pick) = (false, false);
+        let (mut skin_changed, mut skin_pick, mut skin_web) = (false, false, false);
         {
             let st = &mut self.settings;
             match self.tab {
@@ -2116,7 +2278,7 @@ impl App {
                 }
                 4 => {
                     // A turning preview on the left, choices on the right.
-                    let model = ui.r.models.iter().position(|m| m.id == arm_models(st.slim_arms).0);
+                    let model = reg().model(arm_models(st.slim_arms).0);
                     ui.panel(x, row(0), 100.0 * s, 150.0 * s);
                     if let Some(model) = model {
                         let pose = crate::model::Pose { phase: ui.clock * 3.0, stride: 0.5, ..Default::default() };
@@ -2136,23 +2298,26 @@ impl App {
                     if ui.button(cx, row(3) - 4.0 * s, cw, bh, "CHOOSE A SKIN FILE...") {
                         skin_pick = true;
                     }
+                    if ui.button(cx, row(4) - 2.0 * s, cw, bh, "IMPORT FROM WEB ADDRESS...") {
+                        skin_web = true;
+                    }
                     skin_changed |= ui.toggle(cx, row(5) + 4.0 * s, cw, bh, "SLIM ARMS (ALEX SKINS)", &mut st.slim_arms);
                 }
                 5 => {
-                    // Every mod, built in or from a mods folder, with a
-                    // switch. Changes take effect at once.
-                    let names = all_mods(&self.pack_paths);
-                    let hidden = names.len().saturating_sub(6) as i32;
+                    // Every mod in the mods folder, with its version and a
+                    // switch (changes take effect at once), then the ones
+                    // the server sent for this session, which stay as they are.
+                    let installed = all_mods(&self.pack_paths);
+                    let sent: Vec<(String, String)> = self.session.as_ref().and_then(|g| g.mod_sync.as_ref()).map(|m| m.taken.iter().map(|t| (t.name.clone(), t.version.clone())).collect()).unwrap_or_default();
+                    let list = crate::client::mods::rows::rows(&installed, &st.mods_off, &sent);
+                    let hidden = list.len().saturating_sub(6) as i32;
                     self.mods_scroll = (self.mods_scroll - ui.inp.wheel).clamp(0, hidden);
-                    ui.text(x, row(0) - 9.0 * s, if names.is_empty() { "NO MODS FOUND" } else { "MODS (PUT YOUR OWN IN THE MODS FOLDER)" }, ui::DIM);
-                    for (k, name) in names.iter().skip(self.mods_scroll as usize).take(6).enumerate() {
-                        let mut on = !st.mods_off.split(',').any(|o| o == name);
-                        if ui.toggle(x, row(k), bw, bh, &name.to_ascii_uppercase().replace('_', " "), &mut on) {
-                            let mut off: Vec<&str> = st.mods_off.split(',').filter(|o| !o.is_empty() && o != name).collect();
-                            if !on {
-                                off.push(name);
-                            }
-                            st.mods_off = off.join(",");
+                    ui.text(x, row(0) - 9.0 * s, if list.is_empty() { "NO MODS INSTALLED (SEE THE README IN THE MODS FOLDER)" } else { "MODS (PUT YOUR OWN IN THE MODS FOLDER)" }, ui::DIM);
+                    for (k, m) in list.iter().skip(self.mods_scroll as usize).take(6).enumerate() {
+                        let mut on = m.on;
+                        let flipped = ui.toggle(x, row(k), bw, bh, &m.label(), &mut on);
+                        if flipped && !m.from_server {
+                            st.mods_off = crate::client::mods::rows::toggled(&st.mods_off, &m.name, on);
                             changed = true;
                             self.want_reload = true;
                         }
@@ -2164,7 +2329,7 @@ impl App {
                     ui.text(x, row(7) - 9.0 * s, "ADD A MOD FROM A FOLDER OR .ZIP (TYPE ITS PATH)", ui::DIM);
                     ui.text_field(41, x, row(7), bw - 44.0 * s, bh, &mut self.form_mod_path, 200, ui::any_char);
                     if ui.button(x + bw - 41.0 * s, row(7), 41.0 * s, bh, "ADD") {
-                        self.status = import_mod(&self.base, &self.form_mod_path);
+                        self.status = import_mod(&self.mods_dir, &self.form_mod_path);
                         if self.status.starts_with("ADDED") {
                             self.form_mod_path.clear();
                             self.want_reload = true;
@@ -2245,6 +2410,9 @@ impl App {
         if skin_pick {
             self.open_skin_picker();
         }
+        if skin_web {
+            self.open_skin_url();
+        }
         if skin_changed {
             self.load_skin(ui.r);
         }
@@ -2267,7 +2435,7 @@ impl App {
 
     fn save_servers(&self) {
         let text: String = self.servers.iter().map(|(n, a)| alloc::format!("{} {}\n", n, a)).collect();
-        sys::write_file(&alloc::format!("{}servers.txt", self.base), text.as_bytes());
+        sys::write_file_atomic(&alloc::format!("{}servers.txt", self.base), text.as_bytes());
     }
 
     fn join_address(&mut self, r: &mut Renderer, address: &str) -> bool {
@@ -2575,7 +2743,7 @@ impl App {
             self.settings.map_grid = full.grid;
             self.settings.map_waypoints = full.show_waypoints;
             if !self.scripted {
-                sys::write_file(&self.settings_path, self.settings.to_text().as_bytes());
+                sys::write_file_atomic(&self.settings_path, self.settings.to_text().as_bytes());
             }
         }
         self.set_screen(Screen::Game);
@@ -2617,6 +2785,23 @@ impl App {
         };
         if !stay {
             self.set_screen(Screen::Game);
+        }
+    }
+
+    /// The emote wheel: let go of the key or click to play the emote the pointer is on.
+    fn screen_emote(&mut self, ui: &mut Ui) {
+        let names: Vec<String> = reg().emotes.list.iter().map(|e| e.name.to_ascii_uppercase()).collect();
+        let key = (self.settings.key(Action::Emote) as usize).min(511);
+        let (held, pressed) = (self.keys[key], ui.inp.pressed(key as i32));
+        match self.wheel.show(ui, &names, held, pressed) {
+            crate::client::emote_wheel::Outcome::Open => {}
+            crate::client::emote_wheel::Outcome::Cancel => self.set_screen(Screen::Game),
+            crate::client::emote_wheel::Outcome::Play(i) => {
+                if let Some(g) = self.session.as_mut() {
+                    g.play_emote(i);
+                }
+                self.set_screen(Screen::Game);
+            }
         }
     }
 
@@ -2743,14 +2928,21 @@ impl App {
             ui.scrollbar(px + pw - 4.5 * s, uy, 3.0 * s, upper_rows as f32 * cell, &mut self.inv_scroll, upper_rows, total_rows);
         } else if !(at_table && (self.at_oven || self.at_furnace)) {
             // The crafting grid, and the recipe book (client/screens/crafting.rs).
-            ui.text(gx, py + 6.0 * s, if at_table { "CRAFTING TABLE" } else { "CRAFTING - A TABLE HAS A BIGGER GRID" }, ui::DIM);
+            let side = if at_table { self.craft.side() } else { crate::crafting::HAND_SIDE };
+            let title = match (at_table, side) {
+                (false, _) => "CRAFTING - A TABLE HAS A BIGGER GRID",
+                (true, 5) => "CRAFTING BENCH",
+                (true, 7) => "WORKSHOP",
+                _ => "CRAFTING TABLE",
+            };
+            ui.text(gx, py + 6.0 * s, title, ui::DIM);
             let frame = super::screens::crafting::Frame {
                 gx,
                 uy,
                 width: cols as f32 * cell,
                 cell,
                 rows: upper_rows,
-                at_table,
+                side,
                 shift: self.keys[225] || self.keys[229],
             };
             if let Some(t) = super::screens::crafting::draw(ui, g, &mut self.craft, &frame) {
@@ -2830,7 +3022,7 @@ impl App {
 
         // A portrait of the player beside the panel, where there is room.
         if px > 70.0 * s {
-            if let Some(model) = r.models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).0) {
+            if let Some(model) = reg().model(arm_models(self.settings.slim_arms).0) {
                 ui.panel(px - 66.0 * s, py, 60.0 * s, 124.0 * s);
                 let pose = crate::model::Pose { phase: g.clock * 2.0, stride: 0.12, ..Default::default() };
                 ui.r.tex_override = self.skin_tex;
@@ -3113,11 +3305,13 @@ pub(crate) fn draw_slot(r: &mut Renderer, x: f32, y: f32, size: f32, s: f32, sta
         r.frame(ix, iy, iw, iw, s, [255, 255, 255, 150]);
     }
     if let Some(st) = stack {
-        draw_item(r, x + 3.0 * s, y + 3.0 * s, size - 6.0 * s, st.item as usize, WHITE);
+        // (A small slot, as in a 7 x 7 grid, has a thinner margin.)
+        let m = (3.0 * s).min(size * 0.15);
+        draw_item(r, x + m, y + m, size - 2.0 * m, st.item as usize, WHITE);
         if st.count > 1 {
             let t = alloc::format!("{}", st.count);
             let tw = Renderer::text_width(&t, s);
-            r.label(x + size - tw - 1.5 * s, y + size - 9.0 * s, s, &t, WHITE);
+            r.label(x + size - tw - 1.5 * s, (y + size - 9.0 * s).max(y + size * 0.45), s, &t, WHITE);
         }
     }
 }
@@ -3133,6 +3327,15 @@ fn heart(r: &mut Renderer, x: f32, y: f32, s: f32, fill: i32) {
                 r.rect(x + i as f32 * s, y + j as f32 * s, s, s, c);
             }
         }
+    }
+}
+
+/// Where the player's mods are: `--mods-dir`, else `<data>/mods` (no
+/// trailing slash).
+fn mods_folder(opts: &Opts, base: &str) -> String {
+    match opts.mods_dir.as_deref().map(|d| d.trim_end_matches(|c| c == '/' || c == '\\')).filter(|d| !d.is_empty()) {
+        Some(d) => String::from(d),
+        None => alloc::format!("{}mods", base),
     }
 }
 
@@ -3159,9 +3362,14 @@ fn run(args: Vec<String>) -> Result<(), String> {
         return Ok(());
     }
     sdl::load()?;
+    if let Some(path) = &opts.script_check {
+        // Reads a script the way the game would and says what is wrong (no window).
+        return crate::script::check::check_file(path);
+    }
     if let Some(path) = &opts.log {
         sys::log_to_file(path);
     }
+    let mut phases = crate::client::startup::Phases::new();
     let api = sdl::sdl();
     if let Some(path) = &opts.write_icon {
         // Needs SDL only for writing the file.
@@ -3220,8 +3428,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
         sys::make_dir(&alloc::format!("{}{}", base, dir));
     }
     crate::session::migrate_worlds(&base);
+    // Where mods' scripts keep what they save (script/mod.rs).
+    crate::script::ScriptHost::set_data_dir(&base);
+    // Scripts of mods a server sends are run by the script engine.
+    crate::content::mod_runtime::set_host(alloc::boxed::Box::new(crate::script::Engine::new()));
     if let Some(from) = &opts.import_mod {
-        let said = import_mod(&base, from);
+        let said = import_mod(&mods_folder(&opts, &base), from);
         logf!("voxelrust: {}", said.to_ascii_lowercase());
         return if said.starts_with("ADDED") { Ok(()) } else { Err(String::from("the mod was not added")) };
     }
@@ -3285,18 +3497,20 @@ fn run(args: Vec<String>) -> Result<(), String> {
         let dir = base.trim_end_matches(|c| c == '/' || c == '\\');
         sys::run_command(&if cfg!(windows) { alloc::format!("mkdir \"{}\" 2>nul", dir) } else { alloc::format!("mkdir -p \"{}\"", dir) });
     }
-    // Then every mod in the data folder's `mods`, and in a `mods` folder
-    // beside where the game was started (handy while making one).
-    // Mods are looked for beside the program (where the ones that come
-    // with the game are; inside the app on a Mac), in the data folder, and
-    // in a `mods` folder where the game was started (handy while making one).
-    let exe = sys::exe_dir();
-    let mut pack_paths = alloc::vec![auto_pack.clone()];
-    for folder in [alloc::format!("{}mods", exe), alloc::format!("{}../Resources/mods", exe), alloc::format!("{}mods", base), String::from("mods")] {
-        let pattern = alloc::format!("{}/*", folder);
-        if !pack_paths.contains(&pattern) && (folder == "mods" || !exe.is_empty() || folder.starts_with(base.as_str())) {
-            pack_paths.push(pattern);
-        }
+    // Then every mod in the mods folder (`<data>/mods`, or --mods-dir), and,
+    // unless another folder was named, in a `mods` folder where the game was
+    // started (handy while making one). No mods come with the game or sit
+    // beside the program: the player installs them, or a server sends them.
+    let mods_dir = mods_folder(&opts, &base);
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        crate::client::mods::folder::ensure(&mods_dir);
+        // Mods a server sent last time (a crash can leave them behind) go.
+        crate::net::modsync::tmp::clean_all(&base);
+    }
+    let mut pack_paths = alloc::vec![auto_pack.clone(), alloc::format!("{}/*", mods_dir)];
+    if opts.mods_dir.is_none() && mods_dir != "mods" {
+        pack_paths.push(String::from("mods/*"));
     }
     pack_paths.extend(opts.packs.iter().cloned());
     for p in &opts.packs {
@@ -3307,8 +3521,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
     // (The settings are read properly further down; which mods are off is
     // needed now.)
     let mods_off: String = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| crate::settings::Settings::parse(&String::from_utf8_lossy(&b)).mods_off).unwrap_or_default();
-    let (first, pack_text) = load_content(&pack_paths, &mods_off);
+    let (first, mut pack_text) = load_content(&pack_paths, &mods_off);
     block::install(first);
+    phases.mark("content: base data and mods parsed");
     // Pictures the player has edited replace the game's own: textures/<id>.png.
     sys::make_dir(&alloc::format!("{}textures/", base));
     crate::textures::set_override_dir(&alloc::format!("{}textures/", base));
@@ -3324,6 +3539,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             logf!("voxelrust: texture pack{} {}: {} pictures", if list.len() == 1 { "" } else { "s" }, list.join(", "), n);
         }
     }
+    phases.mark("texture packs indexed");
     if let Some(dir) = &opts.export_textures {
         let n = export_textures(reg(), dir)?;
         logf!("voxelrust: wrote {} textures to {}", n, dir);
@@ -3348,7 +3564,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
     }
     if opts.server {
-        return run_server(&opts, &base, &pack_text);
+        return run_server(&opts, &base, pack_text.bytes(read_mod_file), &pack_paths, &mods_off);
     }
     let scripted_early = opts.screenshot.is_some() || opts.bench.is_some();
     let settings_path = alloc::format!("{}settings.txt", base);
@@ -3365,7 +3581,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let restarted = crate::update::consume_restart_marker(&base);
     #[cfg(feature = "update-test")]
     if opts.update_now {
-        crate::update::run_now(BUILD, &base);
+        crate::update::run_now(BUILD, &base, opts.update_mirror.as_deref().unwrap_or(&settings.update_mirror));
         crate::update::restart(&restart_exe, &restart_folder);
         return Ok(());
     }
@@ -3380,7 +3596,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     if !scripted_early && !opts.server && !opts.no_update {
         let (scratch, install) = (base.clone(), settings.auto_update);
-        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::run(BUILD, &scratch, install)));
+        let mirror = opts.update_mirror.clone().unwrap_or_else(|| settings.update_mirror.clone());
+        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::run(BUILD, &scratch, install, &mirror)));
     }
     if let Some(f) = opts.far {
         settings.far_distance = f;
@@ -3439,10 +3656,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
         return Err(alloc::format!("could not create an OpenGL context: {}", sdl::error()));
     }
     gl::load()?;
+    phases.mark("window and OpenGL context");
     logf!("voxelrust: OpenGL {} on {}", gl::get_string(gl::VERSION), gl::get_string(gl::RENDERER));
     crate::icon::set_window_icon(window);
     let mut r = Renderer::new();
+    phases.mark("renderer: atlas painted and uploaded, fonts, clouds");
     r.load_models();
+    phases.mark("models parsed and uploaded");
     let (mut ww, mut wh) = (w, h);
     unsafe { (api.SDL_GetWindowSize)(window, &mut ww, &mut wh) };
     r.w = ww.max(1);
@@ -3476,6 +3696,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         show_debug: opts.show.contains("debug"),
         help_timer: 0.0,
         loading_since: 0.0,
+        wheel: Default::default(),
         third_person: opts.show.contains("third") || opts.show.contains("front"),
         third_front: opts.show.contains("front"),
         swallow_text: false,
@@ -3505,6 +3726,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         skin_png: Vec::new(),
         skin_sent: false,
         pack_paths,
+        mods_dir,
+        serve_mods: opts.serve_mods.as_deref().and_then(crate::net::modsync::serve::parse_serve_list),
         pack_text,
         server_content: false,
         want_reload: false,
@@ -3524,6 +3747,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         minimap: super::fullmap::MapPicture::new(super::fullmap::MINIMAP_TEXELS),
         full: None,
         form_import: String::new(),
+        skin_url: String::new(),
         picker: crate::client::picker::Picker::new(),
         tags: Vec::new(),
         map_native: None,
@@ -3552,6 +3776,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             start(&base, &app.settings);
         }
     }
+    phases.mark("audio folder, skin and mods started");
 
     // Going straight into a world: asked for by name, or a scripted run.
     let menu_only = ["title", "worlds", "newworld", "multiplayer", "picker"].iter().any(|s| opts.show.contains(s)) || (opts.show.contains("settings") && opts.world.is_none());
@@ -3603,12 +3828,15 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let r = reg();
             let one = |it: u16| Some(crate::inventory::Stack { item: it, count: 1 });
             if let Some(rc) = r.grid_recipes.iter().find(|rc| r.items[rc.out.0 as usize].id == want) {
+                // The bench or workshop the recipe needs (a table at least).
+                app.craft.table_side = rc.min_side().max(3);
+                let stride = app.craft.table_side;
                 match &rc.pattern {
                     crate::crafting::Pattern::Shaped { w, h, cells } => {
                         for y in 0..*h {
                             for x in 0..*w {
                                 if let Some(ing) = &cells[y * w + x] {
-                                    app.craft.grid.cells[y * 3 + x] = ing.items.first().and_then(|&it| one(it));
+                                    app.craft.grid.cells[y * stride + x] = ing.items.first().and_then(|&it| one(it));
                                 }
                             }
                         }
@@ -3620,6 +3848,35 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     }
                 }
             }
+        }
+        // "pose:NAME" holds the player's posture (stand, crouch, sit, sleep, swim, climb, fall, ride);
+        // "emote:ID" or "emote:ID@SECONDS" plays that emote and keeps it at that moment (default 0.5 s).
+        // Both are for pictures taken with "third" or "front".
+        if let Some(g) = app.session.as_mut() {
+            if let Some(name) = opts.show.split(',').find_map(|w| w.strip_prefix("pose:")) {
+                g.posing.forced = crate::content::pose::KINDS.iter().copied().find(|k| alloc::format!("{:?}", k).eq_ignore_ascii_case(name));
+            }
+            if let Some(spec) = opts.show.split(',').find_map(|w| w.strip_prefix("emote:")) {
+                let (id, at) = match spec.split_once('@') {
+                    Some((id, t)) => (id, t.parse::<f32>().unwrap_or(0.5)),
+                    None => (spec, 0.5),
+                };
+                match reg().emotes.find(id) {
+                    Some(i) if g.posing.start_emote(i) => {
+                        g.posing.emote = Some((i, at));
+                        g.posing.frozen = true;
+                    }
+                    _ => logf!("voxelrust: --show emote:{}: no such emote", id),
+                }
+            }
+        }
+        // "skinurl" opens the panel for a skin from a web address.
+        if opts.show.split(',').any(|w| w == "skinurl") {
+            app.open_skin_url();
+        }
+        // "emote" (alone) opens the emote wheel.
+        if opts.show.split(',').any(|w| w == "emote") {
+            app.set_screen(Screen::Emote);
         }
         for (word, screen) in [
             ("pause", Screen::Pause),
@@ -3685,6 +3942,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mut unloaded_frames = 0u32;
     let mut last = sys::now();
     let mut settled_frames = 0u32;
+    let mut first_frame_logged = false;
     let mut bench: Option<(u32, f64, f64)> = None; // frames left, start, worst frame
     let load_start = sys::now();
     // The main loop and what follows it are a closure, left at the loop's
@@ -3711,6 +3969,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         let online = app.session.as_ref().map_or(false, |g| g.net.is_some());
         app.update(&mut r, if scripted && !online { opts.step.unwrap_or(0.0) } else { dt }, dt);
         app.draw(&mut r, &inp);
+        if !first_frame_logged {
+            first_frame_logged = true;
+            phases.mark("first frame drawn");
+        }
         app.auto_tune(real_dt, r.w);
 
         if scripted {
@@ -3831,7 +4093,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
 
     app.close_world(&mut r);
     if !scripted {
-        sys::write_file(&app.settings_path, app.settings.to_text().as_bytes());
+        sys::write_file_atomic(&app.settings_path, app.settings.to_text().as_bytes());
     }
     // Close the sound device before SDL goes.
     drop(core::mem::replace(&mut app.audio, Audio::silent()));
@@ -3873,7 +4135,7 @@ fn mods_in(folder: &str) -> Vec<String> {
                     }
                 }
             }
-        } else if name.ends_with(".txt") && name != "mods.txt" {
+        } else if name.ends_with(".txt") && name != "mods.txt" && !name.eq_ignore_ascii_case("README.txt") {
             found.push(path);
         } else {
             let pack = alloc::format!("{}/pack.txt", path);
@@ -3916,22 +4178,16 @@ fn read_mod_file(path: &str) -> Option<Vec<u8>> {
     }
 }
 
-/// The mods that come inside the program (`data/packs/<name>/pack.txt`).
-fn bundled_mods() -> Vec<(String, &'static [u8])> {
-    block::embedded::FILES.iter().filter(|f| f.0.starts_with("packs/") && f.0.ends_with("/pack.txt")).map(|f| (String::from(f.0), f.1)).collect()
-}
-
 /// Bring a mod in from somewhere else on the machine: a folder, a .zip,
 /// or a lone pack file. It is copied into the data folder's `mods`, where
 /// the game then finds it. Returns what to tell the player.
 #[cfg(not(target_arch = "wasm32"))]
-fn import_mod(base: &str, from: &str) -> String {
+fn import_mod(mods: &str, from: &str) -> String {
     let from = from.trim().trim_end_matches(|c| c == '/' || c == '\\');
     // The path goes on a command line: nothing that could end the quotes.
     if from.is_empty() || from.chars().any(|c| matches!(c, '"' | '`' | '$' | '\n' | '\r' | '%' | '!')) {
         return String::from("TYPE WHERE THE MOD IS: A FOLDER, A .ZIP OR A PACK FILE");
     }
-    let mods = alloc::format!("{}mods", base);
     let name: String = mod_name(from).trim_end_matches(".zip").chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')).take(32).collect();
     if name.is_empty() {
         return String::from("THAT NAME WILL NOT DO FOR A MOD");
@@ -3973,32 +4229,27 @@ fn import_mod(_: &str, _: &str) -> String {
     String::from("NOT POSSIBLE IN A BROWSER")
 }
 
-/// Every mod there is to switch on or off: those built in, then those in
-/// the mods folders.
-fn all_mods(pack_paths: &[String]) -> Vec<String> {
-    let mut names: Vec<String> = bundled_mods().iter().map(|m| mod_name(&m.0)).collect();
+/// Every mod there is to switch on or off, as (name, version): those in
+/// the mods folders. (No mod is built into the program.)
+fn all_mods(pack_paths: &[String]) -> Vec<(String, String)> {
+    let mut mods: Vec<(String, String)> = Vec::new();
     for p in pack_paths {
         if let Some(folder) = p.strip_suffix("/*") {
             for m in mods_in(&alloc::format!("{}/", folder)) {
                 let n = mod_name(&m);
-                if !names.contains(&n) {
-                    names.push(n);
+                if !mods.iter().any(|x| x.0 == n) {
+                    let version = read_mod_file(&m).map(|b| crate::net::modsync::bundle::read_meta(&String::from_utf8_lossy(&b)).version).unwrap_or_default();
+                    mods.push((n, version));
                 }
             }
         }
     }
-    names
+    mods
 }
 
-fn load_content(pack_paths: &[String], off: &str) -> (Registry, Vec<u8>) {
+fn load_content(pack_paths: &[String], off: &str) -> (Registry, crate::client::pack_text::PackText) {
     let mut sources: Vec<(String, String)> = alloc::vec![(String::from("base.txt"), String::from(block::BASE_DATA))];
     let is_off = |name: &str| off.split(',').any(|o| o == name);
-    // The mods built into the program come first.
-    for (path, bytes) in bundled_mods() {
-        if !is_off(&mod_name(&path)) {
-            sources.push((path, String::from_utf8_lossy(bytes).into_owned()));
-        }
-    }
     // Mods are looked for afresh each time, so one dropped into the folder
     // while the game runs is there after a reload.
     let mut all: Vec<String> = Vec::new();
@@ -4024,49 +4275,42 @@ fn load_content(pack_paths: &[String], off: &str) -> (Registry, Vec<u8>) {
         }
     }
     let refs: Vec<(&str, &str)> = sources.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
-    // Remember every file the packs pull in (textures, models, includes).
-    let mut used: Vec<(String, Vec<u8>)> = Vec::new();
+    // Remember which files the packs pull in (textures, models, includes), to send to
+    // players who join: only their names, the bundle reads them if it is ever made.
+    let mut used: Vec<String> = Vec::new();
+    let mut seen: alloc::collections::BTreeSet<String> = alloc::collections::BTreeSet::new();
     let registry = Registry::from_sources(&refs, &mut |p| {
         let data = read_mod_file(p);
-        if let Some(d) = &data {
-            if !used.iter().any(|u| u.0 == p) {
-                used.push((String::from(p), d.clone()));
-            }
+        if data.is_some() && seen.insert(String::from(p)) {
+            used.push(String::from(p));
         }
         data
     });
-    (registry, pack_bundle(&sources[1..], &used))
-}
-
-/// The packs and the files they use as one blob a server can send. Folder
-/// names are replaced by `p0/`, `p1/`...: players need the files, not to
-/// know where the host keeps them.
-fn pack_bundle(packs: &[(String, String)], used: &[(String, Vec<u8>)]) -> Vec<u8> {
-    if packs.is_empty() {
-        return Vec::new();
-    }
-    let dir = |p: &str| String::from(&p[..p.rfind(|c| c == '/' || c == '\\').map_or(0, |i| i + 1)]);
-    let mut dirs: Vec<String> = Vec::new();
-    for (p, _) in packs {
-        let d = dir(p);
-        if !dirs.contains(&d) {
-            dirs.push(d);
+    drop(refs);
+    // The scripts of the mods in use (`scripts/*.rs` in a mod's folder; not
+    // read from inside a zip).
+    let mut scripted: Vec<(String, Vec<(String, Vec<u8>)>)> = Vec::new();
+    for p in &all {
+        let Some(folder) = p.strip_suffix("pack.txt") else { continue };
+        if p.contains(".zip!") {
+            continue;
+        }
+        let dir = alloc::format!("{}scripts/", folder);
+        let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+        for f in sys::list_dir(&dir) {
+            if f.ends_with(".rs") {
+                if let Some(b) = sys::read_file(&alloc::format!("{}{}", dir, f)) {
+                    files.push((alloc::format!("scripts/{}", f), b));
+                }
+            }
+        }
+        if !files.is_empty() {
+            scripted.push((mod_name(p), files));
         }
     }
-    // Longest first, so a folder inside another keeps its own name.
-    dirs.sort_by(|a, b| b.len().cmp(&a.len()));
-    let rename = |p: &str| match dirs.iter().position(|d| p.starts_with(d.as_str())) {
-        Some(i) => alloc::format!("p{}/{}", i, &p[dirs[i].len()..]),
-        None => alloc::format!("x/{}", p.replace(|c| c == '/' || c == '\\' || c == ':', "_")),
-    };
-    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-    for (p, text) in packs {
-        files.push((alloc::format!("pack:{}", rename(p)), text.as_bytes().to_vec()));
-    }
-    for (p, data) in used {
-        files.push((alloc::format!("file:{}", rename(p)), data.clone()));
-    }
-    crate::save::bundle(&files)
+    crate::script::ScriptHost::load_local(&scripted);
+    let packs: Vec<(String, String)> = sources.into_iter().skip(1).collect();
+    (registry, crate::client::pack_text::PackText::lazy(packs, used))
 }
 
 /// The content a server dictates: the built-in data and what it sent.
@@ -4118,7 +4362,7 @@ static HOST_STOP: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBoo
 
 /// Open the server for the world `name`: its small save (seed, kind and
 /// every edit) is read, or made on first use.
-fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u16, players: usize, base: &str, pack: &[u8], settings: &Settings) -> Result<(crate::server::Server, String), String> {
+fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u16, players: usize, base: &str, pack: &[u8], mods: Vec<crate::net::modsync::serve::ServedMod>, settings: &Settings) -> Result<(crate::server::Server, String), String> {
     use crate::server::{Config, Server};
     if name.is_empty() || name != crate::settings::clean_world_name(name, 24) {
         return Err(String::from("world names use only letters, digits, spaces, - and _ (24 at most)"));
@@ -4151,6 +4395,7 @@ fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u1
         content: crate::proto::content_checksum(),
         states: reg().blocks.len() as u16,
         pack: pack.to_vec(),
+        mods,
     };
     let mut server = Server::bind(cfg).map_err(|e| alloc::format!("could not listen on port {}: {:?}", port, e))?;
     // Operators and bans are kept beside the world: "op NAME" / "ban NAME".
@@ -4218,14 +4463,14 @@ fn server_loop(mut server: crate::server::Server, edits_path: String, quiet: boo
         if save_timer > 20.0 && server.dirty {
             save_timer = 0.0;
             server.dirty = false;
-            if !sys::write_file(&edits_path, server.save_text().as_bytes()) {
+            if !sys::write_file_atomic(&edits_path, server.save_text().as_bytes()) {
                 logf!("voxelrust: could not write {}", edits_path);
             }
         }
         sys::sleep_ms(4);
     }
     if server.dirty {
-        sys::write_file(&edits_path, server.save_text().as_bytes());
+        sys::write_file_atomic(&edits_path, server.save_text().as_bytes());
     }
     update_ready_and_empty(&server)
 }
@@ -4242,21 +4487,27 @@ extern "C" fn on_terminate(_: c_int) {
 }
 
 /// `voxelrust --server`: host a world for others, with no window.
-fn run_server(opts: &Opts, base: &str, pack_text: &[u8]) -> Result<(), String> {
+fn run_server(opts: &Opts, base: &str, pack_text: &[u8], pack_paths: &[String], mods_off: &str) -> Result<(), String> {
     let name = opts.world.clone().unwrap_or_else(|| String::from("server"));
     let new_kind = crate::native::active().filter_map(|(_, n)| n.option_kind).find_map(|kind| kind());
     let port = opts.port.unwrap_or(crate::proto::DEFAULT_PORT);
+    let only = opts.serve_mods.as_deref().and_then(crate::net::modsync::serve::parse_serve_list);
     // The server keeps itself up to date too: an update is installed as soon
     // as it is found, and the server restarts into it once nobody is playing.
     sys::handle_termination(on_terminate);
+    #[allow(unused_variables)] // the web build never restarts
     let restart_exe = sys::exe_path();
     #[cfg(not(target_arch = "wasm32"))]
     let _ = crate::update::consume_restart_marker(base);
     if !opts.no_update {
         let (scratch, install) = (String::from(base), true);
-        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::watch(BUILD, &scratch, install)));
+        // The mirror: `--update-mirror`, or the one in the data folder's settings.txt.
+        let mirror = opts.update_mirror.clone().unwrap_or_else(|| {
+            sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| Settings::parse(&String::from_utf8_lossy(&b)).update_mirror).unwrap_or_default()
+        });
+        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::watch(BUILD, &scratch, install, &mirror)));
     }
-    let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, &Settings::default())?;
+    let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, crate::client::mods::serving::served(pack_paths, mods_off, only.as_deref()), &Settings::default())?;
     let address = sys::net::local_address().unwrap_or_else(|| String::from("<this machine's address>"));
     logf!("voxelrust: players join with:  voxelrust --join {}:{}", address, server.port());
     if server_loop(server, edits_path, false) {

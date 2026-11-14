@@ -80,6 +80,22 @@ class Check(unittest.TestCase):
         f = c.find_conflicts(['shaped a 1 "SX" with S stick X coal\nshaped b 1 "XS" with S stick X coal\n'])
         self.assertEqual(len(f), 2)
 
+    def test_big_recipes_are_laid_out_in_their_own_bench(self):
+        # A 5 x 5 and a 7 x 7 pattern are read without trouble, and two of
+        # them told apart by shape do not clash with a table's recipe.
+        five = 'shaped a 1 "S...S" "SSSSS" "S...S" with S stick\nshaped b 1 "SSS" with S stick\n'
+        self.assertEqual(c.find_conflicts([five]), [])
+        recipes = c.read_recipes([five])
+        self.assertEqual([c.grid_side(r) for r in recipes], [5, 3])
+        seven = 'shaped a 1 "S.....S" with S stick\ncraft b 1 stick 5\n'
+        self.assertEqual([c.grid_side(r) for r in c.read_recipes([seven])], [7, 3])
+        # The same big shape for two things clashes.
+        same = 'shaped a 1 "S...S" "SSSSS" with S stick\nshaped b 1 "S...S" "SSSSS" with S stick\n'
+        self.assertEqual(len(c.find_conflicts([same])), 2)
+        # Mirrored, and offset in a bigger grid, is the same shape too.
+        mirrored = 'shaped a 1 "S...C" "SSSSS" with S stick C coal\nshaped b 1 "C...S" "SSSSS" with S stick C coal\n'
+        self.assertEqual(len(c.find_conflicts([mirrored])), 2)
+
     def test_groups_count(self):
         g = c.find_conflicts(["group w a b\n" + 'shaped x 1 "W" "W" with W @w\nshaped y 1 "A" "A" with A b\n'])
         self.assertEqual(len(g), 2)

@@ -944,7 +944,8 @@ impl Mobs {
     pub fn apply_snapshot(&mut self, text: &str) {
         let r = reg();
         let mut seen: Vec<u32> = Vec::new();
-        for line in text.lines() {
+        // (A host sends at most 64; more is not believed, so a hostile one cannot fill the world.)
+        for line in text.lines().take(64) {
             let w: Vec<&str> = line.split(' ').collect();
             let num = |k: usize| w.get(k).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
             let (id, kind) = match (w.first().and_then(|v| v.parse::<u32>().ok()), w.get(1).and_then(|id| r.entities.iter().position(|e| e.id == *id))) {
@@ -1161,6 +1162,9 @@ mod tests {
 
     #[test]
     fn base_data_defines_creatures_with_models() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let r = reg();
         assert!(r.entities.len() >= 3);
         let lurker = &r.entities[kind("lurker")];
@@ -1174,6 +1178,9 @@ mod tests {
 
     #[test]
     fn a_hunter_finds_its_way_around_a_wall_and_attacks() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let mut w = arena();
         // A wall between hunter and player, with a way round at one end.
         for x in 0..12 {
@@ -1194,6 +1201,9 @@ mod tests {
 
     #[test]
     fn animals_wander_and_night_creatures_leave_by_day() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let w = arena();
         let mut mobs = Mobs::new(3);
         mobs.spawn_timer = 1e9;
@@ -1212,6 +1222,9 @@ mod tests {
 
     #[test]
     fn every_animal_of_a_kind_is_a_little_different() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let mut mobs = Mobs::new(9);
         mobs.spawn_timer = 1e9;
         for i in 0..24 {
@@ -1225,6 +1238,9 @@ mod tests {
 
     #[test]
     fn a_cow_takes_several_survival_blows_not_one() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         // Survival hits with bare hands do 3; a cow has 10 health, so it
         // takes four blows. (Creative mode does 1000: one blow.)
         let mut mobs = Mobs::new(4);
@@ -1244,6 +1260,9 @@ mod tests {
 
     #[test]
     fn creatures_can_be_hit_and_die() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let w = arena();
         let mut mobs = Mobs::new(9);
         mobs.spawn_timer = 1e9;
@@ -1262,7 +1281,27 @@ mod tests {
     }
 
     #[test]
+    fn a_snapshot_cannot_fill_the_world_with_creatures() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
+        let mut text = String::new();
+        for id in 1..=300 {
+            text.push_str(&alloc::format!("{} cow 0 {} 100 5 0 0 5 0\n", id, id));
+        }
+        let mut mobs = Mobs::new(5);
+        mobs.apply_snapshot(&text);
+        assert_eq!(mobs.list.len(), 64);
+        // Lines that are not creatures are skipped, not trusted.
+        mobs.apply_snapshot("x cow 0 1 2 3 4 0 5 0\n7 nosuchthing 0 1 2 3 4 0 5 0\n8 cow 0 nan 2 3 4 0 5 0\n");
+        assert!(mobs.list.is_empty());
+    }
+
+    #[test]
     fn spawning_fills_up_to_the_cap_and_respects_the_rules() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let w = arena();
         let mut mobs = Mobs::new(11);
         let player = [8.5, 121.0, 8.5];

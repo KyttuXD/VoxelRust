@@ -6,9 +6,11 @@
 //! ```
 //!
 //! An ingredient is an item id or `@group`, and may end in `*N` to need
-//! N of it in its cell.
+//! N of it in its cell. A shaped recipe may be up to 7 x 7 cells; which
+//! grid it needs (table 3 x 3, bench 5 x 5, workshop 7 x 7) follows from its
+//! size once the empty edges are trimmed.
 
-use super::recipe::{GridRecipe, Ingredient, MAX_SIDE};
+use super::recipe::{GridRecipe, Ingredient, MAX_SIDE, TABLE_SIDE};
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -130,7 +132,7 @@ pub fn resolve(words: &[String], lk: &Lookup) -> Result<GridRecipe, String> {
     let units: u32 = parts.iter().map(|p| p.1 as u32).sum();
     let mut list = Vec::new();
     for (ing, n) in parts {
-        if units <= (MAX_SIDE * MAX_SIDE) as u32 {
+        if units <= (TABLE_SIDE * TABLE_SIDE) as u32 {
             // Every unit has a cell of its own.
             for _ in 0..n {
                 list.push(ing.clone());
@@ -208,14 +210,30 @@ mod tests {
     fn bad_shaped_lines_are_refused() {
         assert!(parse("shaped iron_pick 1 III .S. with I iron_ingot").is_err()); // S not defined
         assert!(parse("shaped iron_pick 1 III .S with I iron_ingot S stick").is_err()); // ragged
-        assert!(parse("shaped iron_pick 1 IIII with I iron_ingot").is_err()); // 4 wide
+        assert!(parse("shaped iron_pick 1 IIIIIIII with I iron_ingot").is_err()); // 8 wide
         assert!(parse("shaped iron_pick 1 ... with I iron_ingot").is_err()); // nothing in it
-        assert!(parse("shaped iron_pick 1 I I I I with I iron_ingot").is_err()); // 4 tall
+        assert!(parse("shaped iron_pick 1 I I I I I I I I with I iron_ingot").is_err()); // 8 tall
         assert!(parse("shaped iron_pick 1 I with I nothing_real").is_err());
         assert!(parse("shaped iron_pick 1 I with I @nothing").is_err());
         assert!(parse("shaped iron_pick 0 I with I stick").is_err());
         assert!(parse("shaped iron_pick 1 I").is_err()); // no `with`
         assert!(parse("shaped iron_pick 1 I with II stick").is_err()); // not a letter
+    }
+
+    #[test]
+    fn big_shaped_lines_need_a_bench_or_a_workshop() {
+        let four = parse("shaped plane 1 IIII with I iron_ingot").unwrap();
+        assert_eq!(four.min_side(), 5);
+        let five = parse("shaped plane 1 I.... .I... ..I.. ...I. ....I with I iron_ingot").unwrap();
+        assert_eq!(five.min_side(), 5);
+        let seven = parse("shaped plane 1 IIIIIII ....... with I iron_ingot").unwrap();
+        assert_eq!(seven.min_side(), 7);
+        let tall = parse("shaped plane 1 I I I I I I with I iron_ingot").unwrap();
+        assert_eq!((tall.min_side(), tall.needs_table()), (7, true));
+        assert_eq!(parse("shaped plane 1 I with I iron_ingot").unwrap().min_side(), 2);
+        assert_eq!(parse("shaped iron_pick 1 III .S. .S. with I iron_ingot S stick").unwrap().min_side(), 3);
+        assert_eq!(parse("craft plane 1 stick 5").unwrap().min_side(), 3);
+        assert_eq!(parse("craft plane 1 stick 10").unwrap().min_side(), 2);
     }
 
     #[test]

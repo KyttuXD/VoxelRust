@@ -51,9 +51,22 @@ voxelrust --server --world myworld
 | `--pack FILE` | content packs every player will use (see below) |
 | `--data DIR` | where the server keeps its files |
 | `--log FILE` | also write the server's output to a file |
+| `--no-update` | do not keep the server up to date (see below) |
+| `--update-mirror URL` | fetch updates from this web folder over plain HTTP, tried before the release (or `update_mirror=URL` in `settings.txt` in `--data`) |
 
 The server prints who joins and leaves, chat, and relay requests. Stop it
 with Ctrl+C.
+
+A server keeps itself up to date with the same updater as the game (see
+[BUILDING.md](BUILDING.md#how-the-game-updates-itself)): every ten minutes it
+looks at the nightly release, and installs a newer program and restarts into
+it once nobody is connected. What it reads is signed: the list of programs
+(`nightly.txt`) must carry a valid `nightly.txt.sig` made with the project's
+key, and each program must match its listed SHA-256, or nothing is installed
+(the server logs `update: the release list's signature is not valid`). A
+server that cannot reach GitHub (or sits behind a plain-HTTP-only path) can
+take the same files from a mirror with `--update-mirror`; the mirror needs no
+trust, because everything it serves is checked.
 
 ### Files it writes
 
@@ -84,14 +97,18 @@ empty name becomes `Player`. If someone on the server already has it, a
 number is added (`Bob` becomes `Bob2`).
 
 The server refuses a player whose game speaks a different version of the
-network protocol (currently version 8), and anyone beyond the player limit.
+network protocol (currently version 10), and anyone beyond the player limit.
 Everyone should run the same version of the game.
 
 ## What is shared, and what is not
 
 Shared between everyone on a server:
 
-- **Players**: position, the direction they look, name tags, and skins.
+- **Players**: position, the direction they look, name tags, and skins; what
+  their body is doing (a pose byte with every position: standing, crouching,
+  sitting, lying, swimming, climbing, falling, riding, and whether they are
+  drawing a bow, eating or striking), and the **emote** they are playing
+  (`Msg::Emote`, the number of the emote in the server's pack; 0 stops it).
 - **Block edits**: every block placed or broken, including everything built
   before you joined.
 - **Chat**.
@@ -225,10 +242,63 @@ So players do not need to install anything to join a modded server. While on
 a server, `/reload` and RELOAD MODS NOW do nothing: the server
 decides the content. To change a server's packs, restart it.
 
-The mods that come with the game (Natural Disasters, Earth, Vehicles, Boats,
-Trains, Planes, Land Vehicles and Holidays) are ordinary packs here: the ones
-found and switched on where the server runs are sent with the rest, so players on a server whose Land Vehicles mod is off have
-no buggy, truck or kart there, whatever their own settings say.
+Mods are ordinary packs here: the ones found and switched on where the
+server runs (in `<server data folder>/mods`) are sent with the rest, so players
+on a server whose Land Vehicles mod is off have no buggy, truck or kart there,
+whatever their own settings say.
+
+## Mods from the server
+
+No mods come with the game, so a server can also hand its mods to players as
+whole folders (textures, models, sounds, scripts and all), which is what makes
+a modded server joinable without installing anything first.
+
+**What the server offers.** Every mod in the server's mods folder
+(`<server data folder>/mods`, or `--mods-dir DIR`) that is switched off
+nowhere, has no native code (`code/mod.rs`) and does not say `client no` in
+its pack.txt. `--serve-mods a,b,c` offers exactly the named mods instead
+(`--serve-mods all` goes back to the default). The same options apply to a
+game hosted from the menu. The server logs what it offers and what it left
+out and why.
+
+**What happens when you join.** After the pack the server announces its
+mods: name, version (the pack's `version` line) and a checksum of each. The
+client keeps what it already has from this visit if name, version and
+checksum match, and asks for the rest; the server then sends each asked mod
+in pieces, a few per tick, so play is not stalled. The loading screen shows
+`DOWNLOADING MODS 3/12`. Each mod is checked against its checksum, and
+every file in it is checked before anything is written (see below).
+
+**Where it goes.** `<data folder>/tmp/mods/<host>_<port>/<mod>/...`, next to a
+`manifest.txt` that says which mods arrived whole. The mods are loaded for
+that visit only, never in a world of your own, and SETTINGS > MODS lists them
+as FROM SERVER, read only. The folder is emptied when you leave the server,
+when the game quits, and (for what a crash left) when the game starts. If you
+join a server again before that, unchanged mods are not downloaded twice.
+Two copies of the game started with the same data folder share this folder: one
+starting up clears the other's downloaded mods.
+
+**What is refused.** The client accepts only files of these types: `.txt`
+`.json` `.bbmodel` `.png` `.jpg` `.gif` `.bmp` `.tga` `.wav` `.ogg` `.mp3`
+`.flac` `.rs` `.md`. A path may not be absolute, hold `..`, a drive letter,
+a backslash or other odd characters, start a name with a dot, be longer than
+160 characters or nested more than 8 deep. A mod is refused whole if any file
+breaks that, if a name repeats (ignoring case), or if it breaks the limits:
+2000 files, 4 MB a file, 16 MB a mod, 48 MB and 64 mods from one server.
+Mods that contain native (compiled) code cannot be downloaded, since the
+player's program has only the code it was built with: the server skips them
+with a log line, and the player needs a program built the same way
+(`--features native-mods`, see [BUILDING.md](BUILDING.md#mod-code)) to use
+the code of such a mod.
+
+**Scripts.** `.rs` files in a downloaded mod are handed to the script engine
+(`content::mod_runtime`, see [MODDING.md](MODDING.md#scripts-that-mods-bring));
+without an engine they are kept and not run.
+
+(Version 9 added poses and emotes.) The protocol: version 10 adds `ModList` (server to client, after the pack),
+`ModsWant` (client to server) and `ModPart` (server to client, one mod's
+bundle in pieces of up to 40,000 bytes). A mod's bundle is the
+`save::bundle` format with the paths inside the mod as names.
 
 ## The map-data relay
 

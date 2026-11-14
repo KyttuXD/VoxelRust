@@ -120,7 +120,11 @@ pub struct Session {
     flood: Vec<[i32; 3]>,
     /// Content sent by the server, complete and waiting to be applied.
     pub server_pack: Option<Vec<u8>>,
+    /// On a server: the mods taken from it (see `net::modsync`).
+    pub mod_sync: Option<crate::net::modsync::client::ClientSync>,
     pack_buffer: Vec<u8>,
+    /// The pack being sent was too big: its remaining pieces are dropped.
+    pack_overflow: bool,
     /// Messages that arrived behind a pack, kept until it is applied.
     held_events: Vec<crate::netplay::Event>,
     tick_timer: f32,
@@ -147,6 +151,8 @@ pub struct Session {
     call_timer: f32,
     /// The seat the player is sitting on.
     pub sitting: Option<[i32; 3]>,
+    /// Posture, emote and the bed the player lies in (game/posing.rs).
+    pub posing: crate::game::posing::Posing,
     /// The creature being ridden (its id).
     pub riding_mob: Option<u32>,
     /// Numbers that pack scripts keep (`/var`), saved with the world.
@@ -161,6 +167,10 @@ pub struct Session {
     share_timer: f32,
     bite_timer: f32,
     open_chest: Option<[i32; 3]>,
+    /// The chest whose screen is open (set by the app each frame), and the
+    /// lids that are moving because of it (game/chest_anim.rs).
+    pub chest_view: Option<[i32; 3]>,
+    pub chest_anim: crate::chest_anim::ChestAnim,
     chest_sent: Option<([i32; 3], String)>,
     /// Which dimension of the world is being played (empty = the world itself).
     pub dim: String,
@@ -499,7 +509,9 @@ impl Session {
             weather_tick: 0.0,
             flood: Vec::new(),
             server_pack: None,
+            mod_sync: None,
             pack_buffer: Vec::new(),
+            pack_overflow: false,
             held_events: Vec::new(),
             tick_timer: 0.0,
             touch_timer: 0.0,
@@ -515,6 +527,7 @@ impl Session {
             started: false,
             call_timer: 3.0,
             sitting: None,
+            posing: Default::default(),
             riding_mob: None,
             vars: sys::read_file(&alloc::format!("{}{}.vars.txt", world_dir(base), name))
                 .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.split_once('=').and_then(|(k, v)| Some((String::from(k), v.parse::<i64>().ok()?)))).collect())
@@ -526,6 +539,8 @@ impl Session {
             share_timer: 0.0,
             bite_timer: 0.0,
             open_chest: None,
+            chest_view: None,
+            chest_anim: Default::default(),
             chest_sent: None,
             dim: String::new(),
             pending_dim: crate::settings::kv(&meta, "dim").filter(|d| !d.is_empty()).map(String::from),
@@ -589,6 +604,7 @@ impl Session {
         s.world.log_edits = true;
         s.time = welcome.time;
         s.net = Some(client);
+        s.mod_sync = Some(crate::net::modsync::client::ClientSync::new(base, &host, port));
         s.push_chat(alloc::format!("CONNECTED TO {}", address.to_ascii_uppercase()));
         Ok(s)
     }
@@ -1195,7 +1211,7 @@ impl Session {
                 if online && !self.may(crate::proto::PERM_COMMANDS) && !FREE.contains(&arg(0)) && arg(0).starts_with('/') {
                     return Some(String::from("YOU MAY NOT USE THAT COMMAND ON THIS SERVER"));
                 }
-                return crate::native::active().filter_map(|(_, n)| n.command).find_map(|command| command(self, &words));
+                return crate::native::active().filter_map(|(_, n)| n.command).find_map(|command| command(self, &words)).or_else(|| crate::script::bridge::command(self, &words));
             }
         })
     }
@@ -1721,6 +1737,8 @@ impl Session {
                 crate::netplay::Event::Lost => self.lost = true,
                 crate::netplay::Event::Joined(who) => self.fire(crate::game::events::JOIN, &who.to_ascii_lowercase()),
                 crate::netplay::Event::Left(who) => self.fire(crate::game::events::LEAVE, &who.to_ascii_lowercase()),
+                // (Remote players keep their emote on their own record in `net.players`.)
+                crate::netplay::Event::Emote(..) => {}
                 crate::netplay::Event::Skin(id, png, slim) => self.skin_events.push((id, png, slim)),
                 crate::netplay::Event::State(_, channel, key, data) => {
                     use crate::proto::channel as ch;
@@ -1742,7 +1760,7 @@ impl Session {
                             if let [x, y, z] = c[..] {
                                 if text.is_empty() {
                                     self.chests.remove(&[x, y, z]);
-                                } else {
+                                } else if self.chests.len() < 65_536 || self.chests.contains_key(&[x, y, z]) {
                                     self.chests.insert([x, y, z], Inventory::load(&text));
                                 }
                                 self.chest_sent = Some(([x, y, z], text));
@@ -1760,11 +1778,36 @@ impl Session {
                         _ => {}
                     }
                 }
+                crate::netplay::Event::ModList(list) => {
+                    if let Some(sync) = self.mod_sync.as_mut() {
+                        let want = sync.on_list(list);
+                        for line in sync.log.drain(..) {
+                            logf!("voxelrust: {}", line);
+                        }
+                        if let (false, Some(n)) = (want.is_empty(), self.net.as_mut()) {
+                            n.send_mods_want(&want);
+                        }
+                    }
+                }
+                crate::netplay::Event::ModPart(index, last, data) => {
+                    if let Some(sync) = self.mod_sync.as_mut() {
+                        sync.on_part(index, last, &data);
+                        for line in sync.log.drain(..) {
+                            logf!("voxelrust: {}", line);
+                        }
+                    }
+                }
                 crate::netplay::Event::Pack(last, data) => {
-                    if self.pack_buffer.len() + data.len() <= 16 << 20 {
+                    if self.pack_overflow || self.pack_buffer.len() + data.len() > 16 << 20 {
+                        // Too big to hold: nothing of it is kept (half a pack is no pack), and
+                        // the built-in content is used, as for a pack that cannot be read.
+                        self.pack_overflow = true;
+                        self.pack_buffer = Vec::new();
+                    } else {
                         self.pack_buffer.extend_from_slice(&data);
                     }
                     if last {
+                        self.pack_overflow = false;
                         self.server_pack = Some(core::mem::take(&mut self.pack_buffer));
                         self.held_events = events.collect();
                         break;
@@ -1895,6 +1938,8 @@ impl Session {
         if night && self.net.is_none() {
             // Sleep until morning: the night passes at forty times the speed.
             self.sleeping = true;
+            // Lying on the bed, feet the way the player faced.
+            self.posing.lying = Some(crate::game::posing::Lying { middle: [cell[0] as f64 + 0.5, cell[1] as f64 + 0.56, cell[2] as f64 + 0.5], yaw: self.player.yaw });
             self.say("ZZZ...  MOVE TO WAKE UP");
         } else {
             self.say(if night { "YOU WILL WAKE UP HERE" } else { "YOU CAN SLEEP WHEN IT IS DARK" });
@@ -1979,6 +2024,7 @@ impl Session {
         }
         // Lit TNT burns down, sparks fly.
         crate::primed::tick(self, dt);
+        crate::chest_anim::tick(self, dt, audio);
         // Creatures, sleep and weather for scripts, and the mods' tick hook.
         crate::game::events::poll(self, dt);
         // Scripts: once at the start, and those that run on a clock.
@@ -2072,6 +2118,8 @@ impl Session {
         });
         let seat = self.seat;
         self.carried = seat.is_some();
+        self.posing.climbing = false;
+        self.player.climb = None;
         // On a creature's back: carried along until getting off (the
         // leave key), or until it is gone.
         if let Some(id) = self.riding_mob {
@@ -2104,8 +2152,8 @@ impl Session {
             // (Placed above; nothing more to move.)
         } else if let Some(at) = self.sitting {
             let seat_height = block::def(self.world.get(at[0], at[1], at[2])).x.seat as f64 / 16.0;
-            // Eyes about 0.75 above the seat.
-            self.player.pos = [at[0] as f64 + 0.5, at[1] as f64 + seat_height + 0.75 - crate::player::EYE, at[2] as f64 + 0.5];
+            // Eyes at the height of a seated body's (content/pose/sit.rs).
+            self.player.pos = [at[0] as f64 + 0.5, at[1] as f64 + seat_height + crate::content::pose::sit::eye_above_seat() - crate::player::EYE, at[2] as f64 + 0.5];
             self.player.vel = [0.0; 3];
             self.player.on_ground = true;
             self.peak_y = self.player.pos[1];
@@ -2120,6 +2168,9 @@ impl Session {
             let world = &self.world;
             let before = self.player.pos;
             let was_in_water = self.player.in_water;
+            // Holding on to something climbable: up and down at a steady pace.
+            self.posing.climbing = crate::content::pose::climb::climbing(&|x, y, z| world.get(x, y, z), self.player.pos, self.player.flying);
+            self.player.climb = if self.posing.climbing { Some(crate::content::pose::climb::speed(c.input.jump, c.input.descend)) } else { None };
             self.player.unstick(&|x, y, z| world.get(x, y, z));
             self.player.update(dt, &c.input, &|x, y, z| world.get_for_physics(x, y, z));
             let (dx, dz) = ((self.player.pos[0] - before[0]) as f32, (self.player.pos[2] - before[2]) as f32);
@@ -2135,6 +2186,7 @@ impl Session {
             }
             self.survival_rules(dt, audio);
         }
+        self.update_posing(dt, c);
         // Creatures. Hunters only come for players in survival mode.
         let hunted = self.mode == GameMode::Survival && !self.dead;
         let held_item = self.held().map(|h| h.0);
@@ -2275,7 +2327,7 @@ impl Session {
         }
         // Falling: measured from the highest point since leaving the ground.
         let (y, on_ground) = (self.player.pos[1], self.player.on_ground);
-        let airborne = !on_ground && !self.player.flying && !self.player.in_water;
+        let airborne = !on_ground && !self.player.flying && !self.player.in_water && self.player.climb.is_none();
         if airborne {
             self.peak_y = if self.was_airborne { y.max(self.peak_y) } else { y };
         } else {
@@ -2790,7 +2842,7 @@ impl Session {
                 chest_text.push_str(&alloc::format!("{} {} {} {}\n", pos[0], pos[1], pos[2], inv.save()));
             }
         }
-        sys::write_file(&self.chests_path, chest_text.as_bytes());
+        sys::write_file_atomic(&self.chests_path, chest_text.as_bytes());
         self.natives(|n, g| {
             if let Some(save) = n.save {
                 save(g)
@@ -2802,11 +2854,11 @@ impl Session {
             for (x, z) in &self.explored {
                 text.push_str(&alloc::format!("{} {}\n", x, z));
             }
-            sys::write_file(&self.explored_path, text.as_bytes());
-            sys::write_file(&self.waypoints_path, crate::game::waypoints::format(&self.waypoints).as_bytes());
-            sys::write_file(&self.pets_path, self.mobs.save_pets().as_bytes());
+            sys::write_file_atomic(&self.explored_path, text.as_bytes());
+            sys::write_file_atomic(&self.waypoints_path, crate::game::waypoints::format(&self.waypoints).as_bytes());
+            sys::write_file_atomic(&self.pets_path, self.mobs.save_pets().as_bytes());
             let vars: String = self.vars.iter().map(|(k, v)| alloc::format!("{}={}\n", k, v)).collect();
-            sys::write_file(&self.vars_path, vars.as_bytes());
+            sys::write_file_atomic(&self.vars_path, vars.as_bytes());
         }
         let text = alloc::format!(
             "seed={}\ndim={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\neffects={}\nabsorb={}\ninventory={}\n",
@@ -2831,7 +2883,7 @@ impl Session {
             self.fx.absorb,
             self.inv.save(),
         );
-        let ok = sys::write_file(&self.meta_path, text.as_bytes()) && !self.store.write_failed;
+        let ok = sys::write_file_atomic(&self.meta_path, text.as_bytes()) && !self.store.write_failed;
         crate::game::hooks::world_saved(self);
         ok
     }

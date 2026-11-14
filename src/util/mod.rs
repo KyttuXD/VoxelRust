@@ -4,11 +4,13 @@
 //! - `data`: JSON and the settings file
 //! - `hash`: SHA-256
 //! - `archive`: zip files
+//! - `crypto`: Ed25519 signature checks (and SHA-512), for the updater
 //! - `image`: pictures (PNG, JPEG, GIF, BMP, TGA)
 //! - `audio`: sounds (WAV, AIFF, FLAC, ...)
 
 pub mod archive;
 pub mod audio;
+pub mod crypto;
 pub mod data;
 pub mod hash;
 pub mod image;

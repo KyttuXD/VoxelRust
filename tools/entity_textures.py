@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Paints every creature's and player's texture in the OCD style.
 
-    python3 tools/entity_textures.py                  # write data/textures/entity/*.png
+    python3 tools/entity_textures.py                  # write the pictures (the wildlife mod's textures/ folder; the player's and the skins' to data/textures/entity/)
     python3 tools/entity_textures.py --sheet out.png  # also a contact sheet of the result
     python3 tools/entity_textures.py --only cow,pig   # just the textures of these models
     python3 tools/entity_textures.py --template cow   # layout map of a model (for pack makers)
@@ -12,7 +12,7 @@ colours by body part ("zone") and a few patterns; every look of a creature
 Change a colour there, run this, and every picture is repainted: nothing is
 painted by hand. See docs/TEXTURING.md, "Creatures and players".
 
-How a picture is made. The models (data/models/*.bbmodel, written by
+How a picture is made. The models (the wildlife mod's models/*.bbmodel, written by
 tools/gen_models.py) say which rectangle of the texture each face of each box
 uses. For every face this script
 
@@ -28,9 +28,11 @@ uses. For every face this script
 There is no noise, no dithering and no gradient: 3 to 8 colours a picture.
 The output is deterministic. Pixels that no face uses stay see-through.
 
-The files go to data/textures/entity/<name>.png, which the game embeds. The
-game uses `<name>` for the model of that name, and for any creature whose
-data says `tex <name>` (see docs/DATA.md). Pictures in a texture pack's
+The game's own pictures (the player, the skins) go to data/textures/entity/<name>.png,
+which the game embeds. Every other picture goes to the wildlife mod's textures/ folder
+(tools/export_mods.py moves each creature's pictures into the mod it belongs to and
+writes the `picture` lines that make the game read them). The game uses `<name>` for
+the model of that name, and for any creature whose data says `tex <name>` (see docs/DATA.md). Pictures in a texture pack's
 textures/entity folder replace them (src/content/pack_entities.rs)."""
 import argparse
 import base64
@@ -44,8 +46,16 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-MODELS = os.path.join(ROOT, "data", "models")
-OUT = os.path.join(ROOT, "data", "textures", "entity")
+MODS_DIR = os.path.abspath(os.environ.get("VOXELRUST_MODS_DIR") or os.path.join(ROOT, "..", "VoxelRust-Mods"))  # the mods live outside the repository
+ART = os.path.join(MODS_DIR, "wildlife")                 # the creatures' models and pictures are made here, then tools/export_mods.py sorts them into their mods
+MODELS = os.path.join(ART, "models")
+CORE_MODELS = os.path.join(ROOT, "data", "models")       # the game's own: the player and the hands
+OUT = os.path.join(ART, "textures")
+CORE_OUT = os.path.join(ROOT, "data", "textures", "entity")   # the game's own pictures: the player and the skins
+
+
+def is_core(name):
+    return name.startswith("skin_") or name in ("player", "player_slim")
 sys.path.insert(0, HERE)
 
 CLEAR = (-1, -1, -1)  # a pattern's answer for "leave this pixel see-through"
@@ -107,6 +117,8 @@ def _walk(node, out):
 
 def load_model(model):
     path = os.path.join(MODELS, model + ".bbmodel")
+    if not os.path.exists(path):
+        path = os.path.join(CORE_MODELS, model + ".bbmodel")
     d = json.load(open(path))
     res = d["resolution"]
     return d, res["width"], res["height"]
@@ -519,6 +531,7 @@ def write_png(path, img, tw, th):
 def build(only=None, quiet=False):
     import entity_palettes as P
     os.makedirs(OUT, exist_ok=True)
+    os.makedirs(CORE_OUT, exist_ok=True)
     made = {}
     for name, (model, spec) in sorted(P.textures().items()):
         if only and not (model in only or name in only):
@@ -528,23 +541,23 @@ def build(only=None, quiet=False):
         img, tw, th = paint_model(model, pal, pats, spec.get("eyes", "pair"), spec.get("side_eyes", False),
                                   model.startswith("player"), name_hash(name) & 0xFFFF, spec.get("remap"))
         # The player model's pictures are skins: 64 x 64, the usual layout.
-        write_png(os.path.join(OUT, name + ".png"), img, tw, th)
+        write_png(os.path.join(CORE_OUT if is_core(name) else OUT, name + ".png"), img, tw, th)
         made[name] = (model, img, tw, th)
     if not quiet:
-        print("wrote", len(made), "pictures to", os.path.relpath(OUT, ROOT))
+        print("wrote", len(made), "pictures to", OUT, "and", os.path.relpath(CORE_OUT, ROOT))
     return made
 
 
 def check(made):
     """Every model has a picture, and every `tex` the data names exists."""
     import re
-    have = set(made) if made else {f[:-4] for f in os.listdir(OUT) if f.endswith(".png")}
-    models = {f[:-8] for f in os.listdir(MODELS) if f.endswith(".bbmodel")}
+    have = set(made) if made else {f[:-4] for f in os.listdir(OUT) + os.listdir(CORE_OUT) if f.endswith(".png")}
+    models = {f[:-8] for f in os.listdir(MODELS) + os.listdir(CORE_MODELS) if f.endswith(".bbmodel")}
     skip = {"hand", "hand_slim", "player_slim", "grazer"}
     for m in sorted(models - skip):
         if m not in have:
             print("warning: model", m, "has no base picture")
-    for path in (os.path.join(ROOT, "data", "wildlife.txt"),):
+    for path in (os.path.join(ART, "animals.txt"),):
         if os.path.exists(path):
             for line in open(path):
                 m = re.search(r"\btex (\w+)", line)

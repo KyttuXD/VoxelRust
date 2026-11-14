@@ -107,6 +107,10 @@ pub struct BlockDef {
     pub first: Block,
     pub rotations: u8,
     pub flips: bool,
+    /// `front <texture>` on a `rotate` block: the picture of the face that
+    /// looks the way the block was placed to face (a chest's latch side), as
+    /// the mesher's face number (0 +x, 1 -x, 4 +z, 5 -z) and tile.
+    pub front: Option<(u8, u16)>,
     /// Behaviour beyond shape and material.
     pub x: BlockExtra,
 }
@@ -229,6 +233,9 @@ pub struct BlockExtra {
     /// `react <next to> <becomes>`: turns into the second block when the first
     /// is next to it.
     pub reacts: Vec<(Block, Block)>,
+    /// `rest <block>`: when a saved world is loaded this state is read as
+    /// that block, facing the same way (an open chest is shut again).
+    pub rest: Option<Block>,
 }
 
 impl BlockExtra {
@@ -342,7 +349,7 @@ pub struct Variant {
     pub tint: [u8; 3],
     /// Scale relative to the entity's height (a pony next to a horse).
     pub size: f32,
-    /// Its picture (`data/textures/entity/<tex>.png`, see `pack_entities`);
+    /// Its picture (a mod's `picture` line, or `data/textures/entity/<tex>.png`; see `pack_entities`);
     /// empty = the model's own.
     pub tex: String,
     /// Surface or cave biomes this look is for (camouflage). With any, it is
@@ -457,8 +464,12 @@ pub struct EntityDef {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Usable {
     Nothing,
-    /// Opens the 3 x 3 crafting grid.
+    /// Opens the 3 x 3 crafting grid (`use craft`, or `use craft 3`).
     Craft,
+    /// Opens the 5 x 5 grid of a crafting bench (`use craft 5`).
+    Craft5,
+    /// Opens the 7 x 7 grid of a workshop (`use craft 7`).
+    Craft7,
     /// Opens its own storage.
     Chest,
     /// Opens the baking recipes.
@@ -467,6 +478,18 @@ pub enum Usable {
     Bed,
     /// Opens the smelting recipes.
     Furnace,
+}
+
+impl Usable {
+    /// The side of the crafting grid this opens (3, 5 or 7), if it is one.
+    pub fn craft_side(self) -> Option<usize> {
+        match self {
+            Usable::Craft => Some(3),
+            Usable::Craft5 => Some(5),
+            Usable::Craft7 => Some(7),
+            _ => None,
+        }
+    }
 }
 
 pub const TOOLS: [&str; 5] = ["none", "pick", "axe", "shovel", "hoe"];
@@ -613,6 +636,8 @@ pub struct Registry {
     pub sections: Vec<Section>,
     /// Status effects: poison, burning... (see content/effects.rs).
     pub fx: crate::content::effects::EffectTable,
+    /// Emotes the player can play (see content/emotes.rs).
+    pub emotes: crate::content::emotes::EmoteTable,
     pub lines: Vec<(String, String, Vec<String>)>,
     /// Item tabs, in the order they first appear.
     pub categories: Vec<String>,
@@ -645,11 +670,18 @@ pub struct Registry {
     /// The state of each liquid at each level: `flow[lava][level]`.
     pub flow: [[Block; 9]; 2],
     pub wk: WellKnown,
+    /// Creature pictures that packs bring (`picture <name> file <png>`): name and PNG bytes.
+    /// See `pack_entities::image`.
+    pub pictures: Vec<(String, Vec<u8>)>,
     /// The hidden filler that big props put in the cells they take up.
     pub part: Block,
     pub sun_tile: u16,
     pub moon_tile: u16,
     by_id: BTreeMap<String, Block>,
+    /// Texture and model numbers by id, for the lookups made every frame
+    /// (see [`Registry::tile`] and [`Registry::model`]).
+    tile_by_id: BTreeMap<String, usize>,
+    model_by_id: BTreeMap<String, usize>,
     /// Problems found while reading the data, for the log.
     pub warnings: Vec<String>,
 }
@@ -693,11 +725,24 @@ pub fn install(r: Registry) {
     }
 }
 
+/// The registry that was current before the active one's predecessor. See [`replace`].
+static RETIRED: AtomicPtr<Registry> = AtomicPtr::new(core::ptr::null_mut());
+
 /// Swap in a new registry while the game runs (packs reloaded, or sent by a
-/// server). The old one is deliberately never freed: references to it may
-/// still be in use, on this thread or a worker.
+/// server). References to the old one may still be in use for a little while
+/// (on this thread, or a worker finishing a job), so it is not freed at
+/// once: it is kept for one more replacement, and the one before that, which
+/// nothing can have been holding for two whole reloads, is freed. (Each
+/// reload used to leak the whole registry, models and sound clips included.)
 pub fn replace(r: Registry) {
-    REG.store(Box::into_raw(Box::new(r)), Ordering::Release);
+    let old = REG.swap(Box::into_raw(Box::new(r)), Ordering::AcqRel);
+    let older = RETIRED.swap(old, Ordering::AcqRel);
+    if !older.is_null() {
+        // SAFETY: it came from `Box::into_raw` here or in `install`, was
+        // replaced two reloads ago, and was never handed out since (`reg`
+        // only hands out the active one).
+        unsafe { drop(Box::from_raw(older)) };
+    }
 }
 
 #[inline]
@@ -725,6 +770,18 @@ pub fn def(b: Block) -> &'static BlockDef {
 #[inline]
 pub fn is_solid(b: Block) -> bool {
     def(b).solid
+}
+
+/// The mesher's face number of the front of a `front` block turned 0..3
+/// quarter turns: +z (toward a player who faces north), then +x, -z, -x.
+const FRONT_FACES: [u8; 4] = [4, 0, 5, 1];
+
+/// The state a saved block is read as when its world loads (see `rest`).
+pub fn at_rest(b: Block) -> Block {
+    match reg().blocks.get(b as usize) {
+        Some(d) => d.x.rest.map_or(b, |c| c + (b - d.first)),
+        None => b,
+    }
 }
 
 /// Whether a fence or wall `d` reaches toward a neighbouring block `nb`.
@@ -796,6 +853,8 @@ struct RawBlock {
     connect: String,
     join_cubes: bool,
     arms: Vec<Bx>,
+    /// `front <texture>`: the picture of a rotating block's front face.
+    front: String,
     /// Behaviour lines, resolved once every block and item is known.
     extra: Vec<(String, Vec<String>)>,
 }
@@ -843,6 +902,8 @@ enum Cur {
     Section(usize),
     /// An `effect <id>` block (see content/effects.rs).
     Effect(usize),
+    /// An `emote <id> ...` block (see content/emotes.rs).
+    Emote(usize),
 }
 
 struct Parser<'a> {
@@ -854,6 +915,8 @@ struct Parser<'a> {
     sections: Vec<Section>,
     /// The `effect <id>` blocks, read by content/effects.rs.
     effects: Vec<Section>,
+    /// The `emote` blocks, read by content/emotes.rs.
+    emotes: crate::content::emotes::EmoteTable,
     lines: Vec<(String, String, Vec<String>)>,
     /// `(file:line, words)` for each `recipe` line, resolved once items exist.
     recipes: Vec<(String, Vec<String>)>,
@@ -863,6 +926,8 @@ struct Parser<'a> {
     rules: Vec<(String, Vec<String>)>,
     /// Sound files read while parsing: the sound's id and its samples.
     clips: Vec<(String, Vec<i16>)>,
+    /// `picture` lines: a creature picture's name and its PNG file.
+    pictures: Vec<(String, Vec<u8>)>,
     warnings: Vec<String>,
     /// Palettes declared so far (`palette` lines), for `texture ... paint`.
     palettes: crate::palette::Palettes,
@@ -903,6 +968,26 @@ impl Parser<'_> {
                     cur = Cur::None;
                     self.texture(file, line_no, &args);
                 }
+                // picture <name> file <picture.png>: the picture a creature is painted with.
+                "picture" => {
+                    cur = Cur::None;
+                    match (args.first(), args.get(1), args.get(2)) {
+                        (Some(name), Some(&"file"), Some(_)) => {
+                            let path = alloc::format!("{}{}", dir_of(file), args[2..].join(" "));
+                            match (self.load)(&path) {
+                                Some(bytes) => {
+                                    let name = crate::pack_entities::clean_name(name);
+                                    match self.pictures.iter().position(|p| p.0 == name) {
+                                        Some(i) => self.pictures[i].1 = bytes,
+                                        None => self.pictures.push((name, bytes)),
+                                    }
+                                }
+                                None => self.warn(file, line_no, &alloc::format!("cannot read the picture {}", path)),
+                            }
+                        }
+                        _ => self.warn(file, line_no, "picture needs: <name> file <picture.png>"),
+                    }
+                }
                 "palette" => {
                     cur = Cur::None;
                     if let Err(m) = crate::palette::declare(&mut self.palettes, &args) {
@@ -941,6 +1026,7 @@ impl Parser<'_> {
                             connect: String::new(),
                             join_cubes: false,
                             arms: Vec::new(),
+                            front: String::new(),
                             extra: Vec::new(),
                         };
                         // Redefining an id replaces it in place, keeping its position.
@@ -1053,6 +1139,14 @@ impl Parser<'_> {
                         cur = Cur::None;
                     }
                 },
+                // An emote: its `key` lines are read by content/emotes.rs.
+                "emote" if indent == 0 => match crate::content::emotes::begin(&mut self.emotes, &args) {
+                    Ok(i) => cur = Cur::Emote(i),
+                    Err(m) => {
+                        self.warn(file, line_no, &m);
+                        cur = Cur::None;
+                    }
+                },
                 // A section some mod's code has claimed: kept as written.
                 k if indent == 0 && crate::native::reads_section(k) => {
                     let id = match args.first() {
@@ -1081,6 +1175,9 @@ impl Parser<'_> {
                     cur = Cur::None;
                     self.lines.push((String::from(k), alloc::format!("{}:{}", file, line_no), args.iter().map(|a| a.to_string()).collect()));
                 }
+                // What a mod says about itself (`version 1.2`, `client no`): read by
+                // the mods list and the server's download (net::modsync), not here.
+                "version" | "client" if indent == 0 => cur = Cur::None,
                 // (Inside a block or creature, `sound <id>` names the sound it makes.)
                 "ore" | "plant" | "sound" | "command" | "when" | "dimension" | "feature" | "episode" | "setting" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
                     cur = Cur::None;
@@ -1150,6 +1247,11 @@ impl Parser<'_> {
                     Cur::Entity(i) => self.entity_prop(file, line_no, i, key, &args, &rest),
                     Cur::Section(i) => self.sections[i].props.push((String::from(key), args.iter().map(|a| a.to_string()).collect())),
                     Cur::Effect(i) => self.effects[i].props.push((String::from(key), args.iter().map(|a| a.to_string()).collect())),
+                    Cur::Emote(i) => {
+                        if let Err(m) = crate::content::emotes::line(&mut self.emotes, i, key, &args) {
+                            self.warn(file, line_no, &m);
+                        }
+                    }
                     Cur::None => self.warn(file, line_no, &alloc::format!("unexpected `{}`", key)),
                 },
             }
@@ -1245,19 +1347,24 @@ impl Parser<'_> {
                     Some(t) => b.tool = t as u8,
                     None => bad = Some("tool must be none, pick, axe, shovel or hoe"),
                 },
-                "long" | "react" | "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "fluid" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
+                "long" | "react" | "rest" | "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "fluid" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
                     // Said twice, the later line wins; except marks, of
                     // which a block may carry several.
                     b.extra.retain(|e| e.0 != key || key == "react" || (key == "tag" && e.1.first().map(|x| x.as_str()) != a.first().copied()));
                     b.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "use" => match a.first() {
-                    Some(&"craft") => b.usable = Usable::Craft,
+                    Some(&"craft") => match a.get(1).copied() {
+                        None | Some("3") => b.usable = Usable::Craft,
+                        Some("5") => b.usable = Usable::Craft5,
+                        Some("7") => b.usable = Usable::Craft7,
+                        _ => bad = Some("use craft takes a grid size: 3, 5 or 7"),
+                    },
                     Some(&"chest") => b.usable = Usable::Chest,
                     Some(&"oven") => b.usable = Usable::Oven,
                     Some(&"furnace") => b.usable = Usable::Furnace,
                     Some(&"bed") => b.usable = Usable::Bed,
-                    _ => bad = Some("use must be craft, chest, oven, furnace or bed"),
+                    _ => bad = Some("use must be craft [3|5|7], chest, oven, furnace or bed"),
                 },
                 "category" => b.category = rest.to_string(),
                 // connect <group> [cubes]: joins blocks of the same group (and full cubes)
@@ -1267,6 +1374,11 @@ impl Parser<'_> {
                         b.join_cubes = a.get(1) == Some(&"cubes");
                     }
                     _ => bad = Some("connect needs a group name (letters, digits, _) and may add `cubes`"),
+                },
+                // front <texture>: the picture of the face a rotating block shows toward the player
+                "front" => match a.first() {
+                    Some(t) => b.front = t.to_string(),
+                    None => bad = Some("front needs a texture"),
                 },
                 // arm x0 y0 z0 x1 y1 z1: drawn toward a joined neighbour, written for the north (-z) side
                 "arm" => {
@@ -1426,11 +1538,13 @@ impl Registry {
             entities: Vec::new(),
             sections: Vec::new(),
             effects: Vec::new(),
+            emotes: Default::default(),
             lines: Vec::new(),
             recipes: Vec::new(),
             groups: Vec::new(),
             rules: Vec::new(),
             clips: Vec::new(),
+            pictures: Vec::new(),
             warnings: Vec::new(),
             palettes: Vec::new(),
             load,
@@ -1439,7 +1553,7 @@ impl Registry {
         for (path, text) in sources {
             p.parse(path, text);
         }
-        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, groups: raw_groups, rules: raw_rules, clips, models, entities: raw_entities, sections, effects: raw_effects, lines, mut warnings, .. } = p;
+        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, groups: raw_groups, rules: raw_rules, clips, pictures, models, entities: raw_entities, sections, effects: raw_effects, emotes: raw_emotes, lines, mut warnings, .. } = p;
 
         let tile_of = |id: &str, warnings: &mut Vec<String>, what: &str| -> u16 {
             match tiles.iter().position(|t| t.id == id) {
@@ -1477,6 +1591,7 @@ impl Registry {
             first: 0,
             rotations: 1,
             flips: false,
+            front: None,
             x: BlockExtra::default(),
         };
         let mut blocks = alloc::vec![air];
@@ -1552,6 +1667,7 @@ impl Registry {
             };
             let first = blocks.len() as Block;
             by_id.insert(rb.id.clone(), first);
+            let front_tile = if rb.front.is_empty() || kind != Kind::Boxes { None } else { Some(tile_of(&rb.front, &mut warnings, &what)) };
             for f in 0..(states / rotations as usize) {
                 for r in 0..rotations {
                     let mut bs = boxes.clone();
@@ -1589,6 +1705,7 @@ impl Registry {
                         first,
                         rotations,
                         flips: flip,
+                        front: front_tile.map(|t| (FRONT_FACES[r as usize % 4], t)),
                         x: BlockExtra::default(),
                     });
                 }
@@ -1608,7 +1725,7 @@ impl Registry {
                 items.push(ItemDef {
                     id: rb.id.clone(),
                     name: d.name.clone(),
-                    icon: d.tex[1],
+                    icon: d.front.map_or(d.tex[1], |f| f.1),
                     place: Some(first),
                     brush: 0,
                     reach: 0.0,
@@ -1727,6 +1844,10 @@ impl Registry {
                         (Some(next), Some(becomes)) if x.reacts.len() < 8 => x.reacts.push((next, becomes)),
                         _ => ok = false,
                     },
+                    "rest" => {
+                        x.rest = other(0).filter(|&r| r != first as Block);
+                        ok = x.rest.is_some();
+                    }
                     "toggle" => {
                         x.toggle = other(0);
                         ok = x.toggle.is_some();
@@ -2310,7 +2431,19 @@ impl Registry {
             }
         }
         let fx = crate::content::effects::build(&raw_effects, &tiles, &mut warnings);
+        let index_of = |ids: &mut dyn Iterator<Item = &String>| {
+            let mut map: BTreeMap<String, usize> = BTreeMap::new();
+            for (i, id) in ids.enumerate() {
+                // (The first of two of the same id wins, as a search would find it.)
+                map.entry(id.clone()).or_insert(i);
+            }
+            map
+        };
+        let tile_by_id = index_of(&mut tiles.iter().map(|t| &t.id));
+        let model_by_id = index_of(&mut models.iter().map(|m| &m.id));
         let mut registry = Registry {
+            tile_by_id,
+            model_by_id,
             fluid,
             flow,
             opaque: blocks.iter().map(|b| (b.kind == Kind::Cube) as u8).collect(),
@@ -2320,6 +2453,7 @@ impl Registry {
             sun_tile: find_tile("sun"),
             moon_tile: find_tile("moon"),
             wk,
+            pictures,
             part: blocks.iter().position(|b| b.x.part).map_or(AIR, |i| i as Block),
             blocks,
             items,
@@ -2330,6 +2464,7 @@ impl Registry {
             entities,
             sections,
             fx,
+            emotes: raw_emotes,
             lines,
             categories,
             ores,
@@ -2366,6 +2501,17 @@ impl Registry {
 
     pub fn block(&self, id: &str) -> Option<Block> {
         self.by_id.get(id).copied()
+    }
+
+    /// The number of the texture with this id (a search over hundreds of
+    /// names made fast: it is asked for every frame).
+    pub fn tile(&self, id: &str) -> Option<usize> {
+        self.tile_by_id.get(id).copied()
+    }
+
+    /// The number of the model with this id.
+    pub fn model(&self, id: &str) -> Option<usize> {
+        self.model_by_id.get(id).copied()
     }
 
     /// Name of a state for save files, e.g. `stone_stairs` or `stone_stairs@5`.
@@ -2413,6 +2559,9 @@ impl Registry {
 mod tests {
     #[test]
     fn the_better_the_ore_the_harder_the_tool_hits() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let damage = |id: &str| reg().items.iter().find(|i| i.id == id).unwrap().x.damage;
         for kind in ["pick", "axe", "shovel"] {
             let tiers = ["wood", "stone", "copper", "iron", "crystal", "ruby"].map(|m| damage(&alloc::format!("{m}_{kind}")));
@@ -2502,6 +2651,9 @@ mod tests {
 
     #[test]
     fn fences_and_walls_connect_to_cubes_and_their_own_kind() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let r = reg();
         let (fence, wall) = (r.block("planks_fence").unwrap(), r.block("stone_wall").unwrap());
         let stone = r.wk.stone;
@@ -2543,6 +2695,9 @@ mod tests {
 
     #[test]
     fn drops_recipes_and_categories_come_from_data() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let r = reg();
         let item = |id: &str| r.items.iter().position(|i| i.id == id).unwrap();
         assert_eq!(def(r.wk.stone).drop, Some(item("cobble")));
@@ -2573,7 +2728,7 @@ mod tests {
 
     #[test]
     fn variants_name_their_biomes_and_creatures_can_explode() {
-        let pack = "model m builtin pig\nentity bang\n  name Bang\n  model m\n  explodes 2.5 1.5 3\n  variant Dry biomes desert savanna\n  variant Wet biomes swamp model m size 1.2 tex x\n  variant Odd\nentity dud\n  name Dud\n  model m\n  explodes 2\n  variant Bad model nothing_real\n";
+        let pack = "model m builtin grazer\nentity bang\n  name Bang\n  model m\n  explodes 2.5 1.5 3\n  variant Dry biomes desert savanna\n  variant Wet biomes swamp model m size 1.2 tex x\n  variant Odd\nentity dud\n  name Dud\n  model m\n  explodes 2\n  variant Bad model nothing_real\n";
         let r = Registry::from_sources(&[("base.txt", BASE_DATA), ("p", pack)], &mut |_| None);
         let e = r.entities.iter().find(|e| e.id == "bang").expect("bang");
         assert_eq!(e.x.explodes, Some((2.5, 1.5, 3.0)));

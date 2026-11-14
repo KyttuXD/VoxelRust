@@ -142,7 +142,7 @@ pub fn arm_point(p: [f32; 3], swing: f32, bob: f32, held: Held) -> [f32; 3] {
 
 /// The tile used for plain colours (the "white" tile of the base game).
 pub fn white_tile() -> u16 {
-    reg().tiles.iter().position(|t| t.id == "white").unwrap_or(0) as u16
+    reg().tile("white").unwrap_or(0) as u16
 }
 
 #[cfg(test)]

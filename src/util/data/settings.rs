@@ -22,15 +22,17 @@ pub enum Action {
     Drop,
     /// Push to talk (proximity voice chat).
     Voice,
+    /// Hold to open the emote wheel.
+    Emote,
 }
 
-pub const ACTIONS: [(Action, &str, &str, i32); 14] = [
+pub const ACTIONS: [(Action, &str, &str, i32); 15] = [
     (Action::Forward, "forward", "MOVE FORWARD", 26),
     (Action::Back, "back", "MOVE BACK", 22),
     (Action::Left, "left", "MOVE LEFT", 4),
     (Action::Right, "right", "MOVE RIGHT", 7),
     (Action::Jump, "jump", "JUMP / FLY UP", 44),
-    (Action::Descend, "descend", "FLY DOWN", 225),
+    (Action::Descend, "descend", "FLY DOWN / CROUCH", 225),
     (Action::Sprint, "sprint", "SPRINT", 224),
     (Action::Fly, "leave", "GET OFF / GET OUT", 9),
     (Action::Inventory, "inventory", "INVENTORY", 8),
@@ -39,6 +41,7 @@ pub const ACTIONS: [(Action, &str, &str, i32); 14] = [
     (Action::Chat, "chat", "CHAT", 23),
     (Action::Drop, "drop", "DROP THE HELD ITEM", 20),
     (Action::Voice, "voice", "PUSH TO TALK", 25),
+    (Action::Emote, "emote", "EMOTE WHEEL", 5),
 ];
 
 /// Built-in skins by name (the pictures are `skin_<name>` in `data/textures/entity`,
@@ -142,6 +145,9 @@ pub struct Settings {
     pub pack_brightness: i32,
     /// Install newer versions from the nightly release by itself.
     pub auto_update: bool,
+    /// A web folder to fetch updates from over plain HTTP, for a build that cannot
+    /// do HTTPS (empty: none). What it serves is checked against the release signature.
+    pub update_mirror: String,
     /// The folder the file picker was last in (empty: pick a sensible one).
     pub picker_dir: String,
 }
@@ -203,6 +209,7 @@ impl Default for Settings {
             pack_saturation: 100,
             pack_brightness: 100,
             auto_update: true,
+            update_mirror: String::new(),
             picker_dir: String::new(),
         }
     }
@@ -315,6 +322,7 @@ impl Settings {
                     .collect()
             },
             auto_update: flag("auto_update", true),
+            update_mirror: kv(text, "update_mirror").unwrap_or("").chars().filter(|c| !c.is_control() && *c != ' ').take(300).collect(),
             picker_dir: kv(text, "picker_dir").unwrap_or("").chars().filter(|c| !c.is_control()).take(400).collect(),
             texture_pack: kv(text, "texture_pack").unwrap_or("").chars().filter(|c| !c.is_control()).take(1000).collect(),
             pack_hue: int("pack_hue", d.pack_hue, -180, 180),
@@ -354,7 +362,7 @@ impl Settings {
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\nslim_arms={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.slim_arms as i32));
         s.push_str(&alloc::format!("map_zoom={}\nmap_preset_1={}\nmap_preset_2={}\nmap_preset_3={}\nmap_follow={}\nmap_grid={}\nmap_waypoints={}\n", self.map_zoom, self.map_preset[0], self.map_preset[1], self.map_preset[2], self.map_follow as i32, self.map_grid as i32, self.map_waypoints as i32));
         s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\ntexture_pack={}\npack_hue={}\npack_saturation={}\npack_brightness={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.texture_pack, self.pack_hue, self.pack_saturation, self.pack_brightness, self.auto_update as i32));
-        s.push_str(&alloc::format!("picker_dir={}\n", self.picker_dir));
+        s.push_str(&alloc::format!("picker_dir={}\nupdate_mirror={}\n", self.picker_dir, self.update_mirror));
         s.push_str(&alloc::format!(
             "voice_hear={}\nvoice_mic={}\nvoice_activation={}\nvoice_threshold={}\nvoice_volume={}\nvoice_device={}\n",
             self.voice_hear as i32,
@@ -415,6 +423,7 @@ mod tests {
         let d = Settings::default();
         assert!(d.voice_hear && !d.voice_mic && !d.voice_activation);
         assert_eq!(d.key(Action::Voice), 25);
+        assert_eq!(d.key(Action::Emote), 5);
         let mut s = Settings::default();
         s.voice_mic = true;
         s.voice_hear = false;

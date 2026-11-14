@@ -4,8 +4,8 @@ Everything in the game world is declared in text files: textures, blocks
 and what they do (doors, crops, seats, falling blocks), shapes, items, tools,
 weapons, food, recipes, ores and wild plants, models, creatures, vehicles,
 sounds, dimensions, chat commands and small scripts. The game's own
-content is [data/base.txt](../data/base.txt) with
-[data/wildlife.txt](../data/wildlife.txt) (built into the program). A **pack** is a file in the same format that is read after it and
+content is the small core, [data/base.txt](../data/base.txt) (built into the program: see
+[DATA.md](DATA.md) for what is in it and what is a mod). A **pack** is a file in the same format that is read after it and
 may add new things or redefine anything by reusing its id. A mod can also bring
 a little Rust of its own, built into the program when it is compiled (see
 [Code that mods bring](#code-that-mods-bring)).
@@ -19,32 +19,37 @@ In this order, each able to override the ones before:
 1. The built-in data.
 2. `pack.txt` in the data folder, if it exists. (The game prints
    `voxelrust: data in ...` at start-up; `--data DIR` chooses another folder.)
-3. Every mod in each of four `mods` folders, unless switched off:
-   1. `mods/` beside the program. This is where the mods that come with the
-      game are in the Linux and Windows archives.
-   2. `../Resources/mods/` as seen from the program: inside a Mac app, that
-      is `VoxelRust.app/Contents/Resources/mods`.
-   3. `<data folder>/mods/`: the place for mods you install.
-   4. `./mods/`, a `mods` folder where the game was started (handy while
+3. Every mod in the mods folder, unless switched off:
+   1. `<data folder>/mods/`: the place for mods you install. The game makes
+      it when it starts and puts a `README.txt` in it that says how.
+      `--mods-dir DIR` uses the folder `DIR` instead (and then the next one
+      is not read).
+   2. `./mods/`, a `mods` folder where the game was started (handy while
       making one. The mods are not in the source tree: to run from it, link or copy
-   the `VoxelRust-Mods` folder there as `mods`, e.g. `ln -s ../VoxelRust-Mods mods`).
+      the `VoxelRust-Mods` folder there as `mods`, e.g. `ln -s ../VoxelRust-Mods mods`).
 4. Every file given with `--pack FILE`, in the order given.
+
+No mod comes with the game, none sits beside the program and none is built
+into it. On a server, the mods the server sends (see below) are used instead
+of these.
 
 A mod goes by the name of its folder (or of its file without `.txt`). **A
 mod found twice is loaded once**: the first one found, in the order above,
-is used and later ones of the same name are left out. So a mod in the data
-folder cannot replace one of the same name beside the program; give it
-another name, or switch the other off.
+is used and later ones of the same name are left out.
 
 For each file it reads from disk, the game prints `voxelrust: content from
 <path>`.
 
-### Mods that come with the game
+### The author's mods
 
-Eight mods come with the game. They are not inside the program: each is an
-ordinary folder with a `pack.txt`, and can be read, changed, switched off or
-deleted like any other mod. Earth and Vehicles also have Rust code of their
-own (see [Code that mods bring](#code-that-mods-bring)).
+The game ships no mods. The author keeps the mods below (twenty-one: the eight below, the
+creature mods and the mods that hold the content the game used to carry itself;
+see [DATA.md](DATA.md): the game's core is small) in a separate repository
+(`VoxelRust-Mods`); each is an ordinary folder with a `pack.txt` (and a
+`README.txt` saying what it adds and what it needs) that is installed like any
+other mod (see above), and can be read, changed, switched off or deleted. Earth and
+Vehicles also have Rust code of their own, which works only in a program built
+with the `native-mods` feature (see [Code that mods bring](#code-that-mods-bring)).
 
 | Mod | Folder | What it holds |
 | --- | --- | --- |
@@ -56,20 +61,31 @@ own (see [Code that mods bring](#code-that-mods-bring)).
 | Planes | `mods/planes` | the plane |
 | Land Vehicles | `mods/landvehicles` | the buggy, the truck and the kart, their icons and their recipes, and their model, `models/car.bbmodel` |
 | Holidays | `mods/holidays` | trees, presents, lights and treats for the year's feasts, four of them big props |
+| Colours | `mods/colours` | sixteen colours of concrete, wool, terracotta, glass, boards, chests, beds and couches |
+| Woods | `mods/woods` | birch, maple, palm, blossom, acacia and dark oak, and every door, gate, trapdoor, stair, slab and fence of the woods |
+| Stonework | `mods/stonework` | marble, slate, granite, basalt, tiles, and stairs, slabs and walls of them and of brick and sandstone |
+| Furniture | `mods/furniture` | chairs, shelves, kitchen and bathroom fittings, tables, lanterns and glass panes |
+| Farming | `mods/farming` | farmland, crops, seeds and hoes |
+| Cooking | `mods/cooking` | ovens, kilns, smokers, campfires, food from flour to cake, and dishes to set out |
+| Caves | `mods/caves` | what grows and glows underground: moss, glowcaps, crystals, icicles, magma, vines, cobwebs |
+| Explosives | `mods/explosives` | TNT, gunpowder and flint and steel |
+| More Tools | `mods/tools-extra` | copper, crystal and ruby tools and swords, the longbow and the crossbow |
+| Wildlife | `mods/wildlife` | every animal (`animals.txt`) and 32 newer species (`pack.txt`) |
+| Monsters | `mods/monsters` | what hunts at night and in the caves |
+| Villagers | `mods/villagers` | the eight trades |
+| The Wanderer | `mods/wanderer` | the Wanderer |
 
-Where they are:
-
-- in the source: a separate folder, `VoxelRust-Mods`, beside the repository
-  (the eight folders above, with `SHIPPED` and `tests.rs`, and any other mod
-  of the author's). The build reads it from `VOXELRUST_MODS_DIR`, default
-  `../VoxelRust-Mods` (see [BUILDING.md](BUILDING.md#mod-code));
-- in the Linux and Windows archives, a `mods/` folder beside the program;
-- in the Mac apps, `Contents/Resources/mods`.
-
-If the game cannot find them (a program copied somewhere without its `mods`
-folder, say) it still runs, but without any of the eight: no Earth terrain,
-disasters, vehicles, boats, trains, planes, land vehicles or holidays. The
+Where they are: in the separate folder `VoxelRust-Mods`, beside the game's
+repository (with `SHIPPED` and `tests.rs`, which only the `native-mods` build
+uses; see [BUILDING.md](BUILDING.md#mod-code)). Copy the folders you want into
+`<data folder>/mods/`. Without them the game still runs, as a bare world of the
+core's blocks: no Earth terrain, disasters, vehicles, boats, trains, planes, land
+vehicles or holidays, and no creatures, colours, furniture, crops or cooking. The
 browser version has no folders and so has none of them.
+
+A mod may use what another mod brings (the villagers trade bread of the cooking mod; the colours
+mod's boards need the woods'). Anything it names that is missing is left out with a warning in the
+log, and the rest still works. Each README says what its mod needs.
 
 Vehicles are not in the base game (`data/base.txt` has no vehicles and no
 rails). Boats, trains, planes and land vehicles are mods that write `vehicle`
@@ -92,15 +108,22 @@ with no code behind it does nothing. See [DATA.md](DATA.md#features).
 
 ### Switching mods on and off
 
-SETTINGS > MODS lists every mod found in the mods folders, the ones that come with the
-game included, each with a switch. A change takes effect at once (the
-content is reloaded). The names switched off are kept in `settings.txt` as
+SETTINGS > MODS lists every mod found in the mods folder, each with its
+name, its version (the `version` line of its pack.txt, if it has one) and a
+switch. While you are on a server, the mods the server sent are listed after
+them, marked FROM SERVER; those have no switch (they are the server's, for
+this visit). A change takes effect at once (the content is reloaded). The names switched off are kept in `settings.txt` as
 `mods_off`, a list separated by commas, for example
 `mods_off=disasters,landvehicles`. A mod goes by the name of its folder, or
 of its file without `.txt`.
 
 The data folder's own `pack.txt` and files given with `--pack` are not mods
 and have no switch.
+
+A pack can say two things about its mod, as top-level lines: `version 1.2`
+(shown in the list and announced to players) and `client no` (a mod only a
+server needs: it is not offered for download unless named in `--serve-mods`).
+The game reads nothing else into them.
 
 A pack's `setting` switches (see [Episodes](#episodes)) are saved in
 `settings.txt` as `flag_<id>=0` or `flag_<id>=1`. Settings keys the game does
@@ -118,7 +141,8 @@ option, no list to edit. A mod is either of:
 - a single file: `mods/<name>.txt`.
 
 Mods in one folder are read in name order, so a later name can override an
-earlier one. (A file called `mods.txt` is skipped.) The folders are looked
+earlier one. (A mod may redefine a block of the core: the farming mod redefines dirt,
+the flowers and tall grass, to drop seeds.) (A file called `mods.txt` is skipped.) The folders are looked
 at again on every reload, so a mod dropped in while the game is running
 appears after `/reload`, and one taken out disappears. A mod can be switched
 off without removing it: see
@@ -524,9 +548,12 @@ Renaming an id counts as removing it and adding a new one.
 
 ## Packs on a server
 
-A server (or a game hosted from the menu) sends its packs and mods, and
-every texture, model and include they use, to each player on joining. Players need to install nothing, and get their own
-packs back when they return to singleplayer. See
+A server (or a game hosted from the menu) sends its packs, and every texture,
+model and include they use, to each player on joining, and offers its mods
+(whole folders, scripts included) for download. Players need to install
+nothing, and get their own packs back when they return to singleplayer.
+Downloaded mods are kept in `<data folder>/tmp/mods/<server>/` for that visit
+only. See
 [MULTIPLAYER.md](MULTIPLAYER.md#server-hosted-packs).
 
 Keep server packs modest: the whole bundle is sent to every player each time
@@ -565,6 +592,40 @@ entity, simply `model <name>` for those the base data already declares.
 
 Redefining the model `player` replaces every player's body.
 
+A model of a person (it has arms and legs: `Arm-L`/`L-Arm`, `Leg-L`/`L-Thigh`)
+also takes the postures: sitting, lying, crouching, swimming, climbing and
+the walking bends of the elbows and knees. A `Forearm-` or `Calf-`/`Shin-`
+child bone is bent for those, and the torso is one bone called `Body`, or
+three called `Pelvis`, `Belly` and `Chest`. Bones that are not named like
+those are left to their own animation. Emotes turn any bone by name (see
+below).
+
+### Emotes
+
+A pack or mod adds emotes to the wheel (B) with `emote` lines and `key` lines
+of bone turns over time. The format is in [DATA.md](DATA.md#emotes); the
+names of the bones are those of the model (the player's are listed there).
+For example, a pack file `emotes.txt` beside `pack.txt`, included with
+`include emotes.txt`:
+
+```
+emote clap Clap 2 loop
+  key 0.0 L-Arm 55 0 -12
+  key 0.0 R-Arm 55 0 12
+  key 0.0 L-Forearm 60 0 0
+  key 0.0 R-Forearm 60 0 0
+  key 0.15 L-Arm 55 0 -2
+  key 0.15 R-Arm 55 0 2
+  key 0.3 L-Arm 55 0 -12
+  key 0.3 R-Arm 55 0 12
+```
+
+The same emote list is read by every player of a server from the server's
+pack, so the emote numbers on the wire (`Msg::Emote`) match.
+Emotes are not hooks of the mods' code, but code can start one for the
+player by `Session::play_emote(index)` (the index is the place of the emote
+in `block::reg().emotes.list`).
+
 To look at every creature model at once:
 
 ```sh
@@ -591,7 +652,10 @@ craft stone_lantern 1 stone 3 lamp 1
 ```
 
 (`craft` is a shapeless recipe: the four items go anywhere in the crafting
-grid. A `shaped` line fixes the pattern, as in `shaped stone_lantern 1 ".S."
+grid. A pattern bigger than 3 x 3, up to 5 x 5 or 7 x 7, is made at a
+crafting bench or a workshop: a block with `use craft 5` or `use craft 7`
+opens those grids, and a pack may declare its own benches; see
+[Recipes](DATA.md#recipes). A `shaped` line fixes the pattern, as in `shaped stone_lantern 1 ".S."
 "SLS" ".S." with S stone L lamp`; see [Recipes](DATA.md#recipes).)
 
 - Give the block at least one `box` line. The boxes are not drawn; they are
@@ -852,16 +916,29 @@ through the `hurt` hook like any other, with no attacker.
 The code runs only while a loaded pack says `feature <name>` for that mod, so
 switching the mod off in SETTINGS > MODS switches its code off too.
 
-The code is built in, not loaded. To change it, change the source and rebuild
-the program. A mod folder with code copied into a data folder or a `mods`
-folder adds its pack but not its code, since the program has only the code it
-was built with; a `feature` line for code that is not there does nothing. A
-server's packs can switch on only the code that a player's build has, because
-the packs are sent to players and the code is not.
+The code is built in, not loaded, and only when asked for: a plain build
+compiles in no mod code; `cargo build --features native-mods` compiles in the
+code of the mods in `VOXELRUST_MODS_DIR` (default `../VoxelRust-Mods`). To
+change it, change the source and rebuild the program. A mod folder with code
+copied into the mods folder adds its pack but not its code, since the program
+has only the code it was built with; a `feature` line for code that is not
+there does nothing. A server's packs can switch on only the code that a
+player's build has, because the packs are sent to players and the code is not:
+a mod with a `code/mod.rs` is never offered for download.
 
-`mods/SHIPPED` lists the mods that come with the game, one folder name a line.
-The release scripts and the tests use it, and `mods/tests.rs` holds the tests
-for those mods.
+`mods/SHIPPED` names the mods whose files the `native-mods` test build reads,
+and `mods/tests.rs` holds the tests for those mods; nothing is shipped.
+
+### Scripts that mods bring
+
+A mod may carry scripts, `.rs` files in its folder (for the runtime script
+engine in `src/script/`, which is separate from the pack text). Unlike
+compiled code they can be downloaded from a server. The game hands every
+downloaded mod that has scripts to a script host through
+`content::mod_runtime` (`ScriptHost::load_mod(name, version, files)` when the
+mod arrives and `unload_all()` when the player leaves the server); the host
+registers itself with `mod_runtime::set_host`. With no host, scripts are
+downloaded and kept but not run.
 
 ## Hooks reference
 
@@ -939,6 +1016,28 @@ A new event is one row in `REGISTRY` in
 right place, and one row in the tables above. A new cancelling hook is a
 field in `Native` (and in `Native::NONE` and `hooks::has_any`) and a small
 dispatcher in [src/game/hooks.rs](../src/game/hooks.rs) built on `hooks::allow`.
+If scripts should hear it too, the dispatcher also calls a function in
+[src/script/bridge.rs](../src/script/bridge.rs), and the hook gets a row in
+`script::HOOKS` and in [SCRIPTING.md](SCRIPTING.md) (a test checks the docs list
+every hook).
+
+## Scripts: code without compiling
+
+A mod that needs logic but not speed does not have to be built into the
+program: it can carry plain `.rs` files in `scripts/` (a small subset of Rust)
+that the game reads and runs. A script defines functions named after the
+hooks it wants (`on_block_break`, `on_tick`, `on_entity_death`, `on_command`...)
+and may call a fixed set of host functions (`give`, `say`, `spawn`,
+`set_block`, `explode`, `effect`, `run_command`...). The scripts are one more
+listener beside the native hooks above: the same dispatchers in
+[src/game/hooks.rs](../src/game/hooks.rs) call them after the native code, a
+script may cancel what a cancelling hook may cancel, and with no scripts loaded
+a call site costs the same flag test. Scripts run in a sandbox (no files, no
+network, a budget of steps and memory for every call; an error switches the
+script off and is logged with `file:line`).
+The language, the library, every hook and every host function, and
+worked examples are in [SCRIPTING.md](SCRIPTING.md); `voxelrust --script-check
+FILE` checks a script without starting the game.
 
 ## What mods cannot replace
 

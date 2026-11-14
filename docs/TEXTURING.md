@@ -104,7 +104,8 @@ metal, wood or stone recolours consistently.
 
 | File | Builtin names | Paint styles |
 | --- | --- | --- |
-| `blocks.rs` | `dirt sand gravel clay snow snow_side sandstone lamp` | `concrete wool terracotta farmland magma chest workbench` |
+| `blocks.rs` | `dirt sand gravel clay snow snow_side sandstone lamp` | `concrete wool terracotta farmland magma chest chest_front chest_side chest_top workbench` |
+| `benches.rs` | | `bench5 bench7 bench_side` |
 | `stone.rs` | `stone deepstone cobble brick stone_bricks` | `rock polished bricks tiles` |
 | `wood.rs` | `log_side pine_side log_top planks` | `planks bark rings door` |
 | `ores.rs` | `coal_ore iron_ore copper_ore crystal_ore ruby_ore` | `ore ore_vein cluster` |
@@ -130,6 +131,15 @@ What each one looks like:
   a three-pixel shine, `farmland` furrows every fourth row, `magma` a dark
   crust with four glowing blobs, `chest` a lid line and a latch, `workbench`
   a grid, `door` two panels and a handle.
+  The bigger crafting blocks (`benches.rs`): `bench5` is a frame round a 5 x 5
+  grid of two-pixel cells with a lit middle one, `bench7` a 7 x 7 grid of
+  one-pixel cells, `bench_side` a plate with a rail along the top and the
+  bottom and a rivet in each corner; three tones of one colour.
+- **Chest faces**: the chest block is 14 x 14 and 10 tall, so `chest_front`,
+  `chest_side` and `chest_top` draw their own dark outline inside the picture
+  (the pixels outside it are clear and never seen). `chest_front` has the lid line and
+  the latch across it (`accent`), `chest_side` the lid line only, `chest_top` the
+  lid's inset trim. The block takes the front through `front` (see DATA.md).
 - **Ores** (`ore`) are stone with four 2 x 2 blobs of the ore's colour, each with a
   lighter pixel on top (the shipped ruby ore uses a palette: base, a dark
   pixel at the bottom right, a light one on top); `ore_vein` crosses the stone with
@@ -628,7 +638,7 @@ face, eyes, variants, babies.
 2. Run
 
    ```
-   python3 tools/entity_textures.py                  # writes data/textures/entity/*.png
+   python3 tools/entity_textures.py                  # writes the wildlife mod's textures/*.png (and the skins to data/textures/entity/)
    python3 tools/entity_textures.py --only cow,pig   # just these
    python3 tools/entity_textures.py --sheet all.png  # a contact sheet to look at
    python3 tools/entity_textures.py --template cow   # cow_layout.png: where each part goes
@@ -637,13 +647,13 @@ face, eyes, variants, babies.
    It needs Python 3 and Pillow. The output is the same every time, so a
    change shows in `git diff` as the pictures that changed.
 3. Run `python3 tools/gen_creatures.py` if you added a look or a creature. It
-   writes `data/wildlife.txt`, where each look is one line,
+   writes the creature mods (`wildlife/animals.txt`...), where each look is one line,
    `variant Brown tex cow_brown` (the `L(...)` helper in the script), and
    checks that every picture it names exists.
 4. Look at it in the game (creatures show on the inventory's spawn eggs, and
    in the world; the skin tab of SETTINGS shows the player).
 
-How the script paints. It reads each model (`data/models/<model>.bbmodel`), which
+How the script paints. It reads each model (`models/<model>.bbmodel` of the wildlife mod, or `data/models/` for the player), which
 says where on the picture every face of every box is, and for each face: finds
 the part from the box's name (`head`, `ear-l`, `shin-f-r`, `sleeve-l`...),
 fills it with the part's colour, lets the patterns recolour pixels (a pattern

@@ -53,13 +53,13 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | W A S D * | move |
 | Mouse | look |
 | Space * | jump; fly up when flying; in creative, press twice quickly to start or stop flying; get up from a seat |
-| Left Shift * | fly down when flying |
+| Left Shift * | fly down when flying; crouch on the ground (hunched, slower, eyes lower, no sprinting) |
 | Left Ctrl * | sprint |
 | F * | get out of a vehicle; get off a creature; get up from a seat |
 | (chat) /passenger | ride along in a nearby vehicle with a free seat (buses, ferries, jeeps...) |
 | (chat) /lock, /unlock | lock the vehicle you are in or looking at to you, or release it |
 | Left click | break a block, hit a creature, pick up a vehicle |
-| Right click | place a block; use a crafting table, chest, oven, furnace or bed; open or shut a door; sit on a chair; till soil with a hoe; eat (hold); draw a bow (hold) and shoot it (let go); get into a vehicle; collect from, trade with, tame or ride a creature; hatch a spawn egg |
+| Right click | place a block; use a crafting table, bench, workshop, chest, oven, furnace or bed; open or shut a door; sit on a chair; till soil with a hoe; eat (hold); draw a bow (hold) and shoot it (let go); get into a vehicle; collect from, trade with, tame or ride a creature; hatch a spawn egg |
 | Middle click | pick the block you are looking at |
 | 1-9, mouse wheel | choose a hotbar slot |
 | E * | inventory |
@@ -67,12 +67,29 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | N | The world map with waypoints, on every world |
 | T * | chat |
 | V * | push to talk (voice chat on a server, with the microphone turned on in SETTINGS > VOICE) |
+| B * | the emote wheel: hold it, push the mouse toward an emote and let go (or click) to play it; Esc closes it. A quick tap leaves it open until you click. The mouse wheel turns the pages when there are more than eight |
 | Esc | menu / close a screen |
 | F1 | hide or show the HUD |
 | F2 | save a screenshot (`screenshot-<number>.bmp` in the data folder) |
 | F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts |
 | F5 | third-person view |
 | F11 | full screen |
+
+**Posture.** Your body shows what you are doing, to you in the third-person
+view (F5) and to everyone else on a server: sitting on a chair (thighs
+forward, hands on the knees, eyes lowered to a seated person's), lying in a
+bed (flat on your back; the view is from the pillow, looking up), crouching,
+swimming (face down, arms stroking), climbing (hand over hand, on blocks that
+have the tag `climb`, such as the glow vine: jump to go up, Left Shift to go
+down), falling, riding, drawing a bow, eating, striking. Villagers and other
+people-shaped creatures sit down when they stand still on a seat and lie down
+in a bed. Walking and running flex the elbows, knees and ankles and twist the
+body a little against the hips.
+
+**Emotes.** The game comes with one, WAVE; packs and mods add more (see
+[DATA.md](DATA.md#emotes)). An emote plays on your body and stops when you
+move, are hurt, or it ends. Other players on a server see it. In the first
+person only an emote that moves an arm shows (the arm, with the item put away).
 
 Flying is creative only and has no key of its own: press jump twice
 quickly to take off, and twice again to land. Nothing on screen lists the
@@ -260,8 +277,22 @@ close the screen goes back into the inventory.
   list to every recipe, and the ones you lack the items for are dim: clicking
   one lays out what you have and shows what is missing as faint ghost items.
   Pointing at a recipe shows what it needs.
-- In creative the inventory screen keeps its item list; the crafting table
-  still has the grid.
+- **At a crafting bench** there is a 5 x 5 grid, and **at a workshop** a
+  7 x 7 one (the slots are smaller to fit the screen). They are for the big
+  recipes: a Big Chest (a ring of planks round a chest), a Four-poster Bed
+  Frame, a Golem Statue (a figure of stone), Heavy TNT, a long Banquet Table.
+  A bench makes everything a table does, and a workshop everything a bench
+  does, so you can keep to the biggest one you have. The recipe book at a
+  bench lists the recipes that fit its grid; its title says which block you
+  have open (CRAFTING TABLE, CRAFTING BENCH or WORKSHOP).
+- **Getting a bench.** A **Crafting Bench** is made at a crafting table from
+  a crafting table with 5 iron ingots round it (a row of 3 above, one at
+  each side) and a row of 3 planks under it (3 x 3, so a table is enough).
+  A **Workshop** is made at a crafting bench: a crafting bench in the middle,
+  ringed by 8 planks, ringed by 16 iron ingots (5 x 5). Both are in the
+  Shapes tab in creative.
+- In creative the inventory screen keeps its item list; the crafting table,
+  bench and workshop still have the grid.
 - **At an oven** (right click it) the baking recipes are offered as a list to
   click; see [The oven and baking](#the-oven-and-baking).
 - **At a furnace** the smelting recipes are offered as a list to click; see
@@ -284,6 +315,14 @@ the mouse carries.
 Right click a chest to open its 27 slots. Each chest remembers its contents;
 breaking a chest in survival gives you what was inside. Chests come in six
 woods and sixteen colours; they all work the same.
+
+A chest turns its front, the side with the latch, toward you when you place
+it; its top is a plain lid. The lid lifts in a few quick steps while the chest
+screen is open and drops again, with a creak and a thump, when you close the
+screen, step more than eight blocks away or open another chest. In a shared
+game the lid is an ordinary block change, so everyone near sees it rise and
+fall. A chest that was left open (the game closed, or the connection lost
+while it was open) is shut again the next time the world loads.
 
 ### Sand and gravel
 
@@ -486,7 +525,7 @@ lava or a campfire beside it, and by any explosion. A lit block flashes white
 for four seconds, then explodes: it clears a ball of blocks about ten blocks
 across (water, lava and unbreakable blocks stay), drops some of them in
 survival, sets off TNT near it a moment later, and hurts and throws whoever
-is close, you included. TNT is in the creative list's Tools tab. Lit TNT is
+is close, you included. TNT is in the creative list's Tools tab. **Heavy TNT** (8 TNT and 5 gunpowder laid out in a diamond, at a crafting bench) explodes twice as hard (power 5). Lit TNT is
 not saved with the world.
 
 ### Caves
@@ -576,10 +615,27 @@ are the `tag track` and `tag station` numbers in the Trains pack (see
 | Depot Rail | the same, for 30 seconds |
 | Station Platform | a low stone block to stand on beside the track |
 | Buffer Stop | marks the end of a line |
+| Junction Rail | a T or four-way crossing, for branching lines |
 | Signal Post | a lit post |
 
 The platform, buffer stop and signal post are for looks: they do not control
 anything. A cart stops wherever the track ends.
+
+**Laying track.** Rails lie flat on the floor of their block (a bed two
+sixteenths thick). You only ever place "Rail"; for a moment after you place or
+break a piece, the pieces within ten blocks of you turn to meet each other:
+
+- a rail next to one rail runs along it; two rails on different sides make a
+  straight line or one of the four corners;
+- a rail with track one block higher on a side becomes a ramp rising toward it
+  (a cart rides up it smoothly), and goes flat again if that track is removed;
+- speed, slow, station and depot rails only run straight or climb: they never
+  bend;
+- a line does not join a rail that is already part of another line, so two
+  tracks can lie side by side. To branch, replace the piece where the lines
+  meet with a **Junction Rail**: it takes every side that has track beside it
+  and becomes a T or a crossing;
+- `/rails` looks at the track round you again at once.
 
 - **Trains.** A **Chain** joins rail carts. Hold it and right click the cart
   in front, then the cart to pull behind it; each chained cart follows the
@@ -808,15 +864,28 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
 - **VOICE**: proximity voice chat on servers, see [Voice chat](#voice-chat).
 - **SKIN**: pick one of the built-in looks or choose your own 64 x 64 picture with the built-in file browser. See
   [MODDING.md](MODDING.md#player-skins).
-- **MODS**: a switch for every mod, and UPDATE THE GAME AUTOMATICALLY. See
+  **IMPORT FROM WEB ADDRESS...** opens a small panel: paste (Ctrl+V, Cmd+V on a Mac) a direct link to a
+  64 x 64 or 64 x 32 picture (an `http` or `https` address, such as a `.png` link or a
+  `textures.minecraft.net/texture/...` link; a web page that merely shows a skin is not a picture) and press
+  DOWNLOAD. It is fetched in the background with `curl` (at most 2 MB, 20 seconds) into `tmp/skins/` in the data
+  folder, checked, and imported like a file from the browser. The panel says `DOWNLOADING...`, `IMPORTED`,
+  `COULD NOT DOWNLOAD`, `NOT A SKIN PICTURE` or `TOO BIG`. The build for old Macs (`macos-legacy`) cannot open
+  `https` addresses and says so. You can also drop a picture file on the window while the SKIN tab is open.
+- **MODS**: every installed mod with its version and a switch (plus the ones
+  a server sent, read only), and UPDATE THE GAME AUTOMATICALLY. See
   [Mods](#mods) and [Updating](#updating).
 
 ### Mods
 
-SETTINGS > MODS lists every mod the game has found, with an on/off switch:
-the eight that come with the game and any you have added (see
-[MODDING.md](MODDING.md#where-packs-are-read-from)). Six are shown at a
-time; the mouse wheel scrolls. Under ADD A MOD FROM A FOLDER OR .ZIP, type the
+No mods come with the game. Put the ones you want in the `mods` folder of the
+data folder (the game makes it at start-up and leaves a README.txt in it;
+`--mods-dir DIR` uses another folder), or join a server: it sends the mods it
+uses for that visit and removes them when you leave.
+
+SETTINGS > MODS lists every mod the game has found, with its version and an
+on/off switch (see [MODDING.md](MODDING.md#where-packs-are-read-from)). On a
+server, the mods it sent are listed too, marked FROM SERVER, without a
+switch. Six are shown at a time; the mouse wheel scrolls. Under ADD A MOD FROM A FOLDER OR .ZIP, type the
 path of a folder, a .zip or a pack file to bring one in. A change takes
 effect at once: the content is read again, as with `/reload`. The mods
 switched off are remembered in `settings.txt` (`mods_off`).
@@ -856,7 +925,10 @@ which of these happened:
 
 UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS (on by default) decides
 whether a newer version is installed or only announced. `--no-update` skips
-the check for one run.
+the check for one run. A list of files whose signature is not valid is
+refused (the title screen says so). `update_mirror=http://host/folder/` in
+`settings.txt` (or `--update-mirror URL`) names a plain-HTTP web folder to
+fetch updates from, for the old-Mac build, which cannot reach the release.
 
 Things to know:
 
@@ -925,6 +997,8 @@ marked "From the Earth mod").
 | `--data DIR` | where worlds and settings are kept; the folder is made if it is not there |
 | `--log FILE` | also write what the game prints to FILE |
 | `--pack FILE` | extra content file (blocks, items, textures); may be given several times |
+| `--mods-dir DIR` | read mods from `DIR` instead of the data folder's `mods` |
+| `--serve-mods LIST` | with `--server` or `--host`: the mods players download, comma separated (default: every mod that does not say `client no` and has no native code) |
 | `--screenshot FILE` | load the world, save one BMP frame, and exit |
 | `--bench N` | load the world, time N frames, and exit |
 | `--flypass N` | like `--bench`, but flying straight ahead over the land for N frames; saves four pictures (`flypass-1.bmp` to `flypass-4.bmp` in the data folder) and reports frames spent waiting for terrain. A render test |
@@ -933,7 +1007,9 @@ marked "From the Earth mod").
 | `--icon-size N` | with `--write-icon`: its size in pixels (default 256) |
 | `--version` | print the version and which build this is, and exit |
 | `--no-update` | do not look for a newer version this time |
+| `--update-mirror URL` | fetch updates from this web folder (plain HTTP is fine) before the release; see BUILDING.md |
 | `--add-mod PATH` | copy a mod (a folder, a .zip or a pack file) into the data folder's `mods`, and exit |
+| `--script-check FILE` | read a mod's script (a `.rs` file, see [SCRIPTING.md](SCRIPTING.md)) the way the game would, say what is wrong with it, and exit |
 | `--export FILE` | with `--world NAME`: write that world as one file, and exit |
 | `--import FILE` | with `--world NAME`: add a world from such a file, and exit |
 | `--pos X Y Z` | start position |
@@ -951,7 +1027,15 @@ marked "From the Earth mod").
   `GAME`, `SKIN`, `MODS` or `VOICE`.
 - `walking`, with `creatures`, shows the line-up mid-stride.
 - `craft:<item>` opens the crafting table with the first grid recipe for
-  that item (`craft:iron_pick`) laid out in the grid.
+  that item (`craft:iron_pick`) laid out in the grid; a recipe too big for a
+  table opens the bench or workshop it needs (`craft:big_chest`).
+- `emote` opens the emote wheel; `skinurl` opens the panel for a skin from a
+  web address.
+- `pose:<name>` holds the player's posture whatever happens (`stand`,
+  `crouch`, `sit`, `sleep`, `swim`, `climb`, `fall`, `ride`) and
+  `emote:<id>` or `emote:<id>@<seconds>` plays that emote and keeps it at
+  that moment (default 0.5 s: `emote:wave@0.6`). Use them with `third` or
+  `front`, and `--step 0.1` so that the game moves a frame before the picture.
 - `looks:<name>`, with `creatures`, lines up every look (biome variant) of
   the creatures whose id contains the name (`creatures,looks:boomer`)
   instead of one of each. Hostile creatures show only in survival worlds.

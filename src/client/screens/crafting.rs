@@ -1,5 +1,6 @@
-//! The crafting part of the inventory screen and of the crafting table's:
-//! the grid (2 x 2 by hand, 3 x 3 at a table), the result with an arrow
+//! The crafting part of the inventory screen and of the crafting blocks':
+//! the grid (2 x 2 by hand, 3 x 3 at a table, 5 x 5 at a bench, 7 x 7 at a
+//! workshop; the slots shrink to fit the panel), the result with an arrow
 //! to it, and the recipe book, which lists what the inventory can make and
 //! fills the grid when one is clicked.
 //!
@@ -28,9 +29,21 @@ pub struct CraftScreen {
     pub show_all: bool,
     /// How far the book is scrolled, in rows.
     pub scroll: i32,
+    /// The side of the grid of the block that opened the screen: 3 (a
+    /// crafting table), 5 (a bench) or 7 (a workshop); 0 before any is set.
+    pub table_side: usize,
 }
 
 impl CraftScreen {
+    /// The table's grid side, 3 unless a bench or workshop was opened.
+    pub fn side(&self) -> usize {
+        match self.table_side {
+            5 => 5,
+            7 => 7,
+            _ => 3,
+        }
+    }
+
     /// The screen is closing: the grid's contents go back to the inventory.
     pub fn put_away(&mut self, inv: &mut Inventory) {
         self.grid.return_all(inv);
@@ -47,8 +60,9 @@ pub struct Frame {
     pub width: f32,
     pub cell: f32,
     pub rows: usize,
-    /// At a crafting table (3 x 3), not in the inventory screen (2 x 2).
-    pub at_table: bool,
+    /// The grid's side: 2 in the inventory screen, 3, 5 or 7 at a table,
+    /// bench or workshop.
+    pub side: usize,
     /// Shift is held.
     pub shift: bool,
 }
@@ -60,7 +74,7 @@ const GHOST: Color = [255, 255, 255, 70];
 /// the top of the screen for what is pointed at.
 pub fn draw(ui: &mut Ui, g: &mut Session, st: &mut CraftScreen, f: &Frame) -> Option<String> {
     let s = ui.s;
-    let side = if f.at_table { 3 } else { 2 };
+    let side = f.side.clamp(crafting::HAND_SIDE, crafting::MAX_SIDE);
     let bw = 40.0 * s;
     if ui.button(f.gx + f.width - bw - 2.0 * s, f.uy + 2.0 * s, bw, 12.0 * s, if st.book { "GRID" } else { "BOOK" }) {
         st.book = !st.book;
@@ -84,19 +98,23 @@ fn grid(ui: &mut Ui, g: &mut Session, st: &mut CraftScreen, f: &Frame, side: usi
     let (click_l, click_r) = (ui.inp.clicked[1], ui.inp.clicked[3]);
     let cell = f.cell;
     let mut tip: Option<String> = None;
-    let gw = side as f32 * cell;
+    // The slots of a big grid are smaller, so that 7 x 7 of them and the
+    // CLEAR button under them fit in the height of the upper part.
+    let gcell = ((f.rows as f32 * cell - 16.0 * s) / side as f32).min(cell);
+    let margin = gcell * 0.15;
+    let gw = side as f32 * gcell;
     let x0 = f.gx + 10.0 * s;
     let y0 = f.uy + (f.rows as f32 * cell - gw) * 0.5 - 4.0 * s;
     for row in 0..side {
         for col in 0..side {
             let i = row * side + col;
-            let (x, y) = (x0 + col as f32 * cell, y0 + row as f32 * cell);
-            let hot = ui.hot(x, y, cell, cell);
-            draw_slot(ui.r, x, y, cell, s, st.grid.cells[i], hot);
+            let (x, y) = (x0 + col as f32 * gcell, y0 + row as f32 * gcell);
+            let hot = ui.hot(x, y, gcell, gcell);
+            draw_slot(ui.r, x, y, gcell, s, st.grid.cells[i], hot);
             match (st.grid.cells[i], st.grid.ghost[i]) {
                 (Some(stack), _) if hot => tip = Some(name_of(stack.item as usize)),
                 (None, Some(item)) => {
-                    draw_item(ui.r, x + 3.0 * s, y + 3.0 * s, cell - 6.0 * s, item as usize, GHOST);
+                    draw_item(ui.r, x + margin, y + margin, gcell - 2.0 * margin, item as usize, GHOST);
                     if hot {
                         tip = Some(name_of(item as usize));
                     }

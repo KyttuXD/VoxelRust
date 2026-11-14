@@ -62,11 +62,12 @@ own procedurally painted textures and its own terrain generator.
   blocks), shapes, items, tools, weapons, food, recipes, ores, plants,
   models, creatures, vehicles, sounds, dimensions, chat commands and small
   scripts (`when <event> do <commands>`, with variables and conditions) are
-  declared in text files. Drop a mod folder with a `pack.txt` into the
-  `mods` folder and it loads; `/reload` picks up changes to packs without
-  restarting. Eight mods come with the game, each a folder of its own in
-  `mods/` (see [The mods that come with the game](#the-mods-that-come-with-the-game));
-  SETTINGS > MODS switches any mod on or off. Blockbench `.bbmodel` files
+  declared in text files. No mods come with the game: drop a mod folder with a
+  `pack.txt` into the `mods` folder of the data folder (the game makes it,
+  with a README.txt) and it loads, or join a server and it sends the mods it
+  uses, for that visit only (see [Mods](#mods)). `/reload` picks up changes to
+  packs without restarting. SETTINGS > MODS lists the mods with their versions
+  and switches any of them on or off. Blockbench `.bbmodel` files
   are read directly. Player skins are 64 x 64 PNGs. The default player model is the LastRoute mannequin.
 - **Long views.** Detailed chunks near you, simplified terrain beyond (tested
   out to 2 km).
@@ -80,21 +81,27 @@ own procedurally painted textures and its own terrain generator.
 - **Updates.** The game looks for a newer nightly build when it starts and
   can replace its own program (see [Builds and updating](#builds-and-updating)).
 
-## The mods that come with the game
+## Mods
 
-Each is a folder in the separate `VoxelRust-Mods` folder (not in this repository), and each is named in its `SHIPPED` file. SETTINGS >
-MODS switches it off.
+No mods are built into the game or packed with it. They are installed by the
+player, or sent by a server:
 
-| Folder | What it adds |
-| --- | --- |
-| `disasters` | Natural Disasters: earthquakes, tsunamis and tornadoes. Pack only. Its own switch is in SETTINGS > GAME. |
-| `earth` | Real-world Earth: the terrain, the map (M) and the EARTH world choice. Has Rust code. |
-| `vehicles` | The machinery for boats, carts, cars and planes. Has Rust code. Adds no vehicle of its own. |
-| `boats` | Boats. Needs `vehicles`. |
-| `trains` | Rail track, carts, a locomotive and stations. Needs `vehicles`. |
-| `planes` | A small plane. Needs `vehicles`. |
-| `landvehicles` | A buggy, a truck and a kart. Needs `vehicles`. |
-| `holidays` | Decorations and treats for the feast days, made at a crafting table or in an oven, and four big props. |
+- **Installed:** each mod is a folder (with a `pack.txt`) in `<data folder>/mods/`
+  (`--mods-dir DIR` uses another folder). SETTINGS > MODS lists them with name,
+  version and an on/off switch.
+- **From a server:** when you join, the server announces the mods it offers
+  and the game downloads the ones it needs into `<data folder>/tmp/mods/`,
+  loads them for that visit only and deletes them when you leave or quit.
+  The loading screen says `DOWNLOADING MODS 3/12`. Only plain files are
+  accepted (text, pictures, sounds, models, scripts); mods with compiled code
+  cannot be downloaded.
+- **Compiled in (development):** a mod with Rust code (`<mod>/code/mod.rs`)
+  works only in a program built with `cargo build --features native-mods`
+  (see [docs/BUILDING.md](docs/BUILDING.md)).
+
+The mods the author makes (Earth, Vehicles, Boats, Trains, Planes, Land
+Vehicles, Natural Disasters, Holidays...) live in a separate repository,
+`VoxelRust-Mods`, and are not part of the game.
 
 ## Documentation
 
@@ -104,7 +111,7 @@ MODS switches it off.
 | [docs/CREATURES.md](docs/CREATURES.md) | wildlife, monsters and villagers: what lives where, milk, wool and eggs, taming, trading |
 | [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | hosting and joining, what is shared |
 | [docs/EARTH.md](docs/EARTH.md) | real-world terrain, the map, data sources |
-| [docs/MODDING.md](docs/MODDING.md) | packs, the mods folder, the mods that come with the game, scripts and commands, models, skins |
+| [docs/MODDING.md](docs/MODDING.md) | packs, the mods folder, mods from a server, scripts and commands, models, skins |
 | [docs/DATA.md](docs/DATA.md) | the content file format |
 | [docs/BUILDING.md](docs/BUILDING.md) | building for each platform, packaging a release, build names and updating, tests, CI, icons |
 | [docs/PORTING.md](docs/PORTING.md) | how it stays portable, old Macs, PowerPC, measurements |
@@ -151,22 +158,22 @@ scripts/package-release.sh
 Details: [docs/BUILDING.md](docs/BUILDING.md). `voxelrust --help` lists the
 command-line options.
 
-The game reads the mods that come with it from a `mods` folder beside
-the program (inside the app on a Mac) or from `./mods`. The mods are not in
-this repository: they are in `VoxelRust-Mods`, a folder beside it (or the one
-named by the environment variable `VOXELRUST_MODS_DIR`), which the build
-compiles the mods' Rust code from and the release scripts copy the shipped mods
-from. To run from the source tree, link it as `mods`:
-`ln -s ../VoxelRust-Mods mods` (git ignores `/mods/`), then `cargo run`.
+The mods are not in this repository and not in the program: they are in
+`VoxelRust-Mods`, a folder beside it. A plain build ships no mods. To build
+with the Rust code of the mods in that folder (or the one named by the
+environment variable `VOXELRUST_MODS_DIR`) turn on the `native-mods` feature:
+`cargo run --features native-mods`. To run from the source tree with the mods'
+files, link the folder as `mods` (`ln -s ../VoxelRust-Mods mods`; git ignores
+`/mods/`) and start the game from the source folder: `./mods` is read too.
 
 ## Repository layout
 
 | Path | What is in it |
 | --- | --- |
 | `src/` | The game. `src/native.rs` holds the table of hooks (`struct Native`) that mod code fills in. |
-| `../VoxelRust-Mods/<name>/` (or `$VOXELRUST_MODS_DIR/<name>/`) | A mod: a `pack.txt`, and a `code/` folder if it has Rust. `build.rs` compiles each `code/mod.rs` into the program, so changing mod code needs a rebuild. The code runs only while a loaded pack says `feature <name>`. |
-| `../VoxelRust-Mods/SHIPPED` | The mods that come with the game, one folder name a line. The release scripts and the mods' `tests.rs` use it. |
-| `data/` | The base content (`base.txt`, `creatures.txt`, `wildlife.txt`) and its models. |
+| `../VoxelRust-Mods/<name>/` (or `$VOXELRUST_MODS_DIR/<name>/`) | A mod: a `pack.txt`, and a `code/` folder if it has Rust. With `--features native-mods`, `build.rs` compiles each `code/mod.rs` into the program, so changing mod code needs a rebuild. The code runs only while a loaded pack says `feature <name>`. |
+| `../VoxelRust-Mods/SHIPPED` | Only for `--features native-mods` builds: the mods whose files the tests read. Nothing is shipped with the game. |
+| `data/` | The core content (`base.txt`, `effects.txt`, `creatures.txt`: the hand models) and the player models. Everything else is a mod of `VoxelRust-Mods`. |
 | `scripts/` | Build, cross-build and release scripts. |
 | `tools/` | Python generators for the data, icons and models. |
 | `web/` | The browser build. |
@@ -182,8 +189,7 @@ The two Mac apps declare their minimum system, so macOS refuses to start the
 
 The files are on the `nightly` release:
 <https://github.com/KyttuXD/VoxelRust/releases/tag/nightly>. Each archive
-holds the program (an app on the Mac), the mods that come with the
-game, and the docs; `BUILDS.txt` says which file is for which machine. They
+holds the program (an app on the Mac) and the docs (no mods); `BUILDS.txt` says which file is for which machine. They
 are built by `scripts/package-release.sh` and uploaded by hand.
 
 **The game updates itself.** When it starts it reads `nightly.txt` from that
@@ -195,10 +201,13 @@ one run; UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS turns the
 replacing off (the game then only says a newer version is out). Limits:
 
 - The download is done by the system's `curl`. Mac OS X 10.6's own `curl`
-  cannot make modern HTTPS connections, so **the old-Mac build cannot update
-  itself**: replace the app by hand.
-- Only the program is replaced. The `mods` folder that came with it, the
-  docs and SDL2 are not.
+  cannot make modern HTTPS connections, so **the old-Mac build updates only
+  from a plain-HTTP mirror** (`update_mirror` in `settings.txt`, see
+  [docs/BUILDING.md](docs/BUILDING.md)); without one, replace the app by hand.
+  Whatever the source, the list of files is signed by the project's key and
+  the game refuses anything whose signature or checksum does not fit.
+- Only the program is replaced. The docs and SDL2 are not (your mods are in
+  the data folder, untouched).
 - A program built by hand without a commit stamp is never replaced, and
   there is no check in scripted runs (`--screenshot`, `--bench`), for
   `--server`, or in the browser.
@@ -251,8 +260,7 @@ Worlds and settings live in the data folder and are not touched. Details:
   public server; everyone else can host their own (see
   [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md)).
 - The updater never works on Mac OS X 10.6 (see
-  [Builds and updating](#builds-and-updating)). It replaces the program only,
-  not the mods that came with it.
+  [Builds and updating](#builds-and-updating)). It replaces the program only.
 - The Windows build has only been tested under Wine, not on real Windows.
 - Modern macOS has been run on one Intel Mac (macOS 12.7.6). Apple silicon
   is untested.
@@ -260,8 +268,7 @@ Worlds and settings live in the data folder and are not touched. Details:
 - The repository is on GitHub (`KyttuXD/VoxelRust`). Its workflows (CI and
   nightly builds) cannot run: the account's Actions budget blocks them. The
   nightly files are built on the author's machine and uploaded by hand.
-- The browser build has no folders to read mods from, so none of the mods that
-  come with the game are in it.
+- The browser build has no folders to read mods from, so it has no mods.
 - The browser build ([docs/WEB.md](docs/WEB.md)) has been built and run
   locally in Chromium, but the website is not deployed: the server meant for
   it (`voxelrust.games.kyttuslab.org`) could not be reached over SSH without

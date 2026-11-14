@@ -31,6 +31,8 @@ pub struct Config {
     /// [`crate::save::bundle`]), sent to every
     /// player so that all of them use the same blocks and items.
     pub pack: Vec<u8>,
+    /// The mods players may download (see [`crate::net::modsync::serve`]).
+    pub mods: Vec<crate::net::modsync::serve::ServedMod>,
 }
 
 struct Conn {
@@ -40,7 +42,7 @@ struct Conn {
     name: String,
     joined: bool,
     /// Where this player last said they were, for telling newcomers.
-    last_move: Option<([f64; 3], f32, f32, u16)>,
+    last_move: Option<([f64; 3], f32, f32, u16, u8)>,
     skin: Vec<u8>,
     skin_slim: bool,
     /// What this player's voice chat is set to (`VOICE_` flags); 0 until they say.
@@ -49,6 +51,10 @@ struct Conn {
     /// Ticks since anything arrived; idle strangers are dropped.
     quiet: u32,
     gone: bool,
+    /// Mod bundle pieces (encoded messages) waiting to be sent, a few per tick.
+    mod_out: alloc::collections::VecDeque<Vec<u8>>,
+    /// This player has already asked for mods.
+    mods_asked: bool,
 }
 
 pub struct Server {
@@ -422,7 +428,7 @@ impl Server {
             match self.listener.accept(0) {
                 Ok(Some(mut stream)) => {
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, gone: false });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, gone: false, mod_out: Default::default(), mods_asked: false });
                 }
                 _ => break,
             }
@@ -525,13 +531,15 @@ impl Server {
                         for (k, part) in parts.iter().enumerate() {
                             out.extend(Msg::Pack { last: k + 1 == parts.len(), data: part.to_vec() }.encode());
                         }
+                        // Then what mods can be downloaded (even if none).
+                        out.extend(Msg::ModList { mods: self.cfg.mods.iter().map(|m| m.info()).collect() }.encode());
                         for other in self.conns.iter().filter(|c| c.joined && !c.gone) {
                             out.extend(Msg::Join { id: other.id, name: other.name.clone() }.encode());
                             if !other.skin.is_empty() {
                                 out.extend(Msg::Skin { id: other.id, png: other.skin.clone(), slim: other.skin_slim }.encode());
                             }
-                            if let Some((pos, yaw, pitch, held)) = other.last_move {
-                                out.extend(Msg::Move { id: other.id, pos, yaw, pitch, held }.encode());
+                            if let Some((pos, yaw, pitch, held, pose)) = other.last_move {
+                                out.extend(Msg::Move { id: other.id, pos, yaw, pitch, held, pose }.encode());
                             }
                         }
                         let all: Vec<(i32, i32, i32, u16)> = self.edits.iter().map(|(k, &b)| (k.0, k.1, k.2, b)).collect();
@@ -552,10 +560,12 @@ impl Server {
                         log.push(alloc::format!("{} joined ({} online)", name, self.players()));
                         self.broadcast(&Msg::Join { id, name }, id);
                     }
-                    Msg::Move { pos, yaw, pitch, held, .. } if joined => {
-                        self.conns[i].last_move = Some((pos, yaw, pitch, held));
-                        self.broadcast(&Msg::Move { id, pos, yaw, pitch, held }, id);
+                    Msg::Move { pos, yaw, pitch, held, pose, .. } if joined => {
+                        self.conns[i].last_move = Some((pos, yaw, pitch, held, pose));
+                        self.broadcast(&Msg::Move { id, pos, yaw, pitch, held, pose }, id);
                     }
+                    // An emote the player plays (or stops): everyone else sees it.
+                    Msg::Emote { emote, .. } if joined => self.broadcast(&Msg::Emote { id, emote }, id),
                     Msg::SetBlock { x, y, z, block } if joined => {
                         let may = self.flags_for(&self.conns[i].name) & crate::proto::PERM_BUILD != 0;
                         if may && (0..CH).contains(&y) && block < self.cfg.states {
@@ -563,6 +573,28 @@ impl Server {
                             self.dirty = true;
                             self.broadcast(&Msg::SetBlock { x, y, z, block }, id);
                         }
+                    }
+                    Msg::ModsWant { names } if joined && !self.conns[i].mods_asked => {
+                        // Queue the bundles asked for, in the order asked: a few
+                        // pieces are sent each tick so play goes on meanwhile.
+                        self.conns[i].mods_asked = true;
+                        let mut queued = alloc::collections::VecDeque::new();
+                        let mut sent: Vec<&str> = Vec::new();
+                        for want in &names {
+                            let found = self.cfg.mods.iter().position(|m| m.name == *want);
+                            if let (Some(index), false) = (found, sent.contains(&want.as_str())) {
+                                sent.push(want);
+                                let data = &self.cfg.mods[index].data;
+                                let parts: Vec<&[u8]> = if data.is_empty() { alloc::vec![&data[..]] } else { data.chunks(crate::proto::MAX_PACK_PART).collect() };
+                                for (k, part) in parts.iter().enumerate() {
+                                    queued.push_back(Msg::ModPart { index: index as u16, last: k + 1 == parts.len(), data: part.to_vec() }.encode());
+                                }
+                            }
+                        }
+                        if !queued.is_empty() {
+                            log.push(alloc::format!("{} downloads {} mod{}", self.conns[i].name, sent.len(), if sent.len() == 1 { "" } else { "s" }));
+                        }
+                        self.conns[i].mod_out = queued;
                     }
                     Msg::VoiceState { flags } if joined => {
                         self.conns[i].voice_flags = flags & (crate::proto::VOICE_HEAR | crate::proto::VOICE_TALK);
@@ -602,6 +634,20 @@ impl Server {
                         self.conns[i].gone = true;
                         break;
                     }
+                }
+            }
+        }
+        // A few pieces of mods for whoever is downloading them.
+        for c in self.conns.iter_mut().filter(|c| !c.gone) {
+            for _ in 0..12 {
+                match c.mod_out.pop_front() {
+                    Some(bytes) => {
+                        if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+                            c.gone = true;
+                            break;
+                        }
+                    }
+                    None => break,
                 }
             }
         }
@@ -651,7 +697,7 @@ mod tests {
     #[test]
     fn permissions_gate_building_game_mode_and_commands() {
         use crate::proto::*;
-        let mut s = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new() }).unwrap();
+        let mut s = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new(), mods: Vec::new() }).unwrap();
         s.ops.push(String::from("Ann"));
         // By default players build, and nothing else; operators do everything.
         assert_eq!(s.flags_for("Bob"), PERM_BUILD | PERM_VOICE);
@@ -671,7 +717,7 @@ mod tests {
         assert_eq!(s.command("Ann", "/perm Bob +fly"), "use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice");
         // It is all kept.
         let text = s.perm_text();
-        let mut t = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new() }).unwrap();
+        let mut t = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new(), mods: Vec::new() }).unwrap();
         for line in text.lines() {
             assert!(t.load_perm_line(line), "{line}");
         }
@@ -681,7 +727,7 @@ mod tests {
 
     #[test]
     fn operators_and_their_commands() {
-        let cfg = Config { port: 0, seed: 1, kind: String::new(), max_players: 4, content: 0, states: 1, pack: Vec::new() };
+        let cfg = Config { port: 0, seed: 1, kind: String::new(), max_players: 4, content: 0, states: 1, pack: Vec::new(), mods: Vec::new() };
         let mut s = Server::bind(cfg).unwrap();
         s.ops.push(String::from("Ann"));
         // Anyone may look; only operators may act.
@@ -705,7 +751,7 @@ mod tests {
     #[test]
     fn voice_permission_muting_and_range_are_commands_and_are_kept() {
         use crate::proto::*;
-        let cfg = || Config { port: 0, seed: 1, kind: String::new(), max_players: 4, content: 0, states: 1, pack: Vec::new() };
+        let cfg = || Config { port: 0, seed: 1, kind: String::new(), max_players: 4, content: 0, states: 1, pack: Vec::new(), mods: Vec::new() };
         let mut s = Server::bind(cfg()).unwrap();
         s.ops.push(String::from("Ann"));
         assert_eq!(s.command("Bob", "/mute Cy"), "only operators may do that");

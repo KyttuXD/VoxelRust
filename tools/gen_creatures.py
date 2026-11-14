@@ -1,12 +1,33 @@
 #!/usr/bin/env python3
-"""Writes data/wildlife.txt: every creature in the game, where it lives and
-how it behaves. Run after changing it:  python3 tools/gen_creatures.py
+"""Every creature the game used to carry, where it lives and how it behaves.
 
-Models come from tools/gen_models.py (data/models/*.bbmodel)."""
+The creatures are not in the game's own data any more: they are the mods
+wildlife (the animals), monsters, villagers and wanderer. This script holds
+the table; tools/export_mods.py (run it after changing this one) sorts the
+creatures into those mods and writes them, with their models and pictures,
+into the VoxelRust-Mods folder.
+
+Models come from tools/gen_models.py and the pictures from
+tools/entity_textures.py, which write into the wildlife mod's models/ and
+textures/ folders (export_mods.py moves each creature's own files into the
+mod it belongs to)."""
 import os
+import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-MODELS = os.path.join(ROOT, "data", "models")
+MODS_DIR = os.path.abspath(os.environ.get("VOXELRUST_MODS_DIR") or os.path.join(ROOT, "..", "VoxelRust-Mods"))  # the mods live outside the repository
+ART = os.path.join(MODS_DIR, "wildlife")          # where gen_models.py and entity_textures.py write
+MODELS = os.path.join(ART, "models")
+# Every creature mod's folder: once export_mods.py has sorted the art, a model or picture is in the one that owns it.
+CREATURE_DIRS = [os.path.join(MODS_DIR, m) for m in ("wildlife", "monsters", "villagers", "wanderer")]
+
+
+def has_model(name):
+    return any(os.path.exists(os.path.join(d, "models", name + ".bbmodel")) for d in CREATURE_DIRS)
+
+
+def has_picture(name):
+    return any(os.path.exists(os.path.join(d, "textures", name + ".png")) for d in CREATURE_DIRS)
 out = []
 w = out.append
 
@@ -66,26 +87,26 @@ def entity(id, name, model, h, wd, speed, hp, behavior="wander", biomes="", weig
             w(f"  {k} {v}")
 
 
-TEXTURES = os.path.join(ROOT, "data", "textures", "entity")
+TEXTURES = os.path.join(ART, "textures")
 
 
 def L(label, tex=None, model=None, size=None):
     """One `variant` line: its name, and optionally its model, size and picture.
     The pictures are written by tools/entity_textures.py (run it first)."""
     words = [label]
-    if model and os.path.exists(os.path.join(MODELS, model + ".bbmodel")):
+    if model and has_model(model):
         words += ["model", model]
     if size:
         words += ["size", str(size)]
     if tex:
-        if not os.path.exists(os.path.join(TEXTURES, tex + ".png")):
-            raise SystemExit(f"no picture {tex}.png in data/textures/entity: run tools/entity_textures.py first")
+        if not has_picture(tex):
+            raise SystemExit(f"no picture {tex}.png in {TEXTURES}: run tools/entity_textures.py first")
         words += ["tex", tex]
     return " ".join(words)
 
 
 def model_or(name, fallback):
-    return name if os.path.exists(os.path.join(MODELS, name + ".bbmodel")) else fallback
+    return name if has_model(name) else fallback
 
 
 # ---- Farm animals: herds, young, and something to collect.
@@ -156,7 +177,7 @@ entity("frog", "Frog", "frog", 0.35, 0.4, 1.5, 3, biomes="swamp jungle", weight=
 # unless you crowd them or hit one.
 entity("wolf", "Wolf", model_or("wolf", "dog"), 0.95, 0.6, 4.4, 16, biomes="taiga forest tundra mountain", weight=9,
        trait="pack hunter", damage=4, baby="0.5 480", tamable=True, likes="raw_meat", sound="howl",
-       hunts="sheep merino rabbit lop_rabbit deer goat chicken turkey", tint="186 190 200" if not os.path.exists(os.path.join(MODELS, "wolf.bbmodel")) else None,
+       hunts="sheep merino rabbit lop_rabbit deer goat chicken turkey", tint="186 190 200" if not has_model("wolf") else None,
        variant=[L("Arctic", "wolf_arctic"), L("Black", "wolf_black"), L("Timber", "wolf_timber")])
 entity("fox", "Fox", model_or("fox", "dog"), 0.55, 0.45, 3.8, 8, biomes="forest taiga plains tundra", weight=8,
        trait="hunter flees", damage=2, baby="0.5 360", tamable=True, likes="berries",
@@ -320,12 +341,12 @@ entity("wanderer", "Wanderer", "player", 1.8, 0.6, 2.8, 20, behavior="npc", weig
        trade=["ruby 1 apple 6", "berries 8 ruby 1"],
        variant=[L("Green", "wanderer_green"), L("Red", "wanderer_red"), L("Grey", "wanderer_grey")])
 
-# Models this file uses that data/creatures.txt may not declare.
-decl = []
-for m in sorted(used_models):
-    if m not in ("player", "grazer") and os.path.exists(os.path.join(MODELS, m + ".bbmodel")):
-        decl.append(f"model {m} file models/{m}.bbmodel")
-text = out[0] + "\n" + "\n".join(decl) + "\n\n" + "\n".join(out[1:]) + "\n"
-path = os.path.join(ROOT, "data", "wildlife.txt")
-open(path, "w").write(text)
-print("wrote", os.path.normpath(path), text.count("\nentity "), "entities")
+# The models these creatures use (the player model is the game's own).
+MODEL_IDS = sorted(m for m in used_models if m not in ("player", "grazer") and has_model(m))
+HEADER = out[0]
+ENTITY_TEXT = "\n".join(out[1:]) + "\n"
+
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import export_mods
+    export_mods.main(["--creatures"] + sys.argv[1:])
