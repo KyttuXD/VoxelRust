@@ -736,7 +736,7 @@ mod tests {
 
     #[test]
     fn a_mods_hd_pictures_go_to_the_hd_atlas_and_every_tile_stays_in_the_normal_one() {
-        let (a, b, c) = (two_halves(64), two_halves(128), crate::png::encode(16, 16, &alloc::vec![9u8; 16 * 16 * 4]));
+        let (a, b, c) = (two_halves(64), two_halves(128), crate::png::encode(16, 16, &(0..16 * 16).flat_map(|_| [9u8, 9, 9, 255]).collect::<Vec<u8>>()));
         let pack = "texture hd_a file a.png\ntexture hd_b file b.png\ntexture hd_c file c.png\n";
         let r = Registry::from_sources(&[("base.txt", crate::block::BASE_DATA), ("mods/x/pack.txt", pack)], &mut |p| match p {
             "mods/x/a.png" => Some(a.clone()),

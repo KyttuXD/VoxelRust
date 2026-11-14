@@ -463,8 +463,11 @@ fn deflate(d: &[u8], bw: &mut BitWriter) {
                 let end = p + l;
                 if l > effort.skip {
                     // A long repeat: the first few positions are enough to find it again.
+                    // The last few are kept too: a flat area is then found again at the
+                    // smallest distance, which costs no extra bits.
                     m.upto(p + 8);
-                    m.ins = m.ins.max(end);
+                    m.ins = m.ins.max(end - 8);
+                    m.upto(end);
                 } else {
                     m.upto(end);
                 }

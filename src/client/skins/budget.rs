@@ -101,12 +101,14 @@ pub fn plan(entries: &[Entry], budget: usize) -> Vec<(u16, usize)> {
     let side = |e: &Entry, t: u8| if e.fixed { e.cur } else { tier_side(e.full, t) };
     let mut total: usize = entries.iter().zip(&tier).map(|(e, &t)| gpu_bytes(side(e, t))).sum();
     while total > budget {
-        // The skin to shrink: not fixed, still bigger than the smallest, longest since its player was near.
+        // The skin to shrink: not fixed, still bigger than the smallest; those still at
+        // full size go to the middle tier before any goes on to the far one, and among
+        // those the player who was near longest ago comes first.
         let pick = entries
             .iter()
             .enumerate()
             .filter(|(i, e)| !e.fixed && tier[*i] < 2 && side(e, tier[*i]) > LOW_SIDE)
-            .min_by(|(_, a), (_, b)| a.last_near.cmp(&b.last_near).then(b.dist.partial_cmp(&a.dist).unwrap_or(core::cmp::Ordering::Equal)).then(a.id.cmp(&b.id)))
+            .min_by(|(ia, a), (ib, b)| tier[*ia].cmp(&tier[*ib]).then(a.last_near.cmp(&b.last_near)).then(b.dist.partial_cmp(&a.dist).unwrap_or(core::cmp::Ordering::Equal)).then(a.id.cmp(&b.id)))
             .map(|(i, _)| i);
         let Some(i) = pick else { break };
         let e = &entries[i];

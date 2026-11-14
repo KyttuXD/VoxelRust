@@ -189,10 +189,13 @@ mod tests {
     fn they_move_and_expire() {
         let mut set = SoftSet::default();
         set.add("m", &req()).unwrap();
-        tick(&mut set, 0.5);
+        tick(&mut set, 0.25);
+        tick(&mut set, 0.25);
         assert!((set.list[0].pos[1] - 64.5).abs() < 1e-6);
+        // A long stall ages it by the whole time but moves it by a quarter second at most.
         tick(&mut set, 1.0);
         assert_eq!(set.list.len(), 1);
+        assert!((set.list[0].pos[1] - 64.75).abs() < 1e-6);
         tick(&mut set, 0.6);
         assert!(set.list.is_empty());
         // Odd times change nothing.

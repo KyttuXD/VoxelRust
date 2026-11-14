@@ -336,7 +336,11 @@ fn nobody_can_register_a_reserved_name_and_the_administrator_logs_in_with_every_
     admin.send_chat("/accounts");
     assert!(chats(&pump(&mut admin, 300)).iter().any(|l| l.contains("ACCOUNTS (1): KYTTU*")));
     // Reset the PIN of an account: a new PIN is given, and works.
-    let (_ann_for_later, _) = h.register("Ann", "4821").ok().unwrap();
+    // (On a server where accounts are optional a guest makes one with /register in the game.)
+    let (mut ann, _) = h.join("Ann", None).ok().unwrap();
+    pump(&mut ann, 200);
+    assert_eq!(ann.account_command("/register 4821 4821"), "MAKING YOUR ACCOUNT...");
+    assert!(chats(&pump(&mut ann, 600)).iter().any(|l| l.contains("PROTECTED BY YOUR PIN")));
     admin.send_chat("/resetpin ann");
     let reply = chats(&pump(&mut admin, 400)).into_iter().find(|l| l.contains("THE PIN OF ANN IS NOW")).expect("a reset PIN");
     let new_pin: String = reply.split("IS NOW ").nth(1).unwrap().chars().take(6).collect();
