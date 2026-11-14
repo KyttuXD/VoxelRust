@@ -70,6 +70,11 @@ pub fn current_palette() -> Vec<String> {
 }
 
 const MAGIC: &[u8; 4] = b"VXR2";
+
+/// What the game knows how to bring old saved chunks up to (see `migrate.rs`).
+/// A region file carries the version it was last made current at, as a last
+/// line `#data=N` of its block-name list; files without one are version 0.
+pub const DATA_VERSION: u32 = 1;
 /// Chunks per region edge.
 pub const REGION: i32 = 16;
 const SLOTS: usize = (REGION * REGION) as usize;
@@ -78,13 +83,15 @@ pub struct Region {
     /// Encoded chunks, in current state numbers.
     blobs: Vec<Option<Vec<u8>>>,
     dirty: bool,
+    /// The data version its chunks are at.
+    stamp: u32,
     /// When it was last used (the store's counter), to let go of the longest unused.
     used: u64,
 }
 
 impl Region {
     fn empty() -> Region {
-        Region { blobs: (0..SLOTS).map(|_| None).collect(), dirty: false, used: 0 }
+        Region { blobs: (0..SLOTS).map(|_| None).collect(), dirty: false, stamp: DATA_VERSION, used: 0 }
     }
 
     /// Parse a region file, translating its block states to the current ones.
@@ -100,9 +107,12 @@ impl Region {
         }
         let r = reg();
         let names = core::str::from_utf8(&d[8..table]).ok()?;
-        let remap: Vec<Block> = names.split('\n').map(|n| r.state_by_name(n).unwrap_or(0)).collect();
+        let stamp = names.lines().rev().find_map(|l| l.strip_prefix("#data=")).and_then(|v| v.trim().parse::<u32>().ok()).unwrap_or(0);
+        let names = names.split('\n').filter(|n| !n.starts_with('#')).collect::<Vec<&str>>();
+        let remap: Vec<Block> = names.iter().map(|n| r.state_by_name(n).unwrap_or(0)).collect();
         let identity = remap.len() == r.blocks.len() && remap.iter().enumerate().all(|(i, &b)| b as usize == i);
         let mut region = Region::empty();
+        let old = stamp < DATA_VERSION;
         for slot in 0..SLOTS {
             let o = table + slot * 4;
             let len = u32::from_le_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]]) as usize;
@@ -111,10 +121,14 @@ impl Region {
             }
             let blob = d.get(at..at.checked_add(len)?)?;
             at += len;
-            if identity {
+            if identity && !old {
                 region.blobs[slot] = Some(blob.to_vec());
-            } else if let Some(c) = decode(blob, &remap) {
-                // Stored with other state numbers: rewrite in the current ones.
+            } else if let Some(mut c) = decode(blob, &remap) {
+                // Stored with other state numbers or by an older version of the
+                // game: bring it up to date and rewrite it.
+                if old {
+                    crate::migrate::chunk(&mut c, stamp);
+                }
                 region.blobs[slot] = Some(encode(&c));
                 region.dirty = true;
             }
@@ -123,7 +137,8 @@ impl Region {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let pal = current_palette().join("\n");
+        let mut pal = current_palette().join("\n");
+        pal.push_str(&alloc::format!("\n#data={}", DATA_VERSION));
         let mut out = Vec::new();
         out.extend_from_slice(MAGIC);
         out.extend_from_slice(&(pal.len() as u32).to_le_bytes());
@@ -532,5 +547,32 @@ mod tests {
         let got = decode(region.blobs[0].as_ref().unwrap(), &identity()).unwrap();
         assert_eq!(&got.blocks[0..4], &[lamp, 0, stone, 0]);
         assert!(Region::from_bytes(&f[..f.len() - 3]).is_none());
+    }
+
+    #[test]
+    fn a_region_from_an_older_version_is_brought_up_to_date_once() {
+        let r = reg();
+        let mut c = ChunkData::default();
+        c.blocks[ChunkData::idx(4, 100, 4)] = r.wk.lava;
+        c.blocks[ChunkData::idx(5, 100, 4)] = r.wk.water;
+        let mut region = Region::empty();
+        region.blobs[0] = Some(encode(&c));
+        let bytes = region.to_bytes();
+        // Current files keep the chunk as it is.
+        let same = Region::from_bytes(&bytes).unwrap();
+        assert!(!same.dirty);
+        assert_eq!(decode(same.blobs[0].as_ref().unwrap(), &identity()).unwrap(), c);
+        // The same file stamped as version 0: the lava against the water is hardened and the region is rewritten.
+        let text = String::from_utf8_lossy(&bytes[..bytes.len().min(20_000_000)]).into_owned();
+        assert!(text.contains("#data=1"));
+        let mut old = bytes.clone();
+        let at = old.windows(7).position(|w| w == b"#data=1").unwrap();
+        old[at + 6] = b'0';
+        let moved = Region::from_bytes(&old).unwrap();
+        assert!(moved.dirty);
+        let after = decode(moved.blobs[0].as_ref().unwrap(), &identity()).unwrap();
+        assert!(crate::block::fluid_of(after.blocks[ChunkData::idx(4, 100, 4)]).is_none());
+        // And once rewritten it is current.
+        assert!(!Region::from_bytes(&moved.to_bytes()).unwrap().dirty);
     }
 }

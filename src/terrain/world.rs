@@ -400,6 +400,10 @@ impl World {
                     loads += 1;
                     match store.load(key.0, key.1) {
                         Some(d) => {
+                            // Liquid in a saved chunk is looked at again by the current rules.
+                            for l in crate::migrate::flowing_cells(&d, 400) {
+                                self.changed.push([key.0 * 16 + l[0], l[1], key.1 * 16 + l[2]]);
+                            }
                             c.data = Some(Arc::new(d));
                             c.dirty = true;
                             c.modified = false;

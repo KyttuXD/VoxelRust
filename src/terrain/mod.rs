@@ -6,6 +6,7 @@ pub mod worldgen;
 pub mod mesh;
 pub mod lod;
 pub mod save;
+pub mod migrate;
 pub mod jobs;
 pub mod weather;
 pub mod footprint;

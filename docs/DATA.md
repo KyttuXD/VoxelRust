@@ -1486,3 +1486,20 @@ their first frame, other sizes are fitted to 16 x 16, and the grey textures
 the packs expect a biome to colour (grass, leaves, water) are tinted green and
 blue. A picture in the data folder's `textures/` folder beats the pack's; what
 neither has is made as before.
+
+## Updating old worlds
+
+Only the chunks a player changed are saved; the rest is made again from the seed, so
+terrain changes reach old worlds by themselves. For what is saved:
+- Block names are stored with each region file, so blocks added, removed or renumbered
+  by an update or a mod change still load (a block that no longer exists becomes air).
+  Block properties (water, lava, hardness, drops...) come from the data, so old worlds
+  get the new rules at once.
+- A region file also carries a data version (`#data=N`, `DATA_VERSION` in
+  `src/terrain/save.rs`). When it is older than the game's, each saved chunk in it is
+  brought forward once by `src/terrain/migrate.rs` as the region is read, and the file is
+  rewritten at the next save. To change how old chunks are read, add a step there and bump
+  the version. Version 1: lava lying against water sets to obsidian or cobblestone.
+- Water and lava in every saved chunk that is read are looked at again by the current
+  flow rules, so flows left over from an older version settle (liquid that can move:
+  with air or plants beside or below it).
