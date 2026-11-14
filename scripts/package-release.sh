@@ -89,7 +89,7 @@ mkdir -p "$out" "$stage"
 $CARGO build --release
 sh scripts/build-windows.sh ${TOOLCHAIN:+"$TOOLCHAIN"}
 rm -f dist/macos-legacy/voxelrust dist/macos/voxelrust
-sh scripts/build-macos-legacy.sh ${TOOLCHAIN:+"$TOOLCHAIN"}
+sh scripts/build-macos-legacy.sh 1.77.0
 sh scripts/package-macos-app.sh
 VARIANT=modern sh scripts/package-macos-app.sh
 sh scripts/build-web.sh ${TOOLCHAIN:+"$TOOLCHAIN"} || echo "web build skipped"
