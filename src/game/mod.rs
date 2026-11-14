@@ -40,3 +40,4 @@ pub mod creature_extra;
 pub mod creature_wire;
 pub mod creature_api;
 pub mod mod_message;
+pub mod fx;

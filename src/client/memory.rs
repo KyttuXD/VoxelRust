@@ -72,7 +72,7 @@ impl MemWatch {
         match g {
             Some(g) => {
                 b.set(Cat::Chunks, g.world.chunk_bytes());
-                b.set(Cat::Entities, g.mobs.list.len() * MOB_BYTES + g.drops.len() * 128 + g.shots.len() * 128);
+                b.set(Cat::Entities, g.mobs.list.len() * MOB_BYTES + g.drops.len() * 128 + g.shots.len() * 128 + g.primed.sparks.len() * 64 + crate::game::fx::state_ref(g).map_or(0, |s| s.falling.len() * 64 + s.quads.list.len() * 256));
             }
             None => {
                 b.set(Cat::Chunks, 0);

@@ -24,8 +24,9 @@ pub const FUSE: f32 = 4.0;
 pub const DEFAULT_POWER: f32 = 2.5;
 /// Most lit blocks at once; past that, more are not lit.
 pub const MAX_PRIMED: usize = 400;
-/// Most sparks and debris in the air at once.
-pub const MAX_SPARKS: usize = 320;
+/// Most sparks, debris and particles in the air at once (explosions and
+/// scripts' `spawn_particles` share them: see `game/fx/particles.rs`).
+pub const MAX_SPARKS: usize = 2000;
 /// The item that lights TNT.
 pub const IGNITER: &str = "flint_and_steel";
 
@@ -43,14 +44,27 @@ pub struct PrimedBlock {
     pub power: f32,
 }
 
-/// A spark or a bit of debris flung by an explosion, or smoke from a fuse.
+/// A spark or a bit of debris flung by an explosion, or smoke from a fuse,
+/// or a particle a mod asked for. `kind` 0 is the plain opaque speck; the
+/// others are the `fx::particles::Kind`s, drawn as little pictures that fade.
 #[derive(Clone, Copy, Debug)]
 pub struct Spark {
     pub pos: [f64; 3],
     pub vel: [f32; 3],
     pub life: f32,
     pub colour: [u8; 3],
+    /// 0 for a plain speck, else the kind's code (`Kind::code`).
+    pub kind: u8,
+    /// The life it started with (the age is told from this and `life`).
+    pub max_life: f32,
+    /// Blocks a second squared it falls (negative: rises).
+    pub grav: f32,
+    /// How much of its speed it loses each second.
+    pub drag: f32,
 }
+
+/// How hard the plain specks fall.
+pub const SPARK_GRAVITY: f32 = 14.0;
 
 /// What the session keeps about explosions: the lit blocks, the sparks, and
 /// a random-number state of its own.
@@ -81,7 +95,17 @@ impl Primed {
         if self.sparks.len() >= MAX_SPARKS {
             self.sparks.swap_remove(0);
         }
-        self.sparks.push(Spark { pos, vel, life, colour });
+        self.sparks.push(Spark { pos, vel, life, colour, kind: 0, max_life: life, grav: SPARK_GRAVITY, drag: 0.0 });
+    }
+
+    /// Add a particle of any kind; refused (`false`) when the air is full,
+    /// rather than pushing an older one out as `spark` does.
+    pub fn push_particle(&mut self, p: Spark) -> bool {
+        if self.sparks.len() >= MAX_SPARKS {
+            return false;
+        }
+        self.sparks.push(p);
+        true
     }
 }
 
@@ -251,7 +275,14 @@ pub fn tick(g: &mut Session, dt: f32) {
     while s < g.primed.sparks.len() {
         let sp = &mut g.primed.sparks[s];
         sp.life -= dt;
-        sp.vel[1] -= 14.0 * dt;
+        sp.vel[1] -= sp.grav * dt;
+        if sp.drag > 0.0 {
+            let keep = 1.0 - sp.drag * dt;
+            let keep = if keep < 0.0 { 0.0 } else { keep };
+            for v in sp.vel.iter_mut() {
+                *v *= keep;
+            }
+        }
         for a in 0..3 {
             sp.pos[a] += (sp.vel[a] * dt) as f64;
         }

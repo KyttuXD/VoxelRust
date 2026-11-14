@@ -258,6 +258,21 @@ pub fn item_use(g: &mut Session, item: usize) -> bool {
     allow
 }
 
+/// The player is about to pick up a dropped item; `false` leaves it lying.
+pub fn item_pickup(g: &mut Session, item: usize, count: u16) -> bool {
+    if !live() {
+        return true;
+    }
+    let mut allow = true;
+    run(g, "on_item_pickup", alloc::vec![Value::string(item_id(item)), Value::Int(count as i64)], |r| {
+        if is_no(r) {
+            allow = false;
+        }
+        !allow
+    });
+    allow
+}
+
 /// The player crafted something.
 pub fn craft(g: &mut Session, out: usize) {
     if !live() {

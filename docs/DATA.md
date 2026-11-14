@@ -1170,7 +1170,7 @@ A name that no `sound` line defines plays nothing.
 ## Dimensions
 
 ```
-dimension <name> <normal|flat|void|islands>
+dimension <name> <normal|flat|void|islands> [<sky property> <value> ...]
 ```
 
 A dimension is another world inside each world, with its own land, its own
@@ -1192,6 +1192,32 @@ dimension mirror normal
 
 Players move with `/dim <name>` and `/dim home`; a pack usually wraps that
 in a script (`when use my_portal do /dim sky`). Not available on a server.
+
+### The sky of a dimension
+
+After the shape, a `dimension` line may carry properties for how its sky
+looks, as pairs of a key and a value on the same line (nothing said: the
+ordinary sky of the day and night):
+
+```
+dimension ember normal sky_colour 90,20,10 fog_colour #6a2a14 fog_distance 0.5 stars no clouds no sun no moon no ambient_light 8 time 0.5
+```
+
+| Key | Value | Meaning |
+| --- | --- | --- |
+| `sky_colour` (`sky_color`) | `r,g,b` (0 to 255) or `#rrggbb`; `none` | the colour overhead, fixed (`none`: the day and night colours) |
+| `fog_colour` (`fog_color`) | the same | the colour of the horizon and of the fog the land fades into |
+| `fog_distance` | 0.1 to 4 | how far away the fog is, times the usual (0.5 closes in, 2 opens out, though never past the land that is loaded) |
+| `stars`, `clouds`, `sun`, `moon` | `yes` or `no` | whether they are drawn (clouds also need the player's clouds setting on) |
+| `ambient_light` | 0 to 15 | the least sky light: the sky never lights the land less than this (8 is half bright at night; 15 is always day) |
+| `time` | 0 to 1; `none` | the time of day the sky always shows: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight |
+
+Only what is seen changes: the game's own clock (sleeping, mob spawning, the
+day count) goes on, and the home world's sky is the ordinary one (a script may
+change it with `set_dimension_sky("home", ...)`). A word that is not a key, or
+a value that makes no sense, is a warning and the rest of the line still counts.
+Scripts change the same properties while playing with `set_dimension_sky`
+([SCRIPTING.md](SCRIPTING.md#effects-items-explosions-blocks-particles-quads-skies)).
 
 ## Features
 

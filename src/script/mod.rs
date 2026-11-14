@@ -103,6 +103,7 @@ pub const HOOKS: &[HookDoc] = &[
     HookDoc { name: "on_chat", params: &["text"], what: "the player typed a line (commands too); return false to swallow it" },
     HookDoc { name: "on_item_use", params: &["item"], what: "the player pressed use holding an item; return false to stop it" },
     HookDoc { name: "on_craft", params: &["item"], what: "the player crafted an item" },
+    HookDoc { name: "on_item_pickup", params: &["item", "count"], what: "the player is about to pick up a dropped item; return false to leave it lying (it is offered again a second later)" },
     HookDoc { name: "on_event", params: &["name", "what"], what: "any event pack scripts can answer with `when` (see MODDING.md)" },
     HookDoc { name: "on_command", params: &["name", "args"], what: "a /command the game does not know; return true (or a reply string) if it is yours" },
     HookDoc { name: "on_effect_start", params: &["id", "level"], what: "a status effect started on the player" },

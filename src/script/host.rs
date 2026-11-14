@@ -159,7 +159,7 @@ pub const HOST_FUNCTIONS: &[(&str, &str)] = &[
     ("dimension() -> String", "the dimension the player is in (empty for the home world)"),
     ("time() -> f64", "the time of day, 0 to 1 (0 is sunrise, 0.25 noon)"),
     ("set_time(t: f64)", "set the time of day"),
-    ("explode(x: f64, y: f64, z: f64, power: f64)", "set off an explosion (power 0.5 to 8)"),
+    ("explode(x: f64, y: f64, z: f64, power: f64)", "set off an explosion (power 0.5 to 8); with a fifth argument, flags (a text such as \"fire, silent\", or a number: 1 fire, 2 no_blocks, 4 no_damage, 8 silent) it answers how many blocks it destroyed"),
     ("effect(id: &str, secs: f64, level: i64) -> bool", "give the player a status effect"),
     ("apply_effect(who: &str, id: &str, secs: f64, level: i64) -> bool", "give a status effect to \"player\" or \"target\" (the creature in the crosshair); 0 seconds is the effect's own time"),
     ("remove_effect(who: &str, id: &str) -> bool", "take a status effect (all of them for an empty id) from \"player\" or \"target\"; false if it was not there"),
@@ -257,6 +257,8 @@ pub(crate) fn call_host_fn(it: &mut Interp, name: &str, args: &[Value]) -> Optio
             it.host.set_time(t);
             Value::Unit
         }),
+        // With a fifth argument (flags) it is the explosion of game/fx/blast.rs, which answers how many blocks it destroyed.
+        "explode" if args.len() == 5 => return Some(crate::script::ext::fx::explode_with_flags(it, args)),
         "explode" => want(name, args, 4).and_then(|_| Ok((num(name, args, 0)?, num(name, args, 1)?, num(name, args, 2)?, num(name, args, 3)?))).map(|(x, y, z, p)| {
             it.host.explode(x, y, z, p);
             Value::Unit
