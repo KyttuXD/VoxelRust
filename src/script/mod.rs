@@ -34,6 +34,7 @@ pub mod effects_bridge;
 pub mod error;
 pub mod ext;
 pub mod fmt;
+pub mod gear_bridge;
 pub mod host;
 pub mod host_ui;
 pub mod host_qol;
@@ -57,6 +58,8 @@ mod mods_tests;
 mod tests_qol;
 #[cfg(test)]
 mod tests_audit;
+#[cfg(test)]
+mod tests_world_hooks;
 
 use crate::script::ast::{Name, Program};
 use crate::script::error::ScriptError;
@@ -89,21 +92,30 @@ pub const HOOKS: &[HookDoc] = &[
     HookDoc { name: "on_block_place", params: &["x", "y", "z", "id"], what: "the player is about to place a block; return false to stop it" },
     HookDoc { name: "on_entity_spawn", params: &["kind"], what: "a creature appeared; return false to take it away again" },
     HookDoc { name: "on_entity_death", params: &["kind", "x", "y", "z"], what: "a creature died (any cause)" },
+    HookDoc { name: "on_chunk_generated", params: &["cx", "cz", "seed"], what: "a chunk was just generated (not loaded from a save): place structures with `set_block` (4096 writes at most per call; `rand_chunk` makes it repeatable)" },
+    HookDoc { name: "on_block_placed", params: &["x", "y", "z", "id", "cause"], what: "a block was placed, whatever the cause (`player`, `script`, `remote`, `fall`, `fluid`, `other`)" },
+    HookDoc { name: "on_creature_death", params: &["id", "kind", "x", "y", "z", "killer"], what: "a creature died: its id, kind, place and who killed it (the player's name, a creature's id or a cause such as `lava`, `script`)" },
+    HookDoc { name: "on_creature_removed", params: &["id", "kind", "reason"], what: "a creature left the world: `killed`, `despawned`, `unloaded` or `scripted`" },
+    HookDoc { name: "on_creature_interact", params: &["id", "kind", "item"], what: "the player right-clicked a creature (item is what they hold, or empty); return false to cancel the game's own handling" },
+    HookDoc { name: "on_creature_sunburn", params: &["id", "kind"], what: "a night creature would burn in daylight; return false to let it live (asked again after 20 seconds)" },
     HookDoc { name: "on_entity_hit", params: &["id", "kind", "x", "y", "z"], what: "the player hit a creature (it may have died of it): its id (see `mob_info`), its kind and where it was" },
     HookDoc { name: "on_player_hurt", params: &["amount", "cause"], what: "the player is about to take damage; return the amount to apply instead (0 or false cancels)" },
     HookDoc { name: "on_chat", params: &["text"], what: "the player typed a line (commands too); return false to swallow it" },
     HookDoc { name: "on_item_use", params: &["item"], what: "the player pressed use holding an item; return false to stop it" },
     HookDoc { name: "on_craft", params: &["item"], what: "the player crafted an item" },
+    HookDoc { name: "on_item_pickup", params: &["item", "count"], what: "the player is about to pick up a dropped item; return false to leave it lying (it is offered again a second later)" },
     HookDoc { name: "on_event", params: &["name", "what"], what: "any event pack scripts can answer with `when` (see MODDING.md)" },
     HookDoc { name: "on_command", params: &["name", "args"], what: "a /command the game does not know; return true (or a reply string) if it is yours" },
     HookDoc { name: "on_effect_start", params: &["id", "level"], what: "a status effect started on the player" },
     HookDoc { name: "on_effect_tick", params: &["id", "secs_left", "level"], what: "about once a second for each status effect the player has" },
     HookDoc { name: "on_effect_end", params: &["id"], what: "a status effect ran out, was put out or was taken away" },
-    HookDoc { name: "on_explode", params: &["x", "y", "z", "power", "source"], what: "an explosion is about to happen; return false to cancel or a number to change its power" },
+    HookDoc { name: "on_armor_change", params: &["slot"], what: "a worn armour piece was put on, taken off, set by a script or broke (slot 0 head, 1 chest, 2 legs, 3 feet)" },
+    HookDoc { name: "on_explode",params: &["x", "y", "z", "power", "source"], what: "an explosion is about to happen; return false to cancel or a number to change its power" },
     HookDoc { name: "on_update", params: &["dt"], what: "once a frame, before the player moves: the place to move things, carry the player (`hold_player`) and ask for pictures (`draw_model`, `hud_frac_rect`)" },
     HookDoc { name: "on_interact", params: &["reach"], what: "the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is); return true if the click was used up" },
     HookDoc { name: "on_condition", params: &["name", "args"], what: "an `/if` condition the game does not know (`/if name args`); return true or false if it is yours, nothing if it is not" },
     HookDoc { name: "on_net", params: &["key", "text"], what: "another player's copy of this mod sent a message with `net_send`" },
+    HookDoc { name: "on_message", params: &["channel", "from", "text"], what: "another player's copy of this mod sent a message with `send_message` or `send_message_to` (`from` is their player name)" },
     HookDoc { name: "on_register", params: &[], what: "once when the script is read: declare key bindings and switches (bind_key, add_switch)" },
     HookDoc { name: "on_key_down", params: &["id"], what: "a key binding of this mod was pressed (while playing)" },
     HookDoc { name: "on_key_up", params: &["id"], what: "a key binding of this mod was let go" },

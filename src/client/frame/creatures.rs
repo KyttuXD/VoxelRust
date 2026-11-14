@@ -8,7 +8,9 @@ impl App {
     /// the camera is outside it.
     pub(super) fn draw_creatures(&self, r: &mut Renderer, g: &Session, cam: &Camera, tags: &mut Vec<(f32, f32, String)>) {
         let reg = reg();
-        let (_, _, day) = crate::render::sky_colors(g.time);
+        let look = crate::game::fx::sky::current(g);
+        let (_, _, day) = crate::render::sky_colors(look.time_of(g.time));
+        let day = look.light(day);
         // Light at a spot: full daylight under open sky, dimmer under cover.
         let light_at = |pos: [f64; 3]| -> f32 {
             let (x, z) = (floord(pos[0]), floord(pos[2]));
@@ -23,7 +25,10 @@ impl App {
         let behind = |p: [f32; 3], size: f32| p[0] * ahead.x + p[1] * ahead.y + p[2] * ahead.z < -size;
         for m in &g.mobs.list {
             let p = rel(m.body.pos);
-            if p[0] * p[0] + p[2] * p[2] > 72.0 * 72.0 || behind(p, 4.0) {
+            // The bounds of what is drawn grow with the creature: a giant is not dropped while only its middle is out of view.
+            let (bw, bh) = (m.body.half_width as f32 * 2.0, m.look().2.max(m.body.height as f32));
+            let (far, radius) = (72.0 + crate::creature_size::keep_extra(bw, bh), crate::creature_size::cull_radius(bw, bh));
+            if p[0] * p[0] + p[2] * p[2] > far * far || behind(p, radius) {
                 continue;
             }
             // A creature whose ground is not loaded stands still in mid-air: not drawn.
@@ -47,7 +52,7 @@ impl App {
                 at = rel(crate::client::pose_view::creature_at(kind, m.body.pos, m.body.yaw));
             }
             r.tex_override = r.entity_texture(m.tex());
-            r.draw_model(model, &pose, at, m.body.yaw, height, tint);
+            r.draw_model_with(model, &pose, m.bone_view(), at, m.body.yaw, height, tint);
         }
         // Props: blocks that are models (furniture, statues, plants). Only
         // those near enough to matter, and not the ones behind the camera.
@@ -80,7 +85,8 @@ impl App {
         }
         let mut sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
         // The sparks of fuses and explosions.
-        sparks.extend(g.primed.sparks.iter().map(|s| (rel(s.pos), s.colour)));
+        // (the particles of mods, kinds 1 and up, are drawn by `Renderer::draw_effects`)
+        sparks.extend(g.primed.sparks.iter().filter(|s| s.kind == 0).map(|s| (rel(s.pos), s.colour)));
         r.draw_sparks(&sparks);
         // Things lying on the ground are the things themselves, turning slowly.
         let white = crate::client::hand::white_tile();
@@ -93,6 +99,10 @@ impl App {
         }
         // Lit TNT, flashing white.
         crate::client::hand::primed_blocks(&g.primed.list, white, &rel, &mut lying);
+        // Blocks a mod threw.
+        if let Some(fx) = crate::game::fx::state_ref(g) {
+            crate::client::hand::falling_blocks(&fx.falling, &rel, &mut lying);
+        }
         r.draw_quads(&lying, None);
         // Whatever the mods' own code has to show.
         {
@@ -148,6 +158,10 @@ impl App {
                 let l = (light_at(g.player.pos) * 255.0) as u8;
                 r.tex_override = self.skin_tex;
                 r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                // Armour worn (only the player's own is known to this copy of the game).
+                if g.inv.worn.iter().any(|w| w.is_some()) {
+                    r.draw_model_armor(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l], &crate::client::render::armor::looks(&g.inv.worn));
+                }
                 let busy = drawn.pose.body.walk_weight() < 0.5 || drawn.pose.body.emote != 0;
                 let held = if busy { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(g.held().map(|h| h.0)) };
                 let mut held_quads = Vec::new();

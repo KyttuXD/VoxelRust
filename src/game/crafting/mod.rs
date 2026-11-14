@@ -6,6 +6,7 @@
 //! - [`recipe`]: what a recipe is (shaped or shapeless).
 //! - [`matcher`]: whether the cells make a recipe, and what they give up.
 //! - [`parse`]: the `craft` and `shaped` data lines.
+//! - [`repair`]: two worn stacks of one item make a mended one.
 //!
 //! The screen itself is in `client/screens/crafting.rs`.
 
@@ -14,6 +15,7 @@ pub mod legacy;
 pub mod matcher;
 pub mod parse;
 pub mod recipe;
+pub mod repair;
 
 #[cfg(test)]
 mod data_tests;
@@ -69,9 +71,12 @@ impl CraftGrid {
     /// The recipe the cells make (its index in `recipes`) and what it gives.
     pub fn output(&self, recipes: &[GridRecipe], side: usize) -> Option<(usize, Stack)> {
         let side = side.min(MAX_SIDE);
-        let (i, _) = matcher::find(recipes, side, side, &self.cells)?;
+        let Some((i, _)) = matcher::find(recipes, side, side, &self.cells) else {
+            // No recipe: two worn stacks of one item may be mended together.
+            return repair::plan(&self.cells[..side * side], &crate::game::gear::wear::durability_of).map(|(_, made)| (repair::REPAIR, made));
+        };
         let (item, count) = recipes[i].out;
-        Some((i, Stack { item, count }))
+        Some((i, Stack::new(item, count)))
     }
 
     /// A click on one cell, as in the inventory.
@@ -86,8 +91,8 @@ impl CraftGrid {
     pub fn send_back(&mut self, cell: usize, inv: &mut Inventory) {
         if let Some(slot) = self.cells.get_mut(cell) {
             if let Some(s) = *slot {
-                let left = inv.add(s.item, s.count);
-                *slot = if left > 0 { Some(Stack { item: s.item, count: left }) } else { None };
+                let left = inv.add_stack(s);
+                *slot = if left > 0 { Some(s.with_count(left)) } else { None };
             }
         }
         self.ghost = [None; CELLS];
@@ -98,12 +103,24 @@ impl CraftGrid {
     /// gives up one of each ingredient. Whether anything was made.
     pub fn take(&mut self, recipes: &[GridRecipe], side: usize, cursor: &mut Slot) -> bool {
         let side = side.min(MAX_SIDE);
-        let Some((i, uses)) = matcher::find(recipes, side, side, &self.cells) else { return false };
+        let Some((i, uses)) = matcher::find(recipes, side, side, &self.cells) else {
+            // A repair: the hand must be empty, since the mended one has its own wear.
+            let Some((used, made)) = repair::plan(&self.cells[..side * side], &crate::game::gear::wear::durability_of) else { return false };
+            if cursor.is_some() {
+                return false;
+            }
+            *cursor = Some(made);
+            for c in used {
+                self.cells[c] = None;
+            }
+            self.ghost = [None; CELLS];
+            return true;
+        };
         let (item, count) = recipes[i].out;
         match *cursor {
-            None => *cursor = Some(Stack { item, count }),
-            Some(c) if c.item == item && c.count as u32 + count as u32 <= stack_limit(item) as u32 => {
-                *cursor = Some(Stack { item, count: c.count + count });
+            None => *cursor = Some(Stack::new(item, count)),
+            Some(c) if c.same_kind(&Stack::new(item, 0)) && c.count as u32 + count as u32 <= stack_limit(item) as u32 => {
+                *cursor = Some(c.with_count(c.count + count));
             }
             _ => return false,
         }
@@ -118,9 +135,22 @@ impl CraftGrid {
     pub fn take_all(&mut self, recipes: &[GridRecipe], side: usize, inv: &mut Inventory) -> u32 {
         let side = side.min(MAX_SIDE);
         let mut made = 0;
+        let mut made_n = 0;
         // Each round uses up at least one item, so this ends.
         while made < 2000 {
-            let Some((i, uses)) = matcher::find(recipes, side, side, &self.cells) else { break };
+            let Some((i, uses)) = matcher::find(recipes, side, side, &self.cells) else {
+                // Nothing to make: perhaps two worn ones to mend (once; the result is one stack).
+                if let Some((used, made)) = repair::plan(&self.cells[..side * side], &crate::game::gear::wear::durability_of) {
+                    if inv.has_room_for(&made) {
+                        inv.add_stack(made);
+                        for c in used {
+                            self.cells[c] = None;
+                        }
+                        made_n += 1;
+                    }
+                }
+                break;
+            };
             let (item, count) = recipes[i].out;
             if !room_for(inv, item, count) {
                 break;
@@ -129,6 +159,7 @@ impl CraftGrid {
             inv.add(item, count);
             made += 1;
         }
+        let made = made + made_n;
         if made > 0 {
             self.ghost = [None; CELLS];
         }
@@ -140,8 +171,8 @@ impl CraftGrid {
     pub fn return_all(&mut self, inv: &mut Inventory) {
         for cell in self.cells.iter_mut() {
             if let Some(s) = *cell {
-                let left = inv.add(s.item, s.count);
-                *cell = if left > 0 { Some(Stack { item: s.item, count: left }) } else { None };
+                let left = inv.add_stack(s);
+                *cell = if left > 0 { Some(s.with_count(left)) } else { None };
             }
         }
         self.ghost = [None; CELLS];
@@ -170,7 +201,7 @@ impl CraftGrid {
             match best {
                 Some(it) => {
                     inv.remove(it, ing.need);
-                    self.cells[cell] = Some(Stack { item: it, count: ing.need });
+                    self.cells[cell] = Some(Stack::new(it, ing.need));
                 }
                 None => self.ghost[cell] = ing.items.first().copied(),
             }
@@ -219,7 +250,7 @@ mod tests {
     }
 
     fn stack(id: &str, n: u16) -> Slot {
-        Some(Stack { item: item(id), count: n })
+        Some(Stack::new(item(id), n))
     }
 
     /// Sticks from two planks, and a plank-and-stick pick that needs a table.
@@ -324,5 +355,45 @@ mod tests {
         g.return_all(&mut inv);
         assert!(g.is_empty());
         assert_eq!(inv.count(item("planks")), 7);
+    }
+
+    #[test]
+    fn two_worn_tools_in_the_grid_are_mended_when_no_recipe_matches() {
+        let r = recipes();
+        let sword = item("iron_sword");
+        let max = crate::game::gear::wear::durability_of(sword) as u32;
+        assert!(max > 100);
+        let worn = |n: u16| Some(Stack { wear: n, ..Stack::new(sword, 1) });
+        let mut g = CraftGrid::new();
+        g.cells[0] = worn(100);
+        g.cells[3] = worn(200);
+        let (i, made) = g.output(&r, 2).unwrap();
+        assert_eq!(i, repair::REPAIR);
+        let left = ((max - 100) + (max - 200) + max * 5 / 100).min(max);
+        assert_eq!(made.wear as u32, max - left);
+        // A hand that holds something cannot take it; an empty one can.
+        let mut busy = stack("dirt", 1);
+        assert!(!g.take(&r, 2, &mut busy));
+        assert!(!g.is_empty());
+        let mut hand: Slot = None;
+        assert!(g.take(&r, 2, &mut hand));
+        assert_eq!(hand, Some(made));
+        assert!(g.is_empty());
+        // Shift-click puts the mended one in the pack.
+        g.cells[1] = worn(10);
+        g.cells[2] = worn(20);
+        let mut inv = Inventory::new();
+        assert_eq!(g.take_all(&r, 2, &mut inv), 1);
+        assert_eq!(inv.count(sword), 1);
+        assert!(g.is_empty());
+        // Two new ones, one alone, or two different tools are not mended.
+        g.cells[0] = worn(0);
+        g.cells[1] = worn(0);
+        assert!(g.output(&r, 2).is_none());
+        g.cells[1] = None;
+        g.cells[0] = worn(5);
+        assert!(g.output(&r, 2).is_none());
+        g.cells[1] = stack("wood_pick", 1);
+        assert!(g.output(&r, 2).is_none());
     }
 }

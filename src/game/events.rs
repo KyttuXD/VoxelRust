@@ -187,6 +187,9 @@ pub struct Tracker {
     pub hooks_live: bool,
     /// A hook is running: the events it raises are not passed back to it.
     pub in_event: bool,
+    /// How many more blocks `set_block` may write in the hook running now
+    /// (`on_chunk_generated`); `None` outside it.
+    pub block_budget: Option<u32>,
     /// Why the next `Session::damage` happens (see `Session::damage_from`).
     pub cause: String,
     /// The cause for damage held over in `pending_hurt`.
@@ -213,6 +216,14 @@ pub fn poll(g: &mut Session, dt: f32) {
             let name = reg().entities[kind].id.clone();
             g.fire(ENTITY_SPAWN, &name);
         }
+        let (killers, removed) = (core::mem::take(&mut g.mobs.killers), core::mem::take(&mut g.mobs.removed));
+        for (id, kind, at) in died.iter().copied().filter(|d| d.1 < kinds) {
+            let killer = killers.iter().find(|k| k.0 == id).map_or("other", |k| k.1.as_str());
+            hooks::creature_death(g, id, kind, at, killer);
+        }
+        for (id, kind, reason) in removed.into_iter().filter(|d| d.1 < kinds) {
+            hooks::creature_removed(g, id, kind, reason);
+        }
         for (_, kind, at) in died.into_iter().filter(|d| d.1 < kinds) {
             hooks::entity_death(g, kind, at);
             crate::game::loot::leave(g, kind, at);
@@ -229,6 +240,7 @@ pub fn poll(g: &mut Session, dt: f32) {
         g.ev.wet = wet;
         g.fire(WEATHER, wet.name());
     }
+    crate::game::world_hooks::pump(g);
     hooks::tick(g, dt);
     // Mods' HUD: timers, then each mod draws the frame's commands.
     crate::client::modui::dispatch::frame(g, dt);

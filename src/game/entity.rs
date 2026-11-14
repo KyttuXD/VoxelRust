@@ -60,6 +60,15 @@ pub struct Mob {
     last_pos: [f64; 3],
     /// Stable number, used by multiplayer.
     pub id: u32,
+    /// What a script added: its own size, health limit, bone overrides, tilt
+    /// and state text (see `creature_extra`). `None` for almost every creature.
+    pub extra: Option<alloc::boxed::Box<crate::creature_extra::Extra>>,
+    /// A night creature in daylight: above 0, a script spared it for that many
+    /// more seconds; below 0, the scripts said it burns (see `mob_hooks`).
+    pub sun_veto: f32,
+    /// Why it is being taken away when its health is set to 0 by a script
+    /// ("" = it died).
+    pub remove_reason: &'static str,
 }
 
 /// How tough one animal is: its kind's health, give or take a quarter.
@@ -75,7 +84,12 @@ impl Mob {
             Some(v) => (v.model, v.tint, v.size),
             None => (d.model, d.tint, 1.0),
         };
-        (model, tint, d.height * size * self.growth() * self.swell())
+        // A script may have set its own size.
+        let height = match self.extra.as_ref().and_then(|e| e.size) {
+            Some((_, h)) => h,
+            None => d.height * size,
+        };
+        (model, tint, height * self.growth() * self.swell())
     }
 
     /// How much bigger a lit fuse has made it (1 = not at all).
@@ -165,6 +179,23 @@ pub struct Mobs {
     pub born: Vec<(u32, usize, [f64; 3])>,
     /// Creatures that died the same way (health ran out).
     pub died: Vec<(u32, usize, [f64; 3])>,
+    /// The bone names of models, for `Mobs::set_bone` (see `creature_api`).
+    pub bone_names: crate::creature_extra::BoneNames,
+    /// Snapshots sent so far (a full set of extras goes out every few).
+    pub snap_tick: u32,
+    /// Who dealt the blow that killed each of `died`, by id (a player's name, a
+    /// creature's id or a cause such as `lava`), for `on_creature_death`.
+    pub killers: Vec<(u32, String)>,
+    /// Creatures that left the world, and why (see `mob_hooks::reason`), for
+    /// `on_creature_removed`. Kept short.
+    pub removed: Vec<(u32, usize, &'static str)>,
+    /// Who last hurt a creature, by id (the session notes the player's blows).
+    blame: Vec<(u32, String)>,
+    /// Scripts listen for `on_creature_sunburn`: ask them before a night
+    /// creature burns in daylight (set by the session).
+    pub ask_sun: bool,
+    /// Night creatures waiting for the scripts' answer: id and kind.
+    pub sun_asks: Vec<(u32, usize)>,
     spawn_timer: f32,
     rng: u32,
     next_id: u32,
@@ -192,12 +223,31 @@ fn crop_start(b: Block) -> Block {
     start
 }
 
+/// Past this many bytes of snapshot, creatures' extras are left out (`|=`).
+const SNAPSHOT_BUDGET: usize = 40_000;
+
 /// The smallest size, in blocks, of what a swing or a shot can hit.
 const MIN_TARGET: f64 = 0.6;
 
 impl Mobs {
     pub fn new(seed: u32) -> Mobs {
-        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, last_biter: None, born: Vec::new(), died: Vec::new(), spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
+        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, last_biter: None, born: Vec::new(), died: Vec::new(), killers: Vec::new(), removed: Vec::new(), blame: Vec::new(), ask_sun: false, sun_asks: Vec::new(), bone_names: Default::default(), snap_tick: 0, spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
+    }
+
+    /// Note who dealt the latest blow to creature `id`, for the death hook.
+    pub fn blame_for(&mut self, id: u32, who: &str) {
+        self.blame.retain(|b| b.0 != id);
+        if self.blame.len() >= 128 {
+            self.blame.remove(0);
+        }
+        self.blame.push((id, String::from(who)));
+    }
+
+    /// A creature leaves the world for `reason`: tell the session.
+    fn note_removed(&mut self, id: u32, kind: usize, reason: &'static str) {
+        if self.removed.len() < crate::game::mob_hooks::MOST_PENDING {
+            self.removed.push((id, kind, reason));
+        }
     }
 
     fn rand(&mut self) -> u32 {
@@ -227,7 +277,7 @@ impl Mobs {
             None => crate::entity_variant::any(&d.x.variants, roll),
         };
         let size = (variant as usize).checked_sub(1).and_then(|i| d.x.variants.get(i)).map_or(1.0, |v| v.size);
-        let mut body = Player::with_size(pos, (d.width * size) as f64, (d.height * size) as f64);
+        let mut body = Player::with_creature_size(pos, (d.width * size) as f64, (d.height * size) as f64);
         body.speed_scale = d.speed / 4.4;
         body.yaw = (self.rand() % 628) as f32 / 100.0 - 3.14;
         let id = self.next_id;
@@ -267,6 +317,9 @@ impl Mobs {
             stuck: 0.0,
             last_pos: pos,
             id,
+            extra: None,
+            sun_veto: 0.0,
+            remove_reason: "",
         });
         self.list.len() - 1
     }
@@ -281,7 +334,7 @@ impl Mobs {
         m.young = seconds;
         m.health = (d.health / 2).max(1);
         let yaw = m.body.yaw;
-        m.body = Player::with_size(pos, (d.width * scale) as f64, (d.height * scale) as f64);
+        m.body = Player::with_creature_size(pos, (d.width * scale) as f64, (d.height * scale) as f64);
         m.body.yaw = yaw;
         m.body.speed_scale = d.speed / 4.4;
         Some(i)
@@ -357,6 +410,10 @@ impl Mobs {
             if roll < d.weight {
                 let lift = if d.behavior == Behavior::Fly { 2.0 } else { 0.01 };
                 let at = [x as f64 + 0.5, y as f64 + lift, z as f64 + 0.5];
+                // A giant needs room for its whole body.
+                if !Mobs::room_for(world, at, d.width as f64, d.height as f64) {
+                    return;
+                }
                 self.spawn_in(i, at, Some(&biome));
                 // Herds come in twos and threes, sometimes with young.
                 if d.x.traits & traits::HERD != 0 {
@@ -544,9 +601,29 @@ impl Mobs {
             let t = d.x.traits;
             let (dx, dy, dz) = ((target[0] - m.body.pos[0]) as f32, (target[1] - m.body.pos[1]) as f32, (target[2] - m.body.pos[2]) as f32);
             let dist = sqrtf(dx * dx + dz * dz);
+            // A body past the old size limits: found by walking straight, reaching with its whole body.
+            let big = crate::creature_size::is_big(m.body.half_width as f32 * 2.0, m.body.height as f32);
+            let pad = if big { m.body.half_width as f32 } else { 0.0 };
             // Gone: dead, far away, fallen out of the world, or a night
             // creature caught by the morning out of the player's sight.
-            let burned = d.night && day && !d.x.cave && (dist > 20.0 || roll % 600 == 0);
+            let mut burned = d.night && day && !d.x.cave && (dist > 20.0 || roll % 600 == 0);
+            if burned {
+                // Scripts may veto the burning (`on_creature_sunburn`).
+                use crate::game::mob_hooks::{sun_gate, Gate, MOST_PENDING};
+                match sun_gate(m.sun_veto, self.ask_sun) {
+                    Gate::Burn => {}
+                    Gate::Spare => burned = false,
+                    Gate::Ask => {
+                        burned = false;
+                        if self.sun_asks.len() < MOST_PENDING && !self.sun_asks.iter().any(|a| a.0 == m.id) {
+                            self.sun_asks.push((m.id, m.kind));
+                        }
+                    }
+                }
+            }
+            if m.sun_veto > 0.0 {
+                m.sun_veto = (m.sun_veto - dt).max(0.0);
+            }
             if m.tamed && m.health > 0 {
                 // A pet is never lost: left far behind, it catches up.
                 if (dist > 40.0 || m.body.pos[1] < -8.0) && !m.stay {
@@ -554,10 +631,27 @@ impl Mobs {
                     m.body.vel = [0.0; 3];
                     m.path.clear();
                 }
-            } else if m.health <= 0 || dist > 96.0 || m.body.pos[1] < -8.0 || burned || (d.behavior == Behavior::Hostile && !hostile_ok) {
-                if m.health <= 0 && self.died.len() < 64 {
-                    self.died.push((m.id, m.kind, m.body.pos));
+            } else if m.health <= 0 || dist > 96.0 + crate::creature_size::keep_extra(m.body.half_width as f32 * 2.0, m.body.height as f32) || m.body.pos[1] < -8.0 || burned || (d.behavior == Behavior::Hostile && !hostile_ok) {
+                use crate::game::mob_hooks::{natural_cause, reason};
+                let (id, kind, pos, lava) = (m.id, m.kind, m.body.pos, m.body.in_lava);
+                let gone = if m.health > 0 {
+                    reason::DESPAWNED
+                } else if m.remove_reason == reason::SCRIPTED {
+                    reason::SCRIPTED
+                } else {
+                    reason::KILLED
+                };
+                // A script's `mob_remove` is not a death: no loot, no death hook.
+                if gone == reason::KILLED && self.died.len() < 64 {
+                    self.died.push((id, kind, pos));
+                    let killer = match self.blame.iter().position(|b| b.0 == id) {
+                        Some(k) => self.blame.swap_remove(k).1,
+                        None => String::from(natural_cause(lava, false)),
+                    };
+                    self.killers.push((id, killer));
                 }
+                self.blame.retain(|b| b.0 != id);
+                self.note_removed(id, kind, gone);
                 self.list.swap_remove(i);
                 continue;
             }
@@ -572,7 +666,7 @@ impl Mobs {
                     m.health += delta;
                     m.hurt = 0.35;
                 } else if delta > 0 {
-                    m.health = (m.health + delta).min(d.health.max(m.health));
+                    m.health = (m.health + delta).min(m.max_health().max(m.health));
                 }
             }
             // Drowning (game/effects/air.rs): swimmers and fliers do not.
@@ -595,17 +689,20 @@ impl Mobs {
                     // Grown: full size and strength from now on.
                     m.young = 0.0;
                     let (pos, yaw) = (m.body.pos, m.body.yaw);
-                    m.body = Player::with_size(pos, d.width as f64, d.height as f64);
+                    let (w, h) = m.natural_size();
+                    m.body = Player::with_creature_size(pos, w, h);
                     m.body.yaw = yaw;
                     m.body.speed_scale = d.speed / 4.4;
-                    m.health = spawn_health(d.health, roll);
+                    m.health = spawn_health(m.max_health(), roll);
                 }
             }
             let (px, pz) = (floord(m.body.pos[0]), floord(m.body.pos[2]));
             if !world.is_loaded(px, pz) {
                 // Frozen until its chunk comes back; but one left far outside what is
                 // loaded is just removed (it would stand in the air for ever).
-                if dist > 48.0 && !m.tamed {
+                if dist > 48.0 + crate::creature_size::keep_extra(m.body.half_width as f32 * 2.0, m.body.height as f32) && !m.tamed {
+                    let (id, kind) = (m.id, m.kind);
+                    self.note_removed(id, kind, crate::game::mob_hooks::reason::UNLOADED);
                     self.list.swap_remove(i);
                 } else {
                     i += 1;
@@ -812,8 +909,14 @@ impl Mobs {
                     None
                 };
                 if let Some(goal) = goal {
-                    let start = if path::standable(&solid, feet) { Some(feet) } else { path::ground_near(&solid, feet[0], feet[1], feet[2], 2) };
-                    m.path = start.and_then(|s| path::find_path(&solid, s, goal, 320)).unwrap_or_default();
+                    if big {
+                        // No single-cell search for a giant: it walks straight at the goal and
+                        // steps over what is in the way (its step height grows with its width).
+                        m.path = alloc::vec![goal];
+                    } else {
+                        let start = if path::standable(&solid, feet) { Some(feet) } else { path::ground_near(&solid, feet[0], feet[1], feet[2], 2) };
+                        m.path = start.and_then(|s| path::find_path(&solid, s, goal, 320)).unwrap_or_default();
+                    }
                     m.step = 0;
                 }
             }
@@ -825,7 +928,8 @@ impl Mobs {
             while m.step < m.path.len() {
                 let wp = m.path[m.step];
                 let (wx, wz) = ((wp[0] as f64 + 0.5 - m.body.pos[0]) as f32, (wp[2] as f64 + 0.5 - m.body.pos[2]) as f32);
-                if wx * wx + wz * wz < 0.12 && m.body.pos[1] > wp[1] as f64 - 0.3 {
+                let arrive = if big { pad * pad * 0.25 + 0.12 } else { 0.12 };
+                if wx * wx + wz * wz < arrive && (big || m.body.pos[1] > wp[1] as f64 - 0.3) {
                     m.step += 1;
                     continue;
                 }
@@ -835,10 +939,12 @@ impl Mobs {
                 input.jump = (wp[1] as f64 > m.body.pos[1] + 0.3 || m.body.in_water) && (m.body.on_ground || m.body.in_water);
                 break;
             }
-            if attacks && dist < 6.0 && m.step >= m.path.len() {
+            // How close it bites from: its own reach (from its size, or the pack's `reach`).
+            let reach = crate::game::mob_hooks::reach_of(m.body.half_width as f32, d.x.reach);
+            if attacks && dist < 6.0 + reach && m.step >= m.path.len() {
                 // The path has run out: close in directly for the last steps.
                 m.body.yaw = atan2f(-dx, -dz);
-                if dist > 0.9 {
+                if dist > crate::game::mob_hooks::close_in_to(reach) + pad {
                     input.forward = 1.0;
                 }
             }
@@ -879,7 +985,7 @@ impl Mobs {
                 m.phase -= TAU;
             }
 
-            if attacks && dist < 1.3 && dy > -2.0 && dy < 1.6 && m.attack_cooldown <= 0.0 {
+            if attacks && dist < reach + pad && dy > -2.0 && dy < (if big { m.body.height as f32 } else { crate::game::mob_hooks::bite_height(m.body.height as f32) }) && m.attack_cooldown <= 0.0 {
                 m.attack_cooldown = 1.0;
                 damage += d.damage;
                 self.last_biter = Some(m.kind);
@@ -900,6 +1006,8 @@ impl Mobs {
                     crate::entity_explode::Event::Lit => self.actions.push(Action::Fuse(centre)),
                     crate::entity_explode::Event::Boom => {
                         self.actions.push(Action::Explode(centre, power, m.kind));
+                        let (id, kind) = (m.id, m.kind);
+                        self.note_removed(id, kind, crate::game::mob_hooks::reason::DESPAWNED);
                         self.list.swap_remove(i);
                         continue;
                     }
@@ -942,6 +1050,7 @@ impl Mobs {
         self.actions.retain(|a| !matches!(a, Action::Bite(..)));
         for (id, n, from) in bites {
             if let Some(k) = self.list.iter().position(|m| m.id == id) {
+                self.blame_for(id, "creature");
                 self.hurt_by(k, n, from, false);
             }
         }
@@ -949,14 +1058,29 @@ impl Mobs {
     }
 
     /// Every creature as text, for the other players of a shared game.
-    pub fn snapshot(&self) -> String {
+    /// A creature with something extra (size, bones, state: see
+    /// `creature_wire`) has it after its ten fields, in full when it changed
+    /// and every few snapshots, as `|=` (keep what you have) otherwise.
+    pub fn snapshot(&mut self) -> String {
         let r = reg();
+        self.snap_tick = self.snap_tick.wrapping_add(1);
+        let full = self.snap_tick % crate::creature_wire::FULL_EVERY == 0;
         let mut out = String::new();
-        for m in self.list.iter().take(64) {
+        for m in self.list.iter_mut().take(64) {
             out.push_str(&alloc::format!(
-                "{} {} {} {:.2} {:.2} {:.2} {:.2} {:.0} {} {}\n",
+                "{} {} {} {:.2} {:.2} {:.2} {:.2} {:.0} {} {}",
                 m.id, r.entities[m.kind].id, m.variant, m.body.pos[0], m.body.pos[1], m.body.pos[2], m.body.yaw, m.young, m.health, m.tamed as i32
             ));
+            if let Some(e) = m.extra.as_mut() {
+                // (A message may be 59000 bytes: past the budget creatures keep what they had.)
+                if out.len() < SNAPSHOT_BUDGET && (full || e.rev != e.sent_rev) {
+                    out.push_str(e.wire());
+                    e.sent_rev = e.rev;
+                } else {
+                    out.push_str("|=");
+                }
+            }
+            out.push('\n');
         }
         out
     }
@@ -968,6 +1092,10 @@ impl Mobs {
         let mut seen: Vec<u32> = Vec::new();
         // (A host sends at most 64; more is not believed, so a hostile one cannot fill the world.)
         for line in text.lines().take(64) {
+            let (line, tail) = match line.split_once('|') {
+                Some((head, tail)) => (head, Some(tail)),
+                None => (line, None),
+            };
             let w: Vec<&str> = line.split(' ').collect();
             let num = |k: usize| w.get(k).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
             let (id, kind) = match (w.first().and_then(|v| v.parse::<u32>().ok()), w.get(1).and_then(|id| r.entities.iter().position(|e| e.id == *id))) {
@@ -994,8 +1122,20 @@ impl Mobs {
             m.goal = Some(pos);
             m.body.yaw = yaw;
             m.young = num(7).unwrap_or(0.0) as f32;
-            m.health = num(8).unwrap_or(1.0) as i32;
+            m.health = (num(8).unwrap_or(1.0) as i32).min(crate::creature_size::MAX_HEALTH);
             m.tamed = num(9) == Some(1.0);
+            // The host's size, bones and state (nothing for creatures without).
+            let resized = match tail {
+                Some(t) => m.extra.get_or_insert_with(Default::default).apply_wire(crate::creature_wire::decode(t)),
+                None => m.extra.as_mut().map_or(false, |e| e.apply_none()),
+            };
+            if resized {
+                let (w, h) = m.natural_size();
+                m.body.resize(w, h);
+            }
+            if m.extra.as_ref().map_or(false, |e| e.is_plain()) {
+                m.extra = None;
+            }
             seen.push(id);
         }
         self.list.retain(|m| seen.contains(&m.id));
@@ -1229,6 +1369,81 @@ mod tests {
         let d = ((m.body.pos[0] - player[0]).powi(2) + (m.body.pos[2] - player[2]).powi(2)).sqrt();
         assert!(d < 2.0, "the hunter is still {d:.1} blocks away at {:?}", m.body.pos);
         assert!(dmg >= 3, "it never attacked");
+    }
+
+    #[test]
+    fn a_death_names_its_killer_and_a_scripted_removal_is_not_a_death() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
+        let w = arena();
+        let mut mobs = Mobs::new(5);
+        mobs.spawn_timer = 1e9;
+        let (a, b, c) = (mobs.spawn(kind("cow"), [8.5, 121.01, 8.5]), mobs.spawn(kind("cow"), [10.5, 121.01, 8.5]), mobs.spawn(kind("cow"), [6.5, 121.01, 8.5]));
+        let (ida, idb, idc) = (mobs.list[a].id, mobs.list[b].id, mobs.list[c].id);
+        mobs.list[a].health = 0;
+        mobs.blame_for(ida, "steve");
+        mobs.list[b].health = 0;
+        mobs.list[b].remove_reason = crate::game::mob_hooks::reason::SCRIPTED;
+        mobs.list[c].health = 0;
+        run(&mut mobs, &w, [8.5, 121.0, 12.5], 0.25, 0.1);
+        let died: Vec<u32> = mobs.died.iter().map(|d| d.0).collect();
+        assert!(died.contains(&ida) && died.contains(&idc) && !died.contains(&idb), "{:?}", died);
+        assert!(mobs.killers.contains(&(ida, String::from("steve"))), "{:?}", mobs.killers);
+        assert!(mobs.killers.contains(&(idc, String::from("other"))), "{:?}", mobs.killers);
+        assert!(mobs.removed.contains(&(ida, kind("cow"), "killed")));
+        assert!(mobs.removed.contains(&(idb, kind("cow"), "scripted")));
+    }
+
+    #[test]
+    fn scripts_may_veto_a_night_creature_burning_in_daylight() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
+        let w = arena();
+        let far = [8.5, 121.0, 60.0];
+        let mut mobs = Mobs::new(4);
+        mobs.spawn_timer = 1e9;
+        // Nobody listening: it burns as before.
+        mobs.spawn(kind("lurker"), [0.5, 121.01, 0.5]);
+        run(&mut mobs, &w, far, 0.25, 0.2);
+        assert!(mobs.list.is_empty());
+        assert!(mobs.removed.iter().any(|r| r.2 == "despawned"));
+        // Listening: it waits to be asked, and stays.
+        mobs.removed.clear();
+        mobs.ask_sun = true;
+        mobs.spawn(kind("lurker"), [0.5, 121.01, 0.5]);
+        let id = mobs.list[0].id;
+        run(&mut mobs, &w, far, 0.25, 0.2);
+        assert_eq!(mobs.list.len(), 1);
+        assert_eq!(mobs.sun_asks, alloc::vec![(id, kind("lurker"))]);
+        // "No": spared for a while, and not asked again meanwhile.
+        mobs.sun_asks.clear();
+        mobs.list[0].sun_veto = crate::game::mob_hooks::sun_answer(false);
+        run(&mut mobs, &w, far, 0.25, 1.0);
+        assert_eq!(mobs.list.len(), 1);
+        assert!(mobs.sun_asks.is_empty());
+        // "Yes": it burns at the next step.
+        mobs.list[0].sun_veto = crate::game::mob_hooks::sun_answer(true);
+        run(&mut mobs, &w, far, 0.25, 0.2);
+        assert!(mobs.list.is_empty());
+        assert!(mobs.removed.iter().any(|r| r.0 == id && r.2 == "despawned"));
+    }
+
+    #[test]
+    fn a_big_hostile_creature_bites_from_its_own_reach() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
+        let w = arena();
+        let mut mobs = Mobs::new(9);
+        mobs.spawn_timer = 1e9;
+        let i = mobs.spawn(kind("lurker"), [4.5, 121.01, 4.5]);
+        // A body 3 blocks wide cannot get closer than 1.5 + the player's 0.3 to a player inside it.
+        mobs.list[i].body.half_width = 1.5;
+        let player = [4.5, 121.0, 9.5];
+        let dmg = run(&mut mobs, &w, player, 0.75, 10.0);
+        assert!(dmg >= 3, "it never bit from its reach of {:.1}", crate::game::mob_hooks::reach_of(1.5, 0.0));
     }
 
     #[test]

@@ -740,6 +740,18 @@ fn a_hook_can_answer_and_cancel() {
 }
 
 #[test]
+fn on_message_gets_the_channel_the_sender_and_the_text() {
+    let mut h = hook_host("fn on_message(channel: String, from: String, text: String) -> bool { channel == \"rage\" && from == \"Ann\" && text == \"2\" }");
+    let mut m = MockHost::default();
+    let args = |c: &str, f: &str, t: &str| alloc::vec![text(c), text(f), text(t)];
+    assert_eq!(call(&mut h, &mut m, "on_message", &args("rage", "Ann", "2")), [Value::Bool(true)]);
+    assert_eq!(call(&mut h, &mut m, "on_message", &args("rage", "Bob", "2")), [Value::Bool(false)]);
+    // The hook is listed with its three parameters.
+    let hook = HOOKS.iter().find(|h| h.name == "on_message").expect("listed");
+    assert_eq!(hook.params, &["channel", "from", "text"]);
+}
+
+#[test]
 fn a_hook_may_leave_off_parameters_it_does_not_need() {
     let mut h = hook_host("fn on_block_break(x: i64) -> bool { x != 1 }");
     let mut m = MockHost::default();

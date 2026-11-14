@@ -114,6 +114,8 @@ tex("cooked_fish", "paint fishfood 206 160 110")
 TOOL_MATERIALS = [("wood", "Wooden", (166, 118, 70), 2, "planks"), ("stone", "Stone", (128, 136, 152), 3, "cobble"),
                   ("copper", "Copper", (216, 116, 70), 4, "copper_ore"), ("iron", "Iron", (204, 212, 230), 6, "iron_ore"),
                   ("crystal", "Crystal", (124, 224, 246), 8, "crystal"), ("ruby", "Ruby", (232, 54, 104), 11, "ruby")]
+# Uses before a tool, sword or hoe of each material breaks (`durability`, see docs/DATA.md).
+DURABILITY = {"wood": 60, "stone": 132, "copper": 190, "iron": 250, "crystal": 700, "ruby": 1100}
 for mid, _, (r, g, b), _, _ in TOOL_MATERIALS:
     for kind in ("pick", "axe", "shovel"):
         tex(f"{mid}_{kind}", f"paint {kind} {r} {g} {b}")
@@ -351,7 +353,7 @@ for iid, name in [("stick", "Stick"), ("coal", "Coal"), ("ruby", "Ruby"), ("crys
 for mid, mname, _, speed, _ in TOOL_MATERIALS:
     for kind, kname in (("pick", "Pickaxe"), ("axe", "Axe"), ("shovel", "Shovel")):
         # A tool hits harder the better its ore: wood 3 up to ruby 12 (swords: 4 + speed).
-        w(f"item {mid}_{kind}\n  name {mname} {kname}\n  icon {mid}_{kind}\n  category Tools\n  tool {kind} {speed}\n  stack 1\n  damage {1 + speed}")
+        w(f"item {mid}_{kind}\n  name {mname} {kname}\n  icon {mid}_{kind}\n  category Tools\n  tool {kind} {speed}\n  stack 1\n  damage {1 + speed}\n  durability {DURABILITY[mid]}")
 for iid, name, food in [("apple", "Apple", 3), ("berries", "Berries", 2), ("raw_meat", "Raw Meat", 2),
                         ("cooked_meat", "Cooked Meat", 8), ("raw_fish", "Raw Fish", 2), ("cooked_fish", "Cooked Fish", 6)]:
     w(f"item {iid}\n  name {name}\n  icon {iid}\n  category Food\n  food {food}")
@@ -698,9 +700,9 @@ for bid, style, rgbs in [("bow", "bow", "150 110 70"), ("crossbow", "crossbow", 
         tex(f"{bid}_pulling_{k}", f"paint {style}_pull{k} {rgbs}")
 tex("arrow", "paint arrow 200 200 210")
 w("item arrow\n  name Arrow\n  icon arrow\n  category Tools")
-w("item bow\n  name Bow\n  icon bow\n  category Tools\n  stack 1\n  shoots 6 34 0.7 arrow")
-w("item longbow\n  name Longbow\n  icon longbow\n  category Tools\n  stack 1\n  shoots 9 46 1.1 arrow")
-w("item crossbow\n  name Crossbow\n  icon crossbow\n  category Tools\n  stack 1\n  shoots 13 54 1.8 arrow")
+w("item bow\n  name Bow\n  icon bow\n  category Tools\n  stack 1\n  shoots 6 34 0.7 arrow\n  durability 384")
+w("item longbow\n  name Longbow\n  icon longbow\n  category Tools\n  stack 1\n  shoots 9 46 1.1 arrow\n  durability 500")
+w("item crossbow\n  name Crossbow\n  icon crossbow\n  category Tools\n  stack 1\n  shoots 13 54 1.8 arrow\n  durability 465")
 for line in ["arrow 4 stick 1 gravel 1", "bow 1 stick 3 string 3", "longbow 1 bow 1 stick 2 string 2",
              "crossbow 1 bow 1 iron_ingot 2 planks 2"]:
     w("craft " + line)
@@ -732,8 +734,8 @@ for cid, cname, (r, g, b), style, food, secs in CROPS:
 for mid, mname, (r, g, b), speed, ingredient in TOOL_MATERIALS:
     tex(f"{mid}_hoe", f"paint hoe {r} {g} {b}")
     tex(f"{mid}_sword", f"paint sword {r} {g} {b}")
-    w(f"item {mid}_hoe\n  name {mname} Hoe\n  icon {mid}_hoe\n  category Farming\n  tool hoe {speed}\n  stack 1\n  turns dirt farmland\n  turns grass farmland")
-    w(f"item {mid}_sword\n  name {mname} Sword\n  icon {mid}_sword\n  category Tools\n  stack 1\n  damage {4 + speed}")
+    w(f"item {mid}_hoe\n  name {mname} Hoe\n  icon {mid}_hoe\n  category Farming\n  tool hoe {speed}\n  stack 1\n  turns dirt farmland\n  turns grass farmland\n  durability {DURABILITY[mid]}")
+    w(f"item {mid}_sword\n  name {mname} Sword\n  icon {mid}_sword\n  category Tools\n  stack 1\n  damage {4 + speed}\n  durability {DURABILITY[mid]}")
     w(f"craft {mid}_hoe 1 {ingredient} 2 stick 2")
     w(f"craft {mid}_sword 1 {ingredient} 2 stick 1")
 
@@ -811,7 +813,7 @@ tex("gunpowder", "paint powder 96 96 106")
 tex("flint_and_steel", "paint flint_steel 176 180 190")
 block("tnt", "TNT", "tnt_top tnt_side tnt_bottom", cat="Tools", hardness=0, tag="tnt 2.5")
 w("item gunpowder\n  name Gunpowder\n  icon gunpowder\n  category Materials")
-w("item flint_and_steel\n  name Flint and Steel\n  icon flint_and_steel\n  category Tools\n  stack 1\n  damage 2")
+w("item flint_and_steel\n  name Flint and Steel\n  icon flint_and_steel\n  category Tools\n  stack 1\n  damage 2\n  durability 64")
 w("craft gunpowder 2 coal 2 sand 1")
 w("craft tnt 1 gunpowder 5 sand 4")
 w("craft flint_and_steel 1 iron_ingot 1 gravel 1")

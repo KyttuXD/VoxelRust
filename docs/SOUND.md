@@ -7,7 +7,8 @@ lines in the data files (what each sound is made of) are in
 
 There are no sound files in the game. Every effect is made while it plays
 from noise and a gliding tone (a pack may add recordings), and mixed in
-SDL's audio callback: one channel, 22050 Hz, 16 voices.
+SDL's audio callback: 22050 Hz, 32 voices, stereo (a device that only opens as
+mono gets the two sides averaged).
 
 | Part | Where |
 | --- | --- |
@@ -18,6 +19,10 @@ SDL's audio callback: one channel, 22050 Hz, 16 voices.
 | The plan: levels, muffling, intervals, thunder | `src/util/audio/ambience.rs` |
 | No-repeat chooser, pitch and volume jitter, rate limits | `src/util/audio/variation.rs` |
 | Soft limiter | `src/util/audio/limiter.rs` |
+| Sound and music for mods: requests, handles | `src/client/audio/modplay.rs`, `src/game/mod_sound.rs`, `src/util/audio/handles.rs` |
+| Music lanes, ducking | `src/client/audio/music.rs` |
+| Streaming decoders: Ogg, MP3, WAV | `src/util/audio/music_source.rs`, `ogg_stream.rs`, `mp3/stream.rs`, `wav_stream.rs`, `music_feed.rs` |
+| Pitch resampler, loop seam, fades, distance and pan | `src/util/audio/resample.rs`, `loopseam.rs`, `fade.rs`, `spatial.rs` |
 | What is around the player (roof, water, lava, fire) | `src/game/ambience_probe.rs` |
 
 ## Continuous sounds are beds, not loops
@@ -131,10 +136,71 @@ its bus in its data line). AMBIENCE VOLUME (`ambience_volume`, 0 to 10, 6 to
 start with) scales the beds and their single sounds, and is multiplied by
 the master volume. Thunder follows EFFECTS.
 
+## Sound for mods
+
+Scripts (docs/SCRIPTING.md, "Sound and music") and native mod code
+(`crate::native::sound`) can place, pitch, pan, loop, stop, fade and move
+sounds and play music. The calls queue work in `Session::mod_sound`; once a
+frame `Session::update` carries it out (`game/mod_sound.rs::flush`) with the
+listener's place and facing.
+
+- **Stereo.** The device is opened with two channels (mono if it will not).
+  Every voice has a left and a right gain, 1 and 1 in the middle; the
+  game's own sounds, the beds and the ambience are centred. A pan from -1
+  to 1 is a balance control (the far side is lowered, the near side kept:
+  `spatial::balance`). A sound with a place is panned by which side of the
+  listener it is on (`spatial::pan_of`; narrowed to the middle inside two
+  blocks), so it moves as the player turns. On a mono device the two sides
+  are averaged.
+- **Distance.** Full volume within 4 blocks, then the inverse of the distance
+  (half at 8, a twelfth at 48), tapering to nothing over the last quarter before
+  64 blocks. Recordings also go duller with distance (a one-pole filter from
+  1 to 0.3). There is no Doppler effect.
+- **Pitch.** A playback rate from 0.25 to 4, read with linear interpolation
+  (`resample.rs`). Rate 1 is the recording as it is; rate 2 is half as long.
+  A rate change while playing glides over the next stretch of samples. A made
+  sound takes its pitch when it starts. These sounds are not varied the way the
+  game's own are (no jitter, no rate limit): the mod decides.
+- **Handles.** Every play can return a handle: the slot (low byte, plus one)
+  and a generation counter, so a stale handle is harmless
+  (`util/audio/handles.rs`). A mod holds 8, 4 loops at most, starts 8 sounds a
+  frame, and only touches its own. Once a frame the game thread works out each
+  tracked voice's gain, pan and speed from the volume the mod asked for, a
+  fade in progress and the listener, and hands them to the voice as targets
+  the callback glides to (so there are no steps at 60 frames a second).
+  Stopping sends the gain to zero and cuts the voice 40 ms later. The mixer
+  callback allocates nothing: there are 32 voices in a fixed table.
+- **Loops.** A looping voice plays until cut. The last 40 ms of the clip (a
+  quarter of a short clip at most) are crossfaded into its start with equal-power
+  weights, and the position wraps to the end of that fade (`loopseam.rs`), so the
+  join is two neighbouring samples of the recording. The clip stays in memory while it
+  loops (the memory budget does not free a clip that is playing).
+- **Music.** One channel per world, two lanes in the mixer (a track and the one it
+  crossfades with). A lane is a ring of 32768 stereo frames (1.5 s) made while the
+  track plays and freed when it stops. Only the compressed file is kept: an Ogg packet,
+  an MP3 frame or 1024 frames of PCM are decoded at a time, resampled by linear
+  interpolation to 22050 Hz stereo in 32.32 fixed point (so the samples do not
+  depend on how many are asked for at once) and pushed into the ring a few thousand frames a
+  frame (`music_feed.rs`, at most 6 decode blocks a frame). A five minute track at 128 kbit/s costs
+  its 4.8 MB file plus the ring and a block, never its decoded 53 MB. The files are
+  at most 16 MB. The track's loudness is its volume, the mod's `set_music_volume`, MUSIC
+  VOLUME with the master volume, and the fade (smooth for stopping, equal-power for a
+  crossfade), times 0.8. Looping rewinds the decoder when it runs out. Music is not
+  subtitled.
+- **Ducking.** While music is audible, the ambience (the beds and their single
+  sounds, not thunder or effects) is turned down to 0.708 (-3 dB) over about
+  half a second, and back when the music is gone.
+- **Leaving a world** (`Audio::silence`) stops every sound and track and frees the
+  rings. A mod switched off, or whose script failed, loses its handles and its music
+  within half a second.
+- Not done: an MP3's end padding is not cut off when streaming (the LAME start delay is),
+  FLAC, AIFF and ADPCM only play as music when short (12 seconds), and a loop of
+  music has no crossfade (use a track made to loop).
+
 ## Memory
 
 No sample bank is made. A bed is grains of noise generated sample by sample;
-single sounds are the made sounds already in the game. The mixer has 16 voices,
+single sounds are the made sounds already in the game. The mixer has 32 voices,
 6 beds (about 200 bytes each) and allocates nothing in the audio callback.
 
 ## Tests
@@ -145,7 +211,7 @@ no repeat, the rate limiter, the random walks staying in range, the
 limiter never reaching full scale, rain drop density rising with intensity,
 fades taking a couple of seconds, muffling under a roof and under water,
 thunder being later, quieter and duller with distance, and the setting
-being saved. The sound itself has not been listened to by the person who
+being saved. For mods: the resampler (rate 1 is the identity, 2 halves the length, in bounds), handle generations and limits, the loop seam's step staying as small as the tone's own, fades (equal-power pairs), distance and pan, the stereo mix (a pan goes to one side, mono averages), streaming decoders giving the same samples as the whole-file ones, and the music feed giving the same samples for any block size. The sound itself has not been listened to by the person who
 wrote this: numbers such as the scale of each bed (`bed.rs`) and the single
 sounds' loudness (`ambience.rs`) are by calculation and are the first
 things to tune by ear.

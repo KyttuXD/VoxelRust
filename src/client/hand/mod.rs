@@ -20,6 +20,7 @@
 
 mod body;
 mod bow;
+mod falling;
 mod item;
 mod model;
 mod pose;
@@ -28,6 +29,7 @@ mod swing;
 mod tool;
 
 pub use body::{dropped, on_body};
+pub use falling::falling_blocks;
 pub use primed::primed_blocks;
 pub use model::Quad;
 pub use pose::{bow_pose, hand_view, pose_of, Pose};

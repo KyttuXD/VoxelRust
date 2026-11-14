@@ -26,10 +26,10 @@ mod tests {
     #[test]
     fn an_item_named_twice_is_paid_for_twice() {
         let mut inv = Inventory::new();
-        inv.slots[0] = Some(Stack { item: 3, count: 1 });
+        inv.slots[0] = Some(Stack::new(3, 1));
         assert!(affordable(&inv, &[(3, 1)]));
         assert!(!affordable(&inv, &[(3, 1), (3, 1)]));
-        inv.slots[1] = Some(Stack { item: 3, count: 1 });
+        inv.slots[1] = Some(Stack::new(3, 1));
         assert!(affordable(&inv, &[(3, 1), (3, 1)]));
         assert!(!affordable(&inv, &[(4, 1)]));
         assert!(affordable(&inv, &[]));

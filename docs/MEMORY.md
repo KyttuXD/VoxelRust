@@ -29,6 +29,11 @@ Nothing is held that can be read again.
   at start-up. Short ones (up to one second: footsteps, clicks) stay decoded;
   long ones are freed again when memory is short (and decoded again when they
   next play). A sound playing right now is never freed.
+- **Music.** A track a mod plays (`play_music`) is never decoded whole: its
+  compressed file (up to 16 MB, a few MB for a five minute Ogg or MP3) is held
+  while it plays and a block at a time is decoded into a ring of 128 KB per
+  lane; both are freed when the music stops or the world closes. Counted in
+  `Audio::clip_bytes`.
 - **Model files.** The text of a `.bbmodel` is read when the model is first
   drawn and let go once it is parsed; the picture inside it is let go once it
   is on the graphics card. A model not drawn is never read at all.

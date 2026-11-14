@@ -95,3 +95,20 @@ fn a_pack_may_bring_a_creature_picture_and_the_game_finds_it() {
     assert!(r.warnings.iter().any(|w| w.contains("lost.png")), "{:?}", r.warnings);
     assert!(crate::png::decode(&r.pictures[0].1).is_some());
 }
+
+#[test]
+fn creatures_may_be_up_to_64_tall_32_wide_and_a_million_health_and_no_more() {
+    // (A pack may define an entity; its model is only looked up when it is drawn.)
+    let pack = "entity giant\n  name Giant\n  model player\n  height 64\n  width 32\n  health 1000000\nentity small\n  name Small\n  model player\n  height 1.8\n  width 0.6\n  health 20\nentity toobig\n  name Too Big\n  model player\n  height 65\n  width 33\n  health 1000001\n";
+    let r = Registry::from_sources(&[("base.txt", BASE_DATA), ("mods/x/pack.txt", pack)], &mut |_| None);
+    let giant = r.entities.iter().find(|e| e.id == "giant").expect("the giant is defined");
+    assert_eq!((giant.height, giant.width, giant.health), (64.0, 32.0, 1_000_000));
+    let small = r.entities.iter().find(|e| e.id == "small").expect("an ordinary creature is unchanged");
+    assert_eq!((small.height, small.width, small.health), (1.8, 0.6, 20));
+    // Past the limits each line is refused with a warning and the default stays.
+    let toobig = r.entities.iter().find(|e| e.id == "toobig").expect("defined, with defaults");
+    assert_eq!((toobig.height, toobig.width, toobig.health), (1.8, 0.6, 10));
+    for what in ["height must be 0.1..64", "width must be 0.1..32", "health must be 1..1000000"] {
+        assert!(r.warnings.iter().any(|w| w.contains(what)), "no warning `{what}`: {:?}", r.warnings);
+    }
+}

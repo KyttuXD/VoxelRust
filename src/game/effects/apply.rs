@@ -10,7 +10,7 @@ use super::{clock, roman, EffectDef, Effects, Given, HeartStyle, Nature, SourceK
 use crate::audio::Audio;
 use crate::block::{self, reg, AIR};
 use crate::math::{floord, forward};
-use crate::session::{GameMode, Session, MAX_HEALTH, MAX_HUNGER};
+use crate::session::{GameMode, Session, MAX_HUNGER};
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -184,6 +184,8 @@ fn hurt(g: &mut Session, amount: i32, lethal: bool, audio: &mut Audio) {
     if amount > 0 && !g.dead {
         // Not a bite: whoever bit last is not to blame.
         g.mobs.last_biter = None;
+        // Armour does not help against poison, fire and the like.
+        g.ev.cause = alloc::string::String::from("effect");
         g.damage(amount, audio);
     }
 }
@@ -274,7 +276,7 @@ pub fn step(g: &mut Session, dt: f32, audio: &mut Audio) {
             hurt(g, t.soft, false, audio);
         }
         if t.heal > 0 && !g.dead {
-            g.health = (g.health + t.heal).min(MAX_HEALTH);
+            g.health = (g.health + t.heal).min(g.max_health());
         }
         if t.hunger != 0 {
             g.hunger = (g.hunger - t.hunger).clamp(0, MAX_HUNGER);

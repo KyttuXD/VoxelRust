@@ -542,6 +542,11 @@ item <id>
   turns <from block> <to block>   right click turns one block into the other
   shoots <damage> [speed] [seconds between shots] [ammunition item]
   category <tab name>   default: Tools
+  armor <head|chest|legs|feet> <defense 0..20> [toughness 0..20]   worn in an armour slot
+  armor_tex <picture>   the picture worn on the player's body (laid out like a skin, 64 x 64)
+  armor_tint <r> <g> <b>   the colour of the plain layer worn when there is no armor_tex
+  durability <1..60000>   uses before it breaks (see below)
+  tag <name> [number]   a mark mod code reads (`has_tag`), the number being 1 if left out
 ```
 
 Left click breaks, right click places.
@@ -558,6 +563,33 @@ Left click breaks, right click places.
 - A `tool` speeds up only blocks whose own `tool` property names the same
   kind. Tools usually also want `stack 1`.
 - `damage`: 0..1000. Anything below 3 hits like a bare hand.
+- `armor <slot> <defense> [toughness]`: the item can be worn. In the inventory
+  screen four slots stand beside the player's picture (head, chest, legs,
+  feet); shift-click or right click armour in the pack puts it on (what was
+  worn goes back to the pack, or to the ground if it is full), and clicking a
+  worn piece with an empty hand takes it off. Each point of defense takes 4
+  percent off a creature's blow, an arrow or a blast, at most 80 percent in
+  all (falling, drowning, hunger, touching blocks and status effects are not
+  helped by armour); `toughness` adds up to 2 percent a point more against
+  big blows. Every such blow wears each worn piece by one use. The player's
+  body wears a layer slightly bigger than the body part: with `armor_tex`
+  (a picture in the pack's textures, drawn like a skin over the same parts: the
+  head, the body and arms, the legs, the feet) or else a plain colour
+  (`armor_tint`, else a guess from the item's id: `leather_`, `iron_`,
+  `gold_`...). Worn armour shows in the inventory picture and in third
+  person; on a server only the wearer sees it.
+- `durability <uses>`: the item wears out. One use is spent for each block a
+  tool breaks (and for each hit of a weapon, each shot of a bow, each blow a
+  piece of armour takes); at the last use the item breaks with a sound. A
+  thin bar under the item's picture, green to red, shows what is left once it
+  has been used. An item that wears is a stack of one (`stack` is ignored).
+  Nothing wears in creative mode. Two damaged stacks of the same item laid in
+  the crafting grid, with nothing else, make one with the uses left of both
+  plus 5 percent of a new one's. The base game's tools, swords, hoes and bows
+  have it (wood 60, stone 132, copper 190, iron 250, crystal 700, ruby 1100;
+  bow 384, longbow 500, crossbow 465, flint and steel 64). Wear is kept with
+  the stack: in the pack, chests and the world's save.
+- `tag <name> [number]`: up to 16 on an item. Mod code asks `has_tag(item, name)`.
 - `turns`: may be given several times. The base hoes have
   `turns dirt farmland` and `turns grass farmland`.
 - `shoots`: holding right click draws the item back and letting go looses a
@@ -802,10 +834,10 @@ entity <id>
   model <model id>
   tint <r> <g> <b>          colour the model is multiplied by
   tex <picture>             the picture it is painted with (default: the model's own)
-  height <0.1..6>           blocks; the model is scaled to this height (default 1.8)
-  width <0.1..3>            blocks, for collision (default 0.6)
+  height <0.1..64>          blocks; the model is scaled to this height (default 1.8)
+  width <0.1..32>           blocks, for collision (default 0.6)
   speed <0..12>             blocks per second (default 2.5)
-  health <1..1000>          default 10
+  health <1..1000000>       default 10
   damage <0..100>           per hit, when it attacks (default 2)
   behavior wander | npc | hostile | swim | fly | villager
   biomes <names...>         where it appears; none = anywhere on the surface
@@ -827,6 +859,7 @@ entity <id>
   job <word>                what a villager does
   glow <0..15>              not dimmed by the dark
   explodes <power> <seconds> <range>   it blows up when a player stays within range for that long
+  reach <blocks>            how far from a player a melee creature bites (0.5 to 16); left out, it is its half width plus one block
 ```
 
 Behaviours:
@@ -834,7 +867,9 @@ Behaviours:
 - `wander`: strolls about. The default.
 - `npc`: strolls, and walks along with a nearby player.
 - `hostile`: hunts survival players and hits them. Appears only when the
-  player is in survival mode.
+  player is in survival mode. It closes in to its `reach` (about 1.3 blocks
+  for an ordinary creature; a creature 3 blocks wide reaches 2.5) and bites
+  from there, so a big creature does not stop short of the player.
 - `swim`: lives in open water and stays there. Only `swim` creatures appear
   in water and they never appear on land.
 - `fly`: flutters about above the ground, steering round obstacles.
@@ -899,6 +934,15 @@ tint. How the pictures are made, and how a pack replaces them, is in
 time at least 5 seconds. Young have half the health, grow steadily, and are
 shown as `Young <name>`. Young ones sometimes arrive with adults; they do
 not `give`, hunt or defend territory until grown.
+
+Giants: a creature may be up to 64 blocks tall, 32 wide and have up to
+1,000,000 health. One past the old limits (taller than 6 or wider than 3
+blocks) is walked straight at its goal (no single-cell path search), steps up
+ledges a quarter of its width high, reaches an enemy with its whole body, is
+kept (and drawn) from further off the bigger it is, and appears only where its
+whole body fits; its collisions are tested through the slab it moves into, so
+keep them few. A script may also resize a living creature
+(`set_creature_size`, `set_creature_health`, see [SCRIPTING.md](SCRIPTING.md#giants-model-control-and-state)).
 
 `explodes <power> <seconds> <range>`: for a `hostile` creature. When a
 player in survival mode stays within `range` blocks (0.5..16, also within 3
@@ -980,6 +1024,13 @@ Nothing needs declaring. A pack that declares an item with that id itself
 keeps its own item, and no egg is made for that creature. Eggs can be used
 in recipes, trades and `/give` like any other item.
 
+The eggs are made once every pack has been read and before anything that names
+items is resolved, so a recipe, a trade, a `loot` line or a block's `drops` in
+any pack can name the egg of a creature of any other pack, whichever pack is
+read first. A name like `dragon_egg` for a creature that no pack declares
+shows up in the pack check as `unknown item` with a note that there is no
+creature `dragon`.
+
 ## Vehicles
 
 The game has no vehicles of its own. The Vehicles mod (`mods/vehicles`) is
@@ -1056,7 +1107,7 @@ sound <id> <effects|steps|ui> <seconds> <noise> <hz from> <hz to> <low-pass> <lo
 All eight parts before the caption are needed. Pitch varies by a tenth
 either way each time, so repeats do not sound identical (the game varies
 every play of every sound, and limits how fast one may repeat: see
-[SOUND.md](SOUND.md)). Sixteen sounds can play at once. The low-pass is held
+[SOUND.md](SOUND.md)). Thirty-two sounds can play at once. The low-pass is held
 to 0.6 whatever is written, because brighter noise is a hiss.
 
 ```
@@ -1119,7 +1170,7 @@ A name that no `sound` line defines plays nothing.
 ## Dimensions
 
 ```
-dimension <name> <normal|flat|void|islands>
+dimension <name> <normal|flat|void|islands> [<sky property> <value> ...]
 ```
 
 A dimension is another world inside each world, with its own land, its own
@@ -1141,6 +1192,32 @@ dimension mirror normal
 
 Players move with `/dim <name>` and `/dim home`; a pack usually wraps that
 in a script (`when use my_portal do /dim sky`). Not available on a server.
+
+### The sky of a dimension
+
+After the shape, a `dimension` line may carry properties for how its sky
+looks, as pairs of a key and a value on the same line (nothing said: the
+ordinary sky of the day and night):
+
+```
+dimension ember normal sky_colour 90,20,10 fog_colour #6a2a14 fog_distance 0.5 stars no clouds no sun no moon no ambient_light 8 time 0.5
+```
+
+| Key | Value | Meaning |
+| --- | --- | --- |
+| `sky_colour` (`sky_color`) | `r,g,b` (0 to 255) or `#rrggbb`; `none` | the colour overhead, fixed (`none`: the day and night colours) |
+| `fog_colour` (`fog_color`) | the same | the colour of the horizon and of the fog the land fades into |
+| `fog_distance` | 0.1 to 4 | how far away the fog is, times the usual (0.5 closes in, 2 opens out, though never past the land that is loaded) |
+| `stars`, `clouds`, `sun`, `moon` | `yes` or `no` | whether they are drawn (clouds also need the player's clouds setting on) |
+| `ambient_light` | 0 to 15 | the least sky light: the sky never lights the land less than this (8 is half bright at night; 15 is always day) |
+| `time` | 0 to 1; `none` | the time of day the sky always shows: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight |
+
+Only what is seen changes: the game's own clock (sleeping, mob spawning, the
+day count) goes on, and the home world's sky is the ordinary one (a script may
+change it with `set_dimension_sky("home", ...)`). A word that is not a key, or
+a value that makes no sense, is a warning and the rest of the line still counts.
+Scripts change the same properties while playing with `set_dimension_sky`
+([SCRIPTING.md](SCRIPTING.md#effects-items-explosions-blocks-particles-quads-skies)).
 
 ## Features
 

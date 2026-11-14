@@ -106,7 +106,8 @@ impl Walk<'_> {
                     self.problems.push(format!("{}:{}: `{}` is not a function of this file, nor a host function or part of the library", self.prog.file, line, name));
                 } else if !self.prog.fns.contains_key(name) && !self.bound.contains(name) {
                     if let Some(n) = host_arity(name) {
-                        if n != args.len() {
+                        // (`play_sound` also has a four-argument form.)
+                        if n != args.len() && !crate::script::ext::fx::extra_arity(name, args.len()) && !(name == "play_sound" && args.len() == 4) {
                             self.problems.push(format!("{}:{}: `{}` takes {} argument(s) but {} were given", self.prog.file, line, name, n, args.len()));
                         }
                     }

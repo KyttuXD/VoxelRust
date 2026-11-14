@@ -25,6 +25,13 @@ use crate::ui::Ui;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+/// Sound and music for a mod's code: handles, positional and looping sounds,
+/// one channel of streamed music. Call these from a hook with the session
+/// (`sound::play(g, "<mod>", "<sound>", volume, pitch, pan, None, false)` returns
+/// a handle for `sound::stop`, `fade`, `set` and `is_playing`; `sound::play_music`
+/// and its fellows). The limits are the scripts' (see docs/SOUND.md).
+pub use crate::game::mod_sound as sound;
+
 /// The version of the hook interface in this file. It goes up whenever a hook
 /// is removed or its signature changes, never for a new hook; a [`Native`]
 /// says in `api` which version it was written for. See "Stability" in
@@ -177,6 +184,10 @@ pub struct Native {
     /// A message another player's copy of this code sent with
     /// `Session::send_ext`.
     pub message: Option<fn(g: &mut Session, key: &str, text: &str)>,
+    /// A message another player's copy of this code sent with
+    /// `Session::send_mod_message`: its channel, the sender's player name and
+    /// the text (up to 512 bytes). See net/modmsg.rs.
+    pub on_message: Option<fn(g: &mut Session, channel: &str, from: &str, text: &str)>,
     /// About three times a second in a shared game: send what others need.
     pub share: Option<fn(g: &mut Session)>,
     /// The chest screen is opening for `Session::opened_ext`: the storage it
@@ -194,11 +205,41 @@ pub struct Native {
     pub on_entity_spawn: Option<fn(g: &mut Session, kind: usize) -> bool>,
     /// A creature died, from any cause.
     pub on_entity_death: Option<fn(g: &mut Session, kind: usize, at: [f64; 3])>,
+    /// A chunk was just generated (not loaded from a save), on the main
+    /// thread, a few chunks a frame: place structures with
+    /// `g.world.set_block` in it and in its neighbours that are already
+    /// loaded (at most 4096 writes are kept per call, see
+    /// `script::ext::structures::MAX_WRITES`; `crate::script::ext::structures::chunk_hash`
+    /// gives the same number for the same chunk every time). Only called
+    /// for whoever runs the world.
+    pub chunk_generated: Option<fn(g: &mut Session, cx: i32, cz: i32, seed: u32)>,
+    /// A block was placed, by whatever cause: `player`, `script`, `remote`,
+    /// `fall`, `fluid` or `other`. Called a frame later, not for air, and not
+    /// for blocks a hook itself placed two hooks deep.
+    pub on_block_placed: Option<fn(g: &mut Session, cell: [i32; 3], block: Block, cause: &str)>,
+    /// A creature died: its stable id, kind and place, and who killed it (the
+    /// player's name, a creature's id or a cause: `lava`, `script`, `other`).
+    pub on_creature_death: Option<fn(g: &mut Session, id: u32, kind: usize, at: [f64; 3], killer: &str)>,
+    /// A creature left the world: `killed`, `despawned`, `unloaded` or `scripted`.
+    pub on_creature_removed: Option<fn(g: &mut Session, id: u32, kind: usize, reason: &str)>,
+    /// The player right-clicked a creature holding `item` (if anything).
+    /// `false` cancels the game's own handling of the click.
+    pub on_creature_interact: Option<fn(g: &mut Session, id: u32, kind: usize, item: Option<usize>) -> bool>,
+    /// A night creature would burn in daylight: `false` lets it live (it is
+    /// asked again after twenty seconds).
+    pub on_creature_sunburn: Option<fn(g: &mut Session, id: u32, kind: usize) -> bool>,
     /// The player is about to take damage in survival. The hook may change
     /// `amount`; `cause` is `fall`, `drown`, `hunger`, `block`, `arrow`,
     /// `command`, `other` or the id of the creature that bit. `false` (or an
     /// amount of 0) cancels it. Runs after `hurt`.
     pub on_player_hurt: Option<fn(g: &mut Session, amount: &mut i32, cause: &str) -> bool>,
+    /// A worn armour piece was put on, taken off, set by code or broke:
+    /// `slot` is 0 head, 1 chest, 2 legs, 3 feet. The code reads and sets
+    /// what is worn through `g.inv.worn`, `Session::set_worn` and
+    /// `Session::armor_points`, wears items with `game::gear::wear`, and
+    /// keeps item data with `game::gear::item_data` (the same as the script
+    /// calls `get_armor`, `set_armor`, `item_damage` and `item_set`).
+    pub on_armor_change: Option<fn(g: &mut Session, slot: usize)>,
     /// The player typed a line (commands too). `false` swallows it.
     pub on_chat: Option<fn(g: &mut Session, line: &str) -> bool>,
     /// The player pressed the use button holding item `item` (once per
@@ -206,6 +247,9 @@ pub struct Native {
     pub on_item_use: Option<fn(g: &mut Session, item: usize) -> bool>,
     /// The player crafted item `out`.
     pub on_craft: Option<fn(g: &mut Session, out: usize)>,
+    /// The player is about to pick up `count` of item `item` lying on the
+    /// ground. `false` leaves it there (it is offered again a second later).
+    pub on_item_pickup: Option<fn(g: &mut Session, item: usize, count: u16) -> bool>,
     /// Once a frame, after the game's own timers (cheaper to leave `None`
     /// than to return early).
     pub on_tick: Option<fn(g: &mut Session, dt: f32)>,
@@ -293,16 +337,25 @@ impl Native {
         effect_start: None,
         effect_end: None,
         message: None,
+        on_message: None,
         share: None,
         storage: None,
         on_block_break: None,
         on_block_place: None,
         on_entity_spawn: None,
         on_entity_death: None,
+        chunk_generated: None,
+        on_block_placed: None,
+        on_creature_death: None,
+        on_creature_removed: None,
+        on_creature_interact: None,
+        on_creature_sunburn: None,
         on_player_hurt: None,
+        on_armor_change: None,
         on_chat: None,
         on_item_use: None,
         on_craft: None,
+        on_item_pickup: None,
         on_tick: None,
         on_draw_hud: None,
         on_event: None,

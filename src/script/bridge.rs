@@ -124,6 +124,77 @@ pub fn entity_death(g: &mut Session, kind: usize, at: [f64; 3]) {
     run(g, "on_entity_death", alloc::vec![Value::string(entity_id(kind)), Value::Float(at[0]), Value::Float(at[1]), Value::Float(at[2])], |_| false);
 }
 
+/// A chunk was just generated: scripts may place structures in it.
+pub fn chunk_generated(g: &mut Session, cx: i32, cz: i32, seed: u32) {
+    if !live() {
+        return;
+    }
+    run(g, "on_chunk_generated", alloc::vec![Value::Int(cx as i64), Value::Int(cz as i64), Value::Int(seed as i64)], |_| false);
+}
+
+/// A block was placed.
+pub fn block_placed(g: &mut Session, cell: [i32; 3], b: Block, cause: &str) {
+    if !live() {
+        return;
+    }
+    let args = alloc::vec![Value::Int(cell[0] as i64), Value::Int(cell[1] as i64), Value::Int(cell[2] as i64), Value::string(block::def(b).id.clone()), Value::str(cause)];
+    run(g, "on_block_placed", args, |_| false);
+}
+
+/// A creature died (see `game/mob_hooks.rs`).
+pub fn creature_death(g: &mut Session, id: u32, kind: usize, at: [f64; 3], killer: &str) {
+    if !live() {
+        return;
+    }
+    let args = alloc::vec![Value::Int(id as i64), Value::string(entity_id(kind)), Value::Float(at[0]), Value::Float(at[1]), Value::Float(at[2]), Value::str(killer)];
+    run(g, "on_creature_death", args, |_| false);
+}
+
+/// A creature left the world.
+pub fn creature_removed(g: &mut Session, id: u32, kind: usize, reason: &str) {
+    if !live() {
+        return;
+    }
+    run(g, "on_creature_removed", alloc::vec![Value::Int(id as i64), Value::string(entity_id(kind)), Value::str(reason)], |_| false);
+}
+
+/// The player right-clicked a creature; `false` cancels the game's handling.
+pub fn creature_interact(g: &mut Session, id: u32, kind: usize, item: Option<usize>) -> bool {
+    if !live() {
+        return true;
+    }
+    let held = item.map_or_else(String::new, item_id);
+    let mut allow = true;
+    run(g, "on_creature_interact", alloc::vec![Value::Int(id as i64), Value::string(entity_id(kind)), Value::string(held)], |r| {
+        if is_no(r) {
+            allow = false;
+        }
+        !allow
+    });
+    allow
+}
+
+/// A night creature would burn in daylight; `false` lets it live.
+pub fn creature_sunburn(g: &mut Session, id: u32, kind: usize) -> bool {
+    if !live() {
+        return true;
+    }
+    let mut allow = true;
+    run(g, "on_creature_sunburn", alloc::vec![Value::Int(id as i64), Value::string(entity_id(kind))], |r| {
+        if is_no(r) {
+            allow = false;
+        }
+        !allow
+    });
+    allow
+}
+
+/// Whether any loaded, working script defines the hook `name` (so the game
+/// can skip collecting what only that hook wants).
+pub fn wants(name: &str) -> bool {
+    live() && with_host(|h| h.mods.iter().any(|m| m.scripts.iter().any(|s| s.has_hook(name)))).unwrap_or(false)
+}
+
 /// The player hit a creature.
 pub fn entity_hit(g: &mut Session, id: u32, kind: usize, at: [f64; 3]) {
     if !live() {
@@ -179,6 +250,21 @@ pub fn item_use(g: &mut Session, item: usize) -> bool {
     }
     let mut allow = true;
     run(g, "on_item_use", alloc::vec![Value::string(item_id(item))], |r| {
+        if is_no(r) {
+            allow = false;
+        }
+        !allow
+    });
+    allow
+}
+
+/// The player is about to pick up a dropped item; `false` leaves it lying.
+pub fn item_pickup(g: &mut Session, item: usize, count: u16) -> bool {
+    if !live() {
+        return true;
+    }
+    let mut allow = true;
+    run(g, "on_item_pickup", alloc::vec![Value::string(item_id(item)), Value::Int(count as i64)], |r| {
         if is_no(r) {
             allow = false;
         }
@@ -304,6 +390,16 @@ pub fn net_message(g: &mut Session, key: &str, text: &str) {
     }
     let Some((mod_name, key)) = key.split_once('\u{1f}') else { return };
     run_in(g, &|m| m == mod_name, "on_net", alloc::vec![Value::str(key), Value::str(text)], |_| false);
+}
+
+/// A message another player's copy of a mod sent with `send_message`:
+/// `on_message(channel, from, text)` of that mod's scripts. (`from` is the
+/// sender's player name; the net layer has already checked the sizes.)
+pub fn mod_message(g: &mut Session, mod_name: &str, channel: &str, from: &str, text: &str) {
+    if !live() {
+        return;
+    }
+    run_in(g, &|m| m == mod_name, "on_message", alloc::vec![Value::str(channel), Value::str(from), Value::str(text)], |_| false);
 }
 
 /// An `/if` condition the game does not know: a script may answer it. `words`

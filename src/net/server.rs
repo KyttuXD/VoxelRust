@@ -434,6 +434,16 @@ impl Server {
         self.broadcast(&Msg::Chat { id: 0, text: String::from(text) }, u16::MAX);
     }
 
+    /// Send a message to one player only (nothing if they are not here).
+    fn send_to(&mut self, to: u16, msg: &Msg) {
+        let bytes = msg.encode();
+        for c in self.conns.iter_mut().filter(|c| c.joined && !c.gone && c.id == to) {
+            if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+                c.gone = true;
+            }
+        }
+    }
+
     fn broadcast(&mut self, msg: &Msg, except: u16) {
         let bytes = msg.encode();
         for c in self.conns.iter_mut().filter(|c| c.joined && !c.gone && c.id != except) {
@@ -582,6 +592,7 @@ impl Server {
                         Msg::Move { .. } | Msg::Emote { .. } | Msg::Effects { .. } | Msg::VoiceState { .. } => Some(Class::Motion),
                         Msg::SetBlock { .. } => Some(Class::Block),
                         Msg::Chat { .. } => Some(Class::Chat),
+                        Msg::State { channel: crate::proto::channel::MODMSG, .. } => Some(Class::Mod),
                         Msg::State { .. } => Some(Class::State),
                         Msg::Skin { .. } => Some(Class::Skin),
                         _ => None,
@@ -730,6 +741,20 @@ impl Server {
                     Msg::Voice { seq, frame, .. } if joined => self.relay_voice(i, seq, &frame),
                     Msg::State { channel, keep, key, data, .. } if joined => {
                         use crate::proto::channel as ch;
+                        if channel == ch::MODMSG {
+                            // A mod's message: only a sound one is passed on, never kept, to the
+                            // one player it is for (not back to the sender) or to all the others.
+                            let to = crate::modmsg::unpack(&data).map(|(to, _)| to).filter(|_| crate::modmsg::split_key(&key).is_some());
+                            if let Some(to) = to {
+                                let msg = Msg::State { id, channel, keep: false, key, data };
+                                if to == crate::modmsg::EVERYONE {
+                                    self.broadcast(&msg, id);
+                                } else if to != id {
+                                    self.send_to(to, &msg);
+                                }
+                            }
+                            continue;
+                        }
                         let flags = self.flags_for(&self.conns[i].name);
                         // The creatures are the business of the one player who runs
                         // them; what is in a chest is for those who may build.

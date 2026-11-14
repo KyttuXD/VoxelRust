@@ -67,7 +67,7 @@ fn a_pick_is_made_from_its_shape_and_only_there() {
     let r = reg();
     let id = |s: &str| r.items.iter().position(|i| i.id == s).unwrap() as u16;
     let (iron, stick) = (id("iron_ore"), id("stick"));
-    let cell = |item: u16| Some(crate::inventory::Stack { item, count: 1 });
+    let cell = |item: u16| Some(crate::inventory::Stack::new(item, 1));
     let mut cells = [None; 9];
     for i in [0, 1, 2] {
         cells[i] = cell(iron);
@@ -206,7 +206,7 @@ fn a_bigger_bench_makes_what_a_smaller_one_does_and_a_smaller_one_refuses_big_re
     let r = reg();
     let id = |s: &str| r.items.iter().position(|i| i.id == s).unwrap() as u16;
     let (stick, planks) = (id("stick"), id("planks"));
-    let cell = |item: u16| Some(crate::inventory::Stack { item, count: 1 });
+    let cell = |item: u16| Some(crate::inventory::Stack::new(item, 1));
     // A pick on a 7 x 7 grid, lying away from the corner: the table's recipe, at the workshop.
     let mut cells = [None; 49];
     for (x, y) in [(2, 3), (3, 3), (4, 3)] {

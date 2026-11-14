@@ -209,20 +209,29 @@ not call scripts again.
 | `fn on_entity_spawn(kind: String) -> bool` | a creature appeared (`kind` is its id) | `false` takes it away |
 | `fn on_entity_death(kind: String, x: f64, y: f64, z: f64)` | a creature died, whatever the cause | |
 | `fn on_entity_hit(id: i64, kind: String, x: f64, y: f64, z: f64)` | the player hit a creature (it may have died of it): its id (the one `mob_info` and the other creature calls take), its kind and where it was | |
-| `fn on_player_hurt(amount: i64, cause: String) -> i64` | the player is about to take damage (`fall`, `drown`, `hunger`, `block`, `arrow`, `command`, `other`, or the id of the creature that bit) | the amount to take instead; `0` or `false` cancels. The first script to answer decides |
+| `fn on_chunk_generated(cx: i64, cz: i64, seed: i64)` | a chunk was just generated (never for one loaded from a save), on the main thread and a couple of chunks a frame: place structures with `set_block` in it and in its neighbours that are already loaded (see [Structures](#structures-as-the-world-is-generated)) | |
+| `fn on_block_placed(x: i64, y: i64, z: i64, id: String, cause: String)` | a block was placed, whatever the cause: `player`, `script` (a `set_block`), `remote` (another player on a server), `fall` (a falling block landed), `fluid` (water or lava flowed in), or `other` (crops growing, villagers building, commands). Air (a block taken away) does not count; `on_block_break` is the one for the player breaking. Called a frame after the placement | |
+| `fn on_creature_death(id: i64, kind: String, x: f64, y: f64, z: f64, killer: String)` | a creature died: its id (the one `mob_info` takes), its kind, where it was and who killed it: the player's name (`player`), the id of the creature that did it, or a cause: `lava`, `script` (`mob_hurt`), `other`. Comes with `on_entity_death` (which has no id or killer) | |
+| `fn on_creature_removed(id: i64, kind: String, reason: String)` | a creature left the world: `killed` (its health ran out; `on_creature_death` came first), `despawned` (too far from the player, fallen out of the world, caught by the morning, blown up), `unloaded` (left behind where the world is no longer loaded) or `scripted` (`mob_remove`) | |
+| `fn on_creature_interact(id: i64, kind: String, item: String) -> bool` | the player right-clicked a creature; `item` is what they hold (empty if nothing) | `false` cancels the game's own handling (taming, riding, trading, milking...) |
+| `fn on_creature_sunburn(id: i64, kind: String) -> bool` | a night creature would be taken away by the morning (`night` creatures in daylight, not cave dwellers) | `false` lets it live; it is asked again after 20 seconds |
+| `fn on_player_hurt(amount: i64, cause: String) -> i64` | the player is about to take damage (`fall`, `drown`, `hunger`, `block`, `arrow`, `explosion`, `effect` for poison, fire and the like, `command`, `other`, or the id of the creature that bit; armour has already taken its share of a creature's blow, an `arrow` or an `explosion`) | the amount to take instead; `0` or `false` cancels. The first script to answer decides |
 | `fn on_chat(text: String) -> bool` | the player typed a line (commands too, with their `/`) | `false` swallows it |
 | `fn on_item_use(item: String) -> bool` | the player pressed use holding an item (once per press) | `false` stops it |
 | `fn on_craft(item: String)` | the player crafted something | |
+| `fn on_item_pickup(item: String, count: i64) -> bool` | the player is about to pick up a dropped item (one that was thrown, dropped by a block or a creature, or made with `drop_item`) | `false` leaves it lying; it is offered again a second later |
 | `fn on_event(name: String, what: String)` | any event pack scripts can answer with `when` (the table in [MODDING.md](MODDING.md#events)) | |
 | `fn on_effect_start(id: String, level: i64)` | a status effect started on the player (not when it is only made longer or stronger) | |
 | `fn on_effect_tick(id: String, secs_left: f32, level: i64)` | about once a second for each status effect the player has | |
 | `fn on_effect_end(id: String)` | an effect ran out, was put out by water or was cleared (death included) | |
+| `fn on_armor_change(slot: i64)` | a worn armour piece was put on, taken off, set by `set_armor` or broke (`slot` 0 head, 1 chest, 2 legs, 3 feet) | |
 | `fn on_command(name: String, args: String) -> bool` | a `/command` the game does not know (`name` without the `/`, lower case; `args` the rest of the line) | `true` if it is yours; a string is shown as the reply |
 | `fn on_explode(x: f64, y: f64, z: f64, power: f64, source: String) -> bool` | an explosion is about to happen (`source` is `tnt`, `command`, a creature's id, or `mod<N>`) | `false` cancels; a number changes the power (0.5 to 8) |
 | `fn on_update(dt: f32)` | once a frame, after the game has moved the creatures and before the player moves: the place to move things, to carry the player (`hold_player`) and to ask for pictures | |
 | `fn on_interact(reach: f64) -> bool` | the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is; `input()` says which buttons are down) | `true` if the click was used up |
 | `fn on_condition(name: String, args: String) -> bool` | an `/if` condition the game does not know | `true` or `false` if it is yours; return nothing if it is not |
 | `fn on_net(key: String, text: String)` | another player's copy of this mod sent a message with `net_send` | |
+| `fn on_message(channel: String, from: String, text: String)` | another player's copy of this mod sent a message with `send_message` or `send_message_to` (`from` is their player name; see "Other players") | |
 | `fn on_register()` | once, when the script file is read (before any world): the place to declare key bindings and switches | |
 | `fn on_key_down(id: String)` | a key binding this mod declared was pressed (while playing, not in a menu or a text box) | |
 | `fn on_key_up(id: String)` | that key was let go | |
@@ -230,6 +239,13 @@ not call scripts again.
 | `fn on_ui_click(id: String)` | a button of the mod's own screen was pressed | |
 | `fn on_ui_change(id: String, value: bool)` | a toggle (`bool`), stepper (a number), input (the text) or list (the line's number) of the screen changed | |
 | `fn on_ui_close(name: String)` | the mod's screen closed (the player closed it, or the mod did) | |
+
+A hook that places blocks does not call itself for ever: a block placed by
+code running inside `on_block_placed` raises the hook once more, one level
+deeper, and a block placed by *that* call raises nothing (the chain is two
+hooks deep at most). At most 128 placements a frame are passed on, and the
+game keeps at most 2048 waiting, so a flood of water never stalls a frame
+(the rest are dropped).
 
 Ids (`kind`, `item`, `id`) are the ids from the data files (`zombie`,
 `diamond`, `stone`). Where more than one script is asked, the first to
@@ -258,13 +274,13 @@ nothing) unless the player may run them there.
 | `dimension() -> String` | the dimension the player is in (empty for the home world) |
 | `time() -> f64` | the time of day, 0 to 1 (0 is sunrise, 0.25 noon) |
 | `set_time(t: f64)` | set the time of day |
-| `explode(x: f64, y: f64, z: f64, power: f64)` | set off an explosion (power 0.5 to 8); goes through `on_explode` of the other mods |
+| `explode(x: f64, y: f64, z: f64, power: f64)` | set off an explosion (power 0.5 to 8); goes through `on_explode` of the other mods. With a fifth argument, flags, it is the explosion of [Effects](#effects-items-explosions-blocks-particles-quads-skies) and answers how many blocks it destroyed |
 | `effect(id: &str, secs: f64, level: i64) -> bool` | give the player a status effect |
 | `apply_effect(who: &str, id: &str, secs: f64, level: i64) -> bool` | give a status effect to `"player"` or `"target"` (the creature in the crosshair, up to 8 blocks); 0 seconds is the effect's own time; false if there is no such effect or target, or a mod refused it |
 | `remove_effect(who: &str, id: &str) -> bool` | take a status effect (all of them for an empty id) from `"player"` or `"target"`; false if it was not there |
 | `has_effect(who: &str, id: &str) -> bool` | whether `"player"` or `"target"` has that status effect |
 | `effect_level(who: &str, id: &str) -> i64` | the level of a status effect on `"player"` or `"target"`; 0 if it is not active |
-| `play_sound(id: &str)` | play a sound |
+| `play_sound(id: &str)` | play a sound (with a volume, pitch and pan too, and a handle to control it: see [Sound and music](#sound-and-music)) |
 | `run_command(text: &str) -> String` | carry out a chat command as the player (with or without the `/`); returns what it answers |
 | `rand(n: i64) -> i64` | a random whole number from 0 up to `n` (not including `n`) |
 | `player_health() -> i64` | the player's health (20 is full) |
@@ -327,14 +343,63 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 | Function | What it does |
 | --- | --- |
 | `mobs_near(x: f64, y: f64, z: f64, radius: f64, kind: &str) -> Vec<(i64, f64, f64, f64)>` | the living creatures of one kind (empty: any) within a radius, nearest first, as (id, x, y, z); at most 64 |
-| `spawn_mob(kind: &str, x: f64, y: f64, z: f64) -> i64` | make a creature appear and give its id, or -1 (no such kind, not allowed here, or the world is full of creatures: 300 at most) |
+| `spawn_mob(kind: &str, x: f64, y: f64, z: f64) -> i64` | make a creature appear and give its id, or -1 (no such kind, not allowed here, no room for a giant of that kind there, or the world is full of creatures: 300 at most) |
 | `mob_info(id: i64) -> (String, i64, f64, f64, f64)` | (kind, health, x, y, z) of a creature; the kind is empty if it is gone or dying |
 | `mob_set_pos(id: i64, x: f64, y: f64, z: f64)` | put a creature somewhere and stop it |
 | `mob_set_yaw(id: i64, yaw: f64)` | turn a creature (yaw 0 faces -z; its forward is (-sin yaw, -cos yaw)) |
-| `mob_set_size(id: i64, width: f64, height: f64)` | change the box a creature collides with (0.1 to 8 blocks); what it is drawn as does not change |
-| `mob_remove(id: i64)` | make a creature vanish at once: nothing drops, no `on_entity_death` |
-| `mob_hurt(id: i64, n: i64)` | hurt a creature as the player's blow would (drops and `on_entity_death` follow if it dies) |
+| `mob_set_size(id: i64, width: f64, height: f64)` | change the box a creature collides with (0.1 to 8 blocks); what it is drawn as does not change (`set_creature_size` changes both, and goes further, see "Giants, model control and state") |
+| `mob_remove(id: i64)` | make a creature vanish at once: nothing drops, no `on_entity_death` or `on_creature_death` (`on_creature_removed` hears it, with the reason `scripted`) |
+| `mob_hurt(id: i64, n: i64)` | hurt a creature as the player's blow would (drops and `on_entity_death` follow if it dies; `on_creature_death` names `script` as the killer) |
 | `mob_in_view(max: f64) -> i64` | the id of the first creature on the player's look ray within `max` blocks (at most 100) with no block in the way, or -1 |
+
+### Giants, model control and state
+
+A creature may be far bigger than the data files allow for a kind (`height` up
+to 64 and `width` up to 32 blocks, `health` up to 1,000,000 there too), and a
+script may reshape a living one. The rules for the limits are the same for the
+data files, these calls and native mods (`g.mobs.set_size(id, w, h)`,
+`set_health`, `set_bone`, `clear_bones`, `set_orientation`, `set_state` on
+`Mobs`, see [MODDING.md](MODDING.md#giant-creatures-and-model-control)); a
+creature past the old limits (6 tall, 3 wide) is called a giant below.
+
+| Function | What it does |
+| --- | --- |
+| `set_creature_size(id: i64, width: f64, height: f64) -> bool` | give a creature its own size in blocks (width 0.1 to 32, height 0.1 to 64): it collides and is drawn at it. A giant steps up a quarter of its width (6 blocks at the most), walks straight at its goal instead of searching a path, reaches an enemy with its whole body, stays alive and drawn from further off the bigger it is, and only appears where its body fits. False if there is no such creature, or in a shared game when this player does not run the creatures |
+| `set_creature_health(id: i64, hp: i64, max_hp: i64) -> bool` | set a creature's health and its limit: the limit is kept to 1 to 1,000,000, the health to 0 (it dies) up to the limit. Healing effects stop at the limit. Same refusals as `set_creature_size` |
+| `set_bone(id: i64, bone: &str, rx: f64, ry: f64, rz: f64, ox: f64, oy: f64, oz: f64, scale: f64) -> bool` | on top of the creature's animation, turn the model's bone called `bone` (any case; see `model_bones`) by `rx`, `ry`, `rz` degrees about its pivot (added to what the animation does with it), move it by `ox`, `oy`, `oz` model units and scale it (0.01 to 100; 1 is as it is). The bone's children follow it. Call it every frame to move a bone; the override stays until changed or cleared. False (and nothing happens) for an unknown bone name (the game logs it once), no such creature, a creature that already overrides 64 other bones, 256 creatures that already have overrides, or more than 4096 `set_bone` calls in a frame |
+| `clear_bones(id: i64) -> bool` | take all of a creature's bone overrides away |
+| `set_creature_orientation(id: i64, pitch: f64, roll: f64) -> bool` | tilt the whole model about its centre, in degrees: a positive pitch lifts the nose, a positive roll leans the top toward the creature's left (the angles are kept to -3000 to 3000; `0, 0` puts it upright). Only how it is drawn changes (not its box) |
+| `model_bones(model_id: &str) -> Vec<String>` | the bone names of a model, in the model file's order and as written there (a model id, or a creature kind to ask for its model); empty if there is no such model |
+| `set_creature_state(id: i64, text: &str) -> bool` | keep a short text on a creature (64 bytes at most; control characters are dropped): the mod's own record of what it is doing. Same refusals as `set_creature_size` |
+| `creature_state(id: i64) -> String` | what `set_creature_state` left on a creature (empty if none, or no such creature) |
+
+Numbers that are not finite are an error (they switch the script off, like any
+bad argument); numbers that are too big or small are kept to the limits above.
+Bone names that the model does not have are no error, because mods are written
+against models that change.
+
+In a shared game the player who runs the creatures sends each creature's
+size, health limit, tilt, bone overrides and state to the others with the
+creatures themselves (only when they change, and in full about once a second
+for those who join later), so a giant is seen at its size and a mod's state is
+readable on every machine with `creature_state`. Bone overrides and tilt that
+a player sets for themselves are only seen on their own screen, until the host
+sends overrides for that creature; set them again from `on_update` (or from
+`on_message`, below) if they must last.
+
+```rust
+// A boss that rears up as its health falls, on every player's screen.
+fn on_update(dt: f32) {
+    for (id, x, y, z) in mobs_near(0.0, 70.0, 0.0, 200.0, "titan") {
+        let (kind, hp, px, py, pz) = mob_info(id);
+        if hp * 2 < 50000 {
+            set_creature_orientation(id, 25.0, 0.0);
+            set_bone(id, "head", 0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 1.3);
+            set_creature_state(id, "enraged");
+        }
+    }
+}
+```
 
 ### The player, input and the camera
 
@@ -425,6 +490,37 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 | --- | --- |
 | `net_send(key: &str, text: &str) -> bool` | send a message to this mod's scripts on the other players' games (`on_net`); false when the game is not shared or the key is over 64 bytes (the mod's name and the key together) or the text over 8000 |
 
+Messages with a channel and a player to answer (all the pieces are checked by
+the server, so a modified game cannot flood or confuse the others):
+
+| Function | What it does |
+| --- | --- |
+| `send_message(channel: &str, text: &str) -> bool` | send a message to this mod's scripts (and native code) on every other player's game; they hear it as `on_message(channel, from, text)`. `channel` is a name of your choosing (printable ASCII; with the mod's name at most 64 bytes together), the text at most 512 bytes without control characters (a newline and a tab are fine). Each player may send 8 a second; the server drops what is over. False when the game is not shared, the channel or text is not fit, or this player is over the rate. The sender does not hear its own message |
+| `send_message_to(player: &str, channel: &str, text: &str) -> bool` | the same, only to the player with that name (any case); false if no such player is in the game |
+
+`fn on_message(channel: String, from: String, text: String)` is called on the
+receiving machine, once for each message, with the sender's player name. It
+is how a mod whose logic runs only on the host (the player who runs the
+creatures) shows its effects on the clients: the host calls
+`send_message("boom", "10 70 3")`, each client answers in `on_message` with its
+own sounds, flashes and `set_bone` calls. A client may send too (to the host
+or to everyone); trust nothing in `text` more than you would trust a chat line.
+
+```rust
+fn on_entity_death(kind: String, x: f64, y: f64, z: f64) {
+    // The game that runs the creatures sees the death; everyone else is told.
+    if kind == "titan" {
+        send_message("titan_died", &format!("{:.0} {:.0} {:.0}", x, y, z));
+    }
+}
+
+fn on_message(channel: String, from: String, text: String) {
+    if channel == "titan_died" {
+        say(&format!("{} saw the titan fall at {}", from, text));
+    }
+}
+```
+
 ### Shots, sky, pushes
 
 | Function | What it does |
@@ -434,6 +530,333 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 | `mob_set_vel(id: i64, x: f64, y: f64, z: f64)` | set a creature's velocity in blocks a second (up to 60 in each direction): a push or a leap |
 | `clear_effect(id: &str) -> bool` | take a status effect off the player (a cure); false if they did not have it |
 | `push_player(x: f64, y: f64, z: f64)` | add to the player's velocity in blocks a second (up to 40 in each direction) |
+
+### Armour, wear, item data and tags
+
+Armour has four worn slots (`head`, `chest`, `legs`, `feet`), shown beside the
+player's picture in the inventory screen. A piece is an item with `armor <slot>
+<defense> [toughness]` in its data ([DATA.md](DATA.md#items)). Each point of
+defense takes 4 percent off a creature's blow, an arrow or a blast (toughness
+helps more against big blows), never more than 80 percent in all, and each such
+blow wears every worn piece by one use. Falls, drowning, hunger, blocks, status
+effects and `hurt()` are not helped by armour. Items with `durability <uses>`
+wear out: a tool by one use for each block it breaks, a weapon for each hit, a
+bow for each shot, armour for each blow it takes; at the last use the item
+breaks. Nothing wears in creative mode. Two worn stacks of one item laid in the
+crafting grid make one with the uses left of both and 5 percent of a new one's
+on top.
+
+Calls that take a `slot` number it as: `0` to `35` the pack (`0` to `8` the
+hotbar), `-1` the item in hand, `100` to `126` the slots of the chest that is
+open (while its screen is showing), `200` to `203` the worn pieces (head to feet).
+A slot that does not exist or holds nothing is not an error: the call says no
+(`false`, `-1`, an empty string).
+
+Every stack can also carry item data: up to 8 keys (each 1 to 16 letters, digits,
+`_`, `-` or `.`) with values of up to 64 bytes and no control characters. It is
+kept with the stack wherever it goes: in the pack, in chests, lying on the
+ground, in a world's save; stacks with different data (or different wear) never
+merge. It is also a mod's per-slot state. At most 4096 different maps are alive
+at one time (a charge counting 0 to 100 on one item makes 101 maps, so keep
+counters coarse). A bad key or value is an error in the script; running out of
+room is `false`.
+
+| Function | What it does |
+| --- | --- |
+| `get_armor(slot: &str) -> String` | the id of the piece worn in `head`, `chest`, `legs` or `feet` (empty if none) |
+| `set_armor(slot: &str, item: &str, count: i64) -> bool` | wear an item in a slot (a count of 0 or an empty id takes the piece off); what was worn goes to the pack or the ground; false if the item is not armour for that slot (`armor <slot>` in its data) or the slot is wrong |
+| `armor_defense() -> f64` | the defense points the player has: worn pieces and the `armor` attribute |
+| `armor_toughness() -> f64` | the toughness of what is worn |
+| `item_damage(slot: i64, amount: i64) -> bool` | wear the item in a slot by `amount` uses (0 to 60000); true if it broke (it is gone then); nothing wears in creative or for an item with no `durability` |
+| `item_wear(slot: i64) -> i64` | uses spent of the item in a slot (0 when new or when it does not wear; -1 if the slot is empty) |
+| `item_durability(slot: i64) -> i64` | the uses the item in a slot has when new (0 if it does not wear or the slot is empty) |
+| `repair_item(slot: i64, amount: i64) -> bool` | give back up to `amount` uses to the item in a slot; false if it was not worn |
+| `item_get(slot: i64, key: &str) -> String` | a value kept on the item in a slot (empty if it has none under that key) |
+| `item_set(slot: i64, key: &str, value: &str) -> bool` | keep a value on the item in a slot; false if the slot is empty, the item already has 8 other keys, or there are too many different maps |
+| `item_clear(slot: i64, key: &str) -> bool` | take a key off the item in a slot; false if it was not there |
+| `item_keys(slot: i64) -> Vec<String>` | the keys kept on the item in a slot |
+| `has_tag(item: &str, tag: &str) -> bool` | whether an item has the `tag <name>` mark in its data |
+| `item_tag_value(item: &str, tag: &str) -> f64` | the number of an item's tag (1 if it was given none; 0 if the item lacks the tag) |
+
+```rust
+// A sword that is charged by killing: the charge is kept on the stack itself.
+fn on_entity_death(kind: String, x: f64, y: f64, z: f64) {
+    if has_tag(&held_item(), "charged_blade") {
+        let n = item_get(-1, "charge").parse::<i64>().unwrap_or(0);
+        item_set(-1, "charge", &format!("{}", (n + 1).min(10)));
+    }
+}
+
+// Spend a use of the hand's item with a flourish, and note the helmet coming off.
+fn on_armor_change(slot: i64) {
+    if slot == 0 && get_armor("head") == "" {
+        say("YOUR HEAD IS BARE");
+    }
+}
+```
+
+### Structures as the world is generated
+
+| Function | What it does |
+| --- | --- |
+| `rand_chunk(cx: i64, cz: i64, salt: i64) -> i64` | a whole number from 0 to 2147483647 that depends only on the world's seed, the chunk (`cx`, `cz`: block position divided by 16, rounded down) and the salt: the same every time it is asked, in every copy of the world, so a structure can start in the same chunks again (`rand_chunk(cx, cz, 7) % 100 < 3`). A different salt for each kind of structure keeps them apart |
+| `world_seed() -> i64` | the world's seed |
+
+`on_chunk_generated(cx, cz, seed)` runs on the main thread right after a new
+chunk was generated. It is **not** called for a chunk that was loaded from a
+save, so a structure is placed once, and it is the same one every time since
+`rand_chunk` does not change; a chunk of terrain that was never changed is
+generated again (and its hook runs again) when the player comes back, a chunk
+that holds a structure was changed by it and is saved. Rules:
+
+- Place blocks with `set_block`, in the chunk and in the neighbours that are
+  already loaded. `set_block` answers `false` for a place that is not loaded:
+  a structure that spills into a chunk not generated yet has to be finished
+  when that chunk's own hook runs (ask `rand_chunk` for the neighbours too, and
+  place the part that falls in this chunk).
+- At most **4096** `set_block` calls count in one call of the hook; after that
+  `set_block` answers `false`. The hook also has the usual step allowance of
+  one call (200 000 steps), and an error switches the script off as always.
+- The work is queued: at most **2** chunks a frame get their hook, oldest
+  first, so a whole view of new chunks never stalls a frame (structures appear
+  a few moments after the terrain, nearest-first is not promised).
+- Only whoever runs the world calls it (a single-player game, or the host of a
+  shared one); the blocks reach the others as ordinary changes.
+- Blocks written here do not raise `on_block_placed` (they are generation, not
+  building).
+- Creature, item and other calls work as in any hook, but keep it light.
+
+```rust
+// Small stone obelisks in about one chunk in forty.
+fn on_chunk_generated(cx: i64, cz: i64, seed: i64) {
+    if rand_chunk(cx, cz, 91) % 40 != 0 {
+        return;
+    }
+    let x = cx * 16 + 8;
+    let z = cz * 16 + 8;
+    let base = surface_y(x, z);
+    let mut dy = 0;
+    while dy < 5 {
+        set_block(x, base + dy, z, "stone");
+        dy += 1;
+    }
+}
+```
+
+### Attributes, and asking about effects
+
+The player's most health is 20 (ten hearts) unless an attribute changes it. An
+attribute has a base (`set_attribute`) and modifiers a mod adds under an id of
+its own; the value is `(base + all "add" amounts) x (1 + all "multiply" amounts)`,
+so modifiers stack the same in any order, and is held to the attribute's range.
+They are kept with the world (the player's save). A hit point is half a heart:
+`max_health` 40 gives twenty hearts, drawn as two rows of ten (up to 100 health,
+five rows); absorption stays a row of yellow hearts above them. Health above a
+new, smaller maximum is brought down. Creatures' own most health is not an
+attribute of this kind (see `mob_*`).
+
+| Attribute | Base | Range | What it is |
+| --- | --- | --- | --- |
+| `max_health` | 20 | 2 to 100 | the most health, in half hearts; also what healing, eating and resting fill to |
+| `walk_speed` | 1 | 0.1 to 4 | multiplies walking, swimming and flying speed (with status effects) |
+| `jump_height` | 1 | 0 to 4 | multiplies the speed of a jump |
+| `armor` | 0 | 0 to 40 | defense points, on top of what is worn |
+| `damage` | 1 | 0 to 10 | multiplies what the player's blows do to creatures |
+
+| Function | What it does |
+| --- | --- |
+| `set_attribute(name: &str, value: f64) -> bool` | set the base of an attribute; false if the number is not finite |
+| `reset_attribute(name: &str) -> bool` | put an attribute's base back to its default (the modifiers stay) |
+| `get_attribute(name: &str) -> f64` | an attribute's value now: base and modifiers together |
+| `add_attribute_modifier(id: &str, name: &str, amount: f64, mode: &str) -> bool` | add a modifier under an id of the mod's own (1 to 32 letters, digits, `_`, `-`, `.`); `mode` is `add` or `multiply`; the same id again replaces it; at most 32 modifiers; false when refused |
+| `remove_attribute_modifier(id: &str) -> bool` | take a modifier away; false if there was none of that id |
+| `player_max_health() -> i64` | the most health the player has now |
+| `effect_secs(who: &str, id: &str) -> f64` | seconds left of a status effect on `"player"` or `"target"` (0 if it is not active) |
+| `list_effects(who: &str) -> Vec<String>` | the ids of the status effects active on `"player"` or `"target"` |
+| `effect_defined(id: &str) -> bool` | whether a status effect of that id exists (built in, or an `effect` of the data) |
+
+With `effect_level` (the strength), `effect_secs` (the time left), `list_effects`
+and `on_effect_start` / `on_effect_tick` / `on_effect_end`, a mod needs no timers
+of its own for status effects, and effects defined in a pack's data
+([DATA.md](DATA.md#effects)) are ordinary ids to all of them.
+
+```rust
+// A ring of vitality: ten more hearts while it is the item in hand.
+fn on_update(dt: f32) {
+    if held_item() == "vitality_ring" {
+        add_attribute_modifier("vitality_ring", "max_health", 20.0, "add");
+    } else {
+        remove_attribute_modifier("vitality_ring");
+    }
+}
+```
+
+### Opening the game's screens
+
+| Function | What it does |
+| --- | --- |
+| `open_crafting(size: i64)` | open the crafting screen with a grid of 3, 5 or 7 squares a side (the table, the bench, the workshop) as if a bench had been used, without placing one; any other size is an error. The screen opens on the next frame, and only if the player is in the game with no other screen open (nothing happens from a menu, the chat or another mod's screen) |
+| `open_inventory()` | open the pack screen (the creative item list in creative mode), under the same conditions |
+
+Both only ask: a script cannot open more than one screen a frame (the last
+call wins), and a shared game's server has no screens to open.
+
+
+### Effects: items, explosions, blocks, particles, quads, skies
+
+Pictures and things that happen in the world, with limits that keep any one
+mod from costing a frame. All of them work only in a running game, and the ones
+that break, place or throw things in the world are refused (they answer `false`
+or 0) in a shared game for a player who does not run it. A call that is only
+over a limit answers `false` or 0; a call with a nonsense argument (a name that is
+not a kind, a corner that is not a number) is an error that switches the
+script off, as everywhere.
+
+| Function | What it does |
+| --- | --- |
+| `drop_item(x: f64, y: f64, z: f64, item: &str, count: i64, vx: f64, vy: f64, vz: f64) -> bool` | set an item down with a velocity (blocks a second, held to 40 each way). It falls, floats in water, burns in lava and is picked up as any dropped item. `count` is held to 1 to 64. `false` if there is no such item, 128 drops already lie about (a script never pushes out the player's own), 32 were made this frame, or it is not allowed here |
+| `explode(x: f64, y: f64, z: f64, power: f64, flags: &str) -> i64` | the game's own explosion, with choices; answers how many blocks it destroyed (0 if a mod's `on_explode` cancelled it). `power` is held to 8 (a ball 16 blocks across its radius). `flags` is a text of names separated by commas or spaces, or a number: `fire` (1) leaves fires on the ground in the ball, `no_blocks` (2) breaks no blocks and lights no TNT, `no_damage` (4) hurts and throws nobody, `silent` (8) makes no sound, shaking or flash; `""` is none. Creatures and the player are hurt as by TNT, TNT in the ball is lit with a short fuse (the usual chain, never more than 400 lit blocks), other mods' `before_explode` and `on_explode` hear of it. At most 16 a frame |
+| `spawn_falling_block(x: f64, y: f64, z: f64, block_id: &str, vx: f64, vy: f64, vz: f64) -> bool` | throw a block: a small cube with the block's pictures that falls under gravity, bounces off walls, and when it comes to rest on something solid becomes the block in the cell it rests in if that cell is free (air), else it falls apart into dust. Speed held to 60. Gives up after 30 seconds, below the world, or where the land is not loaded. At most 64 fly at once; `false` if there is no such block, 64 fly already, or it is not allowed here |
+| `spawn_particles(kind: &str, x: f64, y: f64, z: f64, count: i64, spread: f64, speed: f64, r: i64, g: i64, b: i64) -> i64` | make particles: `spark`, `smoke`, `flame`, `bubble`, `dust`, `magic`, `heart` or `cloud` (each its own little picture, life, pull and size; sparks, flames and magic glow by adding their light, the rest are laid over the view). They start within `spread` blocks (0 to 16) of the place, flying out at up to `speed` blocks a second (0 to 30), tinted by the colour (each a little different). At most 64 a call and 2000 alive in all (the explosions' sparks count too); a frame under 25 frames a second makes fewer, under 15 none; a place more than 96 blocks from the player makes none. Answers how many were made |
+| `quad_create(id: i64, texture: &str, c0: [f64; 3], c1: [f64; 3], c2: [f64; 3], c3: [f64; 3], r: i64, g: i64, b: i64, a: i64, blend: &str) -> bool` | keep a see-through quad in the world until it is removed: for storm clouds, beams and auras. `id` is the mod's own number for it (the same again replaces it); the corners go in order round it, as `(x, y, z)` tuples or `[x, y, z]`, none more than 512 blocks from the first; `texture` is `block:<id>` (the top picture of a block), the name of a picture the mod brought (`picture <name> file ...` in its pack), or `""` for a plain colour (a name that is not found is a plain colour too); the colour multiplies the picture and `a` is the opacity (0 to 255); `blend` is `"alpha"` (laid over) or `"additive"` (adds light). Drawn in the translucent pass with the depth test, farthest first, out to 192 blocks. At most 256 a mod and 1024 in all; `false` when that is used up |
+| `quad_move(id: i64, c0: [f64; 3], c1: [f64; 3], c2: [f64; 3], c3: [f64; 3]) -> bool` | give one of this mod's quads new corners (call it every frame to make one travel); `false` if the mod has none with that id |
+| `quad_tint(id: i64, r: i64, g: i64, b: i64, a: i64) -> bool` | change a quad's colour and opacity (a fade); `false` if there is none with that id |
+| `quad_remove(id: i64) -> bool` | take one of this mod's quads away; `false` if there is none |
+| `set_dimension_sky(dim: &str, key: &str, value: &str) -> bool` | change the look of a dimension's sky while playing (`""` or `"home"` is the home world). The keys are the properties a pack's `dimension` line may carry ([DATA.md](DATA.md#dimensions)): `sky_colour`, `fog_colour` (`"r,g,b"`, `"#rrggbb"`, an `(r, g, b)` tuple, or `"none"` to give the day and night colours back), `fog_distance` (times the usual, 0.1 to 4), `stars`, `clouds`, `sun`, `moon` (`"yes"`/`"no"` or a bool), `ambient_light` (0 to 15, the least sky light), `time` (a fixed time of day 0 to 1, or `"none"`). `false` if there is no such dimension; an error for an unknown key or a value that makes no sense. Only what is seen changes: the game's own clock, sleeping and mobs go on |
+
+A quad and a particle are only pictures: they do not hurt, block or light
+anything. The quads of a mod are taken away when the mod is switched off, its
+script stops with an error, or the world closes (flying blocks and particles
+are not kept by a saved world either).
+
+```rust
+fn on_item_use(item: String) -> bool {
+    if item == "stick" {
+        let (x, y, z) = player_pos();
+        // A small blast with fire and no hole: it burns, it throws, it breaks nothing.
+        let broken = explode(x, y + 1.0, z + 3.0, 1.5, "fire, no_blocks");
+        spawn_particles("flame", x, y + 1.0, z + 3.0, 24, 1.0, 4.0, 255, 140, 40);
+        spawn_particles("smoke", x, y + 1.5, z + 3.0, 8, 0.5, 1.0, 90, 90, 90);
+        drop_item(x, y + 2.0, z + 3.0, "coal", 3, 0.0, 6.0, 1.0);
+        spawn_falling_block(x, y + 2.0, z + 3.0, "dirt", 2.0, 8.0, 0.0);
+        // A glowing ring of light on the ground, kept until removed.
+        quad_create(1, "", (x - 1.0, y + 0.05, z + 2.0), (x + 1.0, y + 0.05, z + 2.0), (x + 1.0, y + 0.05, z + 4.0), (x - 1.0, y + 0.05, z + 4.0), 255, 200, 80, 120, "additive");
+        if broken > 0 {
+            say("it broke something");
+        }
+        return false;
+    }
+    true
+}
+
+fn on_item_pickup(item: String, count: i64) -> bool {
+    // Nobody may pick up the mod's cursed coal.
+    item != "coal"
+}
+
+fn on_load() {
+    // This dimension is always dusk, with no stars and a red haze.
+    set_dimension_sky("sky", "fog_colour", "#6a2a14");
+    set_dimension_sky("sky", "stars", "no");
+    set_dimension_sky("sky", "time", "0.5");
+}
+```
+
+
+### Sound and music
+
+`play_sound(id)` (above) plays a sound at full volume with no handle. These calls
+place sounds in the world, pitch and pan them, loop them, change them while they
+play, and play music. All of them are bounded and none waits for the sound
+device: a call that cannot be carried out (the sound does not exist, there is no
+device) returns 0 or false, and the game log says so once.
+
+Sounds are found by name, in this order: the player's own `sounds/` folder in the
+data folder, the sounds the packs declare (`sound <id> ...`, see
+[DATA.md](DATA.md#sounds)), then the mod's own folder: `<mods>/<mod>/sounds/<name>`
+with `.ogg`, `.wav`, `.mp3`, `.flac` or `.aiff` added (a name may also include a
+folder, `boss/roar`, and the extension). Those files are read like any sound file
+(12 seconds at most, played as one channel at 22 050 Hz) and kept after the first
+play. Music files are in `<mods>/<mod>/music/<name>` (or `sounds/`).
+
+| Function | What it does |
+| --- | --- |
+| `play_sound(name: &str, volume: f64, pitch: f64, pan: f64) -> i64` | the four-argument form of `play_sound`: volume 0 to 2, pitch 0.25 to 4 (the playback rate: 2 is an octave up and half as long), pan -1 (left) to 1 (right); returns a handle |
+| `play_sound_at(name: &str, x: f64, y: f64, z: f64, volume: f64, pitch: f64) -> i64` | play a sound from a place: full volume within 4 blocks, then the inverse of the distance (half at 8 blocks), dull with distance, gone at 64; it comes from the side it is on, from the way the player faces. Returns a handle |
+| `loop_sound(name: &str, volume: f64, pitch: f64, pan: f64) -> i64` | like `play_sound`, over and over until `stop_sound`; the last 40 milliseconds (a quarter of a short clip at most) are crossfaded into the start, so the join is smooth. Returns the handle, or 0 if the mod has 4 loops already |
+| `loop_sound_at(name: &str, x: f64, y: f64, z: f64, volume: f64, pitch: f64) -> i64` | a looping sound with a place; move it with `set_sound` (a storm's roar that follows the storm) |
+| `stop_sound(handle: i64)` | stop the sound: it goes quiet within a few milliseconds |
+| `fade_sound(handle: i64, volume: f64, seconds: f64)` | move the volume to a new value over some seconds; 0 stops the sound when it gets there |
+| `set_sound(handle: i64, volume: f64, pitch: f64, pan: f64, x: f64, y: f64, z: f64)` | change a playing sound at once: volume, pitch and pan, and the place of a sound that has one (which then ignores `pan`); a sound without a place ignores `x, y, z` |
+| `is_playing(handle: i64) -> bool` | whether the sound is still playing |
+| `play_music(name: &str, volume: f64, fade_in: f64, looping: bool) -> bool` | start a music track |
+| `stop_music(fade_out: f64)` | fade the music out over some seconds (0: at once) |
+| `set_music_volume(volume: f64)` | the music's volume, 0 to 1 |
+| `music_playing() -> bool` | whether the world has music playing |
+
+**Handles.** A handle is a small whole number (it is never 0). It is checked:
+a handle that is stale (its sound ended, or was stopped) does nothing, even if
+the game has since used the same place for another sound, and a mod cannot
+control another mod's handles. A mod holds at most **8** live handles, **4** of
+them loops, and starts at most 8 sounds in a frame; over the limit a one-shot
+still plays but returns 0 (it cannot be stopped), a loop returns 0 and is not
+played, and sounds over the frame's 8 are dropped. The mixer plays 32 voices at
+once; a new sound that finds none takes the one closest to ending. A handle that
+does not start (a name that does not exist) is over at once: `is_playing` is false
+from the next frame. A mod that is switched off, or whose script fails, loses its
+sounds and its music.
+
+**Music.** One channel per world: `play_music` while a track plays crossfades
+into the new one over `fade_in` seconds (at least a quarter of a second, equal
+power), and the same name again only changes its volume (and whether it loops).
+A track that is not looping ends by itself and the channel is free
+(`music_playing` is false). Only the mod that started the music can stop it or
+set its volume. Files are Ogg Vorbis, MP3 or PCM WAV, up to 16 MB, and are
+streamed: the compressed file is kept and a block is decoded at a time, so a five
+minute track costs the size of its file (a few MB) and about 130 KB for the
+mixer's buffer, and nothing once it stops. (FLAC, AIFF and the ADPCM kinds also
+play but only up to 12 seconds.) The loudness is the track's `volume`, times
+`set_music_volume`, times the player's MUSIC VOLUME in SETTINGS > AUDIO (0 to 10,
+5 to start with) and the master volume. The game's own ambience (rain, wind, water)
+is turned down by 3 dB while music is audible. Music stops when the world closes.
+Music has no subtitle; sounds that have a subtitle line in the data files show it
+as before (a positioned one only when it is near enough to hear).
+
+```rust
+fn on_update(dt: f64) {
+    // A storm roars where it is, and fades in when it comes.
+    let (sx, sy, sz) = (120.0, 70.0, -40.0);
+    if state_get_int("roar", 0) == 0 {
+        let h = loop_sound_at("storm_roar", sx, sy, sz, 0.0, 0.8);
+        if h != 0 {
+            fade_sound(h, 1.0, 4.0);
+            state_set_int("roar", h);
+        }
+    } else {
+        let h = state_get_int("roar", 0);
+        if is_playing(h) {
+            set_sound(h, 1.0, 0.8, 0.0, sx, sy, sz);
+        } else {
+            state_set_int("roar", 0);
+        }
+    }
+}
+
+fn on_command(name: String, args: String) -> bool {
+    if name == "boss" {
+        play_music("boss_theme", 0.9, 3.0, true);
+        play_sound_at("boom", 10.0, 64.0, 10.0, 1.0, 1.0);
+        return true;
+    }
+    if name == "calm" {
+        stop_music(2.0);
+        return true;
+    }
+    false
+}
+```
+
+Native code calls the same through `crate::native::sound` (see MODDING.md).
 
 ### Lines and sections for scripts
 

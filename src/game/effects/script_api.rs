@@ -107,6 +107,27 @@ pub fn level(g: &Session, target_word: &str, id: &str) -> i64 {
     }
 }
 
+/// Seconds left of an effect on someone, 0 if it is not active.
+pub fn secs_left(g: &Session, target_word: &str, id: &str) -> f32 {
+    let id = id.to_ascii_lowercase();
+    let id = lookup(&id).map_or(id, |d| d.id.clone());
+    let secs = match who(target_word) {
+        Some(Who::Player) => g.fx.get(&id).map(|a| a.secs),
+        Some(Who::Target) => target(g).and_then(|i| g.mobs.list.get(i)).and_then(|m| m.fx.get(&id).map(|a| a.secs)),
+        None => None,
+    };
+    secs.filter(|s| s.is_finite() && *s > 0.0).unwrap_or(0.0)
+}
+
+/// The ids of the effects active on someone.
+pub fn active_ids(g: &Session, target_word: &str) -> alloc::vec::Vec<alloc::string::String> {
+    match who(target_word) {
+        Some(Who::Player) => g.fx.list.iter().map(|a| a.id.clone()).collect(),
+        Some(Who::Target) => target(g).and_then(|i| g.mobs.list.get(i)).map(|m| m.fx.list.iter().map(|a| a.id.clone()).collect()).unwrap_or_default(),
+        None => alloc::vec::Vec::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

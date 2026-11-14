@@ -168,6 +168,18 @@ fn classify(name: &str) -> Swing {
     Swing::Limb(sign)
 }
 
+/// Which worn slot covers a bone: 0 head, 1 chest (body and arms), 2 legs
+/// (thighs and the belt), 3 feet (calves and feet).
+pub fn armor_slot_of(role: Role) -> Option<usize> {
+    match role {
+        Role::Head | Role::Neck => Some(0),
+        Role::Chest | Role::Torso | Role::Belly | Role::Arm(_) | Role::Forearm(_) | Role::Hand(_) => Some(1),
+        Role::Pelvis | Role::Thigh(_) => Some(2),
+        Role::Calf(_) | Role::Foot(_) => Some(3),
+        Role::Other => None,
+    }
+}
+
 impl ModelDef {
     pub fn from_bbmodel(id: &str, text: &str) -> Result<ModelDef, String> {
         let model = bbmodel::load(text)?;
@@ -192,6 +204,41 @@ impl ModelDef {
     /// convention as the player: 0 faces -z) and placed with its feet at
     /// `at`. `flip_y` mirrors it vertically, for drawing in screen space.
     pub fn quads(&self, pose: &Pose, at: [f32; 3], yaw: f32, height: f32, flip_y: bool, out: &mut Vec<ModelVert>) {
+        self.quads_inner(pose, None, None, at, yaw, height, flip_y, None, out);
+    }
+
+    /// The layer of armour worn in `slot` (0 head, 1 chest, 2 legs, 3 feet):
+    /// copies of the cubes of the bones that slot covers, a little bigger
+    /// than the body, posed the same. Drawn with the armour's own picture
+    /// (laid out like a skin) or a plain colour. Bounded: no more quads than
+    /// the body itself has.
+    pub fn armor_quads(&self, slot: usize, pose: &Pose, at: [f32; 3], yaw: f32, height: f32, flip_y: bool, out: &mut Vec<ModelVert>) {
+        // About 0.6 of a skin pixel (the player is 32 pixels tall).
+        let grow = self.height() * (0.6 / 32.0);
+        self.quads_inner(pose, None, None, at, yaw, height, flip_y, Some((slot, grow)), out);
+    }
+
+    /// The place of the bone called `name` (any case) in this model's bone
+    /// list, for [`crate::bone_pose::BoneTable`]. The first, if two share a name.
+    pub fn bone_index(&self, name: &str) -> Option<usize> {
+        self.names.iter().position(|n| n.eq_ignore_ascii_case(name))
+    }
+
+    /// The names of the bones, as the model file gives them.
+    pub fn bone_names(&self) -> Vec<String> {
+        self.model.bones.iter().map(|b| b.name.clone()).collect()
+    }
+
+    /// As [`ModelDef::quads`], with a creature's own say on top of the
+    /// animation: `bones` turn, move and scale single bones about their
+    /// pivots (children follow), and `orient` is (pitch, roll) in degrees for
+    /// the whole model about its centre (pitch up lifts the nose, roll leans
+    /// the top to the creature's left).
+    pub fn quads_with(&self, pose: &Pose, bones: Option<&crate::bone_pose::BoneTable>, orient: Option<(f32, f32)>, at: [f32; 3], yaw: f32, height: f32, flip_y: bool, out: &mut Vec<ModelVert>) {
+        self.quads_inner(pose, bones, orient, at, yaw, height, flip_y, None, out);
+    }
+
+    fn quads_inner(&self, pose: &Pose, bones: Option<&crate::bone_pose::BoneTable>, orient: Option<(f32, f32)>, at: [f32; 3], yaw: f32, height: f32, flip_y: bool, armor: Option<(usize, f32)>, out: &mut Vec<ModelVert>) {
         let m = &self.model;
         let scale = height / self.height();
         let (sy, cy) = (sinf(yaw), cosf(yaw));
@@ -223,6 +270,13 @@ impl ModelDef {
             }
         } else {
             root
+        };
+        let base = match orient {
+            Some((pitch, roll)) if (pitch != 0.0 || roll != 0.0) && pitch.is_finite() && roll.is_finite() => {
+                let centre = [ox, (m.min[1] + m.max[1]) * 0.5, oz];
+                mul(&base, &rotate_about(centre, [pitch, 0.0, roll]))
+            }
+            _ => base,
         };
         let reach = match a {
             Anim::Walk => 38.0,
@@ -287,7 +341,24 @@ impl ModelDef {
             if body.emote != 0 {
                 pose::emote::add(&self.names[i], &body, &mut rot);
             }
-            let local = rotate_about(b.origin, rot);
+            let over = bones.and_then(|t| t.get(i));
+            if let Some(e) = over {
+                let r = e.rot_deg();
+                rot = [rot[0] + r[0], rot[1] + r[1], rot[2] + r[2]];
+            }
+            let mut local = rotate_about(b.origin, rot);
+            if let Some(e) = over {
+                // Scaled about the pivot, then moved: p' = s (p - pivot) + pivot + offset.
+                let (s, o) = (e.scale_f(), e.off_units());
+                if s != 1.0 || o != [0.0; 3] {
+                    let t: M34 = [
+                        [s, 0.0, 0.0, o[0] + b.origin[0] * (1.0 - s)],
+                        [0.0, s, 0.0, o[1] + b.origin[1] * (1.0 - s)],
+                        [0.0, 0.0, s, o[2] + b.origin[2] * (1.0 - s)],
+                    ];
+                    local = mul(&t, &local);
+                }
+            }
             let parent = match b.parent {
                 Some(p) if p < bone_m.len() => bone_m[p],
                 _ => base,
@@ -295,13 +366,20 @@ impl ModelDef {
             bone_m.push(mul(&parent, &local));
         }
         for (bi, b) in m.bones.iter().enumerate() {
+            // An armour layer is drawn only for the bones its slot covers.
+            if let Some((slot, _)) = armor {
+                if !self.rig.humanoid || armor_slot_of(self.roles[bi]) != Some(slot) {
+                    continue;
+                }
+            }
             for &ci in &b.cubes {
                 let c = match m.cubes.get(ci) {
                     Some(c) => c,
                     None => continue,
                 };
                 let t = mul(&bone_m[bi], &rotate_about(c.origin, c.rotation));
-                let (lo, hi) = (c.from, c.to);
+                let g = armor.map_or(0.0, |a| a.1);
+                let (lo, hi) = ([c.from[0] - g, c.from[1] - g, c.from[2] - g], [c.to[0] + g, c.to[1] + g, c.to[2] + g]);
                 // Corners of each face as seen from outside: top-left,
                 // top-right, bottom-right, bottom-left. Faces are in the
                 // loader's order: east, west, up, down, south, north.
@@ -456,6 +534,50 @@ mod tests {
     }
 
     #[test]
+    fn bone_overrides_and_tilt_move_what_they_say() {
+        use crate::bone_pose::{BoneEntry, BoneTable};
+        let m = ModelDef::from_bbmodel("player", PLAYER).unwrap();
+        let draw = |t: Option<&BoneTable>, orient: Option<(f32, f32)>| {
+            let mut v = Vec::new();
+            m.quads_with(&Pose::default(), t, orient, [0.0; 3], 0.0, 1.8, false, &mut v);
+            assert!(v.iter().all(|p| p.pos.iter().all(|c| c.is_finite())));
+            v
+        };
+        let plain = draw(None, None);
+        let head = m.bone_index("head").expect("the player has a head");
+        assert_eq!(m.bone_index("HEAD"), Some(head), "names match in any case");
+        assert!(m.bone_index("no such bone").is_none());
+        assert_eq!(m.bone_names().len(), m.model.bones.len());
+        // Nothing set: exactly the animation.
+        assert_eq!(draw(Some(&BoneTable::default()), None), plain);
+        assert_eq!(draw(None, Some((0.0, 0.0))), plain);
+        // The head moved 20 model units up: the top of the body rises, the feet stay.
+        let mut t = BoneTable::default();
+        t.set(BoneEntry::new(head, [0.0; 3], [0.0, 20.0, 0.0], 1.0).unwrap());
+        let (a, b) = (bounds(&plain), bounds(&draw(Some(&t), None)));
+        assert!(b.1[1] > a.1[1] + 0.2 && (b.0[1] - a.0[1]).abs() < 1e-3, "{a:?} {b:?}");
+        // Scaled about its pivot: the head grows, so does the whole.
+        let mut t = BoneTable::default();
+        t.set(BoneEntry::new(head, [0.0; 3], [0.0; 3], 3.0).unwrap());
+        let b = bounds(&draw(Some(&t), None));
+        assert!(b.1[1] > a.1[1] + 0.1 && b.1[0] - b.0[0] >= a.1[0] - a.0[0], "{a:?} {b:?}");
+        // Turned on top of the animation: the head leaves its place.
+        let mut t = BoneTable::default();
+        t.set(BoneEntry::new(head, [90.0, 0.0, 0.0], [0.0; 3], 1.0).unwrap());
+        let turned = draw(Some(&t), None);
+        assert_eq!(turned.len(), plain.len());
+        assert!(turned.iter().zip(&plain).any(|(p, q)| p.pos != q.pos));
+        // Pitched a quarter turn about its centre: it lies down along z.
+        let lying = bounds(&draw(None, Some((90.0, 0.0))));
+        assert!(lying.1[1] - lying.0[1] < 1.0 && lying.1[2] - lying.0[2] > 1.5, "{lying:?}");
+        // Rolled: it lies along x.
+        let rolled = bounds(&draw(None, Some((0.0, 90.0))));
+        assert!(rolled.1[1] - rolled.0[1] < 1.0 && rolled.1[0] - rolled.0[0] > 1.5, "{rolled:?}");
+        // A tilt that is not a number is ignored.
+        assert_eq!(draw(None, Some((f32::NAN, 0.0))), plain);
+    }
+
+    #[test]
     fn limb_names_are_recognised() {
         assert_eq!(classify("Head"), Swing::Head);
         assert_eq!(classify("L-Thigh"), Swing::Limb(1.0));
@@ -467,5 +589,26 @@ mod tests {
         assert_eq!(classify("Leg-BR"), Swing::Limb(1.0));
         assert_eq!(classify("Chest"), Swing::None);
         assert!(ModelDef::from_bbmodel("x", "{}").is_err());
+    }
+
+    #[test]
+    fn an_armour_layer_is_a_bigger_copy_of_the_cubes_of_its_slot() {
+        let m = ModelDef::from_bbmodel("player", PLAYER).unwrap();
+        let (mut body, mut head, mut chest, mut legs, mut feet) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let pose = Pose::default();
+        m.quads(&pose, [0.0; 3], 0.0, 1.8, false, &mut body);
+        for (slot, out) in [(0, &mut head), (1, &mut chest), (2, &mut legs), (3, &mut feet)] {
+            m.armor_quads(slot, &pose, [0.0; 3], 0.0, 1.8, false, out);
+            assert!(!out.is_empty(), "slot {} covers nothing", slot);
+            assert!(out.iter().all(|v| v.pos.iter().all(|c| c.is_finite())));
+        }
+        // Every cube is in one slot only: the layers together are no more than the body.
+        assert!(head.len() + chest.len() + legs.len() + feet.len() <= body.len());
+        // The head layer is bigger than the head: it reaches higher than the body does.
+        let top = |v: &Vec<ModelVert>| v.iter().map(|q| q.pos[1]).fold(f32::MIN, f32::max);
+        assert!(top(&head) > top(&body));
+        assert_eq!(armor_slot_of(Role::Head), Some(0));
+        assert_eq!(armor_slot_of(Role::Foot(1)), Some(3));
+        assert_eq!(armor_slot_of(Role::Other), None);
     }
 }

@@ -5,7 +5,7 @@
 //! `false`, `0` or an empty string).
 
 use crate::block::{self, reg, Usable};
-use crate::inventory::{stack_limit, Stack, HOTBAR, SLOTS};
+use crate::inventory::{stack_limit, HOTBAR, SLOTS};
 use crate::math::floord;
 use crate::session::{GameMode, Session};
 use alloc::string::String;
@@ -71,14 +71,14 @@ pub fn move_slot(g: &mut Session, from: i64, to: i64) -> bool {
             g.inv.slots[b] = Some(src);
             g.inv.slots[a] = None;
         }
-        Some(dst) if dst.item == src.item => {
+        Some(dst) if dst.same_kind(&src) => {
             let room = stack_limit(dst.item).saturating_sub(dst.count);
             let n = room.min(src.count);
             if n == 0 {
                 return false;
             }
-            g.inv.slots[b] = Some(Stack { item: dst.item, count: dst.count + n });
-            g.inv.slots[a] = if src.count == n { None } else { Some(Stack { item: src.item, count: src.count - n }) };
+            g.inv.slots[b] = Some(dst.with_count(dst.count + n));
+            g.inv.slots[a] = if src.count == n { None } else { Some(src.with_count(src.count - n)) };
         }
         Some(_) => g.inv.slots.swap(a, b),
     }
@@ -104,9 +104,9 @@ pub fn stack_to_chest(g: &mut Session, x: i64, y: i64, z: i64) -> i64 {
         if chest.count(s.item) == 0 {
             continue;
         }
-        let left = chest.add(s.item, s.count);
+        let left = chest.add_stack(s);
         moved += (s.count - left) as i64;
-        g.inv.slots[i] = if left == 0 { None } else { Some(Stack { item: s.item, count: left }) };
+        g.inv.slots[i] = if left == 0 { None } else { Some(s.with_count(left)) };
     }
     moved
 }

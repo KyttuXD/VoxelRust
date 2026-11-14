@@ -3,7 +3,7 @@
 Everything in the game world is declared in text files: textures, blocks
 and what they do (doors, crops, seats, falling blocks), shapes, items, tools,
 weapons, food, recipes, ores and wild plants, models, creatures, vehicles,
-sounds, dimensions, chat commands and small scripts. The game's own
+sounds, music, dimensions, chat commands and small scripts. The game's own
 content is the small core, [data/base.txt](../data/base.txt) (built into the program: see
 [DATA.md](DATA.md) for what is in it and what is a mod). A **pack** is a file in the same format that is read after it and
 may add new things or redefine anything by reusing its id. A mod can also bring
@@ -234,7 +234,7 @@ The newer events, which fire in the same way:
 | `entityspawn` | a creature appears (by itself, from an egg, from breeding) | entity id |
 | `entitydeath` | a creature dies, whatever the cause | entity id |
 | `entityhurt` | you strike a creature (it may die of it) | entity id |
-| `playerhurt` | you take damage in survival, after armour and mods | the cause: `fall`, `drown`, `hunger`, `block`, `arrow`, `command`, `other`, or the id of the creature that bit |
+| `playerhurt` | you take damage in survival, after armour and mods | the cause: `fall`, `drown`, `hunger`, `block`, `arrow`, `explosion`, `effect`, `command`, `other`, or the id of the creature that bit |
 | `respawn` | you come back after dying | none |
 | `chat` | you say something (a line not starting with `/`) | its first word |
 | `command` | you type a `/command` | its name without the `/` |
@@ -1004,10 +1004,18 @@ also passed to the mod's `on_event` hook.
 | `place` (`blockplace`) | the player places a block | block id | `on_block_place`: `false` stops it | `fn(&mut Session, cell: [i32; 3], Block) -> bool` |
 | `entityspawn` | a creature appears | entity id | `on_entity_spawn`: `false` removes it again | `fn(&mut Session, kind: usize) -> bool` |
 | `entitydeath` | a creature dies | entity id | no, `on_entity_death` after | `fn(&mut Session, kind: usize, at: [f64; 3])` |
+| (world generation) | a chunk was just generated (not loaded from a save) | | `chunk_generated`: place structures in it (4096 writes a call, a couple of chunks a frame, only for whoever runs the world) | `fn(&mut Session, cx: i32, cz: i32, seed: u32)` |
+| (any placement) | a block was placed: `player`, `script`, `remote`, `fall`, `fluid` or `other` (not air, a frame later, two hooks deep at most) | | `on_block_placed` | `fn(&mut Session, cell: [i32; 3], Block, cause: &str)` |
+| (creatures) | a creature died, with who killed it (a player's name, a creature's id, `lava`, `script`, `other`) | | `on_creature_death` | `fn(&mut Session, id: u32, kind: usize, at: [f64; 3], killer: &str)` |
+| (creatures) | a creature left the world: `killed`, `despawned`, `unloaded`, `scripted` | | `on_creature_removed` | `fn(&mut Session, id: u32, kind: usize, reason: &str)` |
+| (creatures) | the player right-clicked a creature | | `on_creature_interact`: `false` cancels the game's handling | `fn(&mut Session, id: u32, kind: usize, item: Option<usize>) -> bool` |
+| (creatures) | a night creature would burn in daylight | | `on_creature_sunburn`: `false` lets it live (asked again after 20 seconds) | `fn(&mut Session, id: u32, kind: usize) -> bool` |
 | `playerhurt` | the player takes damage | cause | `on_player_hurt`: may change `amount`; `false` or 0 cancels | `fn(&mut Session, amount: &mut i32, cause: &str) -> bool` |
 | `chat`, `command` | the player types a line | first word / command name | `on_chat`: `false` swallows the line (commands too) | `fn(&mut Session, line: &str) -> bool` |
 | `useitem` (`itemuse`) | the player right clicks with an item that has a script | item id | `on_item_use`: asked for any held item, once per press; `false` stops the use | `fn(&mut Session, item: usize) -> bool` |
 | `craft` | the player crafts | output item id | no, `on_craft` after | `fn(&mut Session, out: usize)` |
+| (armour) | a worn piece was put on, taken off, set by code or broke | (none) | no, `on_armor_change` after | `fn(&mut Session, slot: usize)` (0 head .. 3 feet) |
+| `itempickup` | the player is about to pick up a dropped item | item id | `on_item_pickup`: `false` leaves it lying (offered again a second later) | `fn(&mut Session, item: usize, count: u16) -> bool` |
 | `every N` | every N seconds | seconds | no, `on_tick` runs every frame | `fn(&mut Session, dt: f32)` |
 | (every event) | any event above or `/fire` | the event's | `on_event` hears it, cannot cancel | `fn(&mut Session, name: &str, what: &str)` |
 | `start` | a world is opened | none | `on_world_load` once the world is open | `fn(&mut Session)` |
@@ -1016,7 +1024,7 @@ also passed to the mod's `on_event` hook.
 | (a key binding) | a mod's key binding goes down or up | | `on_key` (see [Controls, HUD and screens](#controls-hud-and-screens)) | `fn(&mut Session, id: &str, down: bool)` |
 | (each frame) | a frame of play | | `on_hud`: draw through the checked API | `fn(&Session, &mut ModApi)` |
 | (a mod's screen) | the player used a screen the mod opened | | `on_ui` | `fn(&mut Session, &mut ModApi, &UiEvent)` |
-| `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itempickup`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
+| `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
 | `explode`, `blockexploded`, `tntprimed` | an explosion happens, breaks blocks, or TNT is lit | see [Explosions](#explosions) | `before_explode`: `false` cancels; `after_explode` and `on_prime` after | `fn(&mut Session, &mut ExplosionInfo) -> bool` |
 | `effectstart`, `effectend`, `wake` | a status effect starts or ends on the player; the player wakes | effect id | `effect_apply`: `false` refuses it; `effect_tick` every frame per running effect; `effect_start`, `effect_end` when it starts and ends (scripts: `on_effect_start`, `on_effect_tick`, `on_effect_end`) | `fn(&mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool` |
 
@@ -1077,12 +1085,46 @@ grow by an argument, and prefer `..Native::NONE` so that new fields do not
 break your code. Event names in scripts are kept for good: an event is never
 renamed without leaving the old name as an alias.
 
+### Armour, wear, item data and attributes from native code
+
+A mod's code reaches the same things the script calls do, directly on the
+`Session`: `g.inv.worn` (the four worn slots), `g.set_worn(slot, stack)`,
+`g.put_on_armor(pack_slot)`, `g.take_off_armor(slot)`, `g.armor_points()`
+(defense and toughness), `g.wear_held(uses, audio)`, `g.slot_mut(n)` (a stack
+by the slot numbers scripts use), `g.attrs` (`game::gear::attributes`: base and
+modifiers of `max_health`, `walk_speed`, `jump_height`, `armor`, `damage`) and
+`g.max_health()`. A `Stack` has `wear` (uses spent) and `data` (a handle to its
+item data map, see `game::gear::item_data`: `with_key`, `get`, `without_key`);
+`Stack::new(item, count)` makes a plain one and `s.with_count(n)` changes only
+the count. Stacks merge only with `same_kind`. The hook `on_armor_change` of
+`Native` is called after a piece changes. Items have `x.armor`, `x.durability`
+and `x.tags` in the registry. See [SCRIPTING.md](SCRIPTING.md#armour-wear-item-data-and-tags).
+
 ### Example
 
 [examples/hooks](../examples/hooks) is a small mod that protects a block with
 `on_block_break`, softens falls with `on_player_hurt` and draws the player's
 health with `on_draw_hud`, plus a few `when` scripts for the new events.
 Copy it to `mods/hooksdemo/` and rebuild.
+
+### Effects for mods (items, blasts, blocks, particles, quads, skies)
+
+What scripts do with `drop_item`, `explode` with flags, `spawn_falling_block`,
+`spawn_particles`, `quad_*` and `set_dimension_sky` (see
+[SCRIPTING.md](SCRIPTING.md#effects-items-explosions-blocks-particles-quads-skies)) is plain
+functions of the game that native code calls too, with the same limits:
+
+| What | Function (in `src/game/fx/`) |
+| --- | --- |
+| a dropped item with a velocity | `drops::spawn(g, pos, vel, item, count) -> bool` |
+| an explosion with flags; answers the blocks destroyed | `explosion::explode_with(g, at, power, source, blast::Flags) -> usize` (`blast::run` for the limits scripts have) |
+| a flying block | `falling::launch(&mut fx::state(g).falling, block, pos, vel) -> bool` |
+| particles | `particles::spawn(g, &particles::Request { .. }) -> u32` (they are `Session::primed.sparks`) |
+| translucent quads | `fx::state(g).quads.create(quads::FxQuad { .. })`, `move_to`, `tint`, `remove`, `remove_mod` (name your quads by your mod's name; call `remove_mod` on world close) |
+| a dimension's sky | `sky::set(g, dim, key, value)`; read with `sky::current(g)` |
+| the pickup hook | `Native::on_item_pickup: fn(&mut Session, item: usize, count: u16) -> bool` (`false` leaves the item lying) |
+
+The pack's own sky properties for a dimension are in [DATA.md](DATA.md#the-sky-of-a-dimension).
 
 ### Controls, HUD and screens
 
@@ -1114,6 +1156,39 @@ the mod switches page. Do not call `with_ui` (or anything that calls a script)
 from inside these hooks: use the `ModApi` you are given. The example in
 [examples/hooks](../examples/hooks) has a binding that shows or hides a line
 beside the hearts.
+
+### Giant creatures, model control and messages
+
+Native code reaches the same limits and the same shared-game sending as scripts
+(`set_creature_size` and friends in [SCRIPTING.md](SCRIPTING.md#giants-model-control-and-state)); it
+calls them on `g.mobs` (a `Mobs`, from `game/creature_api.rs`), naming a
+creature by its stable `id`:
+
+| Call | What it does |
+| --- | --- |
+| `set_size(id, width, height) -> bool` | the creature's own size, kept to 0.1..32 wide and 0.1..64 tall (blocks); it collides and is drawn at it |
+| `set_health(id, hp, max_hp) -> bool` | health and its limit (the limit 1..1,000,000; the health 0..limit) |
+| `set_bone(id, bone_name, [rx, ry, rz], [ox, oy, oz], scale) -> BoneResult` | one bone of the model, on top of the animation (degrees about its pivot, model units, uniform scale); `UnknownBone` is logged once and ignored; 64 bones a creature, 256 creatures |
+| `clear_bones(id) -> bool` | |
+| `set_orientation(id, pitch, roll) -> bool` | tilt the whole model about its centre, degrees |
+| `set_state(id, text) -> bool`, `state_of(id) -> &str` | a text of up to 64 bytes on a creature |
+| `bone_names.names(model)` and `creature_api::model_bone_names(&mut mobs, id)` | the bone names of a model |
+
+A creature past the old size limits (6 tall, 3 wide) is "big": it is found by walking straight
+instead of a path search, steps up a quarter of its width, tests its collisions only through the
+slab it just moved into, and is kept alive and drawn from `creature_size::keep_extra` blocks
+further off. These are plain changes to the host's own state: in a shared game only the player who
+runs the creatures should call `set_size`, `set_health` and `set_state`, which the snapshot then
+sends to the others (bone overrides, tilt and state travel with it). The renderer reads a
+creature's overrides with `Mob::bone_view()` and draws with `Renderer::draw_model_with`.
+
+Messages: `g.send_mod_message(mod_name, channel, to, text) -> bool` (`to` is a player name, or `None`
+for everyone else) sends to the same mod's scripts and native code on the other machines; they
+arrive in the script's `on_message(channel, from, text)` and in the `Native` field
+`on_message: Option<fn(&mut Session, channel: &str, from: &str, text: &str)>`. At most 8 a second a
+player, 512 bytes of text without control characters, 64 bytes of mod name and channel together; the
+server drops what breaks these (see `net/modmsg.rs`). Existing hooks are unchanged and `Native::NONE`
+has `on_message: None`.
 
 ### Adding an event or a hook
 
@@ -1177,6 +1252,19 @@ of [DATA.md](DATA.md#effects) cover (damage, healing, speed, jump, melee
 damage, hunger, absorption, night vision): those need code, and
 code needs a rebuild. What a pack can do is run the episodes and scripts
 described above.
+
+### Sound and music from native code
+
+A mod's code plays sounds and music through `crate::native::sound`
+([src/game/mod_sound.rs](../src/game/mod_sound.rs)), with the session it is
+called with and its own name: `sound::play(g, "<mod>", "<sound>", volume, pitch, pan,
+at, looping)` returns a handle (0: none) for `sound::stop`, `fade`, `set` and
+`is_playing`; `sound::play_music`, `stop_music`, `set_music_volume` and
+`music_playing` drive the world's one music channel. The sounds are found, limited
+and mixed exactly as a script's are (see [SCRIPTING.md](SCRIPTING.md#sound-and-music)
+and [SOUND.md](SOUND.md)); calls queue and the game carries them out once a frame.
+`audio.play_named` still plays a sound of the data files at once, with the game's own
+variation, from the hooks that are handed the `Audio`.
 
 ## Memory
 

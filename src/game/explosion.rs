@@ -17,6 +17,7 @@
 use crate::block::{self, reg, Block, Kind, AIR};
 use crate::chunk::CH;
 use crate::interact;
+use crate::game::fx::blast::Flags;
 use crate::math::{cosf, floord, sinf, sqrtf, TAU};
 use crate::session::{GameMode, Session};
 use alloc::string::String;
@@ -176,24 +177,33 @@ pub fn away(from: [f64; 3], to: [f64; 3]) -> ([f32; 3], f32) {
 /// Set off an explosion of `power` at `at`. See the module's notes; the
 /// mods' `before_explode` hooks may change or cancel it first.
 pub fn explode(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSource) {
+    explode_with(g, at, power, source, Flags::NONE);
+}
+
+/// [`explode`] with the choices a mod's `explode(x, y, z, power, flags)` has
+/// (see `game/fx/blast.rs`): fire left behind, no blocks broken, nobody
+/// hurt, no sound or shaking. Returns how many blocks it destroyed (blocks
+/// of TNT caught for a chain count, creatures do not; 0 when a hook
+/// cancelled it).
+pub fn explode_with(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSource, flags: Flags) -> usize {
     if !(power > 0.0) || !at[0].is_finite() || !at[1].is_finite() || !at[2].is_finite() {
-        return;
+        return 0;
     }
     let mut info = ExplosionInfo { at, power: if power > MAX_POWER { MAX_POWER } else { power }, source };
     for (_, n) in crate::native::active() {
         if let Some(before) = n.before_explode {
             if !before(g, &mut info) {
-                return;
+                return 0;
             }
         }
     }
     // Scripts (script/bridge.rs) may cancel it or change its power too.
     if !crate::script::bridge::explode(g, &mut info) {
-        return;
+        return 0;
     }
     // A hook may have made it nonsense.
     if !(info.power > 0.0) || !info.at.iter().all(|v| v.is_finite()) {
-        return;
+        return 0;
     }
     if info.power > MAX_POWER {
         info.power = MAX_POWER;
@@ -210,7 +220,8 @@ pub fn explode(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSourc
     // Under water the blast breaks no blocks and hurts less (game/fluid_rules.rs).
     let wet = block::is_water(g.world.get(floord(at[0]), floord(at[1]), floord(at[2])));
     let breaks = if wet { crate::game::fluid_rules::underwater_block_power(power) } else { power };
-    for c in blast_cells(at, radius(breaks), seed_of(at)) {
+    let cells = if flags.no_blocks { Vec::new() } else { blast_cells(at, radius(breaks), seed_of(at)) };
+    for c in cells {
         let b = g.world.get(c[0], c[1], c[2]);
         if b == AIR || resists(b) {
             continue;
@@ -252,13 +263,18 @@ pub fn explode(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSourc
         crate::primed::prime_at(g, c, fuse);
     }
 
-    if wet {
+    if flags.no_damage {
+        // Nobody is hurt or thrown.
+    } else if wet {
         let softened = ExplosionInfo { power: power * crate::game::fluid_rules::UNDERWATER_HURT, ..info };
         hurt_things(g, &softened);
     } else {
         hurt_things(g, &info);
     }
-    show(g, &info);
+    show(g, &info, flags.silent);
+    if flags.fire && !wet {
+        crate::game::fx::blast::set_fires(g, at, radius(power), seed_of(at));
+    }
 
     // Scripts: once for each kind of block that went.
     for b in kinds {
@@ -269,6 +285,7 @@ pub fn explode(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSourc
             after(g, &info, destroyed);
         }
     }
+    destroyed
 }
 
 /// A small random toss for a dropped item.
@@ -312,6 +329,8 @@ fn hurt_things(g: &mut Session, info: &ExplosionInfo) {
                     // So that a mod's `hurt` hook can tell who it was.
                     g.mobs.last_biter = Some(k);
                 }
+                // (Armour takes a share of a blast; see game/gear/armor.rs.)
+                g.ev.pending_cause = alloc::string::String::from("explosion");
                 g.hurt_later(damage);
             }
             if !g.player.flying && knock > 0.0 {
@@ -324,9 +343,11 @@ fn hurt_things(g: &mut Session, info: &ExplosionInfo) {
 }
 
 /// The sound, the sparks, the flash and the shaking of the view.
-fn show(g: &mut Session, info: &ExplosionInfo) {
+fn show(g: &mut Session, info: &ExplosionInfo, silent: bool) {
     let (at, power) = (info.at, info.power);
-    g.sound_queue.push(String::from("explosion"));
+    if !silent {
+        g.sound_queue.push(String::from("explosion"));
+    }
     let n = ((power * 10.0) as usize).clamp(8, 80);
     for _ in 0..n {
         let (a, e, s, life, pick) = (g.primed.unit(), g.primed.unit(), g.primed.unit(), g.primed.unit(), g.primed.unit());
@@ -341,6 +362,9 @@ fn show(g: &mut Session, info: &ExplosionInfo) {
             [96, 96, 100]
         };
         g.primed.spark(at, [cosf(a * TAU) * r * speed, y * speed + 2.0, sinf(a * TAU) * r * speed], 0.4 + life * 0.8, colour);
+    }
+    if silent {
+        return;
     }
     let (_, dist) = away(at, [g.player.pos[0], g.player.pos[1] + g.player.height * 0.5, g.player.pos[2]]);
     let near = radius(power) * 4.0;

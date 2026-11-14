@@ -91,6 +91,8 @@ pub struct Settings {
     pub ui_volume: i32,
     /// Rain, wind, water, fire, lava and cave sounds (default 6).
     pub ambience_volume: i32,
+    /// Music mods play (default 5).
+    pub music_volume: i32,
     // Voice chat (multiplayer servers only)
     /// Hear other players' voices (default on).
     pub voice_hear: bool,
@@ -187,6 +189,7 @@ impl Default for Settings {
             steps_volume: 6,
             ui_volume: 6,
             ambience_volume: 6,
+            music_volume: 5,
             voice_hear: true,
             voice_mic: false,
             voice_activation: false,
@@ -299,6 +302,7 @@ impl Settings {
             steps_volume: int("steps_volume", d.steps_volume, 0, 10),
             ui_volume: int("ui_volume", d.ui_volume, 0, 10),
             ambience_volume: int("ambience_volume", d.ambience_volume, 0, 10),
+            music_volume: int("music_volume", d.music_volume, 0, 10),
             voice_hear: flag("voice_hear", true),
             voice_mic: flag("voice_mic", false),
             voice_activation: flag("voice_activation", false),
@@ -381,6 +385,7 @@ impl Settings {
             self.autosave_seconds,
             self.view_bobbing as i32,
         );
+        s.push_str(&alloc::format!("music_volume={}\n", self.music_volume));
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\nslim_arms={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.slim_arms as i32));
         s.push_str(&alloc::format!("map_zoom={}\nmap_preset_1={}\nmap_preset_2={}\nmap_preset_3={}\nmap_follow={}\nmap_grid={}\nmap_waypoints={}\n", self.map_zoom, self.map_preset[0], self.map_preset[1], self.map_preset[2], self.map_follow as i32, self.map_grid as i32, self.map_waypoints as i32));
         s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\ntexture_pack={}\npack_hue={}\npack_saturation={}\npack_brightness={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.texture_pack, self.pack_hue, self.pack_saturation, self.pack_brightness, self.auto_update as i32));
@@ -424,6 +429,18 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn music_volume_defaults_to_five_clamps_and_round_trips() {
+        assert_eq!(Settings::default().music_volume, 5);
+        assert_eq!(Settings::parse("master_volume=8\n").music_volume, 5);
+        assert_eq!(Settings::parse("music_volume=99\n").music_volume, 10);
+        assert_eq!(Settings::parse("music_volume=-3\n").music_volume, 0);
+        let mut s = Settings::default();
+        s.music_volume = 2;
+        assert_eq!(Settings::parse(&s.to_text()).music_volume, 2);
+        assert!(Settings::parse(&s.to_text()).extra("music_volume").is_empty());
+    }
 
     #[test]
     fn ambience_volume_defaults_to_six_clamps_and_round_trips() {

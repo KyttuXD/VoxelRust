@@ -261,6 +261,17 @@ pub struct ItemExtra {
     pub shoots: Option<(i32, f32, f32, Option<usize>)>,
     /// A spawn egg: using it brings out one of this creature.
     pub egg: Option<usize>,
+    /// Armour: the worn slot (0 head, 1 chest, 2 legs, 3 feet), the defense
+    /// points (0..20) and the toughness (see `game/gear/armor.rs`).
+    pub armor: Option<(u8, u8, f32)>,
+    /// The picture the player model wears for this armour (a texture name), if any.
+    pub armor_tex: String,
+    /// The colour of the plain layer worn when there is no `armor_tex`.
+    pub armor_tint: Option<[u8; 3]>,
+    /// Uses before it breaks (0 = does not wear); see `game/gear/wear.rs`.
+    pub durability: u16,
+    /// Marks mod code reads (`has_tag`), with their numbers.
+    pub tags: Vec<(String, f32)>,
 }
 
 #[derive(Clone, Debug)]
@@ -401,6 +412,9 @@ pub struct EntityExtra {
     /// player, and when within range for the whole fuse it blows up (see
     /// `entity_explode`).
     pub explodes: Option<(f32, f32, f32)>,
+    /// `reach <blocks>`: how far from the player a melee creature bites (0 =
+    /// worked out from its size, see `game/mob_hooks.rs`).
+    pub reach: f32,
 }
 
 /// A part of a pack kept as written, for a mod's own code to read: a
@@ -673,6 +687,9 @@ pub struct Registry {
     /// Other worlds inside a world: a name and the lie of its land
     /// (an index into `worldgen::SHAPES`).
     pub dimensions: Vec<(String, u8)>,
+    /// The sky of each dimension that sets any of its looks (`dimension <name> <shape> sky_colour ...`);
+    /// a dimension not listed has the ordinary sky (see `content/dim_sky.rs`).
+    pub dim_skies: Vec<(String, crate::dim_sky::DimSky)>,
     /// Parts of the game that packs switch on (`feature <name>`): things
     /// built into the program that only run when a pack asks for them.
     pub features: Vec<String>,
@@ -1464,21 +1481,21 @@ impl Parser<'_> {
             match key {
                 "name" => e.name = rest.to_string(),
                 "model" => e.model = a.first().unwrap_or(&"").to_string(),
-                "height" => match f(0.1, 6.0) {
+                "height" => match f(crate::creature_size::MIN_SIZE, crate::creature_size::MAX_HEIGHT) {
                     Some(v) => e.height = v,
-                    None => bad = Some("height must be 0.1..6 blocks"),
+                    None => bad = Some("height must be 0.1..64 blocks"),
                 },
-                "width" => match f(0.1, 3.0) {
+                "width" => match f(crate::creature_size::MIN_SIZE, crate::creature_size::MAX_WIDTH) {
                     Some(v) => e.width = v,
-                    None => bad = Some("width must be 0.1..3 blocks"),
+                    None => bad = Some("width must be 0.1..32 blocks"),
                 },
                 "speed" => match f(0.0, 12.0) {
                     Some(v) => e.speed = v,
                     None => bad = Some("speed must be 0..12 blocks per second"),
                 },
-                "health" => match n(1, 1000) {
+                "health" => match n(1, crate::creature_size::MAX_HEALTH) {
                     Some(v) => e.health = v,
-                    None => bad = Some("health must be 1..1000"),
+                    None => bad = Some("health must be 1..1000000"),
                 },
                 "damage" => match n(0, 100) {
                     Some(v) => e.damage = v,
@@ -1497,7 +1514,7 @@ impl Parser<'_> {
                     Some(&"villager") => e.behavior = Behavior::Villager,
                     _ => bad = Some("behavior must be wander, npc, hostile, swim, fly or villager"),
                 },
-                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" | "explodes" | "loot" => {
+                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" | "explodes" | "loot" | "reach" => {
                     e.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "tint" => {
@@ -1554,7 +1571,7 @@ impl Parser<'_> {
                     _ => bad = Some("stack must be 1..999"),
                 },
                 "category" => it.category = rest.to_string(),
-                "turns" | "damage" | "shoots" => it.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect())),
+                "turns" | "damage" | "shoots" | "armor" | "armor_tex" | "armor_tint" | "durability" | "tag" => it.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect())),
                 _ => bad = Some("unknown item property"),
             }
         }
@@ -1849,6 +1866,31 @@ impl Registry {
             });
         }
 
+        // A spawn egg for every creature, `<id>_egg`, made now: before anything
+        // that names items (block drops, groups, recipes, creatures' loot and
+        // trades) is resolved, and from every pack read, so any of them can name
+        // the egg of a creature of any pack, in whatever order the packs came.
+        {
+            let creatures: Vec<(&str, &str)> = raw_entities.iter().filter(|e| models.iter().any(|m| m.id == e.model)).map(|e| (e.id.as_str(), e.name.as_str())).collect();
+            for egg in crate::game::gear::eggs::plan(&creatures, &|id| items.iter().any(|it| it.id == id), items.len(), 60_000) {
+                items.push(ItemDef {
+                    id: egg.id,
+                    name: egg.name,
+                    icon: 0,
+                    place: None,
+                    brush: 0,
+                    reach: 0.0,
+                    stack: 64,
+                    tool: 0,
+                    speed: 1.0,
+                    food: 0,
+                    section: None,
+                    category: String::from("Eggs"),
+                    x: ItemExtra { egg: Some(egg.creature), ..ItemExtra::default() },
+                });
+            }
+        }
+
         // What each block gives when broken: itself unless the data says
         // otherwise (`drops <item>` or `drops nothing`).
         for rb in &raw_blocks {
@@ -1967,6 +2009,43 @@ impl Registry {
                         }
                         items[ri.0].x.shoots = Some((word(0).parse::<i32>().unwrap_or(4).clamp(0, 500), word(1).parse::<f32>().unwrap_or(32.0).clamp(4.0, 80.0), word(2).parse::<f32>().unwrap_or(0.6).clamp(0.1, 10.0), ammo));
                     }
+                    // armor <head|chest|legs|feet> <defense 0..20> [toughness 0..20]
+                    "armor" => {
+                        let slot = crate::game::gear::armor::slot_named(word(0));
+                        let defense = word(1).parse::<u8>().ok().filter(|d| *d <= crate::game::gear::armor::MAX_DEFENSE);
+                        let tough = if word(2).is_empty() { Some(0.0) } else { word(2).parse::<f32>().ok().filter(|t| t.is_finite() && (0.0..=crate::game::gear::armor::MAX_TOUGHNESS).contains(t)) };
+                        match (slot, defense, tough) {
+                            (Some(sl), Some(d), Some(t)) => items[ri.0].x.armor = Some((sl as u8, d, t)),
+                            _ => warnings.push(alloc::format!("item {}: armor needs head, chest, legs or feet, a defense 0..20 and an optional toughness 0..20", items[ri.0].id)),
+                        }
+                    }
+                    "armor_tex" => items[ri.0].x.armor_tex = crate::pack_entities::clean_name(word(0)),
+                    "armor_tint" => {
+                        let v: Vec<u8> = a.iter().filter_map(|s| s.parse::<u8>().ok()).collect();
+                        if v.len() == 3 && a.len() == 3 {
+                            items[ri.0].x.armor_tint = Some([v[0], v[1], v[2]]);
+                        } else {
+                            warnings.push(alloc::format!("item {}: armor_tint needs three numbers 0..255", items[ri.0].id));
+                        }
+                    }
+                    "durability" => match word(0).parse::<u16>() {
+                        Ok(n) if (1..=60_000).contains(&n) => {
+                            items[ri.0].x.durability = n;
+                            // A worn item is its own stack.
+                            items[ri.0].stack = 1;
+                        }
+                        _ => warnings.push(alloc::format!("item {}: durability must be 1..60000", items[ri.0].id)),
+                    },
+                    "tag" => {
+                        if word(0).is_empty() || items[ri.0].x.tags.len() >= 16 {
+                            warnings.push(alloc::format!("item {}: tag needs a name (at most 16 tags)", items[ri.0].id));
+                        } else {
+                            let value = word(1).parse::<f32>().ok().filter(|v| v.is_finite()).unwrap_or(1.0);
+                            let it = &mut items[ri.0];
+                            it.x.tags.retain(|t| t.0 != word(0));
+                            it.x.tags.push((word(0).to_ascii_lowercase(), value));
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -2012,7 +2091,7 @@ impl Registry {
                             grid_recipes.push(rc);
                         }
                     }
-                    Err(why) => warnings.push(alloc::format!("{}: recipe: {}", at, why)),
+                    Err(why) => warnings.push(alloc::format!("{}: recipe: {}", at, crate::game::gear::eggs::explain(&why, &|c| raw_entities.iter().any(|e| e.id == c)))),
                 }
                 continue;
             }
@@ -2146,6 +2225,11 @@ impl Registry {
                                     x.hunts.extend(a.iter().cloned());
                                     x.traits |= traits::HUNTER;
                                 }
+                                // reach <blocks>: how far a melee creature bites (default from its width).
+                                "reach" => match word(0).parse::<f32>() {
+                                    Ok(v) if v.is_finite() && v > 0.0 => x.reach = v.clamp(0.5, 16.0),
+                                    _ => ok = false,
+                                },
                                 // explodes <power> <fuse seconds> <trigger range>
                                 "explodes" => {
                                     let f = |k: usize| word(k).parse::<f32>().ok().filter(|v| v.is_finite());
@@ -2157,7 +2241,8 @@ impl Registry {
                                 _ => {}
                             }
                             if !ok {
-                                warnings.push(alloc::format!("entity {}: `{} {}` is not understood", e.id, key, a.join(" ")));
+                                let hint = a.iter().filter_map(|w| crate::game::gear::eggs::creature_of(w)).find(|c| !raw_entities.iter().any(|o| o.id == *c)).map(|c| alloc::format!(" (there is no creature `{}`, so no spawn egg of that name)", c)).unwrap_or_default();
+                                warnings.push(alloc::format!("entity {}: `{} {}` is not understood{}", e.id, key, a.join(" "), hint));
                             }
                         }
                         x
@@ -2171,6 +2256,7 @@ impl Registry {
         let mut commands: Vec<(String, Vec<String>)> = Vec::new();
         let mut scripts: Vec<Script> = Vec::new();
         let mut dimensions: Vec<(String, u8)> = Vec::new();
+        let mut dim_skies: Vec<(String, crate::dim_sky::DimSky)> = Vec::new();
         let mut features: Vec<String> = Vec::new();
         let mut episodes: Vec<EpisodeDef> = Vec::new();
         let mut toggles: Vec<(String, bool, String)> = Vec::new();
@@ -2308,6 +2394,15 @@ impl Registry {
                     match shape {
                         Some(k) if !id.is_empty() && id.len() <= 12 && id.chars().all(|c| c.is_ascii_alphanumeric()) => {
                             dimensions.retain(|d| d.0 != id);
+                            dim_skies.retain(|d| d.0 != id);
+                            // Properties of its sky may follow the shape (content/dim_sky.rs).
+                            let (sky, problems) = crate::dim_sky::DimSky::parse_props(&w[3.min(w.len())..]);
+                            for p in problems {
+                                warnings.push(alloc::format!("{}: dimension {}: {}", at, id, p));
+                            }
+                            if !sky.is_default() {
+                                dim_skies.push((id.clone(), sky));
+                            }
                             dimensions.push((id, k as u8));
                         }
                         _ => warnings.push(alloc::format!("{}: dimension needs <name of letters and digits> <normal|flat|void|islands>", at)),
@@ -2317,29 +2412,6 @@ impl Registry {
             }
         }
         let raw_rules: Vec<(String, Vec<String>)> = raw_rules.into_iter().filter(|r| r.1[0] == "ore" || r.1[0] == "plant").collect();
-        // An egg for every creature, to set one down in creative mode (or
-        // as a prize): `<id>_egg`. Its picture is the creature itself.
-        for (k, e) in entities.iter().enumerate() {
-            let id = alloc::format!("{}_egg", e.id);
-            if items.iter().any(|it| it.id == id) || items.len() >= 60_000 {
-                continue;
-            }
-            items.push(ItemDef {
-                id,
-                name: alloc::format!("{} Egg", e.name),
-                icon: 0,
-                place: None,
-                brush: 0,
-                reach: 0.0,
-                stack: 64,
-                tool: 0,
-                speed: 1.0,
-                food: 0,
-                section: None,
-                category: String::from("Eggs"),
-                x: ItemExtra { egg: Some(k), ..ItemExtra::default() },
-            });
-        }
         // What packs add to the terrain.
         let (mut ores, mut plants) = (Vec::new(), Vec::new());
         for (at, w) in &raw_rules {
@@ -2538,6 +2610,7 @@ impl Registry {
             episodes,
             toggles,
             dimensions,
+            dim_skies,
             features,
             plants,
             by_id,

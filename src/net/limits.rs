@@ -18,12 +18,14 @@ pub enum Class {
     State,
     /// A skin picture.
     Skin,
+    /// A mod's message to the same mod on other machines (`net::modmsg`).
+    Mod,
 }
 
-const CLASSES: usize = 5;
+const CLASSES: usize = 6;
 
 /// `(tokens per second, most tokens held)` of each class, in `Class` order.
-const RATES: [(f32, f32); CLASSES] = [(100.0, 200.0), (1500.0, 6000.0), (2.0, 8.0), (300.0, 600.0), (0.5, 3.0)];
+const RATES: [(f32, f32); CLASSES] = [(100.0, 200.0), (1500.0, 6000.0), (2.0, 8.0), (300.0, 600.0), (0.5, 3.0), (crate::net::modmsg::PER_SECOND, crate::net::modmsg::PER_SECOND)];
 
 /// Dropped messages in a row (less what the time since has forgiven) after
 /// which the connection is cut instead of merely ignored.
@@ -114,6 +116,16 @@ mod tests {
         // A bomb of blocks is allowed in one go (explosions), not forever.
         let mut t = Throttle::default();
         assert_eq!((0..10_000).filter(|_| t.allow(Class::Block)).count(), 6000);
+    }
+
+    #[test]
+    fn mods_may_send_eight_messages_a_second() {
+        let mut t = Throttle::default();
+        assert_eq!((0..100).filter(|_| t.allow(Class::Mod)).count(), 8);
+        t.refill(0.5);
+        assert_eq!((0..100).filter(|_| t.allow(Class::Mod)).count(), 4);
+        // Their messages do not use up the allowance of the shared state.
+        assert!(t.allow(Class::State));
     }
 
     #[test]

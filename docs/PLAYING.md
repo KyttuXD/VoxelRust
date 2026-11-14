@@ -252,6 +252,26 @@ and ruby ore drop coal, crystals and rubies. Iron and copper ore go into
 tool recipes as they are; a furnace turns them into ingots, which other
 recipes need (see [Furnaces](#furnaces)).
 
+### Armour and wear
+
+Armour (a mod's, or what a `/give` brings) goes in the four slots beside your
+picture in the inventory screen: head, chest, legs and feet. Shift-click or
+right click a piece in your pack to put it on (what was worn there comes back
+to the pack), click a worn piece with an empty hand to take it off, or put one
+in the slot with the mouse. Your picture and your body in third person wear it.
+Each point of armour takes 4 percent off a creature's blow, an arrow or a blast
+(at most 80 percent); falling, drowning, hunger and poison ignore it.
+
+Tools, swords, bows and armour wear out: a thin bar under the item's picture,
+green to red, shows what is left once it has been used, and at the last use it
+breaks. Pick-axes and the like lose a use for each block they break, swords for
+each hit, bows for each shot, armour for each blow it softens. In creative
+nothing wears. To repair, put two worn ones of the same kind in the crafting
+grid and take the mended one: it has the uses left of both and a little more.
+
+With some mods you may have more than ten hearts: they wrap into rows of ten
+(up to 100 health), with the yellow absorption hearts above.
+
 ### Crafting
 
 Press E. In survival the upper part of the inventory screen is a **2 x 2
@@ -886,7 +906,10 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
 - **AUDIO**: master, effects, footsteps and interface volume, AMBIENCE
   VOLUME (0 to 10, 6 to start with: rain, wind, running water and waves,
   lava, fire and the air of a cave; saved as `ambience_volume` in
-  `settings.txt`), and SUBTITLES
+  `settings.txt`), MUSIC VOLUME (0 to 10, 5 to start with: the music that
+  mods play, together with the master volume; saved as `music_volume`; while
+  music plays the game's own ambience is 3 dB quieter, and the music stops
+  when you leave the world), and SUBTITLES
   FOR SOUNDS, which names what you hear (`THUNDER`, `DOOR`, `WOLF HOWLS`) at
   the right of the screen for a couple of seconds. All sound stops when you
   leave a world. Rain and wind are quieter and duller under a roof, a wash
@@ -1087,6 +1110,15 @@ marked "From the Earth mod").
 - `looks:<name>`, with `creatures`, lines up every look (biome variant) of
   the creatures whose id contains the name (`creatures,looks:boomer`)
   instead of one of each. Hostile creatures show only in survival worlds.
+
+`--step [SECONDS]` sets how much game time each frame of a scripted run
+(`--screenshot`, `--bench`, with or without `--run`) lasts. It is the same
+for everything at once: the day's clock, mod timers and the scripts'
+`on_tick` and `on_update` `dt`, and the creatures. Without `--step` a
+scripted frame passes no time (so pictures are repeatable and nothing that
+runs on a clock moves: that is unchanged); `--step` on its own, with no
+number, is 1/60 of a second, a frame at sixty frames a second. The longest
+step is 0.1. In a shared game the real clock is used.
 
 `--version` prints, for example, `voxelrust 0.1.0 (linux-x86_64, commit
 5f38cb02e2e3)`. The first word in brackets is the build name (see

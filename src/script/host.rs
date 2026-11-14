@@ -159,13 +159,13 @@ pub const HOST_FUNCTIONS: &[(&str, &str)] = &[
     ("dimension() -> String", "the dimension the player is in (empty for the home world)"),
     ("time() -> f64", "the time of day, 0 to 1 (0 is sunrise, 0.25 noon)"),
     ("set_time(t: f64)", "set the time of day"),
-    ("explode(x: f64, y: f64, z: f64, power: f64)", "set off an explosion (power 0.5 to 8)"),
+    ("explode(x: f64, y: f64, z: f64, power: f64)", "set off an explosion (power 0.5 to 8); with a fifth argument, flags (a text such as \"fire, silent\", or a number: 1 fire, 2 no_blocks, 4 no_damage, 8 silent) it answers how many blocks it destroyed"),
     ("effect(id: &str, secs: f64, level: i64) -> bool", "give the player a status effect"),
     ("apply_effect(who: &str, id: &str, secs: f64, level: i64) -> bool", "give a status effect to \"player\" or \"target\" (the creature in the crosshair); 0 seconds is the effect's own time"),
     ("remove_effect(who: &str, id: &str) -> bool", "take a status effect (all of them for an empty id) from \"player\" or \"target\"; false if it was not there"),
     ("has_effect(who: &str, id: &str) -> bool", "whether \"player\" or \"target\" has that status effect"),
     ("effect_level(who: &str, id: &str) -> i64", "the level of a status effect on \"player\" or \"target\"; 0 if it is not active"),
-    ("play_sound(id: &str)", "play a sound"),
+    ("play_sound(id: &str)", "play a sound; with four arguments, `play_sound(name, volume, pitch, pan) -> i64`, it plays at that volume (0 to 2), pitch (0.25 to 4) and pan (-1 to 1) and returns a handle for `stop_sound` and the other sound calls"),
     ("run_command(text: &str) -> String", "carry out a chat command as the player (with or without the `/`); returns what it answers"),
     ("rand(n: i64) -> i64", "a random whole number from 0 up to n (not including n)"),
     ("player_health() -> i64", "the player's health (20 is full)"),
@@ -257,6 +257,8 @@ pub(crate) fn call_host_fn(it: &mut Interp, name: &str, args: &[Value]) -> Optio
             it.host.set_time(t);
             Value::Unit
         }),
+        // With a fifth argument (flags) it is the explosion of game/fx/blast.rs, which answers how many blocks it destroyed.
+        "explode" if args.len() == 5 => return Some(crate::script::ext::fx::explode_with_flags(it, args)),
         "explode" => want(name, args, 4).and_then(|_| Ok((num(name, args, 0)?, num(name, args, 1)?, num(name, args, 2)?, num(name, args, 3)?))).map(|(x, y, z, p)| {
             it.host.explode(x, y, z, p);
             Value::Unit
@@ -266,6 +268,8 @@ pub(crate) fn call_host_fn(it: &mut Interp, name: &str, args: &[Value]) -> Optio
         "remove_effect" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Bool(it.host.remove_effect(who, id))),
         "has_effect" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Bool(it.host.effect_level(who, id) > 0)),
         "effect_level" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Int(it.host.effect_level(who, id))),
+        // With a volume, pitch and pan it is the sound call of script/ext/sound.rs.
+        "play_sound" if args.len() > 1 => return crate::script::ext::call(it, name, args),
         "play_sound" => want(name, args, 1).and_then(|_| text(name, args, 0)).map(|id| {
             it.host.play_sound(id);
             Value::Unit
@@ -354,7 +358,13 @@ impl Host for SessionHost<'_> {
         if self.g.mobs.list.len() >= crate::entity::SCRIPT_CAP {
             return false;
         }
-        self.g.mobs.spawn(kind, [x, y.clamp(1.0, crate::chunk::CH as f64 + 20.0), z]);
+        let at = [x, y.clamp(1.0, crate::chunk::CH as f64 + 20.0), z];
+        let d = &crate::block::reg().entities[kind];
+        // A giant that does not fit there does not appear.
+        if !crate::entity::Mobs::room_for(&self.g.world, at, d.width as f64, d.height as f64) {
+            return false;
+        }
+        self.g.mobs.spawn(kind, at);
         true
     }
 
@@ -364,7 +374,14 @@ impl Host for SessionHost<'_> {
         if !self.may_change_world() || x.abs() > EDGE || z.abs() > EDGE || !(0..crate::chunk::CH as i64).contains(&y) {
             return false;
         }
-        self.g.world.set_block(x as i32, y as i32, z as i32, b)
+        // `on_chunk_generated` may write only so many blocks in one call.
+        if let Some(left) = self.g.ev.block_budget {
+            if left == 0 {
+                return false;
+            }
+            self.g.ev.block_budget = Some(left - 1);
+        }
+        self.g.world.set_block_cause(crate::terrain::world_log::cause::SCRIPT, x as i32, y as i32, z as i32, b)
     }
 
     fn get_block(&mut self, x: i64, y: i64, z: i64) -> String {
@@ -444,7 +461,7 @@ impl Host for SessionHost<'_> {
 
     fn heal(&mut self, n: i64) {
         if n > 0 && self.g.health > 0 {
-            self.g.health = (self.g.health as i64 + n).min(crate::session::MAX_HEALTH as i64) as i32;
+            self.g.health = (self.g.health as i64 + n).min(self.g.max_health() as i64) as i32;
         }
     }
 
