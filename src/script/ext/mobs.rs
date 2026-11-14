@@ -14,7 +14,7 @@ use alloc::vec::Vec;
 
 pub const FUNCTIONS: &[(&str, &str)] = &[
     ("mobs_near(x: f64, y: f64, z: f64, radius: f64, kind: &str) -> Vec<(i64, f64, f64, f64)>", "the living creatures of one kind (empty: any) within a radius, nearest first, as (id, x, y, z); at most 64"),
-    ("spawn_mob(kind: &str, x: f64, y: f64, z: f64) -> i64", "make a creature appear and give its id, or -1 (no such kind, not allowed here, or the world is full of creatures: 300 at most)"),
+    ("spawn_mob(kind: &str, x: f64, y: f64, z: f64) -> i64", "make a creature appear and give its id, or -1 (no such kind, not allowed here, no room for a giant of that kind there, or the world is full of creatures: 300 at most)"),
     ("mob_info(id: i64) -> (String, i64, f64, f64, f64)", "(kind, health, x, y, z) of a creature; the kind is empty if it is gone or dying"),
     ("mob_set_pos(id: i64, x: f64, y: f64, z: f64)", "put a creature somewhere and stop it"),
     ("mob_set_yaw(id: i64, yaw: f64)", "turn a creature (yaw 0 faces -z; its forward is (-sin yaw, -cos yaw))"),
@@ -75,6 +75,10 @@ pub fn call(g: &mut Session, _ctx: &Ctx, name: &str, args: &[Value]) -> Result<V
                 return Ok(Value::Int(-1));
             }
             let at = [at[0], at[1].clamp(1.0, crate::chunk::CH as f64 + 20.0), at[2]];
+            let d = &block::reg().entities[k];
+            if !crate::entity::Mobs::room_for(&g.world, at, d.width as f64, d.height as f64) {
+                return Ok(Value::Int(-1));
+            }
             let i = g.mobs.spawn(k, at);
             Ok(Value::Int(g.mobs.list[i].id as i64))
         }

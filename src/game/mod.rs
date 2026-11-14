@@ -32,3 +32,8 @@ pub mod effects;
 pub mod crafting;
 pub mod posing;
 pub mod ambience_probe;
+pub mod creature_size;
+pub mod creature_extra;
+pub mod creature_wire;
+pub mod creature_api;
+pub mod mod_message;

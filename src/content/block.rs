@@ -1464,21 +1464,21 @@ impl Parser<'_> {
             match key {
                 "name" => e.name = rest.to_string(),
                 "model" => e.model = a.first().unwrap_or(&"").to_string(),
-                "height" => match f(0.1, 6.0) {
+                "height" => match f(crate::creature_size::MIN_SIZE, crate::creature_size::MAX_HEIGHT) {
                     Some(v) => e.height = v,
-                    None => bad = Some("height must be 0.1..6 blocks"),
+                    None => bad = Some("height must be 0.1..64 blocks"),
                 },
-                "width" => match f(0.1, 3.0) {
+                "width" => match f(crate::creature_size::MIN_SIZE, crate::creature_size::MAX_WIDTH) {
                     Some(v) => e.width = v,
-                    None => bad = Some("width must be 0.1..3 blocks"),
+                    None => bad = Some("width must be 0.1..32 blocks"),
                 },
                 "speed" => match f(0.0, 12.0) {
                     Some(v) => e.speed = v,
                     None => bad = Some("speed must be 0..12 blocks per second"),
                 },
-                "health" => match n(1, 1000) {
+                "health" => match n(1, crate::creature_size::MAX_HEALTH) {
                     Some(v) => e.health = v,
-                    None => bad = Some("health must be 1..1000"),
+                    None => bad = Some("health must be 1..1000000"),
                 },
                 "damage" => match n(0, 100) {
                     Some(v) => e.damage = v,

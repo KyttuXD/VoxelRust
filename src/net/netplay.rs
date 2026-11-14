@@ -759,4 +759,47 @@ mod tests {
         stop.store(true, Ordering::Relaxed);
         handle.join().unwrap();
     }
+
+    #[test]
+    fn mod_messages_reach_the_others_or_one_player_and_are_checked_and_rationed() {
+        use crate::modmsg::{pack, EVERYONE};
+        use crate::proto::channel::MODMSG;
+        let (port, stop, handle) = start_server(4);
+        let (mut a, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
+        let (mut b, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
+        let (mut c, _) = Client::connect("127.0.0.1", port, "Cy").unwrap();
+        pump(&mut a, 60);
+        pump(&mut b, 60);
+        pump(&mut c, 100);
+        let count = |events: &[Event]| events.iter().filter(|e| matches!(e, Event::State(_, MODMSG, ..))).count();
+        // To everyone else: Bob and Cy hear it, Ann does not hear herself.
+        a.send_state(MODMSG, false, "storm\u{1f}phase", &pack(EVERYONE, "two").unwrap());
+        pump(&mut a, 40);
+        let (eb, ec, ea) = (pump(&mut b, 120), pump(&mut c, 120), pump(&mut a, 20));
+        assert_eq!((count(&eb), count(&ec), count(&ea)), (1, 1, 0));
+        assert!(eb.iter().any(|e| matches!(e, Event::State(id, MODMSG, k, d) if *id == a.id && k == "storm\u{1f}phase" && d.ends_with(b"two"))));
+        // To one player.
+        a.send_state(MODMSG, false, "storm\u{1f}phase", &pack(b.id, "psst").unwrap());
+        pump(&mut a, 40);
+        let (eb, ec) = (pump(&mut b, 120), pump(&mut c, 120));
+        assert_eq!((count(&eb), count(&ec)), (1, 0));
+        // Bad keys and text never leave the server.
+        a.send_state(MODMSG, false, "nokey", &pack(EVERYONE, "x").unwrap());
+        a.send_state(MODMSG, false, "storm\u{1f}phase", &[0xFF, 0xFF, 0x07]);
+        a.send_state(MODMSG, false, "storm\u{1f}phase", &[0xFF]);
+        let mut big = alloc::vec![0xFFu8, 0xFF];
+        big.extend(core::iter::repeat(b'x').take(600));
+        a.send_state(MODMSG, false, "storm\u{1f}phase", &big);
+        pump(&mut a, 40);
+        assert_eq!((count(&pump(&mut b, 120)), count(&pump(&mut c, 120))), (0, 0));
+        // More than eight a second is cut.
+        for i in 0..40 {
+            a.send_state(MODMSG, false, "storm\u{1f}spam", &pack(EVERYONE, &alloc::format!("{i}")).unwrap());
+        }
+        pump(&mut a, 40);
+        let heard = count(&pump(&mut b, 200));
+        assert!((1..=10).contains(&heard), "{heard} messages got through");
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+    }
 }

@@ -16,6 +16,8 @@
 //! | `files.rs` | small text files in `<data>/tmp/<mod>/` |
 //! | `net.rs` | messages to the same mod on the other players' machines |
 //! | `effects.rs` | shots in flight, a forced sky, pushes |
+//! | `mobs_model.rs` | giant creatures, per-bone model overrides, tilt, state text |
+//! | `modmsg.rs` | messages to the same mod on the other players' machines (`on_message`) |
 //! | `data.rs` | what the session keeps for all of this |
 //!
 //! The functions are listed in each file's `FUNCTIONS` and in the table of
@@ -28,6 +30,8 @@ pub mod draw;
 pub mod effects;
 pub mod files;
 pub mod mobs;
+pub mod mobs_model;
+pub mod modmsg;
 pub mod net;
 pub mod pack;
 pub mod player;
@@ -51,7 +55,7 @@ pub struct Ctx {
 }
 
 /// Every function of every file, in the order the docs list them.
-pub const MODULES: &[&[(&str, &str)]] = &[world::FUNCTIONS, mobs::FUNCTIONS, player::FUNCTIONS, draw::FUNCTIONS, bodies::FUNCTIONS, storage::FUNCTIONS, pack::FUNCTIONS, files::FUNCTIONS, net::FUNCTIONS, effects::FUNCTIONS];
+pub const MODULES: &[&[(&str, &str)]] = &[world::FUNCTIONS, mobs::FUNCTIONS, player::FUNCTIONS, draw::FUNCTIONS, bodies::FUNCTIONS, storage::FUNCTIONS, pack::FUNCTIONS, files::FUNCTIONS, net::FUNCTIONS, effects::FUNCTIONS, mobs_model::FUNCTIONS, modmsg::FUNCTIONS];
 
 /// All the (signature, what it does) rows.
 pub fn all_functions() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
@@ -91,7 +95,9 @@ pub(crate) fn call(it: &mut Interp, name: &str, args: &[Value]) -> Option<Res> {
             6 => pack::call(g, &ctx, name, args),
             7 => files::call(g, &ctx, name, args),
             8 => net::call(g, &ctx, name, args),
-            _ => effects::call(g, &ctx, name, args),
+            9 => effects::call(g, &ctx, name, args),
+            10 => mobs_model::call(g, &ctx, name, args),
+            _ => modmsg::call(g, &ctx, name, args),
         },
     };
     Some(match r {

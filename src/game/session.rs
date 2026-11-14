@@ -1762,7 +1762,7 @@ impl Session {
                     }
                     self.skin_events.push((id, png, slim));
                 }
-                crate::netplay::Event::State(_, channel, key, data) => {
+                crate::netplay::Event::State(from, channel, key, data) => {
                     use crate::proto::channel as ch;
                     let text = String::from_utf8_lossy(&data).into_owned();
                     let host = self.runs_the_world();
@@ -1791,6 +1791,8 @@ impl Session {
                         // A mod's own code talking to itself on another
                         // player's machine.
                         ch::SCRIPT => crate::script::bridge::net_message(self, &key, &text),
+                        // A mod's message to the same mod (checked again by `receive_mod_message`).
+                        ch::MODMSG => self.receive_mod_message(from, &key, &data),
                         c if c >= ch::NATIVE => {
                             if let Some(n) = crate::native::all().get((c - ch::NATIVE) as usize).filter(|n| reg().has(n.name)) {
                                 if let Some(message) = n.message {

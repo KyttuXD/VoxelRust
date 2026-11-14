@@ -104,6 +104,7 @@ pub const HOOKS: &[HookDoc] = &[
     HookDoc { name: "on_interact", params: &["reach"], what: "the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is); return true if the click was used up" },
     HookDoc { name: "on_condition", params: &["name", "args"], what: "an `/if` condition the game does not know (`/if name args`); return true or false if it is yours, nothing if it is not" },
     HookDoc { name: "on_net", params: &["key", "text"], what: "another player's copy of this mod sent a message with `net_send`" },
+    HookDoc { name: "on_message", params: &["channel", "from", "text"], what: "another player's copy of this mod sent a message with `send_message` or `send_message_to` (`from` is their player name)" },
     HookDoc { name: "on_register", params: &[], what: "once when the script is read: declare key bindings and switches (bind_key, add_switch)" },
     HookDoc { name: "on_key_down", params: &["id"], what: "a key binding of this mod was pressed (while playing)" },
     HookDoc { name: "on_key_up", params: &["id"], what: "a key binding of this mod was let go" },
