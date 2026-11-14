@@ -80,6 +80,10 @@ impl JBits<'_> {
         if s == 0 {
             return Some(0);
         }
+        // A category past 16 only comes from a damaged file (and would shift out of range).
+        if s > 16 {
+            return None;
+        }
         let v = self.bits(s)?;
         Some(if v < (1 << (s - 1)) { v - (1 << s) + 1 } else { v })
     }
@@ -143,7 +147,7 @@ pub(super) fn jpeg(d: &[u8]) -> Option<Image> {
         at += len;
         match m {
             0xC0 | 0xC1 => {
-                if seg[0] != 8 {
+                if seg.len() < 6 || seg[0] != 8 {
                     return None;
                 }
                 h = u16::from_be_bytes([seg[1], seg[2]]) as usize;
@@ -201,14 +205,14 @@ pub(super) fn jpeg(d: &[u8]) -> Option<Image> {
                     }
                 }
             }
-            0xDD => restart = u16::from_be_bytes([seg[0], seg[1]]) as usize,
+            0xDD => restart = u16::from_be_bytes([*seg.first()?, *seg.get(1)?]) as usize,
             0xEE if seg.starts_with(b"Adobe") && seg.len() >= 12 => adobe_transform = Some(seg[11]),
             0xDA => {
                 if comps.is_empty() {
                     return None;
                 }
-                let n = seg[0] as usize;
-                if n != comps.len() {
+                let n = *seg.first()? as usize;
+                if n != comps.len() || seg.len() < 1 + n * 2 {
                     return None;
                 }
                 for k in 0..n {
@@ -251,8 +255,9 @@ pub(super) fn scan(d: &[u8], at: usize, w: usize, h: usize, comps: &mut [Comp], 
                     for bx in 0..c.h {
                         block.iter_mut().for_each(|v| *v = 0);
                         let t = r.huff(dct)? as u32;
-                        pred[ci] += r.extend(t)?;
-                        block[0] = pred[ci] * qt[c.tq][0];
+                        // Wrapping: a hostile file can push these past i32.
+                        pred[ci] = pred[ci].wrapping_add(r.extend(t)?);
+                        block[0] = pred[ci].wrapping_mul(qt[c.tq][0]);
                         let mut k = 1;
                         while k < 64 {
                             let rs = r.huff(act)?;
@@ -268,7 +273,7 @@ pub(super) fn scan(d: &[u8], at: usize, w: usize, h: usize, comps: &mut [Comp], 
                             if k > 63 {
                                 return None;
                             }
-                            block[ZIGZAG[k]] = r.extend(size)? * qt[c.tq][ZIGZAG[k]];
+                            block[ZIGZAG[k]] = r.extend(size)?.wrapping_mul(qt[c.tq][ZIGZAG[k]]);
                             k += 1;
                         }
                         let (x0, y0) = ((mx * c.h + bx) * 8, (my * c.v + by) * 8);

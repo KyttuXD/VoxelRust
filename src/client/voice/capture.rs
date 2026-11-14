@@ -61,7 +61,7 @@ pub fn devices() -> Vec<String> {
         }
         let n = (api.SDL_GetNumAudioDevices)(1).clamp(0, 32);
         for i in 0..n {
-            let name = crate::sys::from_cstr((api.SDL_GetAudioDeviceName)(i, 1));
+            let name = crate::sys::from_cstr_utf8((api.SDL_GetAudioDeviceName)(i, 1));
             if !name.is_empty() {
                 names.push(name);
             }

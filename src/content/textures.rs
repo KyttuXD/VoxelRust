@@ -335,7 +335,7 @@ pub fn pack_pixels(id: &str) -> Option<Vec<u8>> {
     let index = packs()?;
     for name in pack_names(id) {
         let Some(path) = index.files.get(&name) else { continue };
-        let Some(mut img) = crate::sys::read_file(path).and_then(|b| crate::image::decode(&b)) else { continue };
+        let Some(mut img) = crate::sys::read_file_limit(path, crate::image::MAX_BYTES).and_then(|b| crate::image::decode(&b)) else { continue };
         // An animated picture is a tall strip of frames: the first one.
         if img.h > img.w && img.w > 0 && img.h % img.w == 0 {
             img.rgba.truncate(img.w * img.w * 4);
@@ -374,7 +374,7 @@ fn tile_pixels_with(i: usize, t: &TileDef, tools: &mut ToolPictures) -> Vec<u8> 
             if !override_files().iter().any(|f| *f == name) {
                 continue;
             }
-            if let Some(img) = crate::sys::read_file(&alloc::format!("{}{}", dir, name)).and_then(|b| crate::image::decode(&b)) {
+            if let Some(img) = crate::sys::read_file_limit(&alloc::format!("{}{}", dir, name), crate::image::MAX_BYTES).and_then(|b| crate::image::decode(&b)) {
                 // Any size: fitted to a tile.
                 return if img.w == TILE && img.h == TILE { img.rgba } else { crate::image::fit(&img, TILE) };
             }

@@ -68,7 +68,7 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | T * | chat |
 | V * | push to talk (voice chat on a server, with the microphone turned on in SETTINGS > VOICE) |
 | B * | the emote wheel: hold it, push the mouse toward an emote and let go (or click) to play it; Esc closes it. A quick tap leaves it open until you click. The mouse wheel turns the pages when there are more than eight |
-| Esc | menu / close a screen |
+| Esc | menu / close a screen (also from a screen with a text box in use: the multiplayer list, a world's options, SETTINGS and a mod's own screens) |
 | F1 | hide or show the HUD |
 | F2 | save a screenshot (`screenshot-<number>.bmp` in the data folder) |
 | F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts, memory use against its limit (see [MEMORY.md](MEMORY.md)) |
@@ -836,7 +836,10 @@ The settings are `voice_hear`, `voice_mic`, `voice_activation`,
 
 ## Settings
 
-Settings are kept in `settings.txt` in the data folder. A switch a pack adds
+Settings are kept in `settings.txt` in the data folder. A damaged or hand-edited
+file never stops the game: every number is brought back into its range, a line
+the game does not understand is ignored, and the first of two lines with one
+name counts. (A byte order mark that some editors put at the start is skipped.) A switch a pack adds
 is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
 (such as the Earth mod's) sit beside them.
 

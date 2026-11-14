@@ -35,7 +35,10 @@ impl App {
             // Saved servers: one "name address" per line.
             self.servers_loaded = true;
             self.servers = sys::read_file(&alloc::format!("{}servers.txt", self.base))
-                .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.rsplit_once(' ').map(|(n, a)| (String::from(n.trim()), String::from(a.trim())))).collect())
+                .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.trim().rsplit_once(' ').map(|(n, a)| (String::from(n.trim()), String::from(a.trim()))))
+                    .filter(|(_, a)| !a.is_empty() && a.len() <= 120)
+                    .take(64)
+                    .collect())
                 .unwrap_or_default();
         }
         const ROWS: usize = 6;

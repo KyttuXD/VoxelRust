@@ -20,10 +20,8 @@ pub(super) fn gif(d: &[u8]) -> Option<Image> {
             0x21 => {
                 let label = *d.get(at + 1)?;
                 at += 2;
-                if label == 0xF9 && d.get(at)? >= &4 {
-                    if d[at + 1] & 1 != 0 {
-                        transparent = Some(*d.get(at + 4)?);
-                    }
+                if label == 0xF9 && d.get(at)? >= &4 && d.get(at + 1)? & 1 != 0 {
+                    transparent = Some(*d.get(at + 4)?);
                 }
                 // Skip the blocks.
                 loop {
@@ -62,6 +60,10 @@ pub(super) fn gif(d: &[u8]) -> Option<Image> {
                 }
                 let idx = lzw(&raw, min_code, iw * ih)?;
                 let (w, h) = (sw.max(ix + iw), sh.max(iy + ih));
+                // The screen size is the file's own word: 65535 x 65535 would be 16 GB of pixels.
+                if w > MAX_SIDE || h > MAX_SIDE {
+                    return None;
+                }
                 let mut rgba = alloc::vec![0u8; w * h * 4];
                 let interlaced = lf & 0x40 != 0;
                 // Row order of an interlaced picture.

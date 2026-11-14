@@ -225,7 +225,8 @@ impl Default for Settings {
 /// Value of `key=` in a small text file.
 pub fn kv<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     text.lines().find_map(|l| {
-        let l = l.trim();
+        // A file saved by some editors starts with a byte order mark, which would hide its first key.
+        let l = l.trim_start_matches('\u{feff}').trim();
         if l.len() > key.len() && l.starts_with(key) && l.as_bytes()[key.len()] == b'=' {
             Some(&l[key.len() + 1..])
         } else {
@@ -330,7 +331,7 @@ impl Settings {
                 // Whatever is not one of the game's own settings.
                 let own = Settings::default().to_text();
                 text.lines()
-                    .filter_map(|l| l.trim().split_once('='))
+                    .filter_map(|l| l.trim_start_matches('\u{feff}').trim().split_once('='))
                     .filter(|(k, _)| !k.is_empty() && k.len() <= 32 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
                     .filter(|(k, _)| !k.starts_with("key_") && !k.starts_with("flag_") && !k.starts_with("modkey_") && kv(&own, k).is_none())
                     .map(|(k, v)| (String::from(k), v.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').take(120).collect::<String>()))
@@ -469,6 +470,24 @@ mod tests {
         // Junk is brought back into range.
         let odd = Settings::parse("voice_threshold=99\nvoice_volume=-4\nvoice_device=a\u{7}b\n");
         assert_eq!((odd.voice_threshold, odd.voice_volume, odd.voice_device.as_str()), (10, 0, "ab"));
+    }
+
+    #[test]
+    fn a_byte_order_mark_does_not_hide_the_first_setting() {
+        let s = Settings::parse("\u{feff}distance=20\nfov=90\n");
+        assert_eq!((s.distance, s.fov), (20, 90));
+        assert_eq!(kv("\u{feff}seed=7\n", "seed"), Some("7"));
+        // And the mark is not taken for a setting of a mod's own.
+        assert!(Settings::parse("\u{feff}distance=20\n").extras.is_empty());
+    }
+
+    #[test]
+    fn a_damaged_settings_file_never_gives_a_setting_out_of_range() {
+        let junk = "distance=-5\nfov=99999\nsens=0\nrender_scale=1\ngui_scale=77\nmap_zoom=-1\nkey_forward=100000\nvoice_volume=x\nfullscreen_mode=99\ndistance=3\n\u{0}\u{0}=\n==\n";
+        let s = Settings::parse(junk);
+        assert_eq!((s.distance, s.fov, s.sens, s.render_scale, s.gui_scale, s.map_zoom), (2, 110, 1, 25, 6, 0));
+        assert_eq!(s.key(Action::Forward), 511);
+        assert_eq!((s.voice_volume, s.fullscreen_mode as usize), (8, FULLSCREEN_MODES.len() - 1));
     }
 
     #[test]

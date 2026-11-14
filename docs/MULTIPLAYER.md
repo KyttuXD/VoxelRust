@@ -95,7 +95,9 @@ the two kinds of save are separate.
 - From the title screen: MULTIPLAYER, then click a saved server to join it.
   To add one, use ADD SERVER (see [Saved servers](#saved-servers)).
 - From the command line: `voxelrust --join host` or `voxelrust --join host:port`.
-  Without a port the game uses 25590.
+  Without a port the game uses 25590. An IPv6 address goes in brackets:
+  `voxelrust --join [::1]:25590` (or just `[::1]`). A port is a number from 1
+  to 65535; `host:0` or `host:+80` is refused.
 
 Your name is the **YOUR NAME** box on the MULTIPLAYER screen, the same name
 as in SETTINGS > GAME. It takes letters, digits, `-` and `_`, 16 at most; an

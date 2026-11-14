@@ -266,7 +266,13 @@ impl App {
     /// Once a frame: what the player did on a mod's screen goes to the mod, and
     /// a screen a mod opened (or closed) is switched to (or away from).
     pub(super) fn mod_screens(&mut self) {
-        let Some(g) = self.session.as_mut() else { return };
+        let Some(g) = self.session.as_mut() else {
+            // The world went (a dropped connection) while a mod's screen was up: there is nothing to show.
+            if self.screen == Screen::ModUi {
+                self.set_screen(Screen::Title);
+            }
+            return;
+        };
         crate::client::modui::dispatch::ui_events(g);
         let open = crate::client::modui::dispatch::is_open();
         if matches!(self.screen, Screen::Game | Screen::ModUi) && crate::client::modui::dispatch::take_opened() && open {

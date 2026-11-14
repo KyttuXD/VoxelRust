@@ -92,11 +92,30 @@ pub fn parse_address(addr: &str) -> Option<(String, u16)> {
     if addr.is_empty() {
         return None;
     }
+    // An IPv6 address is written in brackets, `[::1]` or `[::1]:25590`.
+    if let Some(rest) = addr.strip_prefix('[') {
+        let (host, after) = rest.split_once(']')?;
+        if host.is_empty() || !host.contains(':') || host.contains(|c: char| c.is_whitespace() || c == '[') {
+            return None;
+        }
+        return match after {
+            "" => Some((String::from(host), crate::proto::DEFAULT_PORT)),
+            _ => Some((String::from(host), port_of(after.strip_prefix(':')?)?)),
+        };
+    }
     match addr.rsplit_once(':') {
-        Some((h, p)) if !h.is_empty() && !h.contains(':') => Some((String::from(h), p.parse().ok()?)),
+        Some((h, p)) if !h.is_empty() && !h.contains(':') => Some((String::from(h), port_of(p)?)),
         Some(_) => None,
         None => Some((String::from(addr), crate::proto::DEFAULT_PORT)),
     }
+}
+
+/// A port number, 1 to 65535, digits only (no sign, no 0).
+fn port_of(text: &str) -> Option<u16> {
+    if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    text.parse::<u16>().ok().filter(|&p| p != 0)
 }
 
 impl Client {
@@ -342,6 +361,18 @@ mod tests {
         assert_eq!(parse_address("host:notaport"), None);
         assert_eq!(parse_address(""), None);
         assert_eq!(parse_address(":5"), None);
+        // IPv6 in brackets, with and without a port; a bare one is ambiguous.
+        assert_eq!(parse_address("[::1]:7000"), Some((String::from("::1"), 7000)));
+        assert_eq!(parse_address("[2001:db8::5]"), Some((String::from("2001:db8::5"), crate::proto::DEFAULT_PORT)));
+        assert_eq!(parse_address("::1"), None);
+        assert_eq!(parse_address("[::1"), None);
+        assert_eq!(parse_address("[]:5"), None);
+        assert_eq!(parse_address("[::1]x"), None);
+        // Port 0, a sign, and one too big are no ports.
+        assert_eq!(parse_address("host:0"), None);
+        assert_eq!(parse_address("host:+80"), None);
+        assert_eq!(parse_address("host:65536"), None);
+        assert_eq!(parse_address("host:65535"), Some((String::from("host"), 65535)));
     }
 
     /// A mod of one big file (so that it comes in several pieces) and a pack.

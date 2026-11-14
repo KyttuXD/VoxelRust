@@ -63,7 +63,7 @@ pub(super) fn wav(bytes: &[u8]) -> Option<Pcm> {
     }
     // The last block of an ADPCM file is padded: the fact chunk says how many frames are real.
     if let Some(f) = fact.filter(|&f| f > 0 && matches!(format, 2 | 0x11)) {
-        out.truncate(f * ch);
+        out.truncate(f.saturating_mul(ch));
     }
     Some(Pcm { rate, channels: ch, data: out })
 }

@@ -158,6 +158,15 @@ pub(super) fn parse_args(args: &[String]) -> Result<Opts, String> {
     fn num<T: core::str::FromStr>(s: &str, flag: &str) -> Result<T, String> {
         s.parse::<T>().map_err(|_| alloc::format!("{}: `{}` is not a valid number", flag, s))
     }
+    // `nan` and `inf` parse as floats; no option means them.
+    fn real<T: core::str::FromStr + Into<f64> + Copy>(s: &str, flag: &str) -> Result<T, String> {
+        let v = num::<T>(s, flag)?;
+        if Into::<f64>::into(v).is_finite() {
+            Ok(v)
+        } else {
+            Err(alloc::format!("{}: `{}` is not a valid number", flag, s))
+        }
+    }
     while i < args.len() {
         let a = args[i].as_str();
         match a {
@@ -188,7 +197,7 @@ pub(super) fn parse_args(args: &[String]) -> Result<Opts, String> {
                 let v = next(&mut i, a)?;
                 let mut p = v.split(|c| c == 'x' || c == 'X');
                 match (p.next().and_then(|s| s.parse::<i32>().ok()), p.next().and_then(|s| s.parse::<i32>().ok())) {
-                    (Some(w), Some(h)) if w >= 160 && h >= 120 => o.size = Some((w, h)),
+                    (Some(w), Some(h)) if (160..=16384).contains(&w) && (120..=16384).contains(&h) => o.size = Some((w, h)),
                     _ => return Err(alloc::format!("--size: `{}` should look like 1280x720", v)),
                 }
             }
@@ -230,18 +239,18 @@ pub(super) fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--pos" => {
                 let mut p = [0.0f64; 3];
                 for v in p.iter_mut() {
-                    *v = num::<f64>(&next(&mut i, a)?, a)?;
+                    *v = real::<f64>(&next(&mut i, a)?, a)?;
                 }
                 o.pos = Some(p);
             }
             "--look" => {
-                let yaw = num::<f32>(&next(&mut i, a)?, a)?;
-                let pitch = num::<f32>(&next(&mut i, a)?, a)?;
+                let yaw = real::<f32>(&next(&mut i, a)?, a)?;
+                let pitch = real::<f32>(&next(&mut i, a)?, a)?;
                 o.look = Some((yaw * PI / 180.0, pitch.clamp(-89.0, 89.0) * PI / 180.0));
             }
-            "--time" => o.time = Some(num::<f32>(&next(&mut i, a)?, a)?.clamp(0.0, 1.0)),
+            "--time" => o.time = Some(real::<f32>(&next(&mut i, a)?, a)?.clamp(0.0, 1.0)),
             "--wait-frames" => o.wait_frames = num::<u32>(&next(&mut i, a)?, a)?,
-            "--step" => o.step = Some(num::<f32>(&next(&mut i, a)?, a)?.clamp(0.0, 0.1)),
+            "--step" => o.step = Some(real::<f32>(&next(&mut i, a)?, a)?.clamp(0.0, 0.1)),
             // Finder on old Mac OS X adds a process serial number when an
             // app is double-clicked; it is not for us.
             _ if a.starts_with("-psn_") => {}

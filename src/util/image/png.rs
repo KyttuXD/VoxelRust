@@ -456,6 +456,11 @@ pub fn decode(data: &[u8]) -> Option<Image> {
     let bits_pp = channels * depth;
     let stride = (w * bits_pp + 7) / 8;
     let raw_len = h * (stride + 1);
+    // A 4096 x 4096 16-bit RGBA picture is bigger than any real texture: refuse
+    // before anything is inflated.
+    if raw_len > MAX_INFLATE {
+        return None;
+    }
     let mut raw = inflate_limited(&idat, raw_len)?;
     if raw.len() != raw_len {
         return None;
