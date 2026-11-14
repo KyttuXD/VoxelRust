@@ -1,6 +1,10 @@
 //! Reading pictures: PNG, JPEG (baseline), GIF (the first picture), BMP and
 //! TGA. Everything comes out as 8-bit RGBA, top row first. Used for textures
 //! the player or a pack supplies, which are fitted to 16 x 16.
+//!
+//! Writing: PNG only (`png_encode.rs`, compressed by `deflate.rs`); `header`
+//! reads a PNG's size without decoding it and `resize` makes pictures smaller.
+//! See docs/IMAGES.md.
 
 use alloc::vec::Vec;
 
@@ -63,9 +67,13 @@ pub fn fit(img: &Image, side: usize) -> Vec<u8> {
 
 
 mod bmp;
+mod deflate;
 mod gif;
+pub mod header;
 mod jpeg;
 pub mod png;
+mod png_encode;
+pub mod resize;
 mod tga;
 
 use bmp::bmp;

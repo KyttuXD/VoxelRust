@@ -31,6 +31,7 @@ impl App {
         let mut changed = false;
         let mut fullscreen_clicked = false;
         let mut mode_changed = false;
+        let mut texture_changed = false;
         let (mut skin_changed, mut skin_pick, mut skin_web) = (false, false, false);
         {
             let st = &mut self.settings;
@@ -52,6 +53,10 @@ impl App {
                     changed |= step_list(ui, x, row(5), bw, bh, &rs, &mut st.render_scale, &[33, 50, 67, 75, 100]);
                     changed |= ui.toggle(x, row(6), bw, bh, "CLOUDS", &mut st.clouds);
                     changed |= crate::client::shaders::menu::row(ui, x, row(7), bw, bh, &mut st.shader);
+                    // HD pictures (content/hd) are kept at most this many pixels on a side; it matters only when there are any.
+                    let ts = alloc::format!("TEXTURE SIZE  < {} >", st.texture_size);
+                    texture_changed = step_list(ui, x, row(8), bw, bh, &ts, &mut st.texture_size, &[16, 32, 64, 128, 256, 512]);
+                    changed |= texture_changed;
                 }
                 0 => {
                     if ui.button(x, row(0), bw, bh, "DETAIL AND DISTANCE...") {
@@ -130,8 +135,8 @@ impl App {
                         st.skin = String::from(if (i as usize) < list.len() { list[i as usize] } else { "custom" });
                         skin_changed = true;
                     }
-                    ui.text(cx, row(1) + 2.0 * s, "YOUR OWN: A 64 X 64 PICTURE IN", ui::DIM);
-                    ui.text(cx, row(2) - 6.0 * s, "THE USUAL SKIN LAYOUT (64 X 32 TOO).", ui::DIM);
+                    ui.text(cx, row(1) + 2.0 * s, "YOUR OWN: A PICTURE UP TO 4096 X 4096", ui::DIM);
+                    ui.text(cx, row(2) - 6.0 * s, "(A MULTIPLE OF 64; 64 X 32 TOO).", ui::DIM);
                     if ui.button(cx, row(3) - 4.0 * s, cw, bh, "CHOOSE A SKIN FILE...") {
                         skin_pick = true;
                     }
@@ -260,6 +265,9 @@ impl App {
             let status = self.status.clone();
             ui.centered(ui.w() * 0.5, row(9), 1.0, &status, ui::ACCENT);
         }
+        if texture_changed {
+            self.apply_texture_size(ui.r);
+        }
         if fullscreen_clicked {
             self.toggle_fullscreen();
         } else if mode_changed && self.settings.fullscreen {
@@ -309,6 +317,20 @@ impl App {
             sys::write_file_atomic(&self.settings_path, self.settings.to_text().as_bytes());
         }
         self.set_screen(if self.session.is_some() { Screen::Pause } else { Screen::Title });
+    }
+
+    /// The TEXTURE SIZE changed: HD pictures are made again at the new size (nothing happens
+    /// when there are none), and the chunks' meshes with them (their HD faces' coordinates changed).
+    pub(super) fn apply_texture_size(&mut self, r: &mut Renderer) {
+        crate::hd::set_cap_setting(self.settings.texture_size);
+        if !crate::hd::in_use() {
+            return;
+        }
+        r.rebuild_atlas();
+        r.load_models();
+        if let Some(g) = self.session.as_mut() {
+            g.world.remesh_all(r);
+        }
     }
 
     /// Choose the memory limit: the bigger one when there are mods (or a server's content).

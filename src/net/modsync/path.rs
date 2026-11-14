@@ -14,12 +14,14 @@ pub const ALLOWED_EXT: &[&str] = &["txt", "json", "bbmodel", "png", "jpg", "gif"
 pub const MAX_MODS: usize = 64;
 /// Most files in one mod.
 pub const MAX_FILES: usize = 2000;
-/// Largest single file, in bytes.
+/// Largest single file, in bytes. (A picture of an HD tile is held to 2 MiB besides, see
+/// `content/hd/size.rs`: the receiver looks at its declared size before it decodes it.)
 pub const MAX_FILE_BYTES: usize = 4 << 20;
-/// Most bytes in one mod (the sum of its files).
-pub const MAX_MOD_BYTES: usize = 16 << 20;
+/// Most bytes in one mod (the sum of its files): room for a mod with HD pictures. Older
+/// clients keep their lower limit and leave such a mod out.
+pub const MAX_MOD_BYTES: usize = 64 << 20;
 /// Most bytes in all the mods of one server.
-pub const MAX_TOTAL_BYTES: usize = 48 << 20;
+pub const MAX_TOTAL_BYTES: usize = 96 << 20;
 /// Longest relative path, and the deepest nesting of folders.
 pub const MAX_PATH_LEN: usize = 160;
 pub const MAX_DEPTH: usize = 8;

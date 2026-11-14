@@ -71,7 +71,8 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | Esc | menu / close a screen (also from a screen with a text box in use: the multiplayer list, a world's options, SETTINGS and a mod's own screens) |
 | F1 | hide or show the HUD |
 | F2 | save a screenshot (`screenshot-<number>.bmp` in the data folder) |
-| F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts, memory use against its limit (see [MEMORY.md](MEMORY.md)) |
+| F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts, sections drawn and culled (by the view and by hidden caves), draw calls and culling time, memory use against its limit (see [MEMORY.md](MEMORY.md)) |
+| F3 + O | turn the hidden-section culling off and on again, to compare the frame rate (also `--show nocull`) |
 | F5 | third-person view |
 | F11 | full screen |
 
@@ -831,6 +832,30 @@ it are mostly there for packs, which run them from scripts and can add
 commands of their own. Variables, conditions and the rest of the scripting
 commands are explained in [MODDING.md](MODDING.md#scripts-and-commands).
 
+## Accounts and PINs
+
+On a multiplayer server a name can be protected by a PIN of 4 or 6 digits
+(per server; singleplayer has nothing to do with it). Type `/register 4821 4821`
+(the PIN twice; use your own) in the chat of a server that has accounts, or
+let the server ask when it requires one. From then on nobody can join under
+your name without the PIN: the MULTIPLAYER screen asks for it, dots on screen,
+with a switch to **remember the PIN** (kept in plain text in `server-pins.txt`
+in the data folder: anyone who can read that file can log in as you, so leave it
+off on a shared computer). `/pin OLD NEW` changes it, `/forgetpin` makes the game
+forget a remembered PIN. Five wrong tries lock the name for a minute, then two,
+four... up to an hour.
+
+**Be clear about what this is worth.** A 4 or 6 digit PIN stops casual
+impersonation: a friend who joins under your name. It does not stop someone who
+can watch your network traffic (the connection is not encrypted, so they can
+record a login and guess the PIN offline, which takes seconds for 4 digits), and
+the server's owner can always see or reset what the server stores. Do not reuse
+a PIN you use anywhere else. Real passwords will come later. The whole story, for
+players and for server owners, is in [ACCOUNTS.md](ACCOUNTS.md).
+
+An older game (protocol 13) can still join a server as a guest, with a name
+that has no account; for a name with an account it is told to update.
+
 ## Voice chat
 
 On a multiplayer server you can talk to the players near you, and hear them.
@@ -887,7 +912,9 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   **DETAIL AND DISTANCE...** opens a second page with view distance (2-48
   chunks), distant terrain (0-256 chunks, 0 is off), the distant builds and
   trees rows below, 3D DETAIL (draws the 3D view at a lower resolution; a big
-  help on old graphics cards), clouds and **SHADER** (OFF, or one of the
+  help on old graphics cards), clouds, **TEXTURE SIZE** (16 to 512: the most pixels on a side HD texture pictures
+  of packs and mods are kept at; it only matters when there are any, and the
+  game's own textures are always 16 x 16) and **SHADER** (OFF, or one of the
   post-processing shaders that your mods bring, such as the Shaders mod's soft
   bloom or retro dither; it says NOT SUPPORTED HERE on a graphics card that
   cannot run them, and a shader that fails is switched off; see
@@ -933,12 +960,12 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   and MAP DATA RELAY (host:port, for old machines; see
   [EARTH.md](EARTH.md)).
 - **VOICE**: proximity voice chat on servers, see [Voice chat](#voice-chat).
-- **SKIN**: pick one of the built-in looks or choose your own 64 x 64 picture with the built-in file browser. See
-  [MODDING.md](MODDING.md#player-skins).
+- **SKIN**: pick one of the built-in looks or choose your own picture, **up to 4096 x 4096**, with the built-in file
+  browser (see [Skins](#skins) below and [MODDING.md](MODDING.md#player-skins)).
   **IMPORT FROM WEB ADDRESS...** opens a small panel: paste (Ctrl+V, Cmd+V on a Mac) a direct link to a
-  64 x 64 or 64 x 32 picture (an `http` or `https` address, such as a `.png` link or a
+  skin picture (an `http` or `https` address, such as a `.png` link or a
   `textures.minecraft.net/texture/...` link; a web page that merely shows a skin is not a picture) and press
-  DOWNLOAD. It is fetched in the background with `curl` (at most 2 MB, 20 seconds) into `tmp/skins/` in the data
+  DOWNLOAD. It is fetched in the background with `curl` (at most 1 MiB, 20 seconds; the picture may unpack to 24 MiB, up to 4096 x 4096) into `tmp/skins/` in the data
   folder, checked, and imported like a file from the browser. The panel says `DOWNLOADING...`, `IMPORTED`,
   `COULD NOT DOWNLOAD`, `NOT A SKIN PICTURE` or `TOO BIG`. The build for old Macs (`macos-legacy`) cannot open
   `https` addresses and says so. You can also drop a picture file on the window while the SKIN tab is open.
@@ -1019,6 +1046,41 @@ x 800, which an old graphics card draws much faster, and says so in the chat
 area. This happens once; it does not happen with vsync on. Change it back
 under SETTINGS > VIDEO whenever you like.
 
+
+### Skins
+
+A skin is a picture of your character, laid out like the usual player skins on a 64 x 64 grid. The game takes:
+
+- **64 x 64** (and the older **64 x 32**, which it brings up to 64 x 64 by mirroring the left arm and leg);
+- **HD skins**: a square picture whose side is a multiple of 64, from 128 up to **4096 x 4096** (128, 192, 256, 512, 1024,
+  2048, 4096). A skin W pixels wide is the 64 x 64 layout with every cell W / 64 pixels across, so it lines up on the
+  same models. Slim arms are found from the picture at any size (or forced with FORCE SLIM ARMS).
+- A picture that is not square, not a multiple of 64 or over 4096 is refused with a message that says its size.
+
+Your skin is kept as `skin.png` in the data folder (an HD PNG you choose is kept as it is). On screen an HD skin is
+smoothed and mipmapped; a 64 wide skin stays pixel-sharp.
+
+**In multiplayer** the game packs the skin with its own PNG writer (palette mode for pictures of 256 colours or fewer,
+the best filter for every row, deflate with repeat finding; see [IMAGES.md](IMAGES.md)) on a worker thread, so the
+game does not stop; a typical skin shrinks to a few kilobytes or tens of them. Then:
+
+- a 64 x 64 skin goes in one message, as it always did;
+- a bigger one is announced with its size and then sent in pieces of up to 40,000 bytes. The server accepts at most
+  **1 MiB** of PNG and **4096 x 4096**, checks the picture's header before it takes the first piece, takes one skin at a
+  time per player and at most one change every **5 seconds**, and passes on only skins that decode at the size they
+  say. (A skin whose PNG would pass 1 MiB is sent at half the side, again if need be, until it fits.)
+- players with an older game (protocol 13) are sent a **64 x 64 version** the server makes by averaging down your
+  skin; new games get the HD one. If the server does not take HD skins (it does not say so), your game sends the
+  64 x 64 version.
+- other players' skins live on the graphics card only (the unpacked picture is not kept in memory). All together they
+  may use **64 MB** of texture memory: a player within **48 blocks** is shown with the full skin, up to **96 blocks**
+  at 256 x 256 and beyond that at 64 x 64. When the total would pass 64 MB, the skins of the players who were near
+  longest ago are made smaller first, and they grow again when the player comes back. The compressed pictures are kept
+  (up to 24 MB) for this.
+
+Skins over 64 x 64 are the exception to the memory rule of the game (300 MB without mods, 700 MB with): your own HD skin
+and the HD skins of other players use more, within the budget above.
+
 ## The data folder
 
 Worlds, settings, screenshots, `pack.txt` and your own `mods` folder (see
@@ -1069,6 +1131,8 @@ marked "From the Earth mod").
 | `--log FILE` | also write what the game prints to FILE |
 | `--pack FILE` | extra content file (blocks, items, textures); may be given several times |
 | `--mods-dir DIR` | read mods from `DIR` instead of the data folder's `mods` |
+| `--require-accounts yes\|no\|optional` | with `--server`: whether players need an account (a PIN); default `optional` (see [ACCOUNTS.md](ACCOUNTS.md)) |
+| `--set-pin NAME PIN` | with `--server` (and `--data`, `--world`): set the PIN of an account in the server's data folder, and exit. How an administrator's account is made |
 | `--serve-mods LIST` | with `--server` or `--host`: the mods players download, comma separated (default: every mod that does not say `client no` and has no native code) |
 | `--screenshot FILE` | load the world, save one BMP frame, and exit |
 | `--bench N` | load the world, time N frames, and exit |

@@ -100,6 +100,19 @@ has for it (the host calls marked *new* were added in this round for them and fo
 | orespawn: the sky of each of its five dimensions | a `dimension` line's sky properties (new, DATA.md) or `set_dimension_sky`; its terrain stays **missing** |
 | witherstorm: saved state (`witherstorm.txt`) | `state_*` (512 keys of 4 096 bytes); a storm's whole record fits |
 
+### The man from the fog: darkness, a head that turns, pictures (new)
+
+What the port of `manfromthefog` needs of the engine that a mod's own drawing could not do
+(all in `docs/SCRIPTING.md`; nothing in either protected mod was touched):
+
+| Gap | Engine |
+| --- | --- |
+| translucent darkness: the engine sets the fog before the world and a mod draws after it, so a mod's fog could not blend with the sky's | `set_fog(start, end, r, g, b, density)`: a fog override mixed with the dimension's fog colour and range at the next world pass, gone half a second after the last call (**supported**) |
+| translucent specks of darkness and mist (the particle kinds are flat, opaque-edged pictures with fixed looks) | `spawn_soft`: a soft round sprite with its own opacity (start and end), size growth, velocity and life, `alpha` or `additive`; 512 alive, 256 a mod, the frame rule of `spawn_particles` (**supported**) |
+| a tint over the screen after the world | `hud_tint(r, g, b, a)` (**supported**) |
+| a stalker that watches the player: every creature was drawn with its head straight | creatures with a `head` bone look at the nearest player within 12 blocks (70 degrees to the sides, 40 up and down), asleep and fleeing ones do not; trait `watches` for up to 48 blocks; `set_creature_look(id, yaw, pitch)` and `clear_creature_look(id)` force it, and a forced look is sent with the creature snapshot in a shared game (**supported**) |
+| a jumpscare picture and a counter strip on the HUD (it could only fill rectangles and write text) | `hud_image`, `hud_image_at`, `hud_image_uv`, `hud_image_uv_at`, `hud_image_fit`: a png or tga from the mod's folder, 16 a mod, 1024 x 1024 and 4 MB decoded each, alpha, tint, sprite-sheet parts, `cover` and `contain` for whole-screen pictures (**supported**) |
+
 ### Armour, wear, item data, attributes (new)
 
 Gaps the ports found in the engine, now closed (all in `docs/SCRIPTING.md`):

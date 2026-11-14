@@ -28,6 +28,11 @@ pub const UI_FUNCTIONS: &[(&str, &str)] = &[
     ("hud_item(anchor: &str, dx: f64, dy: f64, size: f64, item_id: &str) -> bool", "in `on_hud`: draw an item's icon"),
     ("hud_block(anchor: &str, dx: f64, dy: f64, size: f64, block_id: &str) -> bool", "in `on_hud`: draw a block's icon"),
     ("hud_bar(anchor: &str, dx: f64, dy: f64, w: f64, h: f64, fraction: f64, colour: i64) -> bool", "in `on_hud`: draw a progress bar (0 to 1)"),
+    ("hud_image(name: &str, x: f64, y: f64, w: f64, h: f64, alpha: f64) -> bool", "in `on_hud`: draw a picture of the mod (`name` is a png or tga file in the mod's folder, like \"images/scare.png\"), `w` x `h` interface pixels with its top-left corner `x` right and `y` down from the screen's; `alpha` 0 to 1; false if the picture cannot be read, the mod already has 16, or the frame is full"),
+    ("hud_image_at(name: &str, anchor: &str, dx: f64, dy: f64, w: f64, h: f64, alpha: f64, tint: i64) -> bool", "in `on_hud`: as `hud_image` with an anchor like the other calls, and a tint (`0xRRGGBB`, `0xFFFFFF` for the picture as it is)"),
+    ("hud_image_uv(name: &str, x: f64, y: f64, w: f64, h: f64, u0: f64, v0: f64, u1: f64, v1: f64, alpha: f64) -> bool", "in `on_hud`: draw a part of a picture, for sprite sheets and strips: (u0, v0) to (u1, v1) are fractions of the picture (0 to 1), (0, 0) its top-left corner"),
+    ("hud_image_uv_at(name: &str, anchor: &str, dx: f64, dy: f64, w: f64, h: f64, u0: f64, v0: f64, u1: f64, v1: f64, alpha: f64, tint: i64) -> bool", "in `on_hud`: as `hud_image_uv` with an anchor and a tint"),
+    ("hud_image_fit(name: &str, mode: &str, alpha: f64) -> bool", "in `on_hud`: fit a picture to the whole screen: `\"cover\"` fills it (and crops what does not fit), `\"contain\"` shows all of it with bars; an error for another mode"),
     ("hud_set(slot: &str, id: &str, text: &str, colour: i64) -> bool", "put a line in a HUD slot, or change the one with this id (it stays until removed)"),
     ("hud_set_icon(id: &str, item_id: &str) -> bool", "give a slot line an item icon (an empty id takes it away)"),
     ("hud_remove(id: &str) -> bool", "take a slot line away"),
@@ -69,6 +74,11 @@ fn is_ui_fn(name: &str) -> bool {
             | "hud_item"
             | "hud_block"
             | "hud_bar"
+            | "hud_image"
+            | "hud_image_at"
+            | "hud_image_uv"
+            | "hud_image_uv_at"
+            | "hud_image_fit"
             | "hud_set"
             | "hud_set_icon"
             | "hud_remove"
@@ -148,6 +158,36 @@ fn run(it: &mut Interp, mod_name: &str, name: &str, args: &[Value]) -> Result<Va
         "key_scancode" => {
             want(name, args, 1)?;
             Ok(Value::Int(key_scancode(text(name, args, 0)?) as i64))
+        }
+        // ---- pictures: they need the data folder to find the mod's files
+        "hud_image" | "hud_image_at" | "hud_image_uv" | "hud_image_uv_at" | "hud_image_fit" => {
+            let dir = it.host.data_dir();
+            let mut api = ModApi::new(it.host.ui(), mod_name);
+            let full = [0.0, 0.0, 1.0, 1.0];
+            match name {
+                "hud_image" => {
+                    want(name, args, 6)?;
+                    b(api.hud_image(&dir, text(name, args, 0)?, "top-left", num(name, args, 1)?, num(name, args, 2)?, num(name, args, 3)?, num(name, args, 4)?, full, num(name, args, 5)?, 0xFFFFFF)?)
+                }
+                "hud_image_at" => {
+                    want(name, args, 8)?;
+                    b(api.hud_image(&dir, text(name, args, 0)?, text(name, args, 1)?, num(name, args, 2)?, num(name, args, 3)?, num(name, args, 4)?, num(name, args, 5)?, full, num(name, args, 6)?, int(name, args, 7)?)?)
+                }
+                "hud_image_uv" => {
+                    want(name, args, 10)?;
+                    let uv = [num(name, args, 5)?, num(name, args, 6)?, num(name, args, 7)?, num(name, args, 8)?];
+                    b(api.hud_image(&dir, text(name, args, 0)?, "top-left", num(name, args, 1)?, num(name, args, 2)?, num(name, args, 3)?, num(name, args, 4)?, uv, num(name, args, 9)?, 0xFFFFFF)?)
+                }
+                "hud_image_uv_at" => {
+                    want(name, args, 12)?;
+                    let uv = [num(name, args, 6)?, num(name, args, 7)?, num(name, args, 8)?, num(name, args, 9)?];
+                    b(api.hud_image(&dir, text(name, args, 0)?, text(name, args, 1)?, num(name, args, 2)?, num(name, args, 3)?, num(name, args, 4)?, num(name, args, 5)?, uv, num(name, args, 10)?, int(name, args, 11)?)?)
+                }
+                _ => {
+                    want(name, args, 3)?;
+                    b(api.hud_image_fit(&dir, text(name, args, 0)?, text(name, args, 1)?, num(name, args, 2)?)?)
+                }
+            }
         }
         // ---- the rest goes through the mod's handle
         _ => {

@@ -475,6 +475,8 @@ they keep access to its private items):
 | `client/frame/` | `input.rs` (keys, events), `update.rs`, `draw.rs`, `creatures.rs`, `hud.rs`, `scripted.rs` (line-up and showcase for pictures) |
 | `client/launch/` | `args.rs` (help text, options, parsing), `mods_load.rs` (reading packs and mods, importing, exporting textures), `server_run.rs` (the dedicated server and the hosted one) |
 
+Other folders of this kind (ordinary modules, not parts of `App`): `client/skins/` (the budget, workers and hub for HD skins, see [IMAGES.md](IMAGES.md)), `util/image/` (the picture code: decoders, the PNG encoder and its deflate), `net/` (`skinxfer.rs` and `skinslot.rs` for big skins on the wire).
+
 They are declared in `app.rs` with `#[path = "..."] mod name;`. Note that
 Rust compiles a crate as a whole; the gain from smaller files is mostly for
 people (and for the incremental compiler, which reuses more per function), not
@@ -521,6 +523,70 @@ first frame. A slow start can be pinned on one of them.
 - Things sent by other players are bounded: creature snapshots (64), chests (65536),
   content packs (16 MB, and a pack that is too big is dropped whole), positions (a
   world coordinate, finite and below 2.2e9).
+
+### Culling and drawing the world
+
+Hidden things are not drawn. In the order a frame meets them:
+
+- **Sections.** A chunk is 256 blocks tall, mostly empty sky or solid stone, so its
+  mesh is laid out in sixteen sections of 16 blocks (`terrain/sections.rs`). The
+  mesher still makes the three buffers of a chunk (opaque, water, glass: no more
+  buffers on the card than before), but groups each buffer's vertices by section and
+  hands the renderer a table of where each section starts, its bounding box and its
+  *connectivity*. Drawing a subset of a chunk is then `glDrawArrays(first, count)` on
+  the same buffer, with neighbouring visible sections joined into one call.
+- **Frustum culling** is done twice: sections (a full 16-block box) while walking, then
+  the box of each section's actual geometry. The six planes come from the real
+  projection and view matrix (`math::Frustum`, which also tests spheres). Creatures,
+  props, other players, particles and mods' quads are tested against the same planes
+  (a sphere round them) and not only against "behind the camera"; creatures also have
+  a distance cut that shrinks with their size (`client/cull.rs`: `creature_range`, 72
+  blocks for an ordinary body, 35 for half a block, bigger ones farther).
+- **Occlusion culling by cave visibility** (`terrain/visibility.rs`). While meshing,
+  each section's open cells (those that do not block sight) are flood filled and every
+  pair of its six faces that one open region touches is recorded in 15 bits. Each frame
+  a walk starts in the camera's section and steps through joined faces, always away from
+  the camera, only into sections inside the frustum and inside the view distance;
+  sections it never enters (behind a mountain, inside rock no tunnel leads to) are not
+  drawn. It is conservative: a section is drawn whole when any face of it is reached, the
+  camera's section and the 26 around it are always drawn, and chunks that are not meshed
+  yet count as open. Its cost is the number of sections in view and reachable, not the
+  world's size. The walk is a pure function over a grid of words and has unit tests (a
+  mountain hides the cave behind it, a tunnel shows it, a cave shows only what its
+  tunnels lead to). Known limit: a path that has to turn back toward the camera's side
+  along an axis (a U-shaped tunnel) is not followed, like the same trick in other games;
+  such a far end may be missing from view until you come nearer.
+  **F3 + O** (or `--show nocull`) turns the occlusion walk off, to compare frame times
+  and look for missing sections; the frustum tests stay.
+- **Order.** Opaque geometry is drawn nearest first (early depth rejection), the water
+  and glass pass walks the same list backwards (the lists are kept between frames, so a
+  frame allocates nothing once they have grown). Sorting some hundred chunks by an
+  integer key takes microseconds, so it is done every frame rather than cached.
+- **Hidden faces** were already left out by the mesher: a face is made only when the
+  cell it looks at is not opaque, and the mesher reads the eight neighbouring chunks, so
+  chunk borders against solid neighbours make nothing (tests: a solid floor makes only
+  its tops; a buried block makes no faces). Merging coplanar faces into bigger quads
+  ("greedy meshing") was considered and left out: every vertex carries its own ambient
+  occlusion and light gradient, merging would have to stop wherever those differ, which
+  in terrain is nearly everywhere, and a bug there changes how the whole world looks.
+- **Distant terrain** is still drawn after the chunks in the back tenth of the depth range
+  (so every pixel a nearby block hides is skipped), and is now also left out when every
+  chunk under a tile is meshed and inside the drawn circle (`cull::tile_covered`), not
+  only once the world has settled.
+- **Mesh uploads** are limited to about 6 ms a frame (the first two always go), nearest
+  chunks first; the rest wait in `World::backlog`. Results for chunks that were dropped,
+  or left the meshed circle, while they waited are thrown away (`terrain/uploads.rs`).
+- **F3** shows the sections drawn, culled by the frustum, culled by occlusion (of those
+  with geometry in range), the draw calls and the milliseconds spent culling; `--bench`
+  prints the same at the end.
+- Everything is fixed-function OpenGL 2.1 and WebGL1 compatible: no instancing, no
+  occlusion queries, no multi-draw; `glDrawArrays` with a first vertex works through the
+  web quad emulation too.
+- **Memory.** No more vertex data and no more buffers. The section table is about 330
+  bytes a chunk on the CPU (about half a megabyte for 1500 chunks), and the walk's grid is
+  `(2 * distance + 1)^2 * 16` entries of 3 bytes kept between frames (about 200 KB at
+  view distance 16, 800 KB at 32). Up to a few meshes wait in the upload backlog (as
+  before they waited in the job results).
 
 What is still heavy, if the start is slow: the content registry keeps the text of
 every model file (`Registry::models`) for the whole run; the atlas is painted on the

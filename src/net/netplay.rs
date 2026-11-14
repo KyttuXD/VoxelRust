@@ -17,6 +17,8 @@ pub struct Remote {
     /// Walk animation, driven by how far they move between updates.
     pub phase: f32,
     pub stride: f32,
+    /// Blocks a second they covered lately (from their position changes: tells a run from a walk).
+    pub pace: f32,
     /// False until their first position arrives.
     pub seen: bool,
     /// Their pose byte (see `content::pose::unpack`), the posture they are
@@ -81,6 +83,18 @@ pub struct Client {
     /// Which program the server is (from [`Msg::Info`]; None until it says,
     /// and for a server from before it was sent).
     pub server_info: Option<crate::net::version::Info>,
+    /// What big skins the server takes (largest side, most bytes), from
+    /// [`Msg::SkinCaps`]; None for a server that does not say, which is sent
+    /// 64 x 64 skins only.
+    pub skin_caps: Option<(u16, u32)>,
+    /// Big skins of other players that are on their way.
+    skin_in: crate::net::skinxfer::Transfers,
+    /// Seconds before our own skin may be sent again (the server takes one in five).
+    skin_cool: f32,
+    /// Seconds since connecting (the server's [`Msg::SkinCaps`] may still be on its way).
+    age: f32,
+    /// What this player's account is (see `net/accounts/client.rs`).
+    pub acct: crate::net::accounts::client::ClientAccount,
 }
 
 /// Most voice frames held waiting (about a second of one talker).
@@ -119,33 +133,66 @@ fn port_of(text: &str) -> Option<u16> {
 }
 
 impl Client {
-    /// Connect and say hello. Waits (a few seconds at most) for the answer.
+    /// Connect and say hello. Waits (a few seconds at most) for the answer. A name that
+    /// has an account is refused here (use [`Client::connect_auth`] with its PIN).
     pub fn connect(host: &str, port: u16, name: &str) -> Result<(Client, Welcome), String> {
-        let mut stream = TcpStream::connect(host, port, 6000).map_err(|e| alloc::format!("COULD NOT CONNECT ({:?})", e).to_ascii_uppercase())?;
+        Client::connect_auth(host, port, name, &crate::net::accounts::client::JoinAuth::default()).map_err(String::from)
+    }
+
+    /// Connect, say hello and, if the server asks for a PIN, answer with `auth`. When there is no PIN
+    /// yet (or it is wrong) the error says what to ask the player; join again with it.
+    pub fn connect_auth(host: &str, port: u16, name: &str, auth: &crate::net::accounts::client::JoinAuth) -> Result<(Client, Welcome), crate::net::accounts::client::ConnectError> {
+        use crate::net::accounts::client::{respond, Challenge, ConnectError};
+        let failed = |s: &str| ConnectError::Failed(String::from(s));
+        let mut stream = TcpStream::connect(host, port, 6000).map_err(|e| ConnectError::Failed(alloc::format!("COULD NOT CONNECT ({:?})", e).to_ascii_uppercase()))?;
         stream.set_nodelay(true);
         let hello = Msg::Hello { version: VERSION, content: content_checksum(), name: String::from(name) };
-        stream.send_all(&hello.encode(), 4000).map_err(|_| String::from("THE SERVER HUNG UP"))?;
+        stream.send_all(&hello.encode(), 4000).map_err(|_| failed("THE SERVER HUNG UP"))?;
         let mut inbox = Inbox::default();
         let mut buf = [0u8; 4096];
-        for _ in 0..80 {
+        let mut answered = false;
+        for _ in 0..120 {
             match inbox.next() {
                 Next::Msg(Msg::Welcome { id, seed, time, kind }) => {
-                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None };
+                    let mut c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None, skin_caps: None, skin_in: Default::default(), skin_cool: 0.0, age: 0.0, acct: Default::default() };
+                    c.acct.name = crate::settings::clean_name(name, 16).to_ascii_lowercase();
+                    c.acct.at = auth.at.clone();
+                    c.acct.remember = auth.remember;
+                    // A PIN that has just worked is kept if the player asked for that.
+                    if let (true, true, Some(pin), Some(at)) = (answered, auth.remember, auth.pin.as_deref(), auth.at.as_ref()) {
+                        crate::net::accounts::remember::save(&at.base, &at.address, &c.acct.name, pin);
+                    }
                     return Ok((c, Welcome { seed, time: crate::net::limits::clean_time(time), kind }));
                 }
-                Next::Msg(Msg::Refuse { reason }) => return Err(crate::net::version::explain_refusal(&reason)),
-                Next::Msg(_) | Next::Bad => return Err(String::from("THAT IS NOT A VOXELRUST SERVER")),
+                Next::Msg(Msg::Refuse { reason }) => return Err(ConnectError::Failed(crate::net::version::explain_refusal(&reason))),
+                Next::Msg(Msg::AuthChallenge { op, flags, rounds, tries, salt, new_salt, nonce }) if !answered => {
+                    let challenge = Challenge { op, flags, rounds, tries, salt, new_salt, nonce };
+                    let answer = respond(auth, name, &challenge)?;
+                    stream.send_all(&answer.encode(), 4000).map_err(|_| failed("THE SERVER HUNG UP"))?;
+                    answered = true;
+                }
+                Next::Msg(Msg::AuthResult { ok: false, tries, text }) => {
+                    // A PIN that was kept and is wrong now is forgotten (it was changed somewhere else).
+                    if let (true, Some(at)) = (tries > 0 && !auth.register, auth.at.as_ref()) {
+                        crate::net::accounts::remember::forget(&at.base, &at.address, name);
+                    }
+                    if auth.register {
+                        return Err(ConnectError::Failed(text.to_ascii_uppercase()));
+                    }
+                    return Err(ConnectError::NeedPin { register: false, tries, note: text.to_ascii_uppercase(), weak_ok: false });
+                }
+                Next::Msg(_) | Next::Bad => return Err(failed("THAT IS NOT A VOXELRUST SERVER")),
                 Next::Wait => {}
             }
             match stream.recv(&mut buf, 100) {
                 Ok(n) => inbox.push(&buf[..n]),
-                Err(_) => return Err(String::from("THE SERVER HUNG UP")),
+                Err(_) => return Err(failed("THE SERVER HUNG UP")),
             }
         }
-        Err(String::from("THE SERVER DID NOT ANSWER"))
+        Err(failed("THE SERVER DID NOT ANSWER"))
     }
 
-    fn send(&mut self, msg: &Msg) {
+    pub(crate) fn send(&mut self, msg: &Msg) {
         if self.alive && self.stream.send_all(&msg.encode(), 2000).is_err() {
             self.alive = false;
         }
@@ -156,6 +203,11 @@ impl Client {
         let mut events = Vec::new();
         if !self.alive {
             return events;
+        }
+        if dt > 0.0 && dt < 3600.0 {
+            self.skin_cool = (self.skin_cool - dt).max(0.0);
+            self.age += dt;
+            self.skin_in.tick(dt);
         }
         let mut buf = [0u8; 8192];
         for _ in 0..32 {
@@ -179,9 +231,10 @@ impl Client {
                     Msg::Join { id, name } => {
                         events.push(Event::Chat(alloc::format!("{} JOINED", name.to_ascii_uppercase())));
                         events.push(Event::Joined(name.clone()));
-                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new() });
+                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, pace: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new() });
                     }
                     Msg::Leave { id } => {
+                        self.skin_in.forget(id);
                         if let Some(p) = self.players.remove(&id) {
                             events.push(Event::Chat(alloc::format!("{} LEFT", p.name.to_ascii_uppercase())));
                             events.push(Event::Left(p.name.clone()));
@@ -196,6 +249,8 @@ impl Client {
                             if p.seen {
                                 p.phase += step * 3.2;
                                 p.stride = (step * 2.5).min(1.0);
+                                // (positions come ten times a second)
+                                p.pace += (step * 10.0 - p.pace) * 0.5;
                             }
                             p.pos = pos;
                             p.yaw = yaw;
@@ -239,8 +294,22 @@ impl Client {
                         self.server_info = Some(info);
                     }
                     Msg::Perms { flags } => events.push(Event::Perms(flags)),
-                    // (A skin is 64 x 64: anything else is not decoded at all.)
+                    // Accounts: a challenge for /register or /pin, how it went, what the server says of us.
+                    m @ (Msg::AuthChallenge { .. } | Msg::AuthResult { .. } | Msg::Account { .. }) => self.on_account_message(m, &mut events),
+                    // (A skin's header must say a size a skin may have: anything else is not decoded at all.)
                     Msg::Skin { id, png, slim } if crate::net::limits::skin_header_ok(&png) => events.push(Event::Skin(id, png, slim)),
+                    Msg::SkinCaps { max_side, max_bytes } => self.skin_caps = Some((max_side, max_bytes)),
+                    // A big skin in pieces: only from players we know of, and each piece is checked on arrival.
+                    Msg::SkinBegin { id, size, side, slim } => {
+                        if self.players.contains_key(&id) {
+                            let _ = self.skin_in.begin(id, size, side, slim);
+                        }
+                    }
+                    Msg::SkinPart { id, last, data } => {
+                        if let Ok(Some((png, slim))) = self.skin_in.part(id, &data, last) {
+                            events.push(Event::Skin(id, png, slim));
+                        }
+                    }
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
                     Msg::ModList { mods } => events.push(Event::ModList(mods)),
@@ -258,6 +327,7 @@ impl Client {
         // Players who stop moving stop walking.
         for p in self.players.values_mut() {
             p.stride *= 1.0 - (dt * 3.0).min(1.0);
+            p.pace *= 1.0 - (dt * 0.5).min(1.0);
             p.body.update(crate::content::pose::unpack(p.pose).0, dt);
             // An emote runs on while they stand still, and stops when they move off.
             if p.emote != 0 {
@@ -307,9 +377,31 @@ impl Client {
         self.send(&Msg::SetBlock { x, y, z, block });
     }
 
-    pub fn send_skin(&mut self, png: &[u8], slim: bool) {
+    /// Tell the others our skin. `hd` is the PNG at `side` pixels (the same
+    /// as `small` for a 64 x 64 skin) and `small` the 64 x 64 version. A big
+    /// skin goes in pieces if the server said it takes them (and is small
+    /// enough for it); otherwise the 64 x 64 one goes. False (nothing sent)
+    /// if the last skin went less than five seconds ago: ask again later.
+    pub fn send_skins(&mut self, hd: &[u8], side: usize, small: &[u8], slim: bool) -> bool {
+        if self.skin_cool > 0.0 {
+            return false;
+        }
+        // A big skin waits a moment for the server to say whether it takes one (it says so right
+        // after saying hello; a server that never does is sent the 64 x 64 version).
+        if side > 64 && self.skin_caps.is_none() && self.age < 1.5 {
+            return false;
+        }
+        self.skin_cool = crate::net::skinxfer::COOLDOWN;
         let id = self.id;
-        self.send(&Msg::Skin { id, png: png.to_vec(), slim });
+        let takes = |caps: Option<(u16, u32)>| caps.map_or(false, |(max_side, max_bytes)| side <= max_side as usize && hd.len() <= max_bytes as usize);
+        if side > 64 && takes(self.skin_caps) && hd.len() <= crate::proto::MAX_SKIN {
+            for m in crate::net::skinxfer::messages(id, hd, side, slim) {
+                self.send(&m);
+            }
+        } else if small.len() <= crate::proto::MAX_SKIN_MSG {
+            self.send(&Msg::Skin { id, png: small.to_vec(), slim });
+        }
+        true
     }
 
     /// Share a piece of state with the other players (see [`Msg::State`]).
@@ -829,6 +921,96 @@ mod tests {
         pump(&mut a, 40);
         let heard = count(&pump(&mut b, 200));
         assert!((1..=10).contains(&heard), "{heard} messages got through");
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+    }
+
+    /// A skin of `side` pixels, noisy enough to need several pieces on the wire.
+    fn noisy_skin(side: usize) -> Vec<u8> {
+        let mut x = 77u32;
+        let px: Vec<u8> = (0..side * side * 4)
+            .map(|i| {
+                x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+                if i % 4 == 3 {
+                    255
+                } else {
+                    (x >> 24) as u8
+                }
+            })
+            .collect();
+        crate::png::encode(side, side, &px)
+    }
+
+    #[test]
+    fn a_big_skin_reaches_new_clients_whole_and_old_ones_as_64_by_64() {
+        let (port, stop, handle) = start_server(8);
+        let (mut a, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
+        let (mut b, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
+        pump(&mut a, 100);
+        pump(&mut b, 100);
+        assert!(a.skin_caps.is_some(), "the server says it takes big skins");
+        let hd = noisy_skin(128);
+        assert!(hd.len() > crate::proto::MAX_SKIN_PART);
+        let small = crate::skinxfer::legacy_version(&hd, 128).unwrap();
+        assert!(a.send_skins(&hd, 128, &small, true));
+        // Not again within five seconds.
+        assert!(!a.send_skins(&hd, 128, &small, true));
+        pump(&mut a, 60);
+        let eb = pump(&mut b, 250);
+        let got = eb.iter().find_map(|e| if let Event::Skin(_, png, slim) = e { Some((png.clone(), *slim)) } else { None }).expect("Bob gets Ann's skin");
+        assert_eq!(got, (hd.clone(), true));
+        // A client of protocol 13 who joins now is sent the 64 x 64 one, and no message it does not know.
+        let mut raw = TcpStream::connect("127.0.0.1", port, 2000).unwrap();
+        raw.send_all(&Msg::Hello { version: crate::proto::MIN_VERSION, content: 0, name: String::from("Old") }.encode(), 2000).unwrap();
+        let mut inbox = Inbox::default();
+        let mut buf = [0u8; 8192];
+        let mut skin = None;
+        let mut unknown = false;
+        for _ in 0..60 {
+            if let Ok(n) = raw.recv(&mut buf, 20) {
+                inbox.push(&buf[..n]);
+            }
+            loop {
+                match inbox.next() {
+                    Next::Msg(Msg::Skin { png, .. }) => skin = Some(png),
+                    Next::Msg(Msg::SkinBegin { .. } | Msg::SkinPart { .. } | Msg::SkinCaps { .. }) => unknown = true,
+                    Next::Msg(_) => {}
+                    Next::Wait | Next::Bad => break,
+                }
+            }
+            if skin.is_some() {
+                break;
+            }
+        }
+        assert!(!unknown, "an old client is never sent messages from protocol 14");
+        assert_eq!(skin.as_deref(), Some(&small[..]));
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_skin_that_is_not_one_is_not_relayed() {
+        let (port, stop, handle) = start_server(8);
+        let (mut a, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
+        let (mut b, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
+        pump(&mut a, 80);
+        pump(&mut b, 80);
+        // A picture of 100 x 100 and a header that says a size no skin has.
+        let odd = crate::png::encode(100, 100, &[9u8; 100 * 100 * 4]);
+        a.send(&Msg::Skin { id: a.id, png: odd, slim: false });
+        pump(&mut a, 40);
+        assert!(!pump(&mut b, 120).iter().any(|e| matches!(e, Event::Skin(..))));
+        // Pieces with no announcement, and one announced too big.
+        let id = a.id;
+        a.send(&Msg::SkinPart { id, last: true, data: alloc::vec![1; 500] });
+        a.send(&Msg::SkinBegin { id, size: crate::proto::MAX_SKIN as u32 + 1, side: 128, slim: false });
+        pump(&mut a, 40);
+        assert!(!pump(&mut b, 120).iter().any(|e| matches!(e, Event::Skin(..))));
+        // A proper one still goes through afterwards.
+        let ok = crate::png::encode(64, 64, &[200u8; 64 * 64 * 4]);
+        assert!(a.send_skins(&ok, 64, &ok, false));
+        pump(&mut a, 40);
+        assert!(pump(&mut b, 120).iter().any(|e| matches!(e, Event::Skin(..))));
         stop.store(true, Ordering::Relaxed);
         handle.join().unwrap();
     }

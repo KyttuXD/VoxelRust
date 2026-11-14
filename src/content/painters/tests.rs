@@ -107,7 +107,7 @@ fn block_faces_have_the_frame() {
         }
     }
     // A plain colour with grain set is a block face too.
-    let t = TileDef { id: String::from("t"), src: TileSrc::Flat { rgb: [176, 180, 190], noise: 6 } };
+    let t = TileDef { id: String::from("t"), src: TileSrc::Flat { rgb: [176, 180, 190], noise: 6 }, hd: None };
     assert!(has_frame(&described_pixels(0, &t)));
 }
 

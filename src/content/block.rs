@@ -335,8 +335,10 @@ pub mod traits {
     pub const PACK: u32 = 128;
     /// Tags along behind a player holding its favourite food.
     pub const FOLLOWS: u32 = 256;
-    pub const NAMES: [(&str, u32); 9] =
-        [("flees", FLEES), ("herd", HERD), ("jumps", JUMPS), ("territorial", TERRITORIAL), ("hunter", HUNTER), ("prey", PREY), ("lazy", LAZY), ("pack", PACK), ("follows", FOLLOWS)];
+    /// Its head follows the player from up to 48 blocks (others look only within 12).
+    pub const WATCHES: u32 = 512;
+    pub const NAMES: [(&str, u32); 10] =
+        [("flees", FLEES), ("herd", HERD), ("jumps", JUMPS), ("territorial", TERRITORIAL), ("hunter", HUNTER), ("prey", PREY), ("lazy", LAZY), ("pack", PACK), ("follows", FOLLOWS), ("watches", WATCHES)];
 }
 
 /// How a creature's model moves.
@@ -578,6 +580,8 @@ pub enum TileSrc {
 pub struct TileDef {
     pub id: String,
     pub src: TileSrc,
+    /// A mod's picture bigger than 16 x 16, as the file (`src` is its 16 x 16 shrunk): see `content/hd`.
+    pub hd: Option<crate::hd::source::Source>,
 }
 
 /// Blocks the terrain generator asks for by id.
@@ -1321,6 +1325,7 @@ impl Parser<'_> {
             self.warn(file, line, "texture needs: <id> builtin|flat|file ...");
             return;
         }
+        let mut hd: Option<crate::hd::source::Source> = None;
         let src = match a[1] {
             "builtin" => TileSrc::Builtin(a[2].to_string()),
             "flat" => {
@@ -1345,11 +1350,21 @@ impl Parser<'_> {
             },
             "file" => {
                 let path = alloc::format!("{}{}", dir_of(file), a[2..].join(" "));
-                let read = (self.load)(&path).and_then(|b| crate::image::decode(&b)).map(|img| if img.w == 16 && img.h == 16 { img.rgba } else { crate::image::fit(&img, 16) });
+                // Any tile size from 16 to 512 (content/hd): the HD picture is kept as the file.
+                let read = match (self.load)(&path) {
+                    Some(bytes) => crate::hd::source::load(&bytes),
+                    None => Err(String::from("cannot be read")),
+                };
                 match read {
-                    Some(px) => TileSrc::Pixels(px),
-                    None => {
-                        self.warn(file, line, &alloc::format!("cannot read {} as a picture (PNG, JPEG, GIF, BMP or TGA)", path));
+                    Ok(l) => {
+                        if let Some(n) = &l.note {
+                            self.warn(file, line, &alloc::format!("{} {}", path, n));
+                        }
+                        hd = l.hd;
+                        TileSrc::Pixels(l.px16)
+                    }
+                    Err(m) => {
+                        self.warn(file, line, &alloc::format!("{} {}", path, m));
                         return;
                     }
                 }
@@ -1359,7 +1374,7 @@ impl Parser<'_> {
                 return;
             }
         };
-        let def = TileDef { id: a[0].to_string(), src };
+        let def = TileDef { id: a[0].to_string(), src, hd };
         match self.tiles.iter().position(|t| t.id == def.id) {
             Some(i) => self.tiles[i] = def,
             None if self.tiles.len() < crate::textures::MAX_TILES => self.tiles.push(def),

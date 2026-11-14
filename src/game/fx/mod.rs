@@ -11,6 +11,8 @@
 //! | `drops.rs` | spawning a dropped item with a velocity (128 lie about, 1 to 64 in a stack) |
 //! | `falling.rs` | blocks flying and falling: the physics and what happens on landing (64 at most) |
 //! | `particles.rs` | the kinds, their looks, the budget (2000 live, fewer when the frame is slow) |
+//! | `fog.rs` | the fog a mod holds over the dimension's, for the next world pass (0.5 s per call) |
+//! | `soft.rs` | soft round particles with their own alpha and size growth (512 live, 256 a mod) |
 //! | `quads.rs` | the registry of translucent world-space quads (256 a mod) |
 //! | `sky.rs` | the sky of a dimension: the data from the pack plus what scripts changed |
 //!
@@ -22,9 +24,11 @@
 pub mod blast;
 pub mod drops;
 pub mod falling;
+pub mod fog;
 pub mod particles;
 pub mod quads;
 pub mod sky;
+pub mod soft;
 
 use crate::session::Session;
 use alloc::boxed::Box;
@@ -39,6 +43,9 @@ pub const KEY: &str = "fx";
 pub struct FxState {
     pub falling: Vec<falling::Falling>,
     pub quads: quads::QuadSet,
+    /// The fog a mod asked for, and the soft particles.
+    pub fog: fog::FogHold,
+    pub soft: soft::SoftSet,
     /// The skies scripts changed, by dimension name (`""` is the home world).
     pub skies: Vec<(String, crate::dim_sky::DimSky)>,
     /// Particles asked for in this frame, and how long the last frame took.
@@ -83,6 +90,7 @@ pub fn may_change(g: &Session) -> bool {
 pub fn leave_dimension(g: &mut Session) {
     if let Some(s) = g.ext_mut::<FxState>(KEY) {
         s.falling.clear();
+        s.soft.list.clear();
     }
     g.primed.sparks.clear();
 }
@@ -99,6 +107,8 @@ pub fn tick(g: &mut Session, dt: f32) {
         s.blasts = 0;
         s.dropped = 0;
         s.frame_dt = dt;
+        s.fog.tick(dt);
+        soft::tick(&mut s.soft, dt);
     }
     falling::tick(g, dt);
     quads::tidy(g);

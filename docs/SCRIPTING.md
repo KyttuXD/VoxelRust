@@ -372,6 +372,17 @@ creature past the old limits (6 tall, 3 wide) is called a giant below.
 | `model_bones(model_id: &str) -> Vec<String>` | the bone names of a model, in the model file's order and as written there (a model id, or a creature kind to ask for its model); empty if there is no such model |
 | `set_creature_state(id: i64, text: &str) -> bool` | keep a short text on a creature (64 bytes at most; control characters are dropped): the mod's own record of what it is doing. Same refusals as `set_creature_size` |
 | `creature_state(id: i64) -> String` | what `set_creature_state` left on a creature (empty if none, or no such creature) |
+| `set_creature_look(id: i64, yaw: f64, pitch: f64) -> bool` | make the head of a creature look this way, in degrees relative to its body: `yaw` positive to its left (kept to -90 to 90), `pitch` positive up (-60 to 60). The head is the model's bone called `head`; it turns smoothly and stays so until `clear_creature_look`. Shown on every machine in a shared game (it rides with the creature's snapshot, only while it is set). False if there is no such creature, a number is not finite (an error), or in a shared game this player does not run the creatures |
+| `clear_creature_look(id: i64) -> bool` | give the head back to the game |
+
+**Where creatures look.** By default every creature whose model has a bone
+called `head` looks, smoothly, at the nearest player within 12 blocks (the head
+turns at most 70 degrees to either side and 40 up or down, however far round the
+player is), unless it is asleep in a bed, or it `flees` and the player is within 7
+blocks. A creature with the data trait `watches` (a `trait` line, see
+[DATA.md](DATA.md#creatures)) looks from up to 48 blocks: a stalker that watches you
+from a distance. Each machine works out this look itself (nothing is sent for it);
+`set_creature_look` replaces it and is sent.
 
 Numbers that are not finite are an error (they switch the script off, like any
 bad argument); numbers that are too big or small are kept to the limits above.
@@ -763,6 +774,29 @@ fn on_load() {
 ```
 
 
+### The air: fog, soft specks and a tint
+
+The engine sets the fog before it draws the world and a mod's drawing comes after, so
+a mod cannot make fog or darkness by drawing. These three calls say what is wanted and
+the game folds it in. They work only in a running game.
+
+| Function | What it does |
+| --- | --- |
+| `set_fog(start: f64, end: f64, r: i64, g: i64, b: i64, density: f64) -> bool` | hold a fog over the world. At the next world pass the dimension's own fog (and the sky's colour) is mixed with this one by `density` (0 to 1: 0 gives the usual fog back at once, 1 is wholly this one): the fog's start and end in blocks (0 to 512, the end at least a block past the start) and its colour (0 to 255 each) are blended with the usual ones. It goes **half a second after the last call**, so call it every frame (from `on_update`) while it should last, and it ends by itself when the mod stops asking or is switched off. Not applied in water or lava (they have their own). False for a number that is not finite |
+| `hud_tint(r: i64, g: i64, b: i64, a: i64) -> bool` | colour the whole screen this frame, over the world and under the HUD (`a` is the opacity, 0 to 255; 0 draws nothing). Call it every frame: it is forgotten at the start of the next one, and the last call of a frame is the one that shows |
+| `spawn_soft(x: f64, y: f64, z: f64, vx: f64, vy: f64, vz: f64, life: f64, size0: f64, size1: f64, r: i64, g: i64, b: i64, a0: i64, a1: i64, blend: &str) -> bool` | make one soft, round, blurred speck (for darkness, mist, ash, glows): it flies in a straight line at (`vx`, `vy`, `vz`) blocks a second (held to 40 each way) for `life` seconds (0.05 to 10); its half width goes from `size0` to `size1` blocks (0 to 8) and its opacity from `a0` to `a1` (0 to 255) over its life, tinted by the colour; `blend` is `"alpha"` (laid over the view, drawn farthest first) or `"additive"` (adds light). At most 512 alive and 256 for one mod; none is made when the place is more than 96 blocks from the player or the frame is slow (the same rule as `spawn_particles`, with which it shares the frame's share). False when none was made; an error for a number that is not finite or a life of 0 or less |
+
+```rust
+// Darkness closing in as the stalker nears: a thick black fog, a faint tint, and drifting specks.
+fn on_update(dt: f32) {
+    let near = 0.7; // from 0 (far) to 1 (on top of you), worked out by the mod
+    set_fog(2.0, 24.0, 4, 4, 8, near);
+    hud_tint(0, 0, 0, (60.0 * near) as i64);
+    let (x, y, z) = player_pos();
+    spawn_soft(x, y + 1.0, z + 6.0, 0.0, 0.3, 0.0, 3.0, 0.4, 1.6, 10, 10, 14, 90, 0, "alpha");
+}
+```
+
 ### Sound and music
 
 `play_sound(id)` (above) plays a sound at full volume with no handle. These calls
@@ -926,6 +960,44 @@ the screen, then moved `dx` right and `dy` down (so `hud_text("bottom-right",
 | `hud_item(anchor: &str, dx: f64, dy: f64, size: f64, item_id: &str) -> bool` | an item's icon, `size` pixels square |
 | `hud_block(anchor: &str, dx: f64, dy: f64, size: f64, block_id: &str) -> bool` | a block's icon |
 | `hud_bar(anchor: &str, dx: f64, dy: f64, w: f64, h: f64, fraction: f64, colour: i64) -> bool` | a progress bar, `fraction` from 0 to 1 |
+
+**Pictures.** A mod may show its own pictures: `name` is a `.png` or `.tga` file
+in the mod's folder, relative to it (`"images/scare.png"`; letters, digits, `_`, `-`,
+`.` and `/` only, no `..`). It is read the first time a call names it and kept: a mod
+may name **16 pictures**, each at most **1024 x 1024** pixels and **4 MB** decoded
+(a name that fails also uses a place), all mods together 64. The picture goes to the
+graphics card when first drawn and its pixels are dropped from memory; when the mod is
+switched off its pictures are freed. A picture the mod's pack names with a `picture`
+line is found by its file's name too, which is how a mod from a server shows its own.
+Alpha in the file is honoured; `alpha` below is 0 to 1 and multiplies it. Sizes and
+distances are in interface pixels, like the calls above (the `_at` forms take an anchor).
+The pixels of a small picture (up to 256 on a side) are drawn hard, a larger one is smoothed.
+A picture that is not found or over a limit draws nothing and answers `false`; a wrong
+anchor or fit is an error.
+
+| Function | What it does |
+| --- | --- |
+| `hud_image(name: &str, x: f64, y: f64, w: f64, h: f64, alpha: f64) -> bool` | the picture, `w` x `h` pixels, its top-left corner `x` right and `y` down from the screen's top-left |
+| `hud_image_at(name: &str, anchor: &str, dx: f64, dy: f64, w: f64, h: f64, alpha: f64, tint: i64) -> bool` | the same with an anchor and a tint (`0xRRGGBB`; `0xFFFFFF` leaves the picture as it is) |
+| `hud_image_uv(name: &str, x: f64, y: f64, w: f64, h: f64, u0: f64, v0: f64, u1: f64, v1: f64, alpha: f64) -> bool` | a part of the picture, for a sprite sheet or a strip of digits: `u0, v0` to `u1, v1` are fractions of the picture (0, 0 is its top-left corner) |
+| `hud_image_uv_at(name: &str, anchor: &str, dx: f64, dy: f64, w: f64, h: f64, u0: f64, v0: f64, u1: f64, v1: f64, alpha: f64, tint: i64) -> bool` | the same with an anchor and a tint |
+| `hud_image_fit(name: &str, mode: &str, alpha: f64) -> bool` | the picture over the whole screen: `"cover"` fills it and crops what does not fit, `"contain"` shows all of it with bars at the sides or top (for a jumpscare, `"cover"`) |
+
+Drawn in the order they are called, over what came before. The same 512 drawing
+commands a frame limit as the other calls (256 for a mod) applies.
+
+```rust
+// A jumpscare: the picture fills the screen, then fades; a counter from a strip of ten digits.
+fn on_hud(dt: f32) {
+    let t = state_get_int("scare", 0) as f64 / 100.0;
+    if t > 0.0 {
+        hud_image_fit("images/scare.png", "cover", t);
+    }
+    // images/digits.png is 10 digits side by side, each 8 x 12 pixels in a 80 x 12 picture.
+    let n = 7.0;
+    hud_image_uv_at("images/digits.png", "top-right", -4.0, 4.0, 8.0, 12.0, n / 10.0, 0.0, (n + 1.0) / 10.0, 1.0, 1.0, 0xFFFFFF);
+}
+```
 
 A line that should stay (a status, a counter) can live in a **slot**, and is
 laid out for you next to the game's own HUD. It stays until the mod changes or

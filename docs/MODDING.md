@@ -561,6 +561,32 @@ only. See
 Keep server packs modest: the whole bundle is sent to every player each time
 they join (16 MB at most is accepted).
 
+## HD pictures
+
+A mod's `texture <id> file <picture>` line (PNG, JPEG, GIF, BMP or TGA, the path
+relative to the `pack.txt`) may name a picture bigger than 16 x 16: a **square, a
+multiple of 16 pixels on a side, from 16 to 512** (32, 48, 64, 128, 256, 512...). Blocks
+and items use it like any texture (`tex`, `icon`); nothing else in the pack changes. The game
+keeps the full picture for a separate HD atlas and the tile's 16 x 16 shrunk version in the
+normal one (see [TEXTURING.md](TEXTURING.md#hd-textures) for how it is drawn and what the player's
+TEXTURE SIZE setting does).
+
+- A picture of another shape (24 x 24, 32 x 16) is fitted to 16 x 16 and the log says so; one over
+  512 on a side, or a file over 2 MiB that is an HD tile, is refused (the log names it and the
+  texture is not made).
+- Creature and model pictures (`picture <name> file`, a model's own texture) may also be any
+  size up to 512 x 512; a model's faces are fractions of its declared texture size, so a picture
+  twice as big needs no change to the model.
+- A server sends such a mod like any other (a mod up to 64 MB, 96 MB for all of a server's mods,
+  a file up to 4 MiB). The receiving player's game checks the declared size of a picture before it
+  decodes it and shrinks what the player's TEXTURE SIZE or graphics card cannot hold. A client of an
+  older version does not take a mod bigger than its limit.
+- The memory the pictures cost raises the game's memory limit (see [MEMORY.md](MEMORY.md)); a
+  hundred 512 x 512 tiles are about 140 MB of the HD atlas.
+- The `hd-test` mod of the mods repository has a gradient (64), a checker (128), a test card (512)
+  and a sign item (128) to try it with. Do not replace the game's own pictures with HD ones: the
+  game's textures stay in the house style (see [TEXTURING.md](TEXTURING.md)).
+
 ## Blockbench models
 
 Creature, vehicle and player models are [Blockbench](https://www.blockbench.net)
@@ -601,6 +627,25 @@ child bone is bent for those, and the torso is one bone called `Body`, or
 three called `Pelvis`, `Belly` and `Chest`. Bones that are not named like
 those are left to their own animation. Emotes turn any bone by name (see
 below).
+
+The bends of the built-in body are plain bones, so a mod body can use them by
+naming its bones alike (case does not matter, a side is `L-`/`R-` in front or
+`-L`/`-R` behind): the arm is `L-Arm` (upper arm, pivot at the shoulder), its
+child `L-Forearm` (pivot at the elbow) and its child `L-Hand` (the wrist); the leg is
+`L-Thigh` (the hip), `L-Calf` (the knee; `Shin-L` does as well) and `L-Foot` (the ankle).
+The built-in player model (`data/models/player.bbmodel`, `player_slim.bbmodel`)
+has them, each limb in three cubes cut along the skin's own regions, so a skin maps the
+same as on a one-box limb. A limb without the lower bone is drawn as one straight box, as
+before. What the bends do: walking swings the arms against the legs, the elbow folds
+10 to 35 degrees on the forward swing and the knee up to 50; sprinting adds a longer
+swing, elbows about 90 degrees, high knees and a forward lean of 8 degrees; crouching bends the knees and lowers the body;
+swimming strokes with the elbows and kicks with small knee bends; climbing
+reaches hand over hand; sitting bends the knees 90 degrees; falling throws the arms out;
+standing still breathes with a little arm sway. Other players' gait comes from how fast
+their position changes, and villagers or other humanoids that use the player model
+move the same way. For pictures: `--show bends:NAME` (with `--screenshot`; names `idle walk
+sprint crouchwalk swim climb sit sleep fall ride`, optionally `@PHASE` in radians) shows
+the player's own body from outside in that gait.
 
 ### Shaders
 
@@ -717,16 +762,24 @@ SETTINGS > SKIN shows a turning preview of your character.
   `tools/entity_textures.py` in the OCD style (see
   [TEXTURING.md](TEXTURING.md#creatures-and-players)); a texture pack can
   replace them.
-- **Your own skin**: a **64 x 64** picture in the usual player-skin layout
-  (the older **64 x 32** layout works too; the game mirrors the arm and leg
-  to make the left ones). Click CHOOSE A SKIN FILE... to open the file
+- **Your own skin**: a square picture in the usual player-skin layout, **64 x
+  64** or an HD one: any side that is a multiple of 64, up to **4096 x 4096**
+  (128, 192, 256, 512, 1024...; see [IMAGES.md](IMAGES.md) and
+  [PLAYING.md](PLAYING.md#skins)). The older 2:1 layout (**64 x 32**, 128 x 64...)
+  works too; the game mirrors the arm and leg to make the left ones, at the
+  picture's own scale. Click CHOOSE A SKIN FILE... to open the file
   browser (below), pick the picture, and click SELECT (or double click it).
   PNG, JPEG, GIF, BMP and TGA are read; the game saves the skin in the data
   folder as `skin.png` and selects `custom`. You can also put `skin.png`
   there yourself.
 
-If the picture is the wrong size or cannot be read, the game says so on the
-SKIN tab and keeps the current look.
+If the picture is the wrong size (not square, not a multiple of 64, over
+4096) or cannot be read, the game says so on the SKIN tab and keeps the
+current look. A skin that is W pixels wide is the 64 x 64 layout with every cell
+W / 64 pixels across, so an HD skin lines up on the same models: the player
+models declare a 64 x 64 texture and take their coordinates as fractions of
+it. A texture pack or a mod may bring HD skins too (`skin_<name>` pictures of
+any skin size).
 
 ### The file browser
 
@@ -752,8 +805,9 @@ the first file is selected, with `pickgo` as well it is chosen) in a
 scripted run.
 
 In multiplayer your skin is sent to the server and shown to the other
-players, as long as its PNG file is no larger than 24,000 bytes; a larger one
-is still used on your own screen.
+players (see [Skins in multiplayer](PLAYING.md#skins)): the game packs it into
+a small PNG first (at most 1 MiB; an HD skin that would not fit is sent at a
+smaller size), and older games and servers get a 64 x 64 version.
 
 ## A worked example
 

@@ -22,6 +22,14 @@ use core::ffi::c_void;
 pub mod armor;
 // Particles and translucent quads of mods (game/fx).
 mod fx;
+// The HD atlas on the card (content/hd).
+mod hd;
+// Textures of skins: sharp when 64 wide, smooth and mipmapped when HD.
+mod skin_tex;
+// Soft round particles of mods (game/fx/soft.rs).
+mod soft_fx;
+// A mod's pictures on the HUD (client/modui/hud_image.rs).
+mod hud_pic;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -62,6 +70,8 @@ pub struct Env {
     pub vision: f32,
     /// 0..1: how much of the view a blindness effect takes (fog closes in).
     pub blind: f32,
+    /// A fog a mod holds over this one (`set_fog`, see game/fx/fog.rs).
+    pub fog_override: Option<crate::game::fx::fog::Blend>,
     /// What the dimension's sky is like (`content/dim_sky.rs`): fixed colours, no stars...
     pub sky: crate::dim_sky::DimSky,
 }
@@ -70,6 +80,8 @@ pub struct Env {
 pub struct FrameStats {
     pub chunks_drawn: u32,
     pub quads: u32,
+    /// `glDrawArrays` calls for the terrain this frame.
+    pub draw_calls: u32,
 }
 
 pub struct Renderer {
@@ -118,12 +130,26 @@ pub struct Renderer {
     /// Bytes of model and creature pictures on the card (for the memory budget).
     pub model_tex_bytes: usize,
     pass: Option<Pass>,
+    /// Which sections of the chunks are drawn (`client/cull.rs`); the lists
+    /// it makes are walked again by `finish_world` for the water.
+    pub culler: crate::client::cull::Culler,
+    /// The view of the last `draw_world`, to cull creatures and particles by.
+    frustum: Option<Frustum>,
+    /// The pages of the HD atlas (render/hd.rs): textures and sizes, what they cost, tiles in them, the cap they are at.
+    hd_tex: Vec<u32>,
+    hd_dims: Vec<(usize, usize)>,
+    pub hd_bytes: usize,
+    hd_tiles: usize,
+    hd_cap: usize,
+    /// Bytes of creature and model pictures beyond 128 x 128 each (they raise the memory allowance).
+    pub hd_model_bytes: usize,
+    /// Bytes the skins on the card take (the player's own and other players'), set each frame by the app.
+    pub skin_bytes: usize,
 }
 
 /// What `draw_world` hands on to `finish_world`.
 struct Pass {
     view: Mat4,
-    visible: Vec<(i32, Vec3, GpuMesh)>,
     far: f32,
     day: f32,
     fog: (f32, f32),
@@ -208,7 +234,8 @@ impl Renderer {
     pub fn new() -> Renderer {
         let g = gl();
         let r = reg();
-        let atlas_px = textures::build_atlas(r);
+        Self::note_max_texture();
+        let (atlas_px, hd_built) = textures::build_atlas_and_hd(r);
         let atlas = make_texture(textures::ATLAS, textures::ATLAS, &atlas_px, gl::NEAREST, gl::CLAMP_TO_EDGE);
         unsafe {
             // Mip levels down to one pixel per tile, built by hand so that
@@ -282,7 +309,7 @@ impl Renderer {
             (g.LoadMatrixf)(m.as_ptr());
             (g.ActiveTexture)(gl::TEXTURE0);
         }
-        Renderer {
+        let mut renderer = Renderer {
             atlas,
             light,
             water_phase: 0,
@@ -311,7 +338,18 @@ impl Renderer {
             model_verts: Vec::new(),
             model_tex_bytes: 0,
             pass: None,
-        }
+            culler: crate::client::cull::Culler::new(),
+            frustum: None,
+            hd_tex: Vec::new(),
+            hd_dims: Vec::new(),
+            hd_bytes: 0,
+            hd_tiles: 0,
+            hd_cap: 512,
+            hd_model_bytes: 0,
+            skin_bytes: 0,
+        };
+        renderer.upload_hd(hd_built);
+        renderer
     }
 
     fn update_light_map(&mut self, day: f32, vision: f32) {
@@ -465,6 +503,10 @@ impl Renderer {
             let k = 1.0 - 0.85 * env.blind.min(1.0);
             fog = [fog[0] * k, fog[1] * k, fog[2] * k];
         }
+        // A mod's own fog is mixed in (not under water or lava: they have their own).
+        if let (Some(b), false) = (env.fog_override, env.underwater) {
+            fog = b.colour(fog);
+        }
         self.update_light_map(day, env.vision);
         let aspect = self.w as f32 / self.h.max(1) as f32;
         let view = math::view_rotation(cam.yaw, cam.pitch);
@@ -573,29 +615,8 @@ impl Renderer {
         let frustum = Frustum::new(&math::mat_mul(&proj, &view));
         let (ccx, ccz) = crate::world::chunk_at(cam.pos[0], cam.pos[2]);
         let reach = env.distance * env.distance + env.distance;
-        let mut visible: Vec<(i32, Vec3, GpuMesh)> = Vec::new();
-        for (&(cx, cz), chunk) in world.chunks.iter() {
-            let m = match chunk.mesh {
-                Some(m) if m.opaque_count > 0 || m.water_count > 0 || m.glass_count > 0 => m,
-                _ => continue,
-            };
-            let (dx, dz) = (cx - ccx, cz - ccz);
-            let d2 = dx * dx + dz * dz;
-            if d2 > reach {
-                continue;
-            }
-            let origin = Vec3::new(
-                ((cx * CW) as f64 - cam.pos[0]) as f32,
-                (0.0 - cam.pos[1]) as f32,
-                ((cz * CW) as f64 - cam.pos[2]) as f32,
-            );
-            let min = Vec3::new(origin.x, origin.y + m.ymin as f32, origin.z);
-            let max = Vec3::new(origin.x + CW as f32, origin.y + m.ymax as f32, origin.z + CW as f32);
-            if frustum.box_visible(min, max) {
-                visible.push((d2, origin, m));
-            }
-        }
-        visible.sort_unstable_by_key(|v| v.0);
+        // Which sections of which chunks to draw, nearest first.
+        self.culler.plan(world, cam.pos, &frustum, env.distance);
 
         // With distant terrain behind them, the detailed chunks must not
         // fade out at their own edge: fog is set by the far distance instead.
@@ -613,6 +634,10 @@ impl Renderer {
         // A dimension may pull the fog in or push it out (never past what is loaded).
         let (fog_start, fog_end) = if env.underwater || env.sky.fog_scale == 1.0 { (fog_start, fog_end) } else { (fog_start * env.sky.fog_scale, (fog_end * env.sky.fog_scale).min(far * 1.5 + 90.0)) };
         let (fog_start, fog_end) = crate::game::effects::body::fog_range(fog_start, fog_end, env.blind);
+        let (fog_start, fog_end) = match (env.fog_override, env.underwater) {
+            (Some(b), false) => b.range(fog_start, fog_end),
+            _ => (fog_start, fog_end),
+        };
         unsafe {
             (g.Enable)(gl::FOG);
             (g.Fogf)(gl::FOG_START, fog_start);
@@ -651,13 +676,18 @@ impl Renderer {
         // them, and the graphics card skips every distant pixel that a
         // nearby block already hides (most of the screen, usually).
         unsafe { (g.DepthRange)(0.0, if lod { 0.9 } else { 1.0 }) };
-        for &(_, origin, m) in &visible {
-            if m.opaque_count > 0 {
-                Self::draw_chunk(&view, origin, m.opaque, m.opaque_count);
-                self.stats.chunks_drawn += 1;
-                self.stats.quads += m.opaque_count as u32 / 4;
+        for c in &self.culler.chunks {
+            let runs = self.culler.runs_of(c, 0);
+            if runs.is_empty() {
+                continue;
             }
+            Self::draw_runs(&view, Vec3::new(c.origin[0], c.origin[1], c.origin[2]), c.vbo[0], runs);
+            self.stats.chunks_drawn += 1;
+            self.stats.draw_calls += runs.len() as u32;
+            self.stats.quads += runs.iter().map(|r| r[1] as u32 / 4).sum::<u32>();
         }
+        // The faces of HD textures, a page of the HD atlas at a time (render/hd.rs).
+        self.draw_hd_chunks(&view);
         if lod {
             let far_proj = math::perspective(cam.fov, aspect, 2.0, lod_far * 1.3 + 256.0);
             let far_frustum = Frustum::new(&math::mat_mul(&far_proj, &view));
@@ -692,6 +722,10 @@ impl Renderer {
                 if world.settled && reach_x * reach_x + reach_z * reach_z < inner * inner {
                     continue;
                 }
+                // Or every chunk under it is drawn already (also while the world still loads).
+                if crate::client::cull::tile_covered(tx, tz, ccx, ccz, reach, &|cx, cz| world.chunks.get(&(cx, cz)).map_or(false, |c| c.mesh.is_some())) {
+                    continue;
+                }
                 let min = Vec3::new(origin.x, origin.y + m.ymin as f32, origin.z);
                 let max = Vec3::new(origin.x + tile, origin.y + m.ymax as f32, origin.z + tile);
                 if far_frustum.box_visible(min, max) {
@@ -702,6 +736,7 @@ impl Renderer {
             tiles.sort_unstable_by_key(|t| t.0);
             for &(_, origin, m) in &tiles {
                 Self::draw_chunk(&view, origin, m.opaque, m.opaque_count);
+                self.stats.draw_calls += 1;
                 self.stats.quads += m.opaque_count as u32 / 4;
             }
             unsafe {
@@ -726,7 +761,37 @@ impl Renderer {
             (g.Disable)(gl::CULL_FACE);
         }
         Self::atlas_matrix(false);
-        self.pass = Some(Pass { view, visible, far, day, fog: (fog_start, fog_end) });
+        self.frustum = Some(frustum);
+        self.pass = Some(Pass { view, far, day, fog: (fog_start, fog_end) });
+    }
+
+    /// Draw ranges `[first vertex, count]` of one chunk's buffer: the matrix
+    /// and the vertex pointers are set once, then each range is one call.
+    fn draw_runs(view: &Mat4, origin: Vec3, vbo: u32, runs: &[[i32; 2]]) {
+        let g = gl();
+        unsafe {
+            let m = math::translate_scale(view, origin, 1.0 / 16.0);
+            (g.LoadMatrixf)(m.as_ptr());
+            (g.BindBuffer)(gl::ARRAY_BUFFER, vbo);
+            (g.VertexPointer)(3, gl::SHORT, 20, core::ptr::null());
+            (g.ColorPointer)(4, gl::UNSIGNED_BYTE, 20, 8 as *const c_void);
+            (g.TexCoordPointer)(2, gl::SHORT, 20, 12 as *const c_void);
+            (g.ClientActiveTexture)(gl::TEXTURE1);
+            (g.TexCoordPointer)(2, gl::SHORT, 20, 16 as *const c_void);
+            (g.ClientActiveTexture)(gl::TEXTURE0);
+            for r in runs {
+                (g.DrawArrays)(gl::QUADS, r[0], r[1]);
+            }
+        }
+    }
+
+    /// Whether a sphere (`rel` is relative to the camera) is inside the view
+    /// of the last frame; true when there was none.
+    pub fn in_view(&self, rel: [f32; 3], radius: f32) -> bool {
+        match &self.frustum {
+            Some(f) => f.sphere_visible(Vec3::new(rel[0], rel[1], rel[2]), radius),
+            None => true,
+        }
     }
 
     fn draw_chunk(view: &Mat4, origin: Vec3, vbo: u32, count: i32) {
@@ -1026,7 +1091,7 @@ impl Renderer {
     /// The second half of drawing the world: water, then clouds.
     pub fn finish_world(&mut self, cam: &Camera, env: &Env) {
         let g = gl();
-        let Pass { view, visible, far, day, fog } = match self.pass.take() {
+        let Pass { view, far, day, fog } = match self.pass.take() {
             Some(p) => p,
             None => return,
         };
@@ -1057,14 +1122,16 @@ impl Renderer {
         }
         // A slow swell: the whole surface rises and falls a little.
         let swell = math::sinf(env.clock * 1.1) * 0.03 - 0.035;
-        for &(_, origin, m) in visible.iter().rev() {
-            if m.glass_count > 0 {
-                Self::draw_chunk(&view, origin, m.glass, m.glass_count);
-                self.stats.quads += m.glass_count as u32 / 4;
-            }
-            if m.water_count > 0 {
-                Self::draw_chunk(&view, Vec3::new(origin.x, origin.y + swell, origin.z), m.water, m.water_count);
-                self.stats.quads += m.water_count as u32 / 4;
+        for c in self.culler.chunks.iter().rev() {
+            let origin = Vec3::new(c.origin[0], c.origin[1], c.origin[2]);
+            for (kind, at) in [(2, origin), (1, Vec3::new(origin.x, origin.y + swell, origin.z))] {
+                let runs = self.culler.runs_of(c, kind);
+                if runs.is_empty() {
+                    continue;
+                }
+                Self::draw_runs(&view, at, c.vbo[kind], runs);
+                self.stats.draw_calls += runs.len() as u32;
+                self.stats.quads += runs.iter().map(|r| r[1] as u32 / 4).sum::<u32>();
             }
         }
         unsafe {
@@ -1232,7 +1299,7 @@ impl Renderer {
     /// Repaint the block atlas from the current registry (content reloaded).
     pub fn rebuild_atlas(&mut self) {
         let g = gl();
-        let mut level = textures::build_atlas(reg());
+        let (mut level, hd_built) = textures::build_atlas_and_hd(reg());
         let mut size = textures::ATLAS;
         self.flush(gl::QUADS);
         unsafe {
@@ -1243,6 +1310,8 @@ impl Renderer {
                 size /= 2;
             }
         }
+        // The HD atlas of the same build (the old pages are given back).
+        self.upload_hd(hd_built);
         self.batch_tex = 0;
     }
 
@@ -1257,7 +1326,10 @@ impl Renderer {
         }
         let t = match crate::pack_entities::image(name) {
             Some(img) => {
+                // At most 512 on a side and the TEXTURE SIZE (content/hd).
+                let img = crate::hd::limit_picture(img);
                 self.model_tex_bytes += img.w * img.h * 4;
+                self.note_model_picture(img.w, img.h);
                 self.add_texture(img.w, img.h, &img.rgba)
             }
             None => 0,
@@ -1278,6 +1350,8 @@ impl Renderer {
         self.delete_textures(&old);
         self.entity_tex.clear();
         self.model_tex_bytes = 0;
+        self.hd_model_bytes = 0;
+        crate::budget::set_allowance(crate::budget::Allow::Models, 0);
         self.models = (0..r.models.len()).map(|_| None).collect();
         self.model_tried = alloc::vec![false; r.models.len()];
     }
@@ -1303,6 +1377,13 @@ impl Renderer {
                 // The picture named after the model (a pack's or the game's own, see
                 // `pack_entities`) comes before the one inside the model file, if it has the same shape.
                 let named = crate::pack_entities::image(&spec.id).filter(|i| crate::pack_entities::fits(i, def.model.tex_w, def.model.tex_h));
+                // Pictures of any size up to 512 (and the TEXTURE SIZE): the model's faces are
+                // fractions of the picture, so a bigger one needs nothing else (content/hd).
+                let named = named.map(crate::hd::limit_picture);
+                def.model.texture = def.model.texture.take().map(crate::hd::limit_picture);
+                if let Some(img) = named.as_ref().or(def.model.texture.as_ref()) {
+                    self.note_model_picture(img.w, img.h);
+                }
                 def.tex = match (&named, &def.model.texture) {
                     (Some(img), _) | (None, Some(img)) => make_texture(img.w, img.h, &img.rgba, gl::NEAREST, gl::CLAMP_TO_EDGE),
                     (None, None) => make_texture(1, 1, &[255, 255, 255, 255], gl::NEAREST, gl::CLAMP_TO_EDGE),
@@ -1571,6 +1652,16 @@ impl Renderer {
 
     /// One atlas tile, as an item icon.
     pub fn icon(&mut self, x: f32, y: f32, size: f32, tile: u16, col: Color) {
+        // An HD picture is drawn from the HD atlas (mip levels make it smooth when small).
+        if let Some((tex, uv)) = self.hd_icon(tile) {
+            self.set_tex(tex, gl::QUADS);
+            self.quad(
+                [[x, y, 0.0], [x + size, y, 0.0], [x + size, y + size, 0.0], [x, y + size, 0.0]],
+                [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]],
+                col,
+            );
+            return;
+        }
         self.set_tex(self.atlas, gl::QUADS);
         let n = textures::PER_ROW as u16;
         let e = 1.0 / n as f32;
@@ -1709,14 +1800,18 @@ impl MeshSink for Renderer {
             glass_count: m.glass.len() as i32,
             ymin: m.ymin,
             ymax: m.ymax,
+            sec: m.sections,
+            hd: make(&m.hd.verts),
+            hd_runs: m.hd.runs.map(|n| n as i32),
         };
         unsafe { (g.BindBuffer)(gl::ARRAY_BUFFER, 0) };
         mesh
     }
 
     fn free(&mut self, m: GpuMesh) {
-        let ids = [m.opaque, m.water, m.glass];
-        self.vbo_bytes = self.vbo_bytes.saturating_sub((m.opaque_count + m.water_count + m.glass_count) as usize * core::mem::size_of::<Vertex>());
-        unsafe { (gl().DeleteBuffers)(3, ids.as_ptr()) };
+        let ids = [m.opaque, m.water, m.glass, m.hd];
+        let hd_count: i32 = m.hd_runs.iter().sum();
+        self.vbo_bytes = self.vbo_bytes.saturating_sub((m.opaque_count + m.water_count + m.glass_count + hd_count) as usize * core::mem::size_of::<Vertex>());
+        unsafe { (gl().DeleteBuffers)(4, ids.as_ptr()) };
     }
 }

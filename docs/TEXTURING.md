@@ -673,8 +673,68 @@ The pack has no mob pictures, so these rules come from its entity boxes
 - **Undead and monsters** use the same rules with desaturated main colours, a
   `dark` colour for the cavities, bones `#e8deb8`, and eyes in a bright colour
   for contrast.
-- A **player skin** is the exception: 64 x 64, the usual layout, painted by the
+- A **player skin** is the exception: 64 x 64 (or HD, a multiple of 64 up to 4096), the usual layout, painted by the
   same script (see [Player skins](#player-skins)).
+
+## HD textures
+
+A tile's picture (a block face or an item) does not have to be 16 x 16. It may
+be any **square, a multiple of 16 pixels on a side, from 16 to 512**: 32, 48, 64, 128, 256, 512...
+A picture of another shape (24 x 24, 32 x 16) is fitted to 16 x 16 as it always was,
+with a note in the log; one over 512 is refused (a mod's `texture ... file` line
+says so in the log and the texture is not made).
+
+Where HD pictures come from, all the same way:
+
+- a mod's `texture <id> file <picture>` line (PNG, JPEG, GIF, BMP or TGA, see
+  [MODDING.md](MODDING.md#hd-pictures)),
+- a texture pack (`--texture-pack`; its PNG pictures, also the `pack_names` aliases),
+- the data folder's `textures/` folder (`<id>.png`, `.tga`...).
+
+Items are the same tiles: an HD item picture is drawn in the hotbar and the
+inventory from its full-size picture.
+
+**How it is drawn.** The normal atlas (512 x 512, 16 x 16 tiles) still has *every*
+tile; an HD tile is in it shrunk to 16 x 16 with a box filter, so particles, distant
+terrain, held items and the map need nothing new. The full pictures go to a second,
+**HD atlas** of one to four textures (each at most 4096 x 4096, or what the graphics
+card reports if that is less), packed by size with a shelf packer
+(`src/content/hd/pack.rs`). A chunk's faces of HD tiles are drawn in a draw batch of
+their own, one for each page in use, so the calls grow by the number of pages and no more.
+The HD atlas has mip levels (a box filter, made on the CPU) with nearest magnification, so
+the pixels stay square close up and nothing shimmers far away. Water and lava are
+animated tiles and are not HD; glass and the other see-through blocks and the held
+items use the 16 x 16 version for now.
+
+**TEXTURE SIZE.** SETTINGS > VIDEO > DETAIL AND DISTANCE... > TEXTURE SIZE
+(`< 16 | 32 | 64 | 128 | 256 | 512 >`, default 512, saved as `texture_size`) keeps HD
+pictures at most that many pixels on a side: bigger ones are shrunk with the box
+filter. It only matters when HD pictures exist. 16 means none are used. Changing it
+rebuilds the atlas and the chunks at once. If the pictures at the chosen size would not fit
+the pages or the memory the game may spend on them, the size is lowered a step at a time until they
+do (F3 shows the size that was used). The planned atlas is the same every time for the same pictures.
+
+**Memory.** The game stays under about 300 MB without mods and 700 MB with them (see
+[MEMORY.md](MEMORY.md)), *except* for what HD pictures cost: when they are in use their
+cost (the atlas on the card and in the driver, the picture files kept to build it again) is
+added to the limit, up to 1.5 GB for the whole game, so the view distance does not shrink because of
+them. The decoded pictures are let go as soon as they are on the card. With no HD picture
+the numbers are the old ones. F3 shows the atlas and the allowance.
+
+**Creatures and models.** Their pictures (`pack_entities` pictures, `tex` lines, a model's own
+texture) may be any size up to 512 x 512 too. A model's faces are fractions of the
+picture (the size the model declares), so a picture with a different size but the same
+shape needs nothing else; bigger than 512 is shrunk to 512, and so is anything over the TEXTURE SIZE
+(but not below 64). The pictures are given back to the card when packs are reloaded.
+
+**A server's HD pictures.** A mod a server sends may carry HD pictures (a picture file may be
+2 MiB, a mod up to 64 MB, all mods of a server 96 MB). The client looks at a picture's declared size
+before it decodes it and refuses one that promises more than 4096 pixels on a side (or an HD tile
+over 512), applies its own TEXTURE SIZE, and shrinks what it cannot fit. The sizes are part of the
+content checksum when a mod has HD tiles; with none the checksum is unchanged, so older clients
+still agree. Older clients leave a mod bigger than their limit out.
+
+To try it, use the `hd-test` mod of the mods repository.
 
 ## Using the pack
 
@@ -685,28 +745,20 @@ pictures:
 voxelrust --texture-pack "path/to/ocd" --texture-pack "path/to/ocd items"
 ```
 
-or, in the data folder's `settings.txt`:
-
-```
-texture_pack=/path/to/ocd|/path/to/ocd items
-```
+The game's own pictures are the default and stay as they are; a pack is something
+you add on the command line (there is no setting that switches the game's
+textures off). Pictures of any size from 16 x 16 to 512 x 512 are used: see
+[HD textures](#hd-textures).
 
 The folders hold `assets/<name>/textures/block/*.png` and `.../item/*.png`
-(or just PNG files). A texture is taken from the pack when the pack has a
+(or just PNG files; square pictures of 16 to 512 pixels are used as they are, tall strips
+give their first frame). A texture is taken from the pack when the pack has a
 picture called the same, or one the game knows it as: `grass_top` is
 `grass_block_top`, `pine_side` is `spruce_log`, `wood_pick` is
 `wooden_pickaxe`, `crystal_axe` is `diamond_axe`, `red_glass` is
 `red_stained_glass`, `wheat_3` is `wheat_stage4`. The table is
 `pack_names` in `src/content/textures.rs`; add a line to it when you add a
 texture the pack calls something else.
-
-**Colours.** The pack's colours are changed a little so the game does not look
-exactly like it: the hue is turned, and saturation and brightness are
-scaled. The settings (`settings.txt`) are `pack_hue` (degrees, default 0),
-`pack_saturation` (percent, default 100) and `pack_brightness` (percent,
-default 100): the pack's own colours unless you change them. A recoloured
-pack (such as `ocd recolour`, listed last so its pictures win) is the better way to change the look. The change is made to every picture taken from the
-pack, blocks and items alike, and to the tools made from its iron ones.
 
 **Ruby, tin, silver and the other tools the pack lacks.** The game's own ruby
 tools stay: `ruby_pick`, `ruby_axe`, `ruby_shovel`, `ruby_hoe` and `ruby_sword`

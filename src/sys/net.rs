@@ -125,6 +125,7 @@ mod os {
         fn listen(fd: c_int, backlog: c_int) -> c_int;
         fn accept(fd: c_int, addr: *mut c_void, len: *mut u32) -> c_int;
         fn getsockname(fd: c_int, addr: *mut c_void, len: *mut u32) -> c_int;
+        fn getpeername(fd: c_int, addr: *mut c_void, len: *mut u32) -> c_int;
         fn send(fd: c_int, buf: *const c_void, len: usize, flags: c_int) -> isize;
         fn recv(fd: c_int, buf: *mut c_void, len: usize, flags: c_int) -> isize;
         fn close(fd: c_int) -> c_int;
@@ -224,6 +225,12 @@ mod os {
     pub fn sock_name(s: Sock, addr: &mut [u8; 16]) -> bool {
         let mut len: u32 = 16;
         unsafe { getsockname(s, addr.as_mut_ptr() as *mut c_void, &mut len) == 0 }
+    }
+
+    /// The address of the other end (an IPv4 `sockaddr_in`).
+    pub fn sock_peer(s: Sock, addr: &mut [u8; 16]) -> bool {
+        let mut len: u32 = 16;
+        unsafe { getpeername(s, addr.as_mut_ptr() as *mut c_void, &mut len) == 0 }
     }
 
     pub fn sock_send(s: Sock, data: &[u8]) -> isize {
@@ -326,6 +333,7 @@ mod os {
         fn listen(s: Sock, backlog: c_int) -> c_int;
         fn accept(s: Sock, addr: *mut c_void, len: *mut c_int) -> Sock;
         fn getsockname(s: Sock, addr: *mut c_void, len: *mut c_int) -> c_int;
+        fn getpeername(s: Sock, addr: *mut c_void, len: *mut c_int) -> c_int;
         fn send(s: Sock, buf: *const u8, len: c_int, flags: c_int) -> c_int;
         fn recv(s: Sock, buf: *mut u8, len: c_int, flags: c_int) -> c_int;
         fn closesocket(s: Sock) -> c_int;
@@ -406,6 +414,12 @@ mod os {
     pub fn sock_name(s: Sock, addr: &mut [u8; 16]) -> bool {
         let mut len: c_int = 16;
         unsafe { getsockname(s, addr.as_mut_ptr() as *mut c_void, &mut len) == 0 }
+    }
+
+    /// The address of the other end (an IPv4 `sockaddr_in`).
+    pub fn sock_peer(s: Sock, addr: &mut [u8; 16]) -> bool {
+        let mut len: c_int = 16;
+        unsafe { getpeername(s, addr.as_mut_ptr() as *mut c_void, &mut len) == 0 }
     }
 
     const MAX_IO: usize = 1 << 30;
@@ -670,6 +684,17 @@ impl TcpStream {
     /// Turn Nagle's algorithm off (`on` = send small packets at once).
     pub fn set_nodelay(&mut self, on: bool) {
         os::sock_setopt(self.fd, IPPROTO_TCP, TCP_NODELAY, on as c_int);
+    }
+
+    /// The IPv4 address of the other end (the server listens on IPv4 only), for
+    /// the limits on wrong PINs per address.
+    pub fn peer_ip(&self) -> Option<[u8; 4]> {
+        let mut addr = [0u8; 16];
+        if os::sock_peer(self.fd, &mut addr) && (addr[0] == 2 || addr[1] == 2) {
+            Some([addr[4], addr[5], addr[6], addr[7]])
+        } else {
+            None
+        }
     }
 }
 

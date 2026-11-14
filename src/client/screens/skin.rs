@@ -4,30 +4,40 @@
 use super::*;
 
 impl App {
-    /// (Re)build the player's skin texture from the settings.
+    /// (Re)build the player's skin texture from the settings. The picture goes
+    /// to the graphics card here; packing it for the network (a big one takes
+    /// seconds) is left to a worker (`client/skins`), whose answer is taken in
+    /// the frame update.
     pub(super) fn load_skin(&mut self, r: &mut Renderer) {
         self.skin_for = self.settings.player_name.clone();
         let who = crate::settings::clean_name(&self.settings.player_name, 16);
-        let px = match skin_pixels(&self.base, &self.settings.skin, &who) {
-            Some(px) => px,
+        let (side, px) = match skin_pixels(&self.base, &self.settings.skin, &who) {
+            Some(found) => found,
             None => {
-                self.status = String::from("NO USABLE SKIN.PNG (64 X 64) IN THE DATA FOLDER");
+                self.status = String::from("NO USABLE SKIN.PNG (A SQUARE MULTIPLE OF 64, UP TO 4096) IN THE DATA FOLDER");
                 self.settings.skin = String::from("default");
                 match skin_pixels(&self.base, "default", &who) {
-                    Some(px) => px,
+                    Some(found) => found,
                     None => return,
                 }
             }
         };
-        // The texture made the last time is written over, not left on the card.
+        // The texture made the last time is written over, not left on the card (a different size makes a new one).
         if self.skin_tex == 0 {
-            self.skin_tex = r.add_texture(64, 64, &px);
+            self.skin_tex = r.add_skin_texture(side, &px);
+        } else if self.skin_tex_side == side {
+            r.update_skin_texture(self.skin_tex, side, &px);
         } else {
-            r.update_texture(self.skin_tex, 64, 64, &px);
+            r.delete_textures(&[self.skin_tex]);
+            self.skin_tex = r.add_skin_texture(side, &px);
         }
-        self.skin_slim = crate::client::skinfile::is_slim(&px, 64, 64);
-        self.skin_png = crate::png::encode(64, 64, &px);
+        self.skin_tex_side = side;
+        self.skin_slim = crate::client::skinfile::is_slim(&px, side, side);
+        // The pixels are handed on and not kept: only the card has them from here.
+        self.skin_png.clear();
+        self.skin_small.clear();
         self.skin_sent = false;
+        self.skins.pack_own(side, px);
     }
 
     /// Open the file browser to choose a skin picture.
@@ -39,9 +49,9 @@ impl App {
         }
         fallbacks.push(self.base.clone());
         let start = self.settings.picker_dir.clone();
-        self.picker.open("CHOOSE A SKIN: A 64 X 64 OR 64 X 32 PICTURE", &start, &fallbacks, SKIN_EXTS, &self.base);
+        self.picker.open("CHOOSE A SKIN: A SQUARE PICTURE, 64 UP TO 4096", &start, &fallbacks, SKIN_EXTS, &self.base);
         self.picker.size_ok = Some(crate::client::skinfile::size_ok);
-        self.picker.hint = String::from("SKINS: 64 X 64 OR 64 X 32");
+        self.picker.hint = String::from("SKINS: 64 TO 4096, MULTIPLES OF 64 (OR 64 X 32)");
         self.set_screen(Screen::Picker);
     }
 
@@ -119,7 +129,7 @@ impl App {
         ui.r.rect(0.0, 0.0, ui.w(), ui.h(), [8, 10, 18, 190]);
         let (x, y, bw, bh, step) = Self::column(ui, 7);
         ui.centered(ui.w() * 0.5, y - 30.0 * s, 2.0, "SKIN FROM A WEB ADDRESS", WHITE);
-        ui.text(x, y - 9.0 * s, "ADDRESS OF A 64 X 64 OR 64 X 32 PICTURE", ui::DIM);
+        ui.text(x, y - 9.0 * s, "ADDRESS OF A SKIN PICTURE (UP TO 4096 X 4096)", ui::DIM);
         let busy = web::state() == web::DOWNLOADING;
         let enter = ui.text_field(40, x, y, bw, bh, &mut self.skin_url, web::MAX_URL, ui::any_char);
         let half = bw * 0.5 - 2.0 * s;

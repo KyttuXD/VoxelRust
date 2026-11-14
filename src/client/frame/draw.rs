@@ -6,6 +6,7 @@ use super::*;
 impl App {
     pub(super) fn draw(&mut self, r: &mut Renderer, inp: &UiInput) {
         r.render_scale = self.settings.render_scale;
+        r.culler.occlusion = !self.no_occlusion;
         crate::client::shaders::hook::sync(r, &self.settings.shader, self.session.as_ref().map(|g| &g.shader_uniforms));
         let mut underwater = false;
         let mut in_lava = false;
@@ -61,6 +62,7 @@ impl App {
                 flash: g.flash,
                 vision: crate::game::effects::apply::night_vision(&g.fx, &crate::game::effects::apply::lookup),
                 blind: crate::game::effects::body::blindness(&g.fx, &crate::game::effects::apply::lookup),
+                fog_override: crate::game::fx::state_ref(g).and_then(|s| s.fog.get()),
             };
             r.draw_world(&g.world, &cam, &env);
             let mut tags = Vec::new();
@@ -87,6 +89,7 @@ impl App {
             r.finish_world(&cam, &env);
             // Particles and translucent quads of mods, over the finished world.
             r.draw_effects(g, &cam, &env);
+            r.draw_soft_particles(g, &cam, &env);
             // The hand and what it holds, in their own close-up pass.
             // (While emoting only the arm shows, and only for emotes that move it; the item is put away.)
             let emoting = g.posing.emote.is_some();
@@ -193,6 +196,7 @@ impl App {
                 Screen::FullMap => self.screen_full_map(&mut ui),
                 Screen::Join => self.screen_join(&mut ui),
                 Screen::AddServer => self.screen_add_server(&mut ui),
+                Screen::Pin => self.screen_pin(&mut ui),
                 Screen::Chat => self.screen_chat(&mut ui),
                 Screen::Picker => self.screen_picker(&mut ui),
                 Screen::Emote => self.screen_emote(&mut ui),

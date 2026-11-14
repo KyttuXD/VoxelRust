@@ -3,6 +3,7 @@
 //! start-up, and packs and players can add pictures of their own.
 
 use crate::block::{Registry, TileDef, TileSrc};
+use crate::hd::Pic;
 use alloc::vec::Vec;
 
 /// Tile edge in pixels.
@@ -115,7 +116,7 @@ fn override_dir() -> Option<&'static str> {
 /// in `retired` until the next swap, and what `retired` held is freed: a
 /// reader that took a reference from `slot` has all of a rebuild to finish
 /// with it. (These used to be leaked for good, one list per atlas rebuild.)
-fn swap_retiring<T>(slot: &core::sync::atomic::AtomicPtr<T>, retired: &core::sync::atomic::AtomicPtr<T>, new: *mut T) {
+pub(crate) fn swap_retiring<T>(slot: &core::sync::atomic::AtomicPtr<T>, retired: &core::sync::atomic::AtomicPtr<T>, new: *mut T) {
     use core::sync::atomic::Ordering::AcqRel;
     let old = slot.swap(new, AcqRel);
     let older = retired.swap(old, AcqRel);
@@ -330,80 +331,108 @@ fn tint_of(name: &str) -> Option<[u8; 3]> {
     })
 }
 
-/// A pack's picture for texture `id`, 16 x 16 RGBA, if a pack has one.
-pub fn pack_pixels(id: &str) -> Option<Vec<u8>> {
+/// A pack's picture for texture `id` if a pack has one: 16 x 16, or a bigger
+/// square (an HD tile, see `content/hd`). With `probe` only the size is found
+/// (`px` is empty). The pack's greys are tinted as the game would tint them.
+pub fn pack_picture(id: &str, probe: bool) -> Option<Pic> {
     let index = packs()?;
     for name in pack_names(id) {
         let Some(path) = index.files.get(&name) else { continue };
-        let Some(mut img) = crate::sys::read_file_limit(path, crate::image::MAX_BYTES).and_then(|b| crate::image::decode(&b)) else { continue };
+        let Some(bytes) = crate::sys::read_file_limit(path, crate::image::MAX_BYTES) else { continue };
         // An animated picture is a tall strip of frames: the first one.
-        if img.h > img.w && img.w > 0 && img.h % img.w == 0 {
-            img.rgba.truncate(img.w * img.w * 4);
-            img.h = img.w;
+        let Some((mut pic, note)) = crate::hd::source::read_picture(&bytes, probe, true) else { continue };
+        if let (Some(n), false) = (note, probe) {
+            logf!("voxelrust: texture pack: {} {}", path, n);
         }
-        let mut px = if img.w == TILE && img.h == TILE { img.rgba } else { crate::image::fit(&img, TILE) };
-        if let Some(t) = tint_of(&name) {
-            for p in px.chunks_mut(4) {
-                p[0] = (p[0] as u32 * t[0] as u32 / 255) as u8;
-                p[1] = (p[1] as u32 * t[1] as u32 / 255) as u8;
-                p[2] = (p[2] as u32 * t[2] as u32 / 255) as u8;
+        if !probe {
+            if let Some(t) = tint_of(&name) {
+                for p in pic.px.chunks_mut(4) {
+                    p[0] = (p[0] as u32 * t[0] as u32 / 255) as u8;
+                    p[1] = (p[1] as u32 * t[1] as u32 / 255) as u8;
+                    p[2] = (p[2] as u32 * t[2] as u32 / 255) as u8;
+                }
             }
         }
-        tweak_colours(&mut px);
-        return Some(px);
+        return Some(pic);
     }
     None
 }
 
 /// The 16 x 16 RGBA picture of texture number `i`, top row first: the file
 /// the player has put in the textures folder if there is one, else what the
-/// data describes.
+/// data describes. An HD picture is shrunk to 16 x 16 (the normal atlas has
+/// every tile; the HD atlas has the big picture).
 pub fn tile_pixels(i: usize, t: &TileDef) -> Vec<u8> {
     tile_pixels_with(i, t, &mut Vec::new())
 }
 
 /// The pack's iron tools as read so far (kind -> picture), so that a pack with big pictures is
 /// not decoded again for every metal a tool is made in.
-type ToolPictures = Vec<(&'static str, Option<Vec<u8>>)>;
+type ToolPictures = Vec<(&'static str, Option<Pic>)>;
 
 /// [`tile_pixels`] with a memory of the pack's tool pictures kept between calls.
 fn tile_pixels_with(i: usize, t: &TileDef, tools: &mut ToolPictures) -> Vec<u8> {
+    let pic = tile_source(i, t, tools, false);
+    if pic.side == TILE {
+        pic.px
+    } else {
+        crate::hd::scale::box_down(&pic.px, pic.side, TILE)
+    }
+}
+
+/// The picture of tile `i` at its own size (16, or an HD tile's): from the textures
+/// folder, a pack, a mod's own file, or what the data describes. With `probe` only the
+/// size is found out (the pictures are not read when the file's header tells it).
+fn tile_source(i: usize, t: &TileDef, tools: &mut ToolPictures, probe: bool) -> Pic {
     if let Some(dir) = override_dir() {
         for ext in ["png", "jpg", "jpeg", "gif", "bmp", "tga"] {
             let name = alloc::format!("{}.{}", t.id, ext);
             if !override_files().iter().any(|f| *f == name) {
                 continue;
             }
-            if let Some(img) = crate::sys::read_file_limit(&alloc::format!("{}{}", dir, name), crate::image::MAX_BYTES).and_then(|b| crate::image::decode(&b)) {
-                // Any size: fitted to a tile.
-                return if img.w == TILE && img.h == TILE { img.rgba } else { crate::image::fit(&img, TILE) };
+            let Some(bytes) = crate::sys::read_file_limit(&alloc::format!("{}{}", dir, name), crate::image::MAX_BYTES) else { continue };
+            // A tile's own size if it is one; any other size is fitted to a tile.
+            if let Some((pic, note)) = crate::hd::source::read_picture(&bytes, probe, false) {
+                if let (Some(n), false) = (note, probe) {
+                    logf!("voxelrust: textures/{} {}", name, n);
+                }
+                return pic;
             }
         }
     }
-    if let Some(px) = pack_pixels(&t.id) {
-        return px;
+    if let Some(p) = pack_picture(&t.id, probe) {
+        return p;
     }
     // A tool the pack has no picture of (ruby, tin, emberite...): the pack's iron
     // one in that material's colour, so it is in the pack's style too.
     if let TileSrc::Paint { style, rgb } = &t.src {
-        if let Some(px) = pack_tool(style, *rgb, tools) {
-            return px;
+        if let Some(p) = pack_tool(style, *rgb, tools, probe) {
+            return p;
         }
     }
     // A palette of one flat colour is the same thing; one with several colours is the game's own drawing.
     if let TileSrc::Palette { style, pal } = &t.src {
         if pal.is_plain() {
-            if let Some(px) = pack_tool(style, pal.base(), tools) {
-                return px;
+            if let Some(p) = pack_tool(style, pal.base(), tools, probe) {
+                return p;
             }
         }
     }
-    described_pixels(i, t)
+    // A mod's own HD picture (`texture <id> file ...`), kept as the file.
+    if let (Some(h), TileSrc::Pixels(_)) = (&t.hd, &t.src) {
+        if probe {
+            return Pic { side: h.side, px: Vec::new() };
+        }
+        if let Some(px) = h.decode() {
+            return Pic { side: h.side, px };
+        }
+    }
+    Pic { side: TILE, px: if probe { Vec::new() } else { described_pixels(i, t) } }
 }
 
 /// The pack's iron `kind` (pick, axe, shovel, hoe, sword) with its metal
 /// recoloured to `rgb`; its handle and outline stay.
-fn pack_tool(kind: &str, rgb: [u8; 3], tools: &mut ToolPictures) -> Option<Vec<u8>> {
+fn pack_tool(kind: &str, rgb: [u8; 3], tools: &mut ToolPictures, probe: bool) -> Option<Pic> {
     let theirs = match kind {
         "pick" => "iron_pickaxe",
         "axe" => "iron_axe",
@@ -413,9 +442,13 @@ fn pack_tool(kind: &str, rgb: [u8; 3], tools: &mut ToolPictures) -> Option<Vec<u
         _ => return None,
     };
     if !tools.iter().any(|t| t.0 == theirs) {
-        tools.push((theirs, pack_pixels(theirs)));
+        tools.push((theirs, pack_picture(theirs, probe)));
     }
-    let mut px = tools.iter().find(|t| t.0 == theirs)?.1.clone()?;
+    let src = tools.iter().find(|t| t.0 == theirs)?.1.as_ref()?;
+    if probe {
+        return Some(Pic { side: src.side, px: Vec::new() });
+    }
+    let mut px = src.px.clone();
     for p in px.chunks_mut(4) {
         if p[3] == 0 {
             continue;
@@ -432,61 +465,7 @@ fn pack_tool(kind: &str, rgb: [u8; 3], tools: &mut ToolPictures) -> Option<Vec<u
             p[2] = (rgb[2] as f32 * k).min(255.0) as u8;
         }
     }
-    Some(px)
-}
-
-/// How much the pack's colours are changed: hue turned by this many degrees,
-/// saturation and brightness scaled by these percentages. Set from the settings.
-static TWEAK: [core::sync::atomic::AtomicI32; 3] = [core::sync::atomic::AtomicI32::new(0), core::sync::atomic::AtomicI32::new(100), core::sync::atomic::AtomicI32::new(100)];
-
-pub fn set_pack_tweak(hue: i32, saturation: i32, brightness: i32) {
-    use core::sync::atomic::Ordering::Release;
-    TWEAK[0].store(hue, Release);
-    TWEAK[1].store(saturation, Release);
-    TWEAK[2].store(brightness, Release);
-}
-
-/// Change the colours of a pack's picture a little (see [`set_pack_tweak`]).
-fn tweak_colours(px: &mut [u8]) {
-    use core::sync::atomic::Ordering::Acquire;
-    let (hue, sat, val) = (TWEAK[0].load(Acquire), TWEAK[1].load(Acquire), TWEAK[2].load(Acquire));
-    if hue == 0 && sat == 100 && val == 100 {
-        return;
-    }
-    let (dh, ks, kv) = (hue as f32 / 60.0, sat as f32 / 100.0, val as f32 / 100.0);
-    for p in px.chunks_mut(4) {
-        let (r, g, b) = (p[0] as f32 / 255.0, p[1] as f32 / 255.0, p[2] as f32 / 255.0);
-        let mx = r.max(g).max(b);
-        let mn = r.min(g).min(b);
-        let d = mx - mn;
-        let mut h = if d <= 0.0 {
-            0.0
-        } else if mx == r {
-            (g - b) / d
-        } else if mx == g {
-            2.0 + (b - r) / d
-        } else {
-            4.0 + (r - g) / d
-        };
-        h += dh;
-        h -= 6.0 * crate::math::floorf(h / 6.0);
-        let s = if mx <= 0.0 { 0.0 } else { (d / mx * ks).min(1.0) };
-        let v = (mx * kv).min(1.0);
-        // Back to red, green, blue.
-        let c = v * s;
-        // The standard hsv to rgb: channel n takes v - c * max(0, min(k, 4 - k, 1)), k = (n + h) mod 6.
-        let chan = |n: f32| -> u8 {
-            let kk = {
-                let t = n + h;
-                t - 6.0 * crate::math::floorf(t / 6.0)
-            };
-            let m = kk.min(4.0 - kk).min(1.0).max(0.0);
-            ((v - c * m) * 255.0 + 0.5).clamp(0.0, 255.0) as u8
-        };
-        p[0] = chan(5.0);
-        p[1] = chan(3.0);
-        p[2] = chan(1.0);
-    }
+    Some(Pic { side: src.side, px })
 }
 
 /// The picture the data describes, whatever files there are.
@@ -553,13 +532,39 @@ pub fn build_atlas_described(r: &Registry) -> Vec<u8> {
 
 /// Paint every registered texture into one 512 x 512 RGBA atlas.
 pub fn build_atlas(r: &Registry) -> Vec<u8> {
+    // (Only the normal atlas: the HD table and the budget are left alone.)
+    build_inner(r, false).0
+}
+
+/// The normal atlas and the HD atlas of the textures that are bigger than 16 x 16
+/// (see `content/hd`): the table of where each HD tile is has been installed, and
+/// the memory they cost has been added to the budget's allowance. Every tile is
+/// in the normal atlas, an HD one shrunk to 16 x 16.
+pub fn build_atlas_and_hd(r: &Registry) -> (Vec<u8>, crate::hd::atlas::Built) {
+    build_inner(r, true)
+}
+
+fn build_inner(r: &Registry, install: bool) -> (Vec<u8>, crate::hd::atlas::Built) {
     rescan_overrides();
+    // Pass one: how big is each tile's picture (a file's header tells, no pixels are read).
+    let natural: Vec<usize> = {
+        let mut tools: ToolPictures = Vec::new();
+        r.tiles.iter().enumerate().map(|(i, t)| tile_source(i, t, &mut tools, true).side).collect()
+    };
+    let mut hd = crate::hd::atlas::Builder::new(&natural);
+    // Pass two: each picture is read once, painted and let go.
     let mut a = alloc::vec![0u8; ATLAS * ATLAS * 4];
     let mut mask: Vec<u8> = Vec::with_capacity(r.tiles.len() * TILE * TILE);
     let mut tools: ToolPictures = Vec::new();
     for (i, t) in r.tiles.iter().enumerate() {
         let (tx, ty) = (i % PER_ROW, i / PER_ROW);
-        let px = tile_pixels_with(i, t, &mut tools);
+        let pic = tile_source(i, t, &mut tools, false);
+        let px = if pic.side == TILE {
+            pic.px
+        } else {
+            hd.add(i, pic.side, &pic.px);
+            crate::hd::scale::box_down(&pic.px, pic.side, TILE)
+        };
         mask.extend(px.chunks(4).map(|p| p[3]));
         for y in 0..TILE {
             let o = ((ty * TILE + y) * ATLAS + tx * TILE) * 4;
@@ -567,7 +572,14 @@ pub fn build_atlas(r: &Registry) -> Vec<u8> {
         }
     }
     swap_retiring(&ALPHA, &ALPHA_OLD, alloc::boxed::Box::into_raw(alloc::boxed::Box::new(mask)));
-    a
+    let built = hd.finish_with(install);
+    if !install {
+        return (a, built);
+    }
+    // What the pictures cost is theirs to spend: the budget's limit rises by it (budget/allowance).
+    let kept = crate::hd::source::registry_bytes(&r.tiles);
+    crate::budget::set_allowance(crate::budget::Allow::Textures, built.bytes.saturating_add(kept));
+    (a, built)
 }
 
 /// Halve an RGBA image. Colours are weighted by alpha and alpha keeps its
@@ -702,18 +714,75 @@ mod tests {
         has("raw_meat", "beef");
     }
 
+    /// A 16-multiple square picture with the left half red and the right half blue, as a PNG.
+    fn two_halves(side: usize) -> Vec<u8> {
+        let px: Vec<u8> = (0..side * side).flat_map(|i| if i % side < side / 2 { [255u8, 0, 0, 255] } else { [0, 0, 255, 255] }).collect();
+        crate::png::encode(side, side, &px)
+    }
+
     #[test]
-    fn the_pack_colour_change_is_small_and_keeps_alpha() {
-        let mut px = [126u8, 126, 126, 255, 129, 94, 63, 128];
-        let before = px;
-        set_pack_tweak(6, 108, 97);
-        tweak_colours(&mut px);
-        set_pack_tweak(0, 100, 100);
-        // A grey stays grey (a little darker); a brown moves a little; alpha is untouched.
-        assert!(px[0] == px[1] && px[1] == px[2] && px[0] < before[0] && before[0] - px[0] < 8, "{px:?}");
-        assert!(px[4] != before[4] || px[5] != before[5] || px[6] != before[6]);
-        assert!((px[4] as i32 - before[4] as i32).abs() < 30 && (px[5] as i32 - before[5] as i32).abs() < 30);
-        assert_eq!((px[3], px[7]), (255, 128));
+    fn an_hd_tile_is_its_own_size_at_the_source_and_16_in_the_normal_atlas() {
+        let l = crate::hd::source::load(&two_halves(64)).ok().unwrap();
+        let t = TileDef { id: alloc::string::String::from("hd_unit_test_tile"), src: TileSrc::Pixels(l.px16.clone()), hd: l.hd };
+        let probe = tile_source(0, &t, &mut Vec::new(), true);
+        assert_eq!((probe.side, probe.px.len()), (64, 0));
+        let full = tile_source(0, &t, &mut Vec::new(), false);
+        assert_eq!((full.side, full.px.len()), (64, 64 * 64 * 4));
+        let small = tile_pixels(0, &t);
+        assert_eq!(small.len(), TILE * TILE * 4);
+        assert_eq!(&small[0..4], &[255, 0, 0, 255]);
+        assert_eq!(&small[15 * 4..16 * 4], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn a_mods_hd_pictures_go_to_the_hd_atlas_and_every_tile_stays_in_the_normal_one() {
+        let (a, b, c) = (two_halves(64), two_halves(128), crate::png::encode(16, 16, &(0..16 * 16).flat_map(|_| [9u8, 9, 9, 255]).collect::<Vec<u8>>()));
+        let pack = "texture hd_a file a.png\ntexture hd_b file b.png\ntexture hd_c file c.png\n";
+        let r = Registry::from_sources(&[("base.txt", crate::block::BASE_DATA), ("mods/x/pack.txt", pack)], &mut |p| match p {
+            "mods/x/a.png" => Some(a.clone()),
+            "mods/x/b.png" => Some(b.clone()),
+            "mods/x/c.png" => Some(c.clone()),
+            _ => None,
+        });
+        assert!(r.warnings.iter().all(|w| !w.contains("hd_")), "{:?}", r.warnings);
+        let (ia, ib, ic) = (r.tile("hd_a").unwrap(), r.tile("hd_b").unwrap(), r.tile("hd_c").unwrap());
+        assert_eq!(r.tiles[ia].hd.as_ref().map(|h| h.side), Some(64));
+        assert_eq!(r.tiles[ib].hd.as_ref().map(|h| h.side), Some(128));
+        assert!(r.tiles[ic].hd.is_none());
+        // Built without touching the shared table.
+        let (atlas, built) = build_inner(&r, false);
+        assert_eq!(atlas.len(), ATLAS * ATLAS * 4);
+        assert_eq!(built.tiles, 2);
+        assert_eq!(built.pages.len(), 1);
+        let page = &built.pages[0];
+        assert_eq!(page.rgba.len(), page.w * page.h * 4);
+        assert!(page.rgba.chunks(4).any(|p| p == [255, 0, 0, 255]) && page.rgba.chunks(4).any(|p| p == [0, 0, 255, 255]));
+        // In the normal atlas the HD tile is its 16 x 16: red on the left, blue on the right.
+        let at = |tile: usize, x: usize, y: usize| {
+            let o = (((tile / PER_ROW) * TILE + y) * ATLAS + (tile % PER_ROW) * TILE + x) * 4;
+            [atlas[o], atlas[o + 1], atlas[o + 2], atlas[o + 3]]
+        };
+        assert_eq!(at(ia, 2, 5), [255, 0, 0, 255]);
+        assert_eq!(at(ia, 13, 5), [0, 0, 255, 255]);
+        assert_eq!(at(ib, 2, 5), [255, 0, 0, 255]);
+        assert_eq!(at(ic, 3, 3), [9, 9, 9, 255]);
+    }
+
+    #[test]
+    fn a_picture_that_is_not_a_tile_is_fitted_with_a_warning_and_a_huge_one_refused() {
+        let odd = crate::png::encode(24, 24, &alloc::vec![200u8; 24 * 24 * 4]);
+        let big = crate::png::encode(528, 528, &alloc::vec![200u8; 528 * 528 * 4]);
+        let pack = "texture hd_odd file odd.png\ntexture hd_big file big.png\n";
+        let r = Registry::from_sources(&[("base.txt", crate::block::BASE_DATA), ("mods/x/pack.txt", pack)], &mut |p| match p {
+            "mods/x/odd.png" => Some(odd.clone()),
+            "mods/x/big.png" => Some(big.clone()),
+            _ => None,
+        });
+        let odd_tile = r.tile("hd_odd").expect("fitted, not refused");
+        assert!(r.tiles[odd_tile].hd.is_none());
+        assert!(r.warnings.iter().any(|w| w.contains("odd.png") && w.contains("24 x 24")), "{:?}", r.warnings);
+        assert!(r.tile("hd_big").is_none());
+        assert!(r.warnings.iter().any(|w| w.contains("big.png") && w.contains("512")), "{:?}", r.warnings);
     }
 
     #[test]

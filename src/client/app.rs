@@ -48,6 +48,8 @@ mod screen_title;
 mod screen_settings;
 #[path = "screens/join.rs"]
 mod screen_join;
+#[path = "screens/pin.rs"]
+mod screen_pin;
 #[path = "screens/inventory.rs"]
 mod screen_inventory;
 #[path = "screens/map.rs"]
@@ -58,6 +60,7 @@ mod screen_overlays;
 mod screen_skin;
 #[allow(unused_imports)]
 use self::{args::*, mods_load::*, server_run::*};
+use self::screen_pin::PinPrompt;
 
 
 mod key {
@@ -88,6 +91,8 @@ enum Screen {
     Join,
     /// Adding or editing one entry of the server list.
     AddServer,
+    /// The PIN of an account, asked for by a server (screens/pin.rs).
+    Pin,
     Chat,
     /// The crafting table's recipe list.
     Craft,
@@ -218,22 +223,35 @@ fn creative_hand(hand: Option<Stack>, pick: Option<Stack>, over_list: bool, clic
 const SKIN_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "tga"];
 
 /// Read the picture at `path` and keep it as the custom skin (`skin.png` in
-/// the data folder). The error is a message for the player.
+/// the data folder). The error is a message for the player. A PNG that is
+/// already a square skin is kept as it is (nothing is packed again here: a big
+/// one would take seconds); any other picture is written as a PNG.
 fn import_skin(base: &str, path: &str) -> Result<(), String> {
     let bytes = sys::read_file_limit(path, crate::image::MAX_BYTES).ok_or_else(|| String::from("COULD NOT READ THAT FILE (OR IT IS TOO BIG)"))?;
-    let img = crate::image::decode(&bytes).ok_or_else(|| String::from("THAT IS NOT A PICTURE THE GAME CAN READ"))?;
-    let px = crate::client::skinfile::from_image(&img)?;
-    if sys::write_file(&alloc::format!("{}skin.png", base), &crate::png::encode(64, 64, &px)) {
+    let img = crate::image::decode(&bytes).ok_or_else(|| String::from("THAT IS NOT A PICTURE THE GAME CAN READ (UP TO 4096 X 4096)"))?;
+    let keep_as_is = bytes.starts_with(&[0x89, b'P', b'N', b'G']) && img.w == img.h && crate::skin_grid::valid_size(img.w, img.h);
+    let file = if keep_as_is {
+        bytes
+    } else {
+        let px = crate::client::skinfile::from_image(&img)?;
+        crate::png::encode(img.w, img.w, &px)
+    };
+    if sys::write_file(&alloc::format!("{}skin.png", base), &file) {
         Ok(())
     } else {
         Err(String::from("COULD NOT SAVE THE SKIN IN THE DATA FOLDER"))
     }
 }
 
-fn skin_pixels(base: &str, name: &str, player: &str) -> Option<Vec<u8>> {
+/// The skin to wear as (side, pixels): `skin.png` of the data folder for the
+/// custom one (any size a skin may be, see `skin_grid`), else a built-in one,
+/// or one a pack or mod brings.
+fn skin_pixels(base: &str, name: &str, player: &str) -> Option<(usize, Vec<u8>)> {
     if name == "custom" {
-        let img = crate::png::decode(&sys::read_file(&alloc::format!("{}skin.png", base))?)?;
-        return if img.w == 64 && img.h == 64 { Some(img.rgba) } else { None };
+        let img = crate::png::decode(&sys::read_file_limit(&alloc::format!("{}skin.png", base), crate::image::MAX_BYTES)?)?;
+        // (A file put there by hand in the old 64 x 32 layout is brought up to a square.)
+        let px = crate::client::skinfile::from_image(&img).ok()?;
+        return Some((img.w, px));
     }
     // `default` is one of the built-in skins, picked by the player's name; the others are chosen by name.
     // A built-in skin, or any skin a pack or mod brings a picture for (`skin_<name>`).
@@ -241,9 +259,10 @@ fn skin_pixels(base: &str, name: &str, player: &str) -> Option<Vec<u8>> {
     let named = if name != "default" { crate::pack_entities::skin_image(name) } else { None };
     let known = named.is_some() || crate::settings::SKINS.iter().any(|s| *s == name);
     if let (true, Some(img)) = (known, named) {
-        return Some(img.rgba);
+        return Some((img.w, img.rgba));
     }
-    Some(crate::pack_entities::skin_image(crate::pack_entities::default_skin_for(player))?.rgba)
+    let img = crate::pack_entities::skin_image(crate::pack_entities::default_skin_for(player))?;
+    Some((img.w, img.rgba))
 }
 
 /// Everything except the renderer and the frame's input, which are passed
@@ -282,6 +301,8 @@ struct App {
     distance: i32,
     tune_timer: f32,
     show_debug: bool,
+    /// Occlusion culling of the world's sections is off (F3 + O, `--show nocull`).
+    no_occlusion: bool,
     help_timer: f32,
     /// When the world started waiting for its first chunks (0 once playable).
     loading_since: f64,
@@ -327,6 +348,13 @@ struct App {
     /// Which other players have slim arms.
     remote_slim: BTreeMap<u16, bool>,
     skin_png: Vec<u8>,
+    /// The 64 x 64 PNG of the own skin and the side of `skin_png` (packed off the main thread, see `client/skins`).
+    skin_small: Vec<u8>,
+    skin_side: usize,
+    /// The side the own skin texture has on the card.
+    skin_tex_side: usize,
+    /// Other players' skins on the card, within a budget, and the packing of the own one.
+    skins: crate::client::skins::SkinHub,
     /// The skin picture is for slim arms (found from the picture, see `skinfile::is_slim`).
     skin_slim: bool,
     /// For pictures (`--show eat:F`): hold the hand at this point of eating.
@@ -379,6 +407,8 @@ struct App {
     /// Whose screen the map key has opened (a mod's code).
     map_native: Option<usize>,
     status: String,
+    /// The PIN screen's state (screens/pin.rs).
+    pin: PinPrompt,
     tab: usize,
     /// Index into ACTIONS of the key being rebound.
     rebinding: Option<usize>,
@@ -1006,13 +1036,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
     // Pictures the player has edited replace the game's own: textures/<id>.png.
     sys::make_dir(&alloc::format!("{}textures/", base));
     crate::textures::set_override_dir(&alloc::format!("{}textures/", base));
-    // Texture packs: the settings' list, then any named on the command line.
+    // Texture packs named on the command line (they are added to the game's own textures, which stay the default).
     {
         let early = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| crate::settings::Settings::parse(&String::from_utf8_lossy(&b))).unwrap_or_default();
-        crate::textures::set_pack_tweak(early.pack_hue, early.pack_saturation, early.pack_brightness);
-        let saved = early.texture_pack;
-        let mut list: Vec<String> = saved.split('|').map(|s| String::from(s.trim())).filter(|s| !s.is_empty()).collect();
-        list.extend(opts.texture_packs.iter().cloned());
+        // The most pixels on a side an HD picture is kept at (content/hd).
+        crate::hd::set_cap_setting(early.texture_size);
+        let list: Vec<String> = opts.texture_packs.iter().cloned().collect();
         if !list.is_empty() {
             let n = crate::textures::set_texture_packs(&list);
             logf!("voxelrust: texture pack{} {}: {} pictures", if list.len() == 1 { "" } else { "s" }, list.join(", "), n);
@@ -1177,10 +1206,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
         fps: 0.0,
         tune_timer: 0.0,
         show_debug: opts.show.contains("debug"),
+        no_occlusion: opts.show.contains("nocull"),
         help_timer: 0.0,
         loading_since: 0.0,
         wheel: Default::default(),
-        third_person: opts.show.contains("third") || opts.show.contains("front"),
+        third_person: opts.show.contains("third") || opts.show.contains("front") || opts.show.contains("bends:"),
         third_front: opts.show.contains("front"),
         swallow_text: false,
         hud_hidden: false,
@@ -1207,6 +1237,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         remote_skins: BTreeMap::new(),
         remote_slim: BTreeMap::new(),
         skin_png: Vec::new(),
+        skin_small: Vec::new(),
+        skin_side: 64,
+        skin_tex_side: 64,
+        skins: Default::default(),
         skin_slim: false,
         skin_sent: false,
         pack_paths,
@@ -1238,6 +1272,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         tags: Vec::new(),
         map_native: None,
         status: String::new(),
+        pin: PinPrompt::default(),
         tab: 0,
         rebinding: None,
         inv_tab: 0,
@@ -1255,6 +1290,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let own_sounds = app.audio.load_folder(&base);
     // The sound and music files of mods are found in their own folders.
     app.audio.set_mods_dir(&app.mods_dir);
+    crate::client::modui::hud_image::set_mods_dir(&app.mods_dir);
     app.refresh_mem_limit();
     if !own_sounds.is_empty() {
         logf!("voxelrust: own sounds from {}sounds/: {}", base, own_sounds.join(" "));
@@ -1342,6 +1378,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         // "emote:ID" or "emote:ID@SECONDS" plays that emote and keeps it at that moment (default 0.5 s).
         // Both are for pictures taken with "third" or "front".
         if let Some(g) = app.session.as_mut() {
+            // "bends:NAME[@PHASE]": one posture and gait (idle walk sprint crouchwalk swim climb sit sleep fall ride), third person.
+            crate::client::show_bends::apply(&opts.show, &mut g.posing);
             if let Some(name) = opts.show.split(',').find_map(|w| w.strip_prefix("pose:")) {
                 g.posing.forced = crate::content::pose::KINDS.iter().copied().find(|k| alloc::format!("{:?}", k).eq_ignore_ascii_case(name));
             }
@@ -1551,13 +1589,18 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     let n = opts.bench.unwrap_or(1);
                     let total = sys::now() - *start;
                     logf!(
-                        "voxelrust: bench: {} frames, {:.2} ms average ({:.0} FPS), {:.2} ms worst, {} quads, view distance {}",
+                        "voxelrust: bench: {} frames, {:.2} ms average ({:.0} FPS), {:.2} ms worst, {} quads, view distance {}, {} sections drawn ({} frustum culled, {} occluded), {} draw calls, {:.2} ms culling",
                         n,
                         total * 1000.0 / n as f64,
                         n as f64 / total,
                         *worst * 1000.0,
                         r.stats.quads,
-                        app.distance
+                        app.distance,
+                        r.culler.stats.drawn,
+                        r.culler.stats.frustum,
+                        r.culler.stats.occluded,
+                        r.stats.draw_calls,
+                        r.culler.stats.micros as f32 / 1000.0
                     );
                     if opts.flypass.is_some() {
                         logf!("voxelrust: flypass: {} blocks flown, terrain three chunks ahead was missing for {} of {} frames", n / 2, unloaded_frames, n);

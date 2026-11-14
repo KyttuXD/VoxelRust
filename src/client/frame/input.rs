@@ -33,6 +33,11 @@ impl App {
         if repeat {
             return;
         }
+        // F3 held with O: occlusion culling off and on again, to compare.
+        if sc == 18 && self.keys[key::F3 as usize] {
+            self.no_occlusion = !self.no_occlusion;
+            return;
+        }
         match sc {
             key::F2 => return self.save_screenshot(r),
             key::F3 => {
@@ -124,6 +129,11 @@ impl App {
                 self.close_picker(None);
             }
             Screen::AddServer if sc == key::ESCAPE => self.set_screen(Screen::Join),
+            Screen::Pin if sc == key::ESCAPE => {
+                self.pin = PinPrompt::default();
+                self.status.clear();
+                self.set_screen(Screen::Join);
+            }
             Screen::Map if sc == key::ESCAPE || sc == k_map => self.set_screen(Screen::Game),
             Screen::FullMap if !typing && (sc == key::ESCAPE || sc == k_map || sc == k_waypoints) => self.close_full_map(),
             Screen::Settings if sc == key::ESCAPE => self.leave_settings(),

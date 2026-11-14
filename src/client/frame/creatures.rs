@@ -20,15 +20,14 @@ impl App {
             (0.40 + 0.60 * day) * if covered { 0.75 } else { 1.0 }
         };
         let rel = |pos: [f64; 3]| [(pos[0] - cam.pos[0]) as f32, (pos[1] - cam.pos[1]) as f32, (pos[2] - cam.pos[2]) as f32];
-        // What is behind the camera is not drawn at all.
-        let ahead = crate::math::forward(cam.yaw, cam.pitch);
-        let behind = |p: [f32; 3], size: f32| p[0] * ahead.x + p[1] * ahead.y + p[2] * ahead.z < -size;
+        // What is outside the view (the frustum of the world's drawing) is not drawn at all.
         for m in &g.mobs.list {
             let p = rel(m.body.pos);
             // The bounds of what is drawn grow with the creature: a giant is not dropped while only its middle is out of view.
             let (bw, bh) = (m.body.half_width as f32 * 2.0, m.look().2.max(m.body.height as f32));
-            let (far, radius) = (72.0 + crate::creature_size::keep_extra(bw, bh), crate::creature_size::cull_radius(bw, bh));
-            if p[0] * p[0] + p[2] * p[2] > far * far || behind(p, radius) {
+            // Small ones are cut at a shorter distance (client/cull.rs).
+            let (far, radius) = (crate::client::cull::creature_range(bw, bh), crate::creature_size::cull_radius(bw, bh));
+            if p[0] * p[0] + p[2] * p[2] > far * far || !r.in_view(p, radius) {
                 continue;
             }
             // A creature whose ground is not loaded stands still in mid-air: not drawn.
@@ -43,7 +42,7 @@ impl App {
             if m.hurt > 0.0 {
                 tint = [255, tint[1] / 3, tint[2] / 3];
             }
-            let mut pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, ..Default::default() };
+            let mut pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, head_yaw: m.head.yaw, head_pitch: m.head.pitch, ..Default::default() };
             // A person standing still on a seat sits; in a bed, sleeps.
             let kind = crate::client::pose_view::creature_posture(&|x, y, z| g.world.get(x, y, z), m.body.pos, m.stride);
             let mut at = p;
@@ -73,7 +72,7 @@ impl App {
                     };
                     let pos = [(cx * 16 + at[0] as i32) as f64 + 0.5, at[1] as f64 + lift as f64, (cz * 16 + at[2] as i32) as f64 + 0.5];
                     let p = rel(pos);
-                    if p[0] * p[0] + p[2] * p[2] > 44.0 * 44.0 || behind(p, 3.0) {
+                    if p[0] * p[0] + p[2] * p[2] > 44.0 * 44.0 || !r.in_view(p, 3.0) {
                         continue;
                     }
                     // Placed facing the player: each state is a quarter turn.
@@ -118,7 +117,7 @@ impl App {
         if let Some(net) = &g.net {
             for (id, p) in net.players.iter().filter(|p| p.1.seen) {
                 let at = rel(p.pos);
-                if at[0] * at[0] + at[2] * at[2] > 96.0 * 96.0 {
+                if at[0] * at[0] + at[2] * at[2] > 96.0 * 96.0 || !r.in_view([at[0], at[1] + 1.0, at[2]], 3.0) {
                     continue;
                 }
                 let slim = self.remote_slim.get(id).copied().unwrap_or(false);

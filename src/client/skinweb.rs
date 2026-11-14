@@ -4,7 +4,8 @@
 //! The player pastes a direct link to a picture; `curl` (through
 //! `sys::run_command`, as the updater does) fetches it on a worker thread
 //! into `tmp/skins/` in the data folder, and the thread then judges the file
-//! (a picture the game can read, 64 x 64 or 64 x 32). The menu reads the
+//! (a picture the game can read, square and a multiple of 64 wide up to 4096,
+//! or 64 x 32; at most 1 MiB downloaded, which unpacks to 24 MiB at most). The menu reads the
 //! state every frame, so it never freezes. When the state says [`OK`] the
 //! menu takes the file through the usual skin import (`app::import_skin`).
 //!
@@ -27,8 +28,9 @@ pub const TOO_BIG: u8 = 5;
 pub const NO_HTTPS: u8 = 6;
 pub const BAD_URL: u8 = 7;
 
-/// The most that is downloaded: a skin picture is a few kilobytes.
-pub const MAX_BYTES: usize = 2 << 20;
+/// The most that is downloaded: a skin picture is a few kilobytes, a big
+/// one a few hundred (the wire takes 1 MiB, `proto::MAX_SKIN`).
+pub const MAX_BYTES: usize = 1 << 20;
 /// Longest address accepted.
 pub const MAX_URL: usize = 300;
 
@@ -170,10 +172,8 @@ pub fn judge(curl_status: i32, bytes: Option<&[u8]>) -> u8 {
     if b.len() > MAX_BYTES {
         return TOO_BIG;
     }
+    // (Decoding refuses anything over 4096 on a side or 24 MiB.)
     let Some(img) = crate::image::decode(b) else { return NOT_SKIN };
-    if img.w > 64 || img.h > 64 {
-        return TOO_BIG;
-    }
     if crate::client::skinfile::size_ok(img.w, img.h) {
         OK
     } else {
@@ -307,9 +307,11 @@ mod tests {
     fn a_download_is_judged_by_status_size_and_picture() {
         assert_eq!(judge(0, Some(&png(64, 64))), OK);
         assert_eq!(judge(0, Some(&png(64, 32))), OK);
+        assert_eq!(judge(0, Some(&png(128, 128))), OK);
+        assert_eq!(judge(0, Some(&png(1024, 1024))), OK);
         assert_eq!(judge(0, Some(&png(32, 32))), NOT_SKIN);
         assert_eq!(judge(0, Some(&png(64, 48))), NOT_SKIN);
-        assert_eq!(judge(0, Some(&png(128, 128))), TOO_BIG);
+        assert_eq!(judge(0, Some(&png(100, 100))), NOT_SKIN);
         assert_eq!(judge(0, Some(b"<html>not a picture at all, just a page</html>")), NOT_SKIN);
         assert_eq!(judge(22, None), FAILED);
         assert_eq!(judge(6, None), FAILED);

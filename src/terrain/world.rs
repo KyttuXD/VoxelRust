@@ -37,6 +37,20 @@ pub struct GpuMesh {
     pub glass_count: i32,
     pub ymin: i32,
     pub ymax: i32,
+    /// Where each 16-block section's vertices lie in the three buffers, its
+    /// bounds and its connectivity (`terrain/sections.rs`); not `valid` for
+    /// meshes without sections (distant tiles).
+    pub sec: crate::sections::SectionTables,
+    /// The faces of HD tiles (see hd_split.rs): one buffer, a run of vertices for each page of the HD atlas.
+    pub hd: u32,
+    pub hd_runs: [i32; 4],
+}
+
+impl GpuMesh {
+    /// Whether anything of this mesh is drawn: normal, translucent or HD faces.
+    pub fn has_geometry(&self) -> bool {
+        self.opaque_count > 0 || self.water_count > 0 || self.glass_count > 0 || self.hd_runs.iter().any(|n| *n > 0)
+    }
 }
 
 /// Whoever owns the graphics card memory (the renderer; a counter in tests).
@@ -110,6 +124,9 @@ pub struct World {
     /// Nothing left to load or mesh around the current centre.
     pub settled: bool,
     last_center: (i32, i32, i32),
+    /// Finished meshes not uploaded yet: uploads are limited to a few
+    /// milliseconds a frame (`terrain/uploads.rs`).
+    backlog: Vec<JobResult>,
 }
 
 impl World {
@@ -136,6 +153,7 @@ impl World {
             urgent: Vec::new(),
             settled: false,
             last_center: (i32::MIN, 0, 0),
+            backlog: Vec::new(),
         }
     }
 
@@ -313,9 +331,18 @@ impl World {
             self.settled = false;
         }
 
-        // 1. Finished work.
-        for result in pool.drain(2) {
+        // 1. Finished work. Generated chunks are taken at once; finished
+        // meshes are uploaded nearest first for a few milliseconds a frame
+        // (the rest wait in `backlog`), and those of chunks that were
+        // dropped or have left the meshed circle meanwhile are thrown away.
+        let mut results = core::mem::take(&mut self.backlog);
+        results.extend(pool.drain(2));
+        if !results.is_empty() {
             self.settled = false;
+        }
+        let mut meshes: Vec<(i32, i32, crate::mesh::MeshData)> = Vec::new();
+        let mut fars: Vec<(i32, i32, crate::mesh::MeshData)> = Vec::new();
+        for result in results {
             match result {
                 JobResult::Gen { cx, cz, mut data } => {
                     if let Some(edits) = self.overlay.get(&(cx, cz)) {
@@ -332,27 +359,58 @@ impl World {
                     }
                 }
                 JobResult::Task { tag, arg, out } => self.task_results.push((tag, arg, out)),
-                JobResult::Far { tx, tz, mesh } => {
-                    self.far_in_flight = self.far_in_flight.saturating_sub(1);
-                    if let Some(t) = self.far.get_mut(&(tx, tz)) {
-                        if let Some(old) = t.mesh.take() {
-                            sink.free(old);
-                        }
-                        t.mesh = Some(sink.upload(&mesh));
-                    }
-                }
-                JobResult::Mesh { cx, cz, mesh } => {
-                    if let Some(c) = self.chunks.get_mut(&(cx, cz)) {
-                        c.mesh_in_flight = false;
-                        if let Some(old) = c.mesh.take() {
-                            sink.free(old);
-                        }
-                        c.mesh = Some(sink.upload(&mesh));
-                        c.props = mesh.props;
-                        c.props.shrink_to_fit();
-                    }
-                }
+                JobResult::Far { tx, tz, mesh } => fars.push((tx, tz, mesh)),
+                JobResult::Mesh { cx, cz, mesh } => meshes.push((cx, cz, mesh)),
             }
+        }
+        let mut budget = crate::uploads::Budget::start();
+        let mesh_r2 = radius * radius + radius;
+        meshes.sort_by_key(|m| crate::uploads::distance2(m.0 - ccx, m.1 - ccz));
+        for (cx, cz, mesh) in meshes {
+            let wanted = {
+                let (dx, dz) = (cx - ccx, cz - ccz);
+                dx * dx + dz * dz <= mesh_r2
+            };
+            if !self.chunks.contains_key(&(cx, cz)) {
+                continue;
+            }
+            if !wanted {
+                // Out of range by now: no upload; meshed again if it comes back.
+                if let Some(c) = self.chunks.get_mut(&(cx, cz)) {
+                    c.mesh_in_flight = false;
+                    c.dirty = true;
+                }
+                continue;
+            }
+            if !budget.allow() {
+                self.backlog.push(JobResult::Mesh { cx, cz, mesh });
+                continue;
+            }
+            if let Some(c) = self.chunks.get_mut(&(cx, cz)) {
+                c.mesh_in_flight = false;
+                if let Some(old) = c.mesh.take() {
+                    sink.free(old);
+                }
+                c.mesh = Some(sink.upload(&mesh));
+                c.props = mesh.props;
+                c.props.shrink_to_fit();
+            }
+        }
+        for (tx, tz, mesh) in fars {
+            if !budget.allow() {
+                self.backlog.push(JobResult::Far { tx, tz, mesh });
+                continue;
+            }
+            self.far_in_flight = self.far_in_flight.saturating_sub(1);
+            if let Some(t) = self.far.get_mut(&(tx, tz)) {
+                if let Some(old) = t.mesh.take() {
+                    sink.free(old);
+                }
+                t.mesh = Some(sink.upload(&mesh));
+            }
+        }
+        if !self.backlog.is_empty() {
+            self.settled = false;
         }
 
         // 2. Edits are re-meshed ahead of everything else.
@@ -399,7 +457,6 @@ impl World {
             self.offsets.sort_by_key(|o| o.0 * o.0 + o.1 * o.1);
         }
         let cap = (pool.thread_count() * 3).max(4);
-        let mesh_r2 = radius * radius + radius;
         let mut loads = 0;
         let mut waiting = false;
         for i in 0..self.offsets.len() {
@@ -446,7 +503,7 @@ impl World {
             }
         }
         let far_waiting = self.update_far(ccx, ccz, pool, sink, waiting);
-        self.settled = !waiting && !far_waiting && pool.in_flight == 0;
+        self.settled = !waiting && !far_waiting && pool.in_flight == 0 && self.backlog.is_empty();
     }
 
     /// Request and drop distant-terrain tiles. Detailed chunks come first:
@@ -548,6 +605,21 @@ impl World {
             }
         }
         // Distant terrain is cheap to make again with the new textures.
+        for t in core::mem::take(&mut self.far).into_values() {
+            if let Some(m) = t.mesh {
+                sink.free(m);
+            }
+        }
+        self.far_center = (i32::MIN, 0, 0);
+        self.settled = false;
+    }
+
+    /// The pictures changed but not the blocks (the TEXTURE SIZE, the HD atlas was built again):
+    /// every mesh is made again, since the HD faces' coordinates are in the atlas's own units.
+    pub fn remesh_all(&mut self, sink: &mut dyn MeshSink) {
+        for c in self.chunks.values_mut() {
+            c.dirty = c.data.is_some();
+        }
         for t in core::mem::take(&mut self.far).into_values() {
             if let Some(m) = t.mesh {
                 sink.free(m);

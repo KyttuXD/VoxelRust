@@ -103,7 +103,7 @@ texture <id> paint <style> colors <#rrggbb|r g b|role=#rrggbb>... [gradient <dir
 palette <name> <colours...> [gradient vertical|horizontal|diagonal|radial]
                                           declare a palette (before the textures that use it)
 texture <id> flat <r> <g> <b> [noise <n>] a flat colour; with `noise` (any number) a block face with a darker frame
-texture <id> file <image>                 a PNG, JPEG, GIF, BMP or TGA file (any size, fitted to 16 x 16), path relative to this file
+texture <id> file <image>                 a PNG, JPEG, GIF, BMP or TGA file, path relative to this file; a square of 16 to 512 pixels (a multiple of 16) is an HD tile (see TEXTURING.md), any other size is fitted to 16 x 16
 ```
 
 Colours are three numbers 0..255, or (in `texture` and `palette` lines) `#rrggbb`.
@@ -845,7 +845,7 @@ entity <id>
   weight <0..1000>          relative chance of spawning (default 10; 0 = never)
   drops <item> [<count>]    left behind when killed in survival (count 1..64, default 1)
   loot <item> [<most>] [<percent>]  more it may leave: 1 to <most> of it, with that chance (repeat the line for more items)
-  trait <names...>          flees herd jumps territorial hunter prey lazy pack follows
+  trait <names...>          flees herd jumps territorial hunter prey lazy pack follows watches
   anim walk | hop | slither | flap | scuttle | waddle | float
   variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>] [biomes <names...>]   another look
   baby <size> <seconds>     it has young: how small, and how long they take to grow
@@ -878,9 +878,12 @@ Behaviours:
 
 Traits (one `trait` line may list several; what each does in play is in
 [CREATURES.md](CREATURES.md#temperaments)): `flees`, `herd`, `jumps`,
-`territorial`, `hunter`, `prey`, `lazy`, `pack`, `follows`. A `territorial`
+`territorial`, `hunter`, `prey`, `lazy`, `pack`, `follows`, `watches`. A `territorial`
 or `pack` creature uses its `damage` when it turns on a player; a `hunter`
-uses it on `prey`.
+uses it on `prey`. A creature whose model has a bone called `head` turns it toward the
+nearest player within 12 blocks (up to 70 degrees to the sides and 40 up or down, smoothly; not
+while asleep in a bed or running away from a player with `flees`); `watches` makes that 48 blocks.
+Scripts may force a look (`set_creature_look`, see [SCRIPTING.md](SCRIPTING.md#giants-model-control-and-state)).
 
 `anim` chooses how the model moves: `walk` (the default), `hop`, `slither`
 (no leg swing; body and tail weave), `flap` (wings beat), `scuttle` (quick
@@ -1629,19 +1632,19 @@ editing. Change any of them in an image editor and copy the ones you changed
 into the `textures/` folder of the data folder (the game makes it when it
 starts). They replace the data's picture of the same id the next time the
 game starts or packs are reloaded, in singleplayer and on servers alike. A
-picture can be a PNG, JPEG, GIF, BMP or TGA (`<id>.png`, `<id>.jpg`, ...) of any size, fitted to 16 x 16; delete the file to get the original back. JPEG is read as baseline only (not progressive); a GIF gives its first picture.
+picture can be a PNG, JPEG, GIF, BMP or TGA (`<id>.png`, `<id>.jpg`, ...), a square of 16 to 512 pixels (an HD tile) or any other size fitted to 16 x 16; delete the file to get the original back. JPEG is read as baseline only (not progressive); a GIF gives its first picture.
 
 ### Texture packs
 
-`voxelrust --texture-pack DIR` (repeat it for several; later ones win), or
-`texture_pack=DIR|DIR` in `settings.txt`, uses a folder of pictures in the
+`voxelrust --texture-pack DIR` (repeat it for several; later ones win) adds a folder of pictures in the
 usual Minecraft-style layout (`assets/<name>/textures/block/*.png` and
 `.../item/*.png`, or a plain folder of PNG files). A texture is taken from a
 pack when the pack has a picture of that name, or one the game knows it by
 (a table of names in `src/content/textures.rs`: `grass_top` is `grass_block_top`,
 `wood_pick` is `wooden_pickaxe`, `crystal_*` tools are `diamond_*`, `pine` is
 `spruce`, crops by stage, and so on). Tall pictures (animation strips) give
-their first frame, other sizes are fitted to 16 x 16, and the grey textures
+their first frame, squares of 16 to 512 pixels (multiples of 16) are HD tiles
+(see [TEXTURING.md](TEXTURING.md#hd-textures)), other sizes are fitted to 16 x 16, and the grey textures
 the packs expect a biome to colour (grass, leaves, water) are tinted green and
 blue. A picture in the data folder's `textures/` folder beats the pack's; what
 neither has is made as before.

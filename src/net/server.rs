@@ -17,6 +17,12 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+/// The server's half of accounts (PIN logins, the administrators' commands): a child module
+/// so that it reaches the fields of the server and its connections.
+#[path = "accounts/server_side.rs"]
+mod accounts_flow;
+use self::accounts_flow::Gate;
+
 pub struct Config {
     pub port: u16,
     pub seed: u32,
@@ -43,8 +49,10 @@ struct Conn {
     joined: bool,
     /// Where this player last said they were, for telling newcomers.
     last_move: Option<([f64; 3], f32, f32, u16, u8)>,
-    skin: Vec<u8>,
-    skin_slim: bool,
+    /// This player's skin as the server keeps it (see `net::skinslot`).
+    skin: crate::net::skinslot::SkinSlot,
+    /// The protocol version their game said it speaks.
+    proto: u16,
     /// What this player's voice chat is set to (`VOICE_` flags); 0 until they say.
     voice_flags: u8,
     voice_bucket: crate::net_voice::Bucket,
@@ -66,6 +74,9 @@ struct Conn {
     mods_asked: bool,
     /// The status effects they last said they have, for telling newcomers.
     effects: Vec<(String, u8, u32)>,
+    /// Which protocol they speak, whether they are logged in to an account, and the login
+    /// challenge they owe an answer to (see `net/accounts`).
+    acct: crate::net::accounts::state::ConnAuth,
 }
 
 pub struct Server {
@@ -102,6 +113,8 @@ pub struct Server {
     pub creative: Vec<String>,
     /// Voice chat: who is muted and how far a voice carries (see [`crate::net_voice`]).
     pub voice: crate::net_voice::Rules,
+    /// Accounts: the settings, the accounts, the limits on logins (see `net/accounts`).
+    pub acct: crate::net::accounts::state::AccountState,
 }
 
 const SEND_TIMEOUT: u32 = 3000;
@@ -122,7 +135,7 @@ impl Server {
         let listener = TcpListener::bind(cfg.port)?;
         Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
             kept: BTreeMap::new(), kept_bytes: 0, ops: Vec::new(), banned: Vec::new(), ops_dirty: false, spots: BTreeMap::new(), spots_dirty: false,
-            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE, perms: Vec::new(), creative: Vec::new(), voice: Default::default() })
+            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE, perms: Vec::new(), creative: Vec::new(), voice: Default::default(), acct: Default::default() })
     }
 
     /// A player number no one here has: never 0 (the server) or 65535 (what
@@ -174,7 +187,7 @@ impl Server {
     pub fn flags_for(&self, who: &str) -> u8 {
         use crate::proto::*;
         let lower = who.to_ascii_lowercase();
-        let mut f = if self.ops.iter().any(|o| o.eq_ignore_ascii_case(who)) {
+        let mut f = if self.ops.iter().any(|o| o.eq_ignore_ascii_case(who)) || self.is_admin(who) {
             PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE
         } else {
             self.perms.iter().find(|p| p.0 == lower).map_or(self.default_perms, |p| p.1)
@@ -272,7 +285,7 @@ impl Server {
     pub fn command(&mut self, who: &str, line: &str) -> String {
         let w: Vec<&str> = line.split_whitespace().collect();
         let arg = |k: usize| w.get(k).copied().unwrap_or("");
-        let is_op = self.ops.iter().any(|o| o.eq_ignore_ascii_case(who));
+        let is_op = self.ops.iter().any(|o| o.eq_ignore_ascii_case(who)) || self.is_admin(who);
         let online = |s: &Server, name: &str| s.conns.iter().position(|c| c.joined && !c.gone && c.name.eq_ignore_ascii_case(name));
         match arg(0).to_ascii_lowercase().as_str() {
             "/version" => {
@@ -280,9 +293,12 @@ impl Server {
                 alloc::format!("server: {} protocol {}", crate::net::version::describe(&me), VERSION)
             }
             "/list" => {
-                let names: Vec<String> = self.conns.iter().filter(|c| c.joined && !c.gone).map(|c| if self.ops.iter().any(|o| o.eq_ignore_ascii_case(&c.name)) { alloc::format!("{}*", c.name) } else { c.name.clone() }).collect();
-                alloc::format!("online ({}): {}   (* = operator)", names.len(), names.join(", "))
+                let names: Vec<String> = self.conns.iter().filter(|c| c.joined && !c.gone).map(|c| if self.ops.iter().any(|o| o.eq_ignore_ascii_case(&c.name)) || self.is_admin(&c.name) { alloc::format!("{}*", c.name) } else { c.name.clone() }).collect();
+                alloc::format!("online ({}): {}   (* = operator or administrator)", names.len(), names.join(", "))
             }
+            "/help" if arg(1) == "accounts" => String::from("accounts: /register PIN PIN (protect your name; 4 or 6 digits)  /pin OLD NEW  /forgetpin (the game, not the server).  administrators: /resetpin NAME [PIN]  /accounts"),
+            "/register" | "/pin" | "/login" => self.plain_account_command(),
+            "/resetpin" | "/accounts" => self.admin_command(who, &w),
             "/help" => String::from("server: /list /version /gamemode creative|survival (if allowed)   operators: /op /deop /kick /ban /pardon NAME  /say TEXT  /time 0..1  /perm NAME [+build -gamemode +commands +voice]  /default [+build ...]  /mute NAME  /unmute NAME  /voicerange BLOCKS  /gamemode NAME creative|survival"),
             "/gamemode" if arg(2).is_empty() || !is_op => {
                 // Your own game mode, if you may choose it.
@@ -444,6 +460,23 @@ impl Server {
         }
     }
 
+    /// Pass on the skin of the player at `from` to everyone else, the big
+    /// original to clients that take it and the 64 x 64 one to the others.
+    fn relay_skin(&mut self, from: usize) {
+        let id = self.conns[from].id;
+        let new = self.conns[from].skin.wire_for(id, crate::net::skinslot::HD_PROTOCOL);
+        let old = self.conns[from].skin.wire_for(id, 0);
+        for (k, c) in self.conns.iter_mut().enumerate() {
+            if k == from || !c.joined || c.gone {
+                continue;
+            }
+            let bytes = if c.proto >= crate::net::skinslot::HD_PROTOCOL { &new } else { &old };
+            if !bytes.is_empty() && c.stream.send_all(bytes, SEND_TIMEOUT).is_err() {
+                c.gone = true;
+            }
+        }
+    }
+
     fn broadcast(&mut self, msg: &Msg, except: u16) {
         let bytes = msg.encode();
         for c in self.conns.iter_mut().filter(|c| c.joined && !c.gone && c.id != except) {
@@ -507,7 +540,9 @@ impl Server {
         for c in self.conns.iter_mut() {
             c.voice_bucket.refill(dt);
             c.throttle.refill(dt);
+            c.skin.tick(dt);
         }
+        self.account_tick(dt);
         for _ in 0..8 {
             match self.listener.accept(0) {
                 Ok(Some(mut stream)) => {
@@ -519,7 +554,7 @@ impl Server {
                         continue;
                     }
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new() });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default() });
                 }
                 _ => break,
             }
@@ -545,7 +580,7 @@ impl Server {
             let c = &mut self.conns[i];
             c.quiet = if got_any { 0 } else { c.quiet + 1 };
             c.idle = if got_any { 0.0 } else { c.idle + dt };
-            if c.idle > IDLE_SECONDS || (!c.joined && c.quiet > 4000) {
+            if c.idle > IDLE_SECONDS || (!c.joined && c.quiet > 4000 && c.acct.pending.is_none()) {
                 c.gone = true; // said nothing for ages (or never said hello)
                 continue;
             }
@@ -594,7 +629,8 @@ impl Server {
                         Msg::Chat { .. } => Some(Class::Chat),
                         Msg::State { channel: crate::proto::channel::MODMSG, .. } => Some(Class::Mod),
                         Msg::State { .. } => Some(Class::State),
-                        Msg::Skin { .. } => Some(Class::Skin),
+                        Msg::Skin { .. } | Msg::SkinBegin { .. } => Some(Class::Skin),
+                        Msg::SkinPart { .. } => Some(Class::SkinPart),
                         _ => None,
                     };
                     if let Some(class) = class {
@@ -609,7 +645,7 @@ impl Server {
                     }
                 }
                 match msg {
-                    Msg::Hello { version, content, name } if !joined => {
+                    Msg::Hello { version, content, name } if !joined && self.conns[i].acct.pending.is_none() => {
                         // Content need not match: the server sends its own.
                         let _ = content;
                         // The name as the server will know it: bans and the like are
@@ -618,7 +654,7 @@ impl Server {
                         if name.is_empty() {
                             name = String::from("Player");
                         }
-                        let refuse = if version != VERSION {
+                        let refuse = if !crate::net::accounts::version_accepted(version) {
                             // Both versions, and who must update (the build name does not matter).
                             Some(crate::net::version::mismatch_reason(version, VERSION, &crate::net::version::local()))
                         } else if self.banned.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
@@ -626,74 +662,27 @@ impl Server {
                         } else if self.players() >= self.cfg.max_players {
                             Some(String::from("the server is full"))
                         } else {
-                            None
+                            // A name with an account is logged in to first (see net/accounts).
+                            match self.hello_gate(i, version, &name) {
+                                Ok(Gate::Wait) => continue,
+                                Ok(Gate::Guest) => None,
+                                Err(reason) => Some(reason),
+                            }
                         };
                         if let Some(reason) = refuse {
                             let _ = self.conns[i].stream.send_all(&Msg::Refuse { reason }.encode(), SEND_TIMEOUT);
                             self.conns[i].gone = true;
                             break;
                         }
-                        // Two players never share a name (capital letters do not
-                        // make a different one: permissions go by the name without them).
-                        let taken = |n: &str, conns: &[Conn]| conns.iter().any(|c| c.joined && !c.gone && c.name.eq_ignore_ascii_case(n));
-                        let mut n = 2;
-                        let base = name.clone();
-                        while taken(&name, &self.conns) {
-                            name = alloc::format!("{}{}", base, n);
-                            n += 1;
-                        }
-                        let id = self.fresh_id();
-                        // Whoever is first through the door holds the keys.
-                        if self.ops.is_empty() {
-                            self.ops.push(name.clone());
-                            self.ops_dirty = true;
-                        }
-                        // Tell the newcomer about the world and who is here.
-                        let mut out = Msg::Welcome { id, seed: self.cfg.seed, time: self.time, kind: self.cfg.kind.clone() }.encode();
-                        let me = crate::net::version::local();
-                        out.extend(Msg::Info { build: me.build, release: me.release, commit: me.commit }.encode());
-                        // The content pack first (even when empty), so the
-                        // edits that follow are read with the right blocks.
-                        let pack = &self.cfg.pack[..];
-                        let parts: Vec<&[u8]> = if pack.is_empty() { alloc::vec![&pack[..]] } else { pack.chunks(crate::proto::MAX_PACK_PART).collect() };
-                        for (k, part) in parts.iter().enumerate() {
-                            out.extend(Msg::Pack { last: k + 1 == parts.len(), data: part.to_vec() }.encode());
-                        }
-                        // Then what mods can be downloaded (even if none).
-                        out.extend(Msg::ModList { mods: self.cfg.mods.iter().map(|m| m.info()).collect() }.encode());
-                        for other in self.conns.iter().filter(|c| c.joined && !c.gone) {
-                            out.extend(Msg::Join { id: other.id, name: other.name.clone() }.encode());
-                            if !other.skin.is_empty() {
-                                out.extend(Msg::Skin { id: other.id, png: other.skin.clone(), slim: other.skin_slim }.encode());
-                            }
-                            if let Some((pos, yaw, pitch, held, pose)) = other.last_move {
-                                out.extend(Msg::Move { id: other.id, pos, yaw, pitch, held, pose }.encode());
-                            }
-                            if !other.effects.is_empty() {
-                                out.extend(Msg::Effects { id: other.id, list: other.effects.clone() }.encode());
-                            }
-                        }
-                        let all: Vec<(i32, i32, i32, u16)> = self.edits.iter().map(|(k, &b)| (k.0, k.1, k.2, b)).collect();
-                        for part in all.chunks(4000) {
-                            out.extend(Msg::Edits { list: part.to_vec() }.encode());
-                        }
-                        for ((channel, key), data) in &self.kept {
-                            out.extend(Msg::State { id: 0, channel: *channel, keep: true, key: key.clone(), data: data.clone() }.encode());
-                        }
-                        // Back where they left off.
-                        if let Some(s) = self.spots.get(&name.to_ascii_lowercase()) {
-                            out.extend(Msg::State { id: 0, channel: crate::proto::channel::PLAYER, keep: false, key: String::from("you"), data: spot_text(s).into_bytes() }.encode());
-                        }
-                        if self.conns[i].stream.send_all(&out, 4_000).is_err() {
-                            self.conns[i].gone = true;
+                        if !self.admit(i, name, &mut log) {
                             break;
                         }
-                        self.conns[i].id = id;
-                        self.conns[i].name = name.clone();
-                        self.conns[i].joined = true;
-                        self.send_perms(Some(i));
-                        log.push(alloc::format!("{} joined ({} online)", name, self.players()));
-                        self.broadcast(&Msg::Join { id, name }, id);
+                    }
+                    // A login, a registration or a PIN change (see net/accounts).
+                    Msg::AuthLogin { .. } | Msg::AuthRegister { .. } | Msg::AuthChange { .. } | Msg::AuthAsk { .. } => {
+                        if !self.auth_message(i, msg, &mut log) {
+                            break;
+                        }
                     }
                     Msg::Move { pos, yaw, pitch, held, pose, .. } if joined => {
                         self.conns[i].last_move = Some((pos, yaw, pitch, held, pose));
@@ -770,14 +759,24 @@ impl Server {
                             self.broadcast(&Msg::State { id, channel, keep, key, data }, id);
                         }
                     }
+                    // Skins are taken only if their header and size are a skin's, at most
+                    // once in five seconds, and relayed in the form each client knows.
                     Msg::Skin { png, slim, .. } if joined => {
-                        self.conns[i].skin = png.clone();
-                        self.conns[i].skin_slim = slim;
-                        self.broadcast(&Msg::Skin { id, png, slim }, id);
+                        if self.conns[i].skin.on_whole(png, slim) {
+                            self.relay_skin(i);
+                        }
+                    }
+                    Msg::SkinBegin { size, side, slim, .. } if joined => {
+                        let _ = self.conns[i].skin.on_begin(size, side, slim);
+                    }
+                    Msg::SkinPart { data, last, .. } if joined => {
+                        if self.conns[i].skin.on_part(&data, last) {
+                            self.relay_skin(i);
+                        }
                     }
                     Msg::Chat { text, .. } if joined && text.starts_with('/') => {
                         let name = self.conns[i].name.clone();
-                        log.push(alloc::format!("{} ran {}", name, text));
+                        log.push(alloc::format!("{} ran {}", name, accounts_flow::loggable(&text)));
                         let reply = self.command(&name, &text);
                         let bytes = Msg::Chat { id: 0, text: reply }.encode();
                         if self.conns[i].stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
@@ -823,7 +822,9 @@ impl Server {
                 let c = self.conns.swap_remove(k);
                 if c.joined {
                     if let Some((pos, yaw, pitch, ..)) = c.last_move {
-                        self.remember_spot(&c.name, [pos[0], pos[1], pos[2], yaw as f64, pitch as f64]);
+                        // (An account's place is kept under its name, a guest's under theirs.)
+                        let key = c.acct.account.clone().unwrap_or_else(|| c.name.clone());
+                        self.remember_spot(&key, [pos[0], pos[1], pos[2], yaw as f64, pitch as f64]);
                     }
                     log.push(alloc::format!("{} left ({} online)", c.name, self.players()));
                     self.broadcast(&Msg::Leave { id: c.id }, c.id);
@@ -858,7 +859,7 @@ impl Server {
     /// Note where everyone who is here stands now (done every few seconds and as the server stops,
     /// so a restart or a crash costs little).
     pub fn snapshot_spots(&mut self) {
-        let here: Vec<(String, [f64; 5])> = self.conns.iter().filter(|c| c.joined && !c.gone).filter_map(|c| c.last_move.map(|m| (c.name.clone(), [m.0[0], m.0[1], m.0[2], m.1 as f64, m.2 as f64]))).collect();
+        let here: Vec<(String, [f64; 5])> = self.conns.iter().filter(|c| c.joined && !c.gone).filter_map(|c| c.last_move.map(|m| (c.acct.account.clone().unwrap_or_else(|| c.name.clone()), [m.0[0], m.0[1], m.0[2], m.1 as f64, m.2 as f64]))).collect();
         for (n, s) in here {
             self.remember_spot(&n, s);
         }
@@ -1003,7 +1004,7 @@ mod tests {
         // One still in use after the counter went round is not given out again.
         let mut s = Server::bind(plain_config()).unwrap();
         let stream = crate::sys::net::TcpStream::connect("127.0.0.1", s.port(), 2000).unwrap();
-        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new() });
+        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default() });
         s.next_id = 6;
         assert_eq!((s.fresh_id(), s.fresh_id()), (6, 8));
     }

@@ -29,6 +29,10 @@ pub struct Posing {
     /// keep up with the ground whatever the speed.
     pub gait: f32,
     health: i32,
+    /// How much of a run the body is in (0..1, eased; see `pose::gait`).
+    pub run: f32,
+    /// A gait held for a still (`--show bends:NAME`): phase, stride and run.
+    pub shown_gait: Option<(f32, f32, f32)>,
     /// For scripted screenshots (`--show pose:NAME`, `--show emote:ID@SECONDS`): a posture
     /// held whatever the player does, and an emote kept at the time it was started at.
     pub forced: Option<Kind>,
@@ -82,6 +86,12 @@ impl Posing {
         if self.stroke > 1000.0 {
             self.stroke -= 1000.0;
         }
+        // A run builds up and fades over a fifth of a second or so.
+        let want_run = if i.on_ground && !i.crouching { pose::gait::run_amount(speed) } else { 0.0 };
+        self.run += (want_run - self.run) * (i.dt * 8.0).clamp(0.0, 1.0);
+        if let Some((_, _, r)) = self.shown_gait {
+            self.run = r;
+        }
         // About two radians of leg swing per block walked; a little drift in the air.
         self.gait += (if i.on_ground { speed * 2.1 } else { 1.0 }) * i.dt;
         if self.gait > 1000.0 {
@@ -133,6 +143,7 @@ impl Posing {
         b.flags = a.flags | if self.carrying { pose::CARRY } else { 0 };
         b.swing = a.swing;
         b.draw = a.draw;
+        b.run = self.run.clamp(0.0, 1.0);
         if let Some((n, t)) = self.emote {
             b.emote = pose::emote::code(n);
             b.emote_t = t;
@@ -244,6 +255,25 @@ mod tests {
         }
         assert_eq!(p.kind(), Kind::Stand);
         assert_eq!(p.smooth.weight(Kind::Stand), 1.0);
+    }
+
+    #[test]
+    fn sprinting_builds_a_run_and_walking_does_not() {
+        let mut p = Posing::default();
+        let going = |v: f32| Inputs { vel: [v, 0.0, 0.0], ..still(0.1) };
+        for _ in 0..20 {
+            p.update(&going(4.3));
+        }
+        assert_eq!(p.run, 0.0);
+        for _ in 0..30 {
+            p.update(&going(5.6));
+        }
+        assert!(p.run > 0.95 && p.body(Activity::default()).run > 0.95);
+        // In the air or crouching there is no run.
+        for _ in 0..60 {
+            p.update(&Inputs { on_ground: false, ..going(5.6) });
+        }
+        assert!(p.run < 0.01);
     }
 
     #[test]

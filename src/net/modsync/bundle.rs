@@ -31,6 +31,11 @@ impl Refusal {
     }
 }
 
+fn is_picture(path: &str) -> bool {
+    let p = path.to_ascii_lowercase();
+    [".png", ".jpg", ".gif", ".bmp", ".tga"].iter().any(|e| p.ends_with(e))
+}
+
 /// Check a set of files against the rules: every path clean, none twice
 /// (also ignoring case, as some file systems do), and the size limits.
 pub fn check(files: &[(String, Vec<u8>)]) -> Result<(), Refusal> {
@@ -45,6 +50,15 @@ pub fn check(files: &[(String, Vec<u8>)]) -> Result<(), Refusal> {
         }
         if data.len() > MAX_FILE_BYTES {
             return Err(Refusal::FileTooBig);
+        }
+        // A picture says its size in its header: one that promises more than the game reads
+        // (a few kilobytes that would become gigabytes) is refused before anything decodes it.
+        if is_picture(path) {
+            if let Some((w, h)) = crate::hd::size::peek_size(data) {
+                if w > crate::image::MAX_SIDE || h > crate::image::MAX_SIDE {
+                    return Err(Refusal::FileTooBig);
+                }
+            }
         }
         total += data.len();
         if total > MAX_MOD_BYTES {
@@ -164,8 +178,18 @@ mod tests {
         assert_eq!(encode(&[f("a.png", &big)]), Err(Refusal::FileTooBig));
         let many: Vec<(String, Vec<u8>)> = (0..MAX_FILES + 1).map(|i| f(&alloc::format!("f{}.txt", i), b"")).collect();
         assert_eq!(encode(&many), Err(Refusal::TooManyFiles));
+        // A picture whose header promises 60000 x 60000 pixels is refused unread.
+        let mut bomb = alloc::vec![0x89, b'P', b'N', b'G', 13, 10, 26, 10, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
+        bomb.extend_from_slice(&60000u32.to_be_bytes());
+        bomb.extend_from_slice(&60000u32.to_be_bytes());
+        bomb.extend_from_slice(&[8, 6, 0, 0, 0]);
+        assert_eq!(encode(&[f("tex/a.png", &bomb)]), Err(Refusal::FileTooBig));
+        // ...and a 512 x 512 one (HD tile) is welcome.
+        let hd = crate::png::encode(512, 512, &alloc::vec![5u8; 512 * 512 * 4]);
+        assert!(hd.len() < MAX_FILE_BYTES);
+        assert!(encode(&[f("tex/hd.png", &hd)]).is_ok());
         let chunk = alloc::vec![0u8; MAX_FILE_BYTES];
-        let heavy: Vec<(String, Vec<u8>)> = (0..5).map(|i| f(&alloc::format!("f{}.png", i), &chunk)).collect();
+        let heavy: Vec<(String, Vec<u8>)> = (0..MAX_MOD_BYTES / MAX_FILE_BYTES + 1).map(|i| f(&alloc::format!("f{}.png", i), &chunk)).collect();
         assert_eq!(check(&heavy), Err(Refusal::ModTooBig));
     }
 

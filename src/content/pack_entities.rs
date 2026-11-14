@@ -188,15 +188,14 @@ pub fn image(name: &str) -> Option<Image> {
     pack_image(name).or_else(|| mod_image(name)).or_else(|| builtin_image(name))
 }
 
-/// The 64 x 64 skin picture of a skin (`explorer`..., or a mod's own: its
-/// `picture skin_<name>`): a pack's if it has one of that size, else the
-/// game's own, else a mod's of that size.
+/// The skin picture of a skin (`explorer`..., or a mod's own: its
+/// `picture skin_<name>`), 64 x 64 or bigger (HD): a pack's if it has one of a
+/// skin's size, else the game's own, else a mod's of such a size.
 pub fn skin_image(skin: &str) -> Option<Image> {
     let name = skin_picture(skin);
-    pack_image(&name)
-        .filter(|i| i.w == 64 && i.h == 64)
-        .or_else(|| builtin_image(&name))
-        .or_else(|| mod_image(&name).filter(|i| i.w == 64 && i.h == 64))
+    // (A skin is square, a multiple of 64 wide up to 4096: see `skin_grid`.)
+    let is_skin = |i: &Image| i.w == i.h && crate::skin_grid::valid_side(i.w);
+    pack_image(&name).filter(is_skin).or_else(|| builtin_image(&name)).or_else(|| mod_image(&name).filter(is_skin))
 }
 
 /// A picture is usable for a model if it has the shape of the model's texture
