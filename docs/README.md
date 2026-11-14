@@ -8,6 +8,7 @@
 | [EARTH.md](EARTH.md) | Real-world terrain: data sources and attribution, scales, roads, buildings and fields, the map screen |
 | [MODDING.md](MODDING.md) | Content packs, where mods are looked for, where mods are looked for (no mod comes with the game), mods from a server and switching mods on and off, reloading, scripts and pack commands (events, variables, conditions), Blockbench models, player skins |
 | [SCRIPT-COMPAT.md](SCRIPT-COMPAT.md) | Which mods run as scripts with no compiled code, what each one needs, the matrix of mod by capability (`tools/script_compat.py`), what stays native (Earth) and what the two protected mods would still lack |
+| [SOUND.md](SOUND.md) | How the game sounds: layered grain beds for rain, wind, water, lava, fire and caves, thunder with distance, the variation and limits on repeated sounds, the soft limiter, the AMBIENCE VOLUME setting |
 | [SCRIPTING.md](SCRIPTING.md) | Mod scripts: plain `.rs` files, a small subset of Rust, that the game runs while it plays (no compiling): the language, the library, the hooks, the host API (`give`, `spawn`, `set_block`...), limits and errors, `--script-check`, worked examples |
 | [SHADERS.md](SHADERS.md) | Post-processing shaders from mods: the `shader` line, writing GLSL ES 1.00 fragment shaders, the uniforms (`u_time`, `u_sun`, `u_daylight`, `u_underwater`...), numbers from scripts, what happens on an error, how the passes are drawn |
 | [DATA.md](DATA.md) | The content file format: every keyword, including sounds, dimensions, features, commands and scripts |

@@ -465,26 +465,28 @@ w("""
 # Every sound is made on the spot from a burst of noise and a gliding tone.
 #   sound <id> <effects|steps|ui> <seconds> <noise 0..1> <hz from> <hz to> <low-pass 0..1> <loudness> [caption]
 # The caption is what subtitles show. Redefine an id to retune a sound; give
-# blocks `sound <id>` (breaking and placing) and creatures `sound <id>` (their call).""")
+# blocks `sound <id>` (breaking and placing) and creatures `sound <id>` (their call).
+# `rain` and `wave` are only the subtitles of the rain and sea beds, which the game
+# builds from grains (docs/SOUND.md); `thunder` is the subtitle and tone of its takes.""")
 for line in ["step steps 0.09 0.95 90 60 0.10 0.55 Footsteps", "break effects 0.22 0.90 160 70 0.30 0.80 Block breaks",
              "place effects 0.10 0.70 220 140 0.22 0.70 Block placed", "hurt effects 0.25 0.25 420 180 0.50 0.80 Something is hurt",
-             "click ui 0.05 0.20 900 700 0.80 0.45", "pop effects 0.08 0.10 500 900 0.80 0.50 Item picked up",
+             "click ui 0.05 0.20 900 700 0.60 0.45", "pop effects 0.08 0.10 500 900 0.60 0.45 Item picked up",
              "splash effects 0.35 1.00 100 100 0.45 0.60 Splash", "thunder effects 1.80 1.00 60 40 0.04 1.00 Thunder",
              "rain effects 0.45 1.00 100 100 0.60 0.22 Rain", "rumble effects 0.60 0.90 46 34 0.03 0.90 The ground rumbles",
              "wave effects 1.60 1.00 80 60 0.07 0.30 Waves",
-             "glass effects 0.18 0.55 1800 900 0.90 0.60 Glass breaks", "wood effects 0.14 0.75 240 150 0.25 0.75 Wood knocks",
+             "glass effects 0.18 0.55 1800 900 0.55 0.50 Glass breaks", "wood effects 0.14 0.75 240 150 0.25 0.75 Wood knocks",
              "door effects 0.16 0.60 180 120 0.20 0.70 Door", "bow effects 0.20 0.30 240 520 0.60 0.60 Bowstring",
-             "bow_draw effects 0.50 0.25 120 300 0.45 0.40 Bowstring creaks", "bow_load effects 0.09 0.60 1400 700 0.80 0.50 Crossbow clicks",
+             "bow_draw effects 0.50 0.25 120 300 0.45 0.40 Bowstring creaks", "bow_load effects 0.09 0.60 1400 700 0.55 0.45 Crossbow clicks",
              "munch effects 0.06 0.85 320 200 0.35 0.45 Biting", "gulp effects 0.14 0.35 200 110 0.30 0.45 Drinking",
              "moo effects 0.70 0.05 150 110 0.30 0.50 Cow lows", "baa effects 0.45 0.10 420 340 0.40 0.45 Sheep bleats",
              "oink effects 0.25 0.35 260 180 0.30 0.50 Pig grunts", "cluck effects 0.12 0.15 700 500 0.60 0.40 Hen clucks",
              "bark effects 0.14 0.30 420 260 0.50 0.60 Dog barks", "meow effects 0.40 0.05 700 520 0.60 0.40 Cat meows",
              "howl effects 1.40 0.05 320 520 0.50 0.55 Wolf howls", "growl effects 0.60 0.60 110 80 0.15 0.70 Growling",
-             "hiss effects 0.50 1.00 100 100 0.95 0.35 Hissing", "chirp effects 0.10 0.02 2400 3200 0.90 0.30 Bird chirps",
+             "hiss effects 0.50 1.00 100 100 0.45 0.30 Hissing", "chirp effects 0.10 0.02 2400 3200 0.60 0.22 Bird chirps",
              "buzz effects 0.40 0.20 210 230 0.70 0.20 Buzzing", "groan effects 0.90 0.30 120 80 0.20 0.60 Groaning",
-             "rattle effects 0.30 0.85 900 700 0.85 0.45 Bones rattle", "roar effects 1.20 0.70 140 60 0.12 1.00 A roar",
-             "chime effects 0.60 0.02 1200 1180 0.90 0.40 Chime", "rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails",
-             "whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh", "sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling",
+             "rattle effects 0.30 0.85 900 700 0.50 0.45 Bones rattle", "roar effects 1.20 0.70 140 60 0.12 1.00 A roar",
+             "chime effects 0.60 0.02 1200 1180 0.60 0.40 Chime", "rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails",
+             "whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh", "sizzle effects 0.50 1.00 100 100 0.45 0.22 Sizzling",
              "explosion effects 1.10 1.00 90 30 0.06 1.00 Explosion",
              "chest_open effects 0.30 0.40 130 320 0.45 0.55 Chest opens", "chest_close effects 0.16 0.60 260 100 0.40 0.65 Chest closes"]:
     w("sound " + line)

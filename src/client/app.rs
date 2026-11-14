@@ -404,6 +404,7 @@ impl App {
     fn apply_settings(&mut self) {
         let s = &self.settings;
         self.audio.set_volumes(s.master_volume, s.effects_volume, s.steps_volume, s.ui_volume);
+        self.audio.set_ambience_volume(s.ambience_volume);
         self.distance = self.distance.min(s.distance).max(2);
         if s.target_fps == 0 {
             self.distance = s.distance;

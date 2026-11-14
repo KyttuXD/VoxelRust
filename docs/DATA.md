@@ -1054,8 +1054,10 @@ sound <id> <effects|steps|ui> <seconds> <noise> <hz from> <hz to> <low-pass> <lo
 | caption | the rest of the line: what SUBTITLES FOR SOUNDS shows. A sound without one has no subtitle | |
 
 All eight parts before the caption are needed. Pitch varies by a tenth
-either way each time, so repeats do not sound identical. Twelve sounds can
-play at once.
+either way each time, so repeats do not sound identical (the game varies
+every play of every sound, and limits how fast one may repeat: see
+[SOUND.md](SOUND.md)). Sixteen sounds can play at once. The low-pass is held
+to 0.6 whatever is written, because brighter noise is a hiss.
 
 ```
 sound thunder effects 1.80 1.00 60 40 0.04 1.00 Thunder
@@ -1087,7 +1089,7 @@ seconds. An MP3 is MPEG-1, 2 or 2.5 layer III at any constant or variable bitrat
 joint stereo); ID3 tags are skipped, and when the encoder's LAME tag says how much silence it added
 at the start and end, that is cut off. Free-format MP3s and the older layers I and II are not read.
 It is turned into one channel at 22050 Hz when the
-pack is read, and its pitch varies a little less than a made sound's.
+pack is read, and its pitch varies by up to 6 percent each play, like a made sound's.
 `loudness` is 0..2 (default 1). A file that cannot be read is a warning in
 the log, and that sound does not exist. Zip packs may hold the files too.
 
@@ -1099,6 +1101,12 @@ Players can also replace any sound, made or recorded, without a pack: put
 `<id>.wav` (or `.flac`, `.aiff`, `.ogg`, `.mp3`) in the `sounds/` folder inside the game's data folder (next to
 `worlds/`), for example `sounds/step.wav` or `sounds/thunder.wav`. They are
 read when the game starts and the log lists them.
+
+A sound may have several takes: files named `<id>_v2.wav`, `<id>_v3.wav`...
+in the `sounds/` folder play with `<id>.wav` in turn, never the same one twice
+in a row (a made sound has four takes of its own). Every play of a sound,
+made or recorded, goes through the same variation of pitch and volume
+(SOUND.md).
 
 A sound is used by naming it:
 
