@@ -242,6 +242,38 @@ for cid, cname, _ in CHESTS:
     block(f"{cid}_chest", f"{cname} Chest", f"{cid}_chest", cat="Storage", hardness=1.4, use="chest",
           box=["1 0 1 15 14 15"])
 
+w("""
+# ---- Crafting tiers ----
+# `use craft` is the crafting table's 3 x 3 grid; `use craft 5` a crafting
+# bench's 5 x 5 and `use craft 7` a workshop's 7 x 7. A recipe needs the
+# smallest grid its pattern fits in (nothing is written for that), and a
+# bigger bench makes everything a smaller one does. The bench is made from a
+# crafting table and the workshop from a bench.""")
+tex("bench5_top", "paint bench5 150 156 166")
+tex("bench5_side", "paint bench_side 150 156 166")
+tex("bench7_top", "paint bench7 100 118 150")
+tex("bench7_side", "paint bench_side 100 118 150")
+block("crafting_bench", "Crafting Bench", "bench5_top bench5_side bench5_side", cat="Shapes", hardness=2.0, tool="pick", use="craft 5")
+block("workshop", "Workshop", "bench7_top bench7_side bench7_side", cat="Shapes", hardness=2.4, tool="pick", use="craft 7")
+w("shaped crafting_bench 1 \"III\" \"ITI\" \"PPP\" with I iron_ingot T crafting_table P @planks")
+w("shaped workshop 1 \"IIIII\" \"IPPPI\" \"IPBPI\" \"IPPPI\" \"IIIII\" with I iron_ingot P @planks B crafting_bench")
+# Showcase recipes that need the bigger grids.
+block("big_chest", "Big Chest", "oak_chest", cat="Storage", hardness=1.6, use="chest", box=["0 0 0 16 15 16"])
+w("shaped big_chest 1 \"PPPPP\" \"P...P\" \"P.C.P\" \"P...P\" \"PPPPP\" with P @planks C oak_chest")
+block("bed_frame", "Four-poster Bed Frame", "planks", cat="Furniture", hardness=1.0, tool="axe",
+      box=["0 0 0 2 16 2", "14 0 0 16 16 2", "0 0 14 2 16 16", "14 0 14 16 16 16", "0 3 0 16 6 16",
+           "0 14 0 16 16 2", "0 14 14 16 16 16", "0 14 2 2 16 14", "14 14 2 16 16 14"])
+w("shaped bed_frame 1 \"S...S\" \"SPPPS\" \"SPPPS\" \"S...S\" with S stick P @planks")
+block("banquet_table", "Banquet Table", "planks", cat="Furniture", hardness=1.4, tool="axe",
+      box=["0 13 0 16 16 16", "6 3 6 10 13 10", "2 0 2 14 3 14"])
+w("shaped banquet_table 1 \"PPPPPPP\" \".S...S.\" \".S...S.\" with P @planks S stick")
+w("shaped golem_statue 1 \"..S..\" \"SSSSS\" \"..S..\" \".S.S.\" \".S.S.\" with S stone")
+tex("heavy_tnt_side", "paint tnt_side 70 70 96")
+tex("heavy_tnt_top", "paint tnt_top 70 70 96")
+tex("heavy_tnt_bottom", "paint tnt_bottom 70 70 96")
+block("heavy_tnt", "Heavy TNT", "heavy_tnt_top heavy_tnt_side heavy_tnt_bottom", cat="Tools", hardness=0, tag="tnt 5")
+w("shaped heavy_tnt 1 \"..T..\" \".TGT.\" \"TGGGT\" \".TGT.\" \"..T..\" with T tnt G gunpowder")
+
 w("\n# ---- Custom shapes are just boxes ----")
 block("planks_post", "Oak Post", "planks", cat="Shapes", hardness=1.2, box=["6 0 6 10 16 10"])
 block("planks_table", "Table", "planks", cat="Shapes", hardness=1.2,
@@ -278,7 +310,7 @@ for iid, name, food in [("apple", "Apple", 3), ("berries", "Berries", 2), ("raw_
 w("""
 # ---- Recipes (survival mode) ----
 # Recipes are laid out in the crafting grid (2 x 2 in the inventory screen,
-# 3 x 3 at a crafting table):
+# 3 x 3 at a crafting table, 5 x 5 at a bench, 7 x 7 at a workshop):
 #   craft  <item> <count> <ingredient> <count> [<ingredient> <count> ...]    shapeless
 #   shaped <item> <count> <row> [<row> ...] with <letter> <ingredient> [<letter> <ingredient> ...]
 #   group  <name> <item> [<item> ...]       @name in a recipe means any of them

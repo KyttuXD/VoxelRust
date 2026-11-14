@@ -272,6 +272,97 @@ mod tests {
         assert!(find(&list, 3, 3, &grid(&["III", ".S.", "..."])).is_none());
     }
 
+    /// A recipe from rows of letters (`.` empty, `I`, `S`, `P`).
+    fn shaped(rows: &[&str]) -> GridRecipe {
+        let cells = rows
+            .iter()
+            .flat_map(|r| r.chars())
+            .map(|c| match c {
+                'I' => ing(I),
+                'S' => ing(S),
+                'P' => ing(P),
+                _ => None,
+            })
+            .collect();
+        GridRecipe::shaped((20, 1), rows[0].len(), rows.len(), cells).unwrap()
+    }
+
+    #[test]
+    fn a_five_wide_recipe_matches_a_bench_anywhere_and_mirrored() {
+        // Five wide, three tall, and not the same either way round.
+        let rows = ["IIIII", "S...P", "SSSSP"];
+        let r = shaped(&rows);
+        assert_eq!(r.min_side(), 5);
+        // In a 5 x 5 grid at each of the three heights.
+        for oy in 0..3 {
+            let mut g: Vec<&str> = alloc::vec!["....."; 5];
+            for k in 0..3 {
+                g[oy + k] = rows[k];
+            }
+            let cells = grid(&g);
+            let uses = plan(&r, 5, 5, &cells).expect("matches");
+            assert_eq!(uses.len(), 12, "oy {}", oy);
+        }
+        // Mirrored left to right: P and S change places.
+        assert!(plan(&r, 5, 5, &grid(&["IIIII", "P...S", "PSSSS", ".....", "....."])).is_some());
+        // Upside down is not allowed, nor is a stray cell.
+        assert!(plan(&r, 5, 5, &grid(&["SSSSP", "S...P", "IIIII", ".....", "....."])).is_none());
+        assert!(plan(&r, 5, 5, &grid(&["IIIII", "S...P", "SSSSP", ".....", "....P"])).is_none());
+        // A table's grid is too small, and a 3 x 3 slice of it is no recipe.
+        assert!(!r.fits(3, 3));
+        assert!(r.fits(5, 5) && r.fits(7, 7));
+        assert!(plan(&r, 3, 3, &grid(&["III", "S..", "SSS"])).is_none());
+        // The same cells in a 7 x 7 grid (the workshop) make it too.
+        let mut big = alloc::vec![None; 49];
+        for (k, row) in rows.iter().enumerate() {
+            for (j, c) in row.chars().enumerate() {
+                big[(k + 4) * 7 + j + 2] = match c {
+                    'I' => cell(I, 1),
+                    'S' => cell(S, 1),
+                    'P' => cell(P, 1),
+                    _ => None,
+                };
+            }
+        }
+        let uses = plan(&r, 7, 7, &big).expect("matches in 7 x 7");
+        assert_eq!(uses.len(), 12);
+        assert!(uses.contains(&(4 * 7 + 2, 1)));
+    }
+
+    #[test]
+    fn a_seven_by_seven_recipe_needs_the_workshop() {
+        let rows = ["I.....P", ".......", "..S.S..", "...P...", "..S.S..", ".......", "P.....I"];
+        let r = shaped(&rows);
+        assert_eq!((r.min_side(), r.cell_count()), (7, 9));
+        assert!(!r.fits(5, 5));
+        assert!(plan(&r, 7, 7, &grid(&rows)).is_some());
+        // The mirror image is the same recipe; one corner gone is not.
+        assert!(plan(&r, 7, 7, &grid(&["P.....I", ".......", "..S.S..", "...P...", "..S.S..", ".......", "I.....P"])).is_some());
+        assert!(plan(&r, 7, 7, &grid(&["I.....P", ".......", "..S.S..", "...P...", "..S.S..", ".......", "P......"])).is_none());
+        // A 5 x 5 grid cannot hold it at all.
+        assert!(plan(&r, 5, 5, &grid(&["I...P", ".....", "..S..", ".....", "P...I"])).is_none());
+        // Taking from the grid uses each of the nine cells once.
+        let mut cells = grid(&rows);
+        let uses = plan(&r, 7, 7, &cells).unwrap();
+        consume(&mut cells, &uses);
+        assert!(cells.iter().all(|c| c.is_none()));
+    }
+
+    #[test]
+    fn find_in_a_big_grid_still_finds_small_recipes() {
+        let list = [shaped(&["IIIII", "S...S"]), pick(), shaped(&["I", "S"])];
+        let mut cells = alloc::vec![None; 25];
+        cells[12] = cell(I, 1);
+        cells[17] = cell(S, 1);
+        assert_eq!(find(&list, 5, 5, &cells).map(|f| f.0), Some(2));
+        // A table's pick is made on a bench too, wherever it lies.
+        let mut cells = alloc::vec![None; 25];
+        for k in [6, 7, 8, 12, 17] {
+            cells[k] = cell(if k < 9 { I } else { S }, 1);
+        }
+        assert_eq!(find(&list, 5, 5, &cells).map(|f| f.0), Some(1));
+    }
+
     #[test]
     fn a_too_short_slice_matches_nothing() {
         assert!(plan(&pick(), 3, 3, &grid(&["III", ".S."])).is_none());

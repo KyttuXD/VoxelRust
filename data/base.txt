@@ -1818,6 +1818,79 @@ block pink_chest
   box 1 0 1 15 14 15
   tool axe
 
+# ---- Crafting tiers ----
+# `use craft` is the crafting table's 3 x 3 grid; `use craft 5` a crafting
+# bench's 5 x 5 and `use craft 7` a workshop's 7 x 7. A recipe needs the
+# smallest grid its pattern fits in (nothing is written for that), and a
+# bigger bench makes everything a smaller one does. The bench is made from a
+# crafting table and the workshop from a bench.
+texture bench5_top paint bench5 150 156 166
+texture bench5_side paint bench_side 150 156 166
+texture bench7_top paint bench7 100 118 150
+texture bench7_side paint bench_side 100 118 150
+block crafting_bench
+  name Crafting Bench
+  tex bench5_top bench5_side bench5_side
+  category Shapes
+  hardness 2.0
+  tool pick
+  use craft 5
+block workshop
+  name Workshop
+  tex bench7_top bench7_side bench7_side
+  category Shapes
+  hardness 2.4
+  tool pick
+  use craft 7
+shaped crafting_bench 1 "III" "ITI" "PPP" with I iron_ingot T crafting_table P @planks
+shaped workshop 1 "IIIII" "IPPPI" "IPBPI" "IPPPI" "IIIII" with I iron_ingot P @planks B crafting_bench
+block big_chest
+  name Big Chest
+  tex oak_chest
+  category Storage
+  hardness 1.6
+  use chest
+  box 0 0 0 16 15 16
+  tool axe
+shaped big_chest 1 "PPPPP" "P...P" "P.C.P" "P...P" "PPPPP" with P @planks C oak_chest
+block bed_frame
+  name Four-poster Bed Frame
+  tex planks
+  category Furniture
+  hardness 1.0
+  tool axe
+  box 0 0 0 2 16 2
+  box 14 0 0 16 16 2
+  box 0 0 14 2 16 16
+  box 14 0 14 16 16 16
+  box 0 3 0 16 6 16
+  box 0 14 0 16 16 2
+  box 0 14 14 16 16 16
+  box 0 14 2 2 16 14
+  box 14 14 2 16 16 14
+shaped bed_frame 1 "S...S" "SPPPS" "SPPPS" "S...S" with S stick P @planks
+block banquet_table
+  name Banquet Table
+  tex planks
+  category Furniture
+  hardness 1.4
+  tool axe
+  box 0 13 0 16 16 16
+  box 6 3 6 10 13 10
+  box 2 0 2 14 3 14
+shaped banquet_table 1 "PPPPPPP" ".S...S." ".S...S." with P @planks S stick
+shaped golem_statue 1 "..S.." "SSSSS" "..S.." ".S.S." ".S.S." with S stone
+texture heavy_tnt_side paint tnt_side 70 70 96
+texture heavy_tnt_top paint tnt_top 70 70 96
+texture heavy_tnt_bottom paint tnt_bottom 70 70 96
+block heavy_tnt
+  name Heavy TNT
+  tex heavy_tnt_top heavy_tnt_side heavy_tnt_bottom
+  category Tools
+  hardness 0
+  tag tnt 5
+shaped heavy_tnt 1 "..T.." ".TGT." "TGGGT" ".TGT." "..T.." with T tnt G gunpowder
+
 # ---- Custom shapes are just boxes ----
 block planks_post
   name Oak Post
@@ -2055,7 +2128,7 @@ item cooked_fish
 
 # ---- Recipes (survival mode) ----
 # Recipes are laid out in the crafting grid (2 x 2 in the inventory screen,
-# 3 x 3 at a crafting table):
+# 3 x 3 at a crafting table, 5 x 5 at a bench, 7 x 7 at a workshop):
 #   craft  <item> <count> <ingredient> <count> [<ingredient> <count> ...]    shapeless
 #   shaped <item> <count> <row> [<row> ...] with <letter> <ingredient> [<letter> <ingredient> ...]
 #   group  <name> <item> [<item> ...]       @name in a recipe means any of them

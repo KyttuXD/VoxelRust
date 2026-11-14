@@ -591,7 +591,10 @@ craft stone_lantern 1 stone 3 lamp 1
 ```
 
 (`craft` is a shapeless recipe: the four items go anywhere in the crafting
-grid. A `shaped` line fixes the pattern, as in `shaped stone_lantern 1 ".S."
+grid. A pattern bigger than 3 x 3, up to 5 x 5 or 7 x 7, is made at a
+crafting bench or a workshop: a block with `use craft 5` or `use craft 7`
+opens those grids, and a pack may declare its own benches; see
+[Recipes](DATA.md#recipes). A `shaped` line fixes the pattern, as in `shaped stone_lantern 1 ".S."
 "SLS" ".S." with S stone L lamp`; see [Recipes](DATA.md#recipes).)
 
 - Give the block at least one `box` line. The boxes are not drawn; they are
