@@ -241,6 +241,13 @@ impl SkinHub {
         self.remote.values().map(|e| budget::gpu_bytes(e.cur)).sum()
     }
 
+    /// What the other players' skins on the card cost beyond a plain 64 x 64 each: the memory
+    /// the player's choice of HD skins uses (it raises the budget's limit, see client/memory).
+    pub fn gpu_extra_bytes(&self) -> usize {
+        let plain = budget::gpu_bytes(budget::LOW_SIDE);
+        self.remote.values().map(|e| budget::gpu_bytes(e.cur).saturating_sub(plain)).sum()
+    }
+
     /// Bytes of compressed skins kept.
     pub fn kept_bytes(&self) -> usize {
         self.remote.values().map(|e| e.png.len()).sum()
@@ -297,6 +304,9 @@ mod tests {
         assert_eq!((gpu.live[&tex[&1]], gpu.live[&tex[&2]]), (128, 64));
         // The 64 skin's picture is not kept; the 128 one's is, to be unpacked again.
         assert!(hub.kept_bytes() > 0);
+        // Only what the 128 skin costs beyond a plain 64 raises the memory limit.
+        assert_eq!(hub.gpu_extra_bytes(), budget::gpu_bytes(128) - budget::gpu_bytes(64));
+        assert_eq!(hub.gpu_bytes(), budget::gpu_bytes(128) + budget::gpu_bytes(64));
         // Player 1 goes far away: after a while the skin is at 64.
         let far = dists(&[(1, 200.0), (2, 10.0)]);
         hub.plan(1.0, &far, &mut gpu, &mut tex);

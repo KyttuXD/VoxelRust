@@ -52,6 +52,12 @@ impl App {
             lod_trees: self.settings.lod_trees,
             lod_detail: self.settings.lod_detail,
         };
+        // Skins on the card: all of them are counted, and what an HD skin costs beyond a
+        // plain 64 x 64 raises the memory limit (the player chose it; see client/skins/budget).
+        let plain = crate::client::skins::budget::gpu_bytes(64);
+        let own = if self.skin_tex != 0 { crate::client::skins::budget::gpu_bytes(self.skin_tex_side) } else { 0 };
+        r.skin_bytes = own + self.skins.gpu_bytes();
+        crate::budget::set_allowance(crate::budget::Allow::Skins, own.saturating_sub(plain).saturating_add(self.skins.gpu_extra_bytes()));
         self.mem.tick(dt, r, self.session.as_ref(), &mut self.audio, &wanted);
         self.eff = self.mem.effective(&wanted);
         let distance = self.eff.distance;

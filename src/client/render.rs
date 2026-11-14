@@ -143,6 +143,8 @@ pub struct Renderer {
     hd_cap: usize,
     /// Bytes of creature and model pictures beyond 128 x 128 each (they raise the memory allowance).
     pub hd_model_bytes: usize,
+    /// Bytes the skins on the card take (the player's own and other players'), set each frame by the app.
+    pub skin_bytes: usize,
 }
 
 /// What `draw_world` hands on to `finish_world`.
@@ -344,6 +346,7 @@ impl Renderer {
             hd_tiles: 0,
             hd_cap: 512,
             hd_model_bytes: 0,
+            skin_bytes: 0,
         };
         renderer.upload_hd(hd_built);
         renderer
