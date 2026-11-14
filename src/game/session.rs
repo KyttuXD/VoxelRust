@@ -629,8 +629,16 @@ impl Session {
     /// Join a multiplayer server. Nothing of such a world is saved here:
     /// the server keeps it.
     pub fn join(base: &str, address: &str, name: &str, threads: usize) -> Result<Session, String> {
-        let (host, port) = crate::netplay::parse_address(address).ok_or_else(|| String::from("TYPE THE SERVER'S ADDRESS, LIKE HOST:25590"))?;
-        let (client, welcome) = crate::netplay::Client::connect(&host, port, name)?;
+        // A PIN the player let the game remember for this server is used.
+        let auth = crate::net::accounts::client::JoinAuth::remembered(base, address, name);
+        Session::join_with(base, address, name, threads, &auth).map_err(String::from)
+    }
+
+    /// [`Session::join`] with the PIN (or the wish to make an account) the player gave; when the
+    /// server wants one that is missing or wrong, the error says so (see `net/accounts/client.rs`).
+    pub fn join_with(base: &str, address: &str, name: &str, threads: usize, auth: &crate::net::accounts::client::JoinAuth) -> Result<Session, crate::net::accounts::client::ConnectError> {
+        let (host, port) = crate::netplay::parse_address(address).ok_or_else(|| crate::net::accounts::client::ConnectError::Failed(String::from("TYPE THE SERVER'S ADDRESS, LIKE HOST:25590")))?;
+        let (client, welcome) = crate::netplay::Client::connect_auth(&host, port, name, auth)?;
         let kind = worldgen::WorldKind::parse(&welcome.kind).unwrap_or(worldgen::WorldKind::Normal);
         let new = NewWorld { seed: welcome.seed, mode: GameMode::Survival, kind };
         // A name no saved world can have, so nothing on disk is touched.

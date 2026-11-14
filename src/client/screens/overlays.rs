@@ -23,6 +23,16 @@ impl App {
                     g.push_chat(String::from("/EFFECT GIVE ID [SECS] [LEVEL]   /EFFECT CLEAR [ID]   /EFFECT LIST   /EFFECT MOB ID"));
                     g.push_chat(String::from("/VAR NAME = N   /IF COND THEN CMD [ELSE CMD]   /AFTER SECS CMD   /REPEAT N CMD   /TAKE ITEM [N]   /TITLE TEXT   /BLAST R"));
                 }
+            } else if crate::net::accounts::client::is_account_command(&command) {
+                // /register, /pin and /forgetpin hold a PIN: they are for the game alone (not the
+                // server as chat, not the mods' scripts).
+                if let Some(g) = self.session.as_mut() {
+                    let reply = match g.net.as_mut() {
+                        Some(n) => n.account_command(&command),
+                        None => String::from("ACCOUNTS ARE FOR MULTIPLAYER SERVERS"),
+                    };
+                    g.push_chat(reply);
+                }
             } else if let Some(g) = self.session.as_mut() {
                 // Scripts hear `chat` and `command` first, and a mod's
                 // `on_chat` may swallow the line (game/events.rs).

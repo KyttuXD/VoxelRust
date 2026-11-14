@@ -11,21 +11,11 @@ impl App {
 
     pub(super) fn join_address(&mut self, r: &mut Renderer, address: &str) -> bool {
         let name = crate::settings::clean_name(&self.settings.player_name, 16);
-        match Session::join(&self.base, address, if name.is_empty() { "Player" } else { &name }, self.threads) {
-            Ok(g) => {
-                self.close_world(r);
-                let mut g = g;
-                g.who = crate::settings::clean_name(&self.settings.player_name, 16);
-                self.session = Some(g);
-                self.distance = self.settings.distance;
-                self.set_screen(Screen::Game);
-                true
-            }
-            Err(e) => {
-                self.status = e;
-                false
-            }
-        }
+        let name = if name.is_empty() { String::from("Player") } else { name };
+        // A PIN the player let the game remember for this server is tried first; the PIN screen
+        // (screens/pin.rs) opens if the server wants one and there is none, or it is wrong.
+        let auth = crate::net::accounts::client::JoinAuth::remembered(&self.base, address, &name);
+        self.join_with_auth(r, address, &name, &auth)
     }
 
     /// The multiplayer screen: the servers you have added, as a list.
@@ -124,6 +114,10 @@ impl App {
             }
         }
         ui.centered(ui.w() * 0.5, y + step * 4.4, 1.0, &self.status, ui::ACCENT);
+        // Accounts: a server may ask for a PIN when the name has an account.
+        let saved = crate::net::accounts::remember::count(&self.base);
+        let accounts = if saved == 0 { String::from("A SERVER ASKS FOR A PIN IF YOUR NAME HAS AN ACCOUNT THERE") } else { alloc::format!("ACCOUNTS: PINS KEPT FOR {} SERVER{} (/FORGETPIN IN THE GAME)", saved, if saved == 1 { "" } else { "S" }) };
+        ui.centered(ui.w() * 0.5, y + step * 6.0, 1.0, &accounts, ui::DIM);
         let mine = self.my_address.get_or_insert_with(sys::net::local_address).as_ref().map(|a| alloc::format!("YOUR ADDRESS ON THIS NETWORK: {}", a)).unwrap_or_default();
         ui.centered(ui.w() * 0.5, y + step * 5.2, 1.0, &mine, ui::DIM);
     }

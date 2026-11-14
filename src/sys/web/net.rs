@@ -59,6 +59,10 @@ impl TcpStream {
     }
 
     pub fn set_nodelay(&mut self, _on: bool) {}
+    /// The IPv4 address of the other end (none here).
+    pub fn peer_ip(&self) -> Option<[u8; 4]> {
+        None
+    }
 }
 
 impl TcpListener {

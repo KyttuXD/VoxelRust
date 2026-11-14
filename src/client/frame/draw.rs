@@ -193,6 +193,7 @@ impl App {
                 Screen::FullMap => self.screen_full_map(&mut ui),
                 Screen::Join => self.screen_join(&mut ui),
                 Screen::AddServer => self.screen_add_server(&mut ui),
+                Screen::Pin => self.screen_pin(&mut ui),
                 Screen::Chat => self.screen_chat(&mut ui),
                 Screen::Picker => self.screen_picker(&mut ui),
                 Screen::Emote => self.screen_emote(&mut ui),

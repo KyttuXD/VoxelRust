@@ -81,6 +81,8 @@ pub struct Client {
     /// Which program the server is (from [`Msg::Info`]; None until it says,
     /// and for a server from before it was sent).
     pub server_info: Option<crate::net::version::Info>,
+    /// What this player's account is (see `net/accounts/client.rs`).
+    pub acct: crate::net::accounts::client::ClientAccount,
 }
 
 /// Most voice frames held waiting (about a second of one talker).
@@ -119,33 +121,66 @@ fn port_of(text: &str) -> Option<u16> {
 }
 
 impl Client {
-    /// Connect and say hello. Waits (a few seconds at most) for the answer.
+    /// Connect and say hello. Waits (a few seconds at most) for the answer. A name that
+    /// has an account is refused here (use [`Client::connect_auth`] with its PIN).
     pub fn connect(host: &str, port: u16, name: &str) -> Result<(Client, Welcome), String> {
-        let mut stream = TcpStream::connect(host, port, 6000).map_err(|e| alloc::format!("COULD NOT CONNECT ({:?})", e).to_ascii_uppercase())?;
+        Client::connect_auth(host, port, name, &crate::net::accounts::client::JoinAuth::default()).map_err(String::from)
+    }
+
+    /// Connect, say hello and, if the server asks for a PIN, answer with `auth`. When there is no PIN
+    /// yet (or it is wrong) the error says what to ask the player; join again with it.
+    pub fn connect_auth(host: &str, port: u16, name: &str, auth: &crate::net::accounts::client::JoinAuth) -> Result<(Client, Welcome), crate::net::accounts::client::ConnectError> {
+        use crate::net::accounts::client::{respond, Challenge, ConnectError};
+        let failed = |s: &str| ConnectError::Failed(String::from(s));
+        let mut stream = TcpStream::connect(host, port, 6000).map_err(|e| ConnectError::Failed(alloc::format!("COULD NOT CONNECT ({:?})", e).to_ascii_uppercase()))?;
         stream.set_nodelay(true);
         let hello = Msg::Hello { version: VERSION, content: content_checksum(), name: String::from(name) };
-        stream.send_all(&hello.encode(), 4000).map_err(|_| String::from("THE SERVER HUNG UP"))?;
+        stream.send_all(&hello.encode(), 4000).map_err(|_| failed("THE SERVER HUNG UP"))?;
         let mut inbox = Inbox::default();
         let mut buf = [0u8; 4096];
-        for _ in 0..80 {
+        let mut answered = false;
+        for _ in 0..120 {
             match inbox.next() {
                 Next::Msg(Msg::Welcome { id, seed, time, kind }) => {
-                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None };
+                    let mut c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None, acct: Default::default() };
+                    c.acct.name = crate::settings::clean_name(name, 16).to_ascii_lowercase();
+                    c.acct.at = auth.at.clone();
+                    c.acct.remember = auth.remember;
+                    // A PIN that has just worked is kept if the player asked for that.
+                    if let (true, true, Some(pin), Some(at)) = (answered, auth.remember, auth.pin.as_deref(), auth.at.as_ref()) {
+                        crate::net::accounts::remember::save(&at.base, &at.address, &c.acct.name, pin);
+                    }
                     return Ok((c, Welcome { seed, time: crate::net::limits::clean_time(time), kind }));
                 }
-                Next::Msg(Msg::Refuse { reason }) => return Err(crate::net::version::explain_refusal(&reason)),
-                Next::Msg(_) | Next::Bad => return Err(String::from("THAT IS NOT A VOXELRUST SERVER")),
+                Next::Msg(Msg::Refuse { reason }) => return Err(ConnectError::Failed(crate::net::version::explain_refusal(&reason))),
+                Next::Msg(Msg::AuthChallenge { op, flags, rounds, tries, salt, new_salt, nonce }) if !answered => {
+                    let challenge = Challenge { op, flags, rounds, tries, salt, new_salt, nonce };
+                    let answer = respond(auth, name, &challenge)?;
+                    stream.send_all(&answer.encode(), 4000).map_err(|_| failed("THE SERVER HUNG UP"))?;
+                    answered = true;
+                }
+                Next::Msg(Msg::AuthResult { ok: false, tries, text }) => {
+                    // A PIN that was kept and is wrong now is forgotten (it was changed somewhere else).
+                    if let (true, Some(at)) = (tries > 0 && !auth.register, auth.at.as_ref()) {
+                        crate::net::accounts::remember::forget(&at.base, &at.address, name);
+                    }
+                    if auth.register {
+                        return Err(ConnectError::Failed(text.to_ascii_uppercase()));
+                    }
+                    return Err(ConnectError::NeedPin { register: false, tries, note: text.to_ascii_uppercase(), weak_ok: false });
+                }
+                Next::Msg(_) | Next::Bad => return Err(failed("THAT IS NOT A VOXELRUST SERVER")),
                 Next::Wait => {}
             }
             match stream.recv(&mut buf, 100) {
                 Ok(n) => inbox.push(&buf[..n]),
-                Err(_) => return Err(String::from("THE SERVER HUNG UP")),
+                Err(_) => return Err(failed("THE SERVER HUNG UP")),
             }
         }
-        Err(String::from("THE SERVER DID NOT ANSWER"))
+        Err(failed("THE SERVER DID NOT ANSWER"))
     }
 
-    fn send(&mut self, msg: &Msg) {
+    pub(crate) fn send(&mut self, msg: &Msg) {
         if self.alive && self.stream.send_all(&msg.encode(), 2000).is_err() {
             self.alive = false;
         }
@@ -239,6 +274,8 @@ impl Client {
                         self.server_info = Some(info);
                     }
                     Msg::Perms { flags } => events.push(Event::Perms(flags)),
+                    // Accounts: a challenge for /register or /pin, how it went, what the server says of us.
+                    m @ (Msg::AuthChallenge { .. } | Msg::AuthResult { .. } | Msg::Account { .. }) => self.on_account_message(m, &mut events),
                     // (A skin is 64 x 64: anything else is not decoded at all.)
                     Msg::Skin { id, png, slim } if crate::net::limits::skin_header_ok(&png) => events.push(Event::Skin(id, png, slim)),
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),

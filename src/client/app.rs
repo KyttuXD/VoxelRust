@@ -48,6 +48,8 @@ mod screen_title;
 mod screen_settings;
 #[path = "screens/join.rs"]
 mod screen_join;
+#[path = "screens/pin.rs"]
+mod screen_pin;
 #[path = "screens/inventory.rs"]
 mod screen_inventory;
 #[path = "screens/map.rs"]
@@ -58,6 +60,7 @@ mod screen_overlays;
 mod screen_skin;
 #[allow(unused_imports)]
 use self::{args::*, mods_load::*, server_run::*};
+use self::screen_pin::PinPrompt;
 
 
 mod key {
@@ -88,6 +91,8 @@ enum Screen {
     Join,
     /// Adding or editing one entry of the server list.
     AddServer,
+    /// The PIN of an account, asked for by a server (screens/pin.rs).
+    Pin,
     Chat,
     /// The crafting table's recipe list.
     Craft,
@@ -379,6 +384,8 @@ struct App {
     /// Whose screen the map key has opened (a mod's code).
     map_native: Option<usize>,
     status: String,
+    /// The PIN screen's state (screens/pin.rs).
+    pin: PinPrompt,
     tab: usize,
     /// Index into ACTIONS of the key being rebound.
     rebinding: Option<usize>,
@@ -1232,6 +1239,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         tags: Vec::new(),
         map_native: None,
         status: String::new(),
+        pin: PinPrompt::default(),
         tab: 0,
         rebinding: None,
         inv_tab: 0,

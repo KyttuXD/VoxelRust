@@ -105,7 +105,8 @@ empty name becomes `Player`. If someone on the server already has it, a
 number is added (`Bob` becomes `Bob2`).
 
 The server refuses a player whose game speaks a different version of the
-network protocol (currently version 13), and anyone beyond the player limit.
+network protocol (currently version 14; a server still lets version 13 in as
+a guest, see [ACCOUNTS.md](ACCOUNTS.md)), and anyone beyond the player limit.
 Only the protocol version decides: the build name (`linux-server-x86_64` for
 the public server, `linux-x86_64`, `windows-x86_64`, `macos-...` for games) and
 the release number do not, so a game and a server of different builds or
@@ -311,7 +312,7 @@ the code of such a mod.
 (`content::mod_runtime`, see [MODDING.md](MODDING.md#scripts-that-mods-bring));
 without an engine they are kept and not run.
 
-(Version 9 added poses and emotes.) The protocol: version 13 lets the creature snapshot carry, after a creature's ten fields, its own size, health limit, tilt, bone overrides and a state text of up to 64 bytes (see `game/creature_wire.rs`; a creature with none of these has the old line, and in between full sets a creature whose extras did not change says `|=`), and adds the mods' message channel: `State` on channel 5, key `mod\x1fchannel`, data a receiver number (two bytes, `0xFFFF` for everyone else) and up to 512 bytes of text; the server drops messages with a bad key or text and from a player who sends more than 8 a second (never kept, never relayed to the sender), and passes a message for one player to that player only (`net/modmsg.rs`). Version 12 adds `Info` (server to client, right after `Welcome`: build name, release number and commit, for showing only) and fixes `State` keys, which lost the separator of the script channel's `mod\x1fkey`; the biggest `State` is now 59 000 bytes (it was over the message limit). Version 11 adds `Effects`: the status effects on a player (id, level and whole seconds left for each, 16 at most), sent by that player's game whenever the set changes, relayed with their id, and told to players who join later. It is for show (the name tag) and for mods; each game keeps its own effects. Version 10 adds `ModList` (server to client, after the pack),
+(Version 9 added poses and emotes.) The protocol: version 14 adds accounts (see [ACCOUNTS.md](ACCOUNTS.md)): after `Hello` a server may send `AuthChallenge` (kind 44: what it is for, flags, how many rounds the PIN is hashed, tries left, the account's salt, a salt for a new key, a fresh 16-byte nonce) and wait up to 15 seconds for `AuthLogin` (40: the HMAC-SHA-256 proof) or, for a new account, `AuthRegister` (41: the key); a player already in the game asks with `AuthAsk` (43) and answers a `/pin` challenge with `AuthChange` (42); the server's `AuthResult` (45) says how it went and `Account` (46: its mode and whether you are logged in) follows `Welcome`. A server lets a version 13 client in as a guest (a name without an account) and sends it none of these. Version 13 lets the creature snapshot carry, after a creature's ten fields, its own size, health limit, tilt, bone overrides and a state text of up to 64 bytes (see `game/creature_wire.rs`; a creature with none of these has the old line, and in between full sets a creature whose extras did not change says `|=`), and adds the mods' message channel: `State` on channel 5, key `mod\x1fchannel`, data a receiver number (two bytes, `0xFFFF` for everyone else) and up to 512 bytes of text; the server drops messages with a bad key or text and from a player who sends more than 8 a second (never kept, never relayed to the sender), and passes a message for one player to that player only (`net/modmsg.rs`). Version 12 adds `Info` (server to client, right after `Welcome`: build name, release number and commit, for showing only) and fixes `State` keys, which lost the separator of the script channel's `mod\x1fkey`; the biggest `State` is now 59 000 bytes (it was over the message limit). Version 11 adds `Effects`: the status effects on a player (id, level and whole seconds left for each, 16 at most), sent by that player's game whenever the set changes, relayed with their id, and told to players who join later. It is for show (the name tag) and for mods; each game keeps its own effects. Version 10 adds `ModList` (server to client, after the pack),
 `ModsWant` (client to server) and `ModPart` (server to client, one mod's
 bundle in pieces of up to 40,000 bytes). A mod's bundle is the
 `save::bundle` format with the paths inside the mod as names.
@@ -397,8 +398,19 @@ what the game itself does not know is passed to the server.
 | `/voicerange BLOCKS` | operators | how far a voice carries (2 to 128, 24 by default); with no number, shows it |
 
 Operators and bans are kept in `<world>.server-ops.txt` beside the world.
-Names are not protected by passwords: anyone can join under any free name,
-so treat this as housekeeping among friends, not security.
+A name is free for anyone unless it has an account: a name can be protected by
+a 4 or 6 digit PIN (`/register PIN PIN`), and a server can name administrators
+and ask every player for an account. That stops casual impersonation and no
+more: read [ACCOUNTS.md](ACCOUNTS.md) before trusting it with anything.
+
+| Command | Who | What it does |
+|---|---|---|
+| `/register PIN PIN`, `/pin OLD NEW`, `/forgetpin` | you, in the game | make an account for your name, change its PIN, make the game forget a saved PIN (typed in the game, never sent as chat) |
+| `/accounts` | administrators | the accounts (names only) and who is locked out |
+| `/resetpin NAME [PIN]` | administrators | set a new PIN for an account (a random six digits if none is given; the answer shows it to you) |
+
+Administrators are the names in the server's `admins=` setting; they have every
+permission, use every command above, and are starred in `/list`.
 
 
 ## Limits a server keeps (for hosts)

@@ -125,6 +125,7 @@ put it in place of the running program.
 | --- | --- |
 | `update_check_seconds` | seconds between looks: default **90**, clamped to 30..600. A sixth of it is added at random, so servers do not all ask at once. A release is therefore picked up within about 1 to 3 minutes (the interval, plus the download). |
 | `update_mirror` | where to look first (see [BUILDING.md](BUILDING.md#a-plain-http-mirror-for-the-old-mac-build)) |
+| `require_accounts`, `admins`, `allow_weak_pins` | accounts and administrators (see [ACCOUNTS.md](ACCOUNTS.md)). The public server's file gets `admins=KYTTU`; its account is made once with `voxelrust --server --data /var/lib/voxelrust --set-pin KYTTU PIN` |
 
 After failures in a row (unreadable list, a refused signature, a download that
 does not match, a program that does not run) it waits twice as long each time,

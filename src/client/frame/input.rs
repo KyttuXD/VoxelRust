@@ -124,6 +124,11 @@ impl App {
                 self.close_picker(None);
             }
             Screen::AddServer if sc == key::ESCAPE => self.set_screen(Screen::Join),
+            Screen::Pin if sc == key::ESCAPE => {
+                self.pin = PinPrompt::default();
+                self.status.clear();
+                self.set_screen(Screen::Join);
+            }
             Screen::Map if sc == key::ESCAPE || sc == k_map => self.set_screen(Screen::Game),
             Screen::FullMap if !typing && (sc == key::ESCAPE || sc == k_map || sc == k_waypoints) => self.close_full_map(),
             Screen::Settings if sc == key::ESCAPE => self.leave_settings(),
