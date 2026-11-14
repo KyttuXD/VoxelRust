@@ -11,6 +11,7 @@
 
 use crate::client::modui::binds::KeyDecl;
 use crate::client::modui::hud::Slot;
+use crate::client::modui::hud_image;
 use crate::client::modui::hudcmd::{self, Anchor, Cmd};
 use crate::client::modui::limits::*;
 use crate::client::modui::ModUi;
@@ -105,6 +106,32 @@ impl<'a> ModApi<'a> {
     pub fn hud_bar(&mut self, at: &str, dx: f64, dy: f64, w: f64, h: f64, frac: f64, col: i64) -> Result<bool, String> {
         let at = anchor(at)?;
         Ok(self.cmd(Cmd::Bar { at, dx: hudcmd::num(dx, 8192.0), dy: hudcmd::num(dy, 8192.0), w: hudcmd::num(w, 8192.0), h: hudcmd::num(h, 8192.0), frac: hudcmd::num(frac, 1.0e6), col: hudcmd::colour(col) }))
+    }
+
+    // ---- pictures (see `hud_image.rs`)
+
+    /// The mod's picture `file` (read from its folder the first time), or `None`
+    /// when the name is not allowed, it cannot be read, or the mod's 16 are used up.
+    fn picture(&mut self, data_dir: &str, file: &str) -> Option<hud_image::Found> {
+        let owner = self.mod_name;
+        self.ui.images.get(owner, file, &mut || hud_image::load(data_dir, owner, file))
+    }
+
+    /// Draw a picture, or the part `uv` (u0, v0, u1, v1: 0 to 1 across the picture) of it, `w` x `h`
+    /// interface pixels at the anchor moved by (`dx`, `dy`); `tint` is `0xRRGGBB` (white is as it is)
+    /// and `alpha` the opacity, 0 to 1. `false` when the picture is not there or the frame is full.
+    pub fn hud_image(&mut self, data_dir: &str, file: &str, at: &str, dx: f64, dy: f64, w: f64, h: f64, uv: [f64; 4], alpha: f64, tint: i64) -> Result<bool, String> {
+        let at = anchor(at)?;
+        let Some(found) = self.picture(data_dir, file) else { return Ok(false) };
+        let uv = [hudcmd::num(uv[0], 1.0e4), hudcmd::num(uv[1], 1.0e4), hudcmd::num(uv[2], 1.0e4), hudcmd::num(uv[3], 1.0e4)];
+        Ok(self.cmd(Cmd::Image { at, dx: hudcmd::num(dx, 8192.0), dy: hudcmd::num(dy, 8192.0), w: hudcmd::num(w, 8192.0), h: hudcmd::num(h, 8192.0), uv, col: hud_image::tinted(tint, alpha), img: found.id }))
+    }
+
+    /// Fit a picture to the whole screen: `"cover"` fills it (and crops), `"contain"` shows all of it.
+    pub fn hud_image_fit(&mut self, data_dir: &str, file: &str, mode: &str, alpha: f64) -> Result<bool, String> {
+        let Some(fit) = hud_image::Fit::parse(mode) else { return Err(format!("`{}` is not a fit (\"cover\" or \"contain\")", mode)) };
+        let Some(found) = self.picture(data_dir, file) else { return Ok(false) };
+        Ok(self.cmd(Cmd::Fit { img: found.id, iw: found.w, ih: found.h, fit, col: hud_image::tinted(0xFFFFFF, alpha) }))
     }
 
     // ---- HUD elements, toasts, the action bar
@@ -258,6 +285,33 @@ mod tests {
         // The next frame starts empty.
         ui.hud.frame(0.016);
         assert_eq!(api(&mut ui).hud_rect("top", 0.0, 0.0, 1.0, 1.0, 0), Ok(true));
+    }
+
+    #[test]
+    fn pictures_are_drawn_from_the_cache_with_the_limits() {
+        let mut ui = ModUi::default();
+        // (No such file, and no picture of that name in a pack: nothing is drawn, and it is not an error.)
+        assert_eq!(api(&mut ui).hud_image("", "nothing-here.png", "top-left", 0.0, 0.0, 10.0, 10.0, [0.0, 0.0, 1.0, 1.0], 1.0, 0xFFFFFF), Ok(false));
+        assert!(ui.hud.buf.is_empty());
+        // A name that is not allowed.
+        assert_eq!(api(&mut ui).hud_image("", "../x.png", "top-left", 0.0, 0.0, 10.0, 10.0, [0.0, 0.0, 1.0, 1.0], 1.0, 0xFFFFFF), Ok(false));
+        // A wrong anchor or fit is the script's typo.
+        assert!(api(&mut ui).hud_image("", "a.png", "sideways", 0.0, 0.0, 1.0, 1.0, [0.0, 0.0, 1.0, 1.0], 1.0, 0).is_err());
+        assert!(api(&mut ui).hud_image_fit("", "a.png", "stretch", 1.0).is_err());
+        // A picture that is cached is drawn.
+        let id = ui.images.get("m", "a.png", &mut || Some(hud_image::Pixels { w: 4, h: 2, rgba: alloc::vec![255; 32] })).unwrap().id;
+        assert_eq!(api(&mut ui).hud_image("", "a.png", "centre", 1.0, 2.0, 40.0, 20.0, [0.0, 0.0, 0.5, 1.0], 0.5, 0xFF0000), Ok(true));
+        assert_eq!(api(&mut ui).hud_image_fit("", "a.png", "Cover", 1.0), Ok(true));
+        match &ui.hud.buf.cmds[0] {
+            Cmd::Image { img, uv, col, w, .. } => assert_eq!((*img, *uv, *col, *w), (id, [0.0, 0.0, 0.5, 1.0], [255, 0, 0, 127], 40.0)),
+            c => panic!("{:?}", c),
+        }
+        assert!(matches!(&ui.hud.buf.cmds[1], Cmd::Fit { iw: 4, ih: 2, .. }));
+        // Another mod does not see it as its own picture.
+        assert_eq!(ModApi::new(&mut ui, "n").hud_image("", "a.png", "top", 0.0, 0.0, 1.0, 1.0, [0.0, 0.0, 1.0, 1.0], 1.0, 0), Ok(false));
+        // Switching the mod off takes its picture away.
+        ui.forget_mod("m");
+        assert_eq!(ui.images.len(), 1 /* the failed one of mod n */);
     }
 
     #[test]

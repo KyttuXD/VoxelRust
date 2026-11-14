@@ -628,6 +628,25 @@ three called `Pelvis`, `Belly` and `Chest`. Bones that are not named like
 those are left to their own animation. Emotes turn any bone by name (see
 below).
 
+The bends of the built-in body are plain bones, so a mod body can use them by
+naming its bones alike (case does not matter, a side is `L-`/`R-` in front or
+`-L`/`-R` behind): the arm is `L-Arm` (upper arm, pivot at the shoulder), its
+child `L-Forearm` (pivot at the elbow) and its child `L-Hand` (the wrist); the leg is
+`L-Thigh` (the hip), `L-Calf` (the knee; `Shin-L` does as well) and `L-Foot` (the ankle).
+The built-in player model (`data/models/player.bbmodel`, `player_slim.bbmodel`)
+has them, each limb in three cubes cut along the skin's own regions, so a skin maps the
+same as on a one-box limb. A limb without the lower bone is drawn as one straight box, as
+before. What the bends do: walking swings the arms against the legs, the elbow folds
+10 to 35 degrees on the forward swing and the knee up to 50; sprinting adds a longer
+swing, elbows about 90 degrees, high knees and a forward lean of 8 degrees; crouching bends the knees and lowers the body;
+swimming strokes with the elbows and kicks with small knee bends; climbing
+reaches hand over hand; sitting bends the knees 90 degrees; falling throws the arms out;
+standing still breathes with a little arm sway. Other players' gait comes from how fast
+their position changes, and villagers or other humanoids that use the player model
+move the same way. For pictures: `--show bends:NAME` (with `--screenshot`; names `idle walk
+sprint crouchwalk swim climb sit sleep fall ride`, optionally `@PHASE` in radians) shows
+the player's own body from outside in that gait.
+
 ### Shaders
 
 A mod adds post-processing shaders (a golden evening, bloom, an underwater wobble,

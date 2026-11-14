@@ -845,7 +845,7 @@ entity <id>
   weight <0..1000>          relative chance of spawning (default 10; 0 = never)
   drops <item> [<count>]    left behind when killed in survival (count 1..64, default 1)
   loot <item> [<most>] [<percent>]  more it may leave: 1 to <most> of it, with that chance (repeat the line for more items)
-  trait <names...>          flees herd jumps territorial hunter prey lazy pack follows
+  trait <names...>          flees herd jumps territorial hunter prey lazy pack follows watches
   anim walk | hop | slither | flap | scuttle | waddle | float
   variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>] [biomes <names...>]   another look
   baby <size> <seconds>     it has young: how small, and how long they take to grow
@@ -878,9 +878,12 @@ Behaviours:
 
 Traits (one `trait` line may list several; what each does in play is in
 [CREATURES.md](CREATURES.md#temperaments)): `flees`, `herd`, `jumps`,
-`territorial`, `hunter`, `prey`, `lazy`, `pack`, `follows`. A `territorial`
+`territorial`, `hunter`, `prey`, `lazy`, `pack`, `follows`, `watches`. A `territorial`
 or `pack` creature uses its `damage` when it turns on a player; a `hunter`
-uses it on `prey`.
+uses it on `prey`. A creature whose model has a bone called `head` turns it toward the
+nearest player within 12 blocks (up to 70 degrees to the sides and 40 up or down, smoothly; not
+while asleep in a bed or running away from a player with `flees`); `watches` makes that 48 blocks.
+Scripts may force a look (`set_creature_look`, see [SCRIPTING.md](SCRIPTING.md#giants-model-control-and-state)).
 
 `anim` chooses how the model moves: `walk` (the default), `hop`, `slither`
 (no leg swing; body and tail weave), `flap` (wings beat), `scuttle` (quick

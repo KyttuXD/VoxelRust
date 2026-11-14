@@ -174,6 +174,7 @@ Each kind has a behaviour and may have several traits on top.
 | prey | what hunters chase |
 | lazy | stands about most of the time |
 | follows | comes after a player holding its favourite food |
+| watches | its head (a model bone called `head`) follows the player from up to 48 blocks (other creatures look at players only within 12 blocks, 70 degrees to the sides and 40 up or down, and not while asleep or running away) |
 
 Territorial and pack animals only attack survival players, like the hostile
 kinds.

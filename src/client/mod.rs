@@ -20,6 +20,7 @@ pub mod voice;
 pub mod startup;
 pub mod pack_text;
 pub mod pose_view;
+pub mod show_bends;
 pub mod emote_wheel;
 pub mod mods;
 pub mod memory;

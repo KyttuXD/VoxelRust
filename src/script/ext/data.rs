@@ -75,6 +75,8 @@ pub struct ScriptData {
     pub specks: Vec<([f64; 3], [u8; 3])>,
     pub rects: Vec<HudRect>,
     pub texts: Vec<HudText>,
+    /// A colour over the whole screen this frame (`hud_tint`).
+    pub tint: Option<[u8; 4]>,
     /// Physics bodies: their number and the body.
     pub bodies: Vec<(u32, Player)>,
     pub next_body: u32,
@@ -121,6 +123,7 @@ pub fn new_frame(g: &mut Session) {
     d.specks.clear();
     d.rects.clear();
     d.texts.clear();
+    d.tint = None;
     d.net_sent = 0;
     d.bone_calls = 0;
 }

@@ -10,6 +10,7 @@
 //! | `M<n>` | most health |
 //! | `O<pitch>,<roll>` | tilt in tenths of a degree |
 //! | `B<table>` | bone overrides (see `BoneTable::encode`) |
+//! | `L<yaw>,<pitch>` | the head forced to look this way, tenths of a degree relative to the body |
 //! | `T<text>` | state text, `%XX` for `%`, `|` and bytes outside printable ASCII |
 //! | `=` | (alone) nothing changed since the last full line: keep what you have |
 //!
@@ -45,6 +46,7 @@ pub struct Decoded {
     pub orient: Option<(i16, i16)>,
     pub bones: Option<BoneTable>,
     pub state: Option<String>,
+    pub look: Option<(i16, i16)>,
 }
 
 fn escape(s: &str, out: &mut String) {
@@ -93,6 +95,9 @@ pub fn encode(e: &Extra) -> String {
         out.push_str("|B");
         out.push_str(&e.bones.encode());
     }
+    if let Some((y, p)) = e.look {
+        out.push_str(&alloc::format!("|L{},{}", y, p));
+    }
     if !e.state.is_empty() {
         out.push_str("|T");
         escape(&e.state, &mut out);
@@ -124,6 +129,12 @@ pub fn decode(tail: &str) -> Wire {
                 if let (Some(Some(p)), Some(Some(r))) = (v.next(), v.next()) {
                     let lim = (crate::bone_pose::MAX_ROT * 10.0) as i64;
                     d.orient = Some((p.clamp(-lim, lim) as i16, r.clamp(-lim, lim) as i16));
+                }
+            }
+            'L' => {
+                let mut v = body.split(',').map(|x| x.parse::<i64>().ok());
+                if let (Some(Some(y)), Some(Some(p))) = (v.next(), v.next()) {
+                    d.look = Some((y.clamp(-900, 900) as i16, p.clamp(-600, 600) as i16));
                 }
             }
             'B' => d.bones = Some(BoneTable::decode(body)),
@@ -171,6 +182,9 @@ impl Extra {
         }
         if take(d.bones.is_some(), BONES, &mut remote) {
             self.bones = d.bones.unwrap_or_default();
+        }
+        if take(d.look.is_some(), LOOK, &mut remote) {
+            self.look = d.look;
         }
         if take(d.state.is_some(), STATE, &mut remote) {
             self.state = d.state.unwrap_or_default();
@@ -265,5 +279,25 @@ mod tests {
         assert_eq!(d.state.unwrap().len(), MAX_STATE);
         let many = "|S1,1".repeat(100);
         assert!(matches!(decode(&many), Wire::Fields(_)));
+    }
+
+    #[test]
+    fn a_forced_look_travels_and_is_bounded() {
+        let mut e = Extra::new();
+        e.look = Some((-450, 120));
+        let text = encode(&e);
+        assert_eq!(text, "|L-450,120");
+        let mut other = Extra::new();
+        other.apply_wire(decode(&text));
+        assert_eq!(other.look, Some((-450, 120)));
+        assert_eq!(other.look_deg(), Some((-45.0, 12.0)));
+        // The host cleared it: so it goes here too.
+        other.apply_none();
+        assert!(other.look.is_none() && other.is_plain());
+        let Wire::Fields(d) = decode("|L99999,-99999|Lx,1") else { panic!("fields") };
+        assert_eq!(d.look, Some((900, -600)));
+        let mut e = Extra::new();
+        e.look = Some((1, 1));
+        assert!(!e.is_plain());
     }
 }

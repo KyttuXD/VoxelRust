@@ -17,6 +17,7 @@ const MAX_LOOKUPS: usize = 48;
 /// Draw the mods' part of the HUD for this frame. `w`, `h` are the window,
 /// `s` the interface scale, `geo` where the game's own hotbar is.
 pub fn draw(r: &mut Renderer, w: f32, h: f32, s: f32, geo: &Geometry) {
+    sync_pictures(r);
     if with_ui(|u| u.hud.is_empty()).unwrap_or(true) {
         return;
     }
@@ -39,7 +40,25 @@ pub fn draw(r: &mut Renderer, w: f32, h: f32, s: f32, geo: &Geometry) {
                 }
             }
             Prim::Block { x, y, size, id } => draw_block(r, x, y, size, &id, &mut items),
+            Prim::Image { x, y, w, h, uv, col, img } => {
+                if let Some(tex) = with_ui(|u| u.images.tex_of(img)).flatten() {
+                    r.image_tinted(tex, x, y, w, h, uv, col);
+                }
+            }
         }
+    }
+}
+
+/// Send the pictures mods asked for to the card (once each), and give back
+/// those of mods that were switched off.
+fn sync_pictures(r: &mut Renderer) {
+    let dead = with_ui(|u| {
+        u.images.upload(&mut |w, h, px| r.add_picture(w, h, px));
+        u.images.take_dead()
+    })
+    .unwrap_or_default();
+    if !dead.is_empty() {
+        r.delete_textures(&dead);
     }
 }
 

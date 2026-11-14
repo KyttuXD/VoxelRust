@@ -45,6 +45,7 @@ pub fn local(g: &crate::session::Session) -> Drawn {
         Kind::Crouch => (g.posing.gait, if g.player.on_ground { (speed / 1.3).min(1.0) } else { 0.2 }),
         _ => (g.posing.gait, if g.player.on_ground { (speed / 4.0).min(1.0) } else { 0.2 }),
     };
+    let (phase, stride) = g.posing.shown_gait.map_or((phase, stride), |(p, s, _)| (p, s));
     // Looking up raises the head (positive turn); a sleeper stares at the ceiling whatever the mouse does.
     let head = if body.weight(Kind::Sleep) > 0.5 { 0.0 } else { g.player.pitch * 180.0 / PI };
     let pose = Pose { phase, stride, head_pitch: head, head_yaw: 0.0, clock: g.clock, body, ..Default::default() };
@@ -63,6 +64,8 @@ pub fn remote(p: &crate::netplay::Remote, clock: f32) -> Drawn {
         let x = clock * 2.2;
         body.swing = (x - floorf(x)).max(0.001);
     }
+    // Their pace tells a sprint from a walk (the body is leaning into it only on foot).
+    body.run = pose::gait::run_amount(p.pace);
     if p.emote != 0 {
         body.emote = p.emote;
         body.emote_t = p.emote_t;

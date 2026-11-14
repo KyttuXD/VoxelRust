@@ -42,7 +42,7 @@ impl App {
             if m.hurt > 0.0 {
                 tint = [255, tint[1] / 3, tint[2] / 3];
             }
-            let mut pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, ..Default::default() };
+            let mut pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, head_yaw: m.head.yaw, head_pitch: m.head.pitch, ..Default::default() };
             // A person standing still on a seat sits; in a bed, sleeps.
             let kind = crate::client::pose_view::creature_posture(&|x, y, z| g.world.get(x, y, z), m.body.pos, m.stride);
             let mut at = p;

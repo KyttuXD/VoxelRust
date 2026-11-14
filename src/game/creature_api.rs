@@ -189,6 +189,38 @@ impl Mobs {
         true
     }
 
+    /// Force where a creature's head looks, in degrees relative to its body
+    /// (yaw positive to its left, pitch positive up; within 90 and 60). The
+    /// head follows smoothly and shared games show it on every machine.
+    /// `false` for no such creature or a number that is not finite.
+    pub fn set_look(&mut self, id: u32, yaw: f64, pitch: f64) -> bool {
+        let Some(i) = self.index_of(id) else { return false };
+        if !yaw.is_finite() || !pitch.is_finite() {
+            return false;
+        }
+        let (y, p) = crate::game::creature_look::clamp_look(yaw as f32, pitch as f32, crate::game::creature_look::SCRIPT_YAW, crate::game::creature_look::SCRIPT_PITCH);
+        let want = Some(((y * 10.0) as i16, (p * 10.0) as i16));
+        let e = self.extra_of(i);
+        if e.look != want {
+            e.look = want;
+            e.touch();
+        }
+        true
+    }
+
+    /// Give the head back to the game (it looks at players again).
+    pub fn clear_look(&mut self, id: u32) -> bool {
+        let Some(i) = self.index_of(id) else { return false };
+        if let Some(e) = self.list[i].extra.as_mut() {
+            if e.look.is_some() {
+                e.look = None;
+                e.touch();
+            }
+        }
+        self.tidy(i);
+        true
+    }
+
     /// The state text of a creature ("" if it has none or is gone).
     pub fn state_of(&self, id: u32) -> &str {
         self.index_of(id).map_or("", |i| self.list[i].state_text())
@@ -253,6 +285,23 @@ mod tests {
             return None;
         }
         Some(0)
+    }
+
+    #[test]
+    fn a_forced_look_is_bounded_and_can_be_given_back() {
+        let Some(k) = some_kind() else { return };
+        let mut mobs = Mobs::new(3);
+        let i = mobs.spawn(k, [0.0, 100.0, 0.0]);
+        let id = mobs.list[i].id;
+        assert!(mobs.set_look(id, 200.0, -200.0));
+        assert_eq!(mobs.list[i].extra.as_ref().unwrap().look, Some((900, -600)));
+        assert!(mobs.set_look(id, 12.5, 3.0));
+        assert_eq!(mobs.list[i].extra.as_ref().unwrap().look_deg(), Some((12.5, 3.0)));
+        assert!(!mobs.set_look(id, f64::NAN, 0.0));
+        assert!(!mobs.set_look(id + 1000, 0.0, 0.0));
+        assert!(mobs.clear_look(id));
+        assert!(mobs.list[i].extra.is_none(), "nothing kept");
+        assert!(!mobs.clear_look(id + 1000));
     }
 
     #[test]

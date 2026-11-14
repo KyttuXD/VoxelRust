@@ -335,8 +335,10 @@ pub mod traits {
     pub const PACK: u32 = 128;
     /// Tags along behind a player holding its favourite food.
     pub const FOLLOWS: u32 = 256;
-    pub const NAMES: [(&str, u32); 9] =
-        [("flees", FLEES), ("herd", HERD), ("jumps", JUMPS), ("territorial", TERRITORIAL), ("hunter", HUNTER), ("prey", PREY), ("lazy", LAZY), ("pack", PACK), ("follows", FOLLOWS)];
+    /// Its head follows the player from up to 48 blocks (others look only within 12).
+    pub const WATCHES: u32 = 512;
+    pub const NAMES: [(&str, u32); 10] =
+        [("flees", FLEES), ("herd", HERD), ("jumps", JUMPS), ("territorial", TERRITORIAL), ("hunter", HUNTER), ("prey", PREY), ("lazy", LAZY), ("pack", PACK), ("follows", FOLLOWS), ("watches", WATCHES)];
 }
 
 /// How a creature's model moves.

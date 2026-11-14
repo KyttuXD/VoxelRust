@@ -4,7 +4,7 @@
 //! above it, so a limb flexes like a real one instead of swinging stiffly.
 
 use super::{Role, Walk};
-use crate::math::{cosf, sinf};
+use crate::math::{cosf, sinf, sqrtf};
 
 fn pos(v: f32) -> f32 {
     if v > 0.0 {
@@ -59,8 +59,9 @@ pub fn walk(role: Role, handled: bool, w: &Walk) -> [f32; 3] {
             o[2] = -(s as f32) * (1.2 + breath * 0.8) * still;
         }
         Role::Forearm(s) if !handled => {
-            // The elbow folds as the arm comes forward, a beat behind it.
-            o[0] = (8.0 + pos(arm_forward(s, ph - 0.6)) * 34.0) * st + 3.0 * still;
+            // The elbow folds as the arm comes forward, a beat behind it: about 10 to 35
+            // degrees on the forward swing, straight on the back swing.
+            o[0] = sqrtf(pos(arm_forward(s, ph - 0.6)).min(1.0)) * 35.0 * st + 3.0 * still;
         }
         Role::Hand(s) => {
             o[0] = pos(arm_forward(s, ph - 1.2)) * 8.0 * st;
@@ -68,7 +69,7 @@ pub fn walk(role: Role, handled: bool, w: &Walk) -> [f32; 3] {
         }
         Role::Calf(s) if !handled => {
             // The knee folds as the leg swings forward, the heel trailing.
-            o[0] = -(pos(leg_forward(s, ph + 0.9)) * 58.0 + 4.0) * st;
+            o[0] = -(pos(leg_forward(s, ph + 0.9)) * 46.0 + 4.0) * st;
         }
         Role::Foot(s) => {
             // Toes up as the heel strikes, down as the foot pushes off.
@@ -92,7 +93,7 @@ mod tests {
             assert!(o[0] <= 0.0, "a knee must not bend backwards: {o:?}");
             worst = worst.min(o[0]);
         }
-        assert!(worst < -40.0, "the knee should fold well: {worst}");
+        assert!(worst < -40.0 && worst >= -50.5, "the knee should fold well, up to 50 degrees: {worst}");
         assert_eq!(walk(Role::Calf(1), false, &Walk::default()), [0.0; 3]);
         // A bone whose swing is the model's own is left to it.
         assert_eq!(walk(Role::Calf(1), true, &Walk { phase: 1.0, stride: 1.0, clock: 0.0 }), [0.0; 3]);
@@ -113,5 +114,38 @@ mod tests {
         assert!(still[0].abs() > 0.1 && still[0].abs() < 2.0 && still[1] == 0.0);
         let going = walk(Role::Chest, false, &Walk { phase: 1.0, stride: 1.0, clock: 0.9 });
         assert!(going[1].abs() > 3.0);
+    }
+
+    #[test]
+    fn both_player_models_have_the_bend_bones_a_mod_body_can_copy() {
+        for text in [include_str!("../../../data/models/player.bbmodel"), include_str!("../../../data/models/player_slim.bbmodel")] {
+            let m = crate::bbmodel::load(text).unwrap();
+            let roles: alloc::vec::Vec<Role> = m.bones.iter().map(|b| super::super::classify(&b.name)).collect();
+            for side in [1i8, -1] {
+                for want in [Role::Arm(side), Role::Forearm(side), Role::Hand(side), Role::Thigh(side), Role::Calf(side), Role::Foot(side)] {
+                    assert_eq!(roles.iter().filter(|r| **r == want).count(), 1, "{want:?}");
+                }
+            }
+            // The elbow and the knee are pivots half way down their limbs: the forearm's pivot is below the arm's.
+            let origin = |name: &str| m.bones[m.bone(name).unwrap()].origin;
+            assert!(origin("L-Forearm")[1] < origin("L-Arm")[1] && origin("L-Hand")[1] < origin("L-Forearm")[1]);
+            assert!(origin("R-Calf")[1] < origin("R-Thigh")[1] && origin("R-Foot")[1] < origin("R-Calf")[1]);
+            let rig = super::super::rig_of(&roles, &[origin("L-Thigh")[1], origin("R-Thigh")[1]], m.max[1] - m.min[1]);
+            assert!(rig.humanoid);
+        }
+    }
+
+    #[test]
+    fn sprinting_and_walking_stay_in_range_for_every_bone() {
+        let all = [Role::Belly, Role::Chest, Role::Neck, Role::Head, Role::Arm(1), Role::Arm(-1), Role::Forearm(1), Role::Forearm(-1), Role::Hand(1), Role::Calf(1), Role::Calf(-1), Role::Foot(1), Role::Thigh(1)];
+        for i in 0..200 {
+            let w = Walk { phase: i as f32 * 0.05, stride: 1.0, clock: i as f32 * 0.1 };
+            let run = super::super::Body { run: 1.0, ..super::super::Body::default() };
+            for r in all {
+                let mut rot = [0.0f32; 3];
+                super::super::apply(r, false, &run, &w, &mut rot);
+                assert!(rot.iter().all(|a| a.is_finite() && a.abs() < 130.0), "{r:?} {rot:?}");
+            }
+        }
     }
 }

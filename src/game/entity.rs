@@ -63,6 +63,8 @@ pub struct Mob {
     /// What a script added: its own size, health limit, bone overrides, tilt
     /// and state text (see `creature_extra`). `None` for almost every creature.
     pub extra: Option<alloc::boxed::Box<crate::creature_extra::Extra>>,
+    /// Where its head is turned now (see `creature_look`).
+    pub head: crate::game::creature_look::Head,
     /// A night creature in daylight: above 0, a script spared it for that many
     /// more seconds; below 0, the scripts said it burns (see `mob_hooks`).
     pub sun_veto: f32,
@@ -318,6 +320,7 @@ impl Mobs {
             last_pos: pos,
             id,
             extra: None,
+            head: Default::default(),
             sun_veto: 0.0,
             remove_reason: "",
         });
