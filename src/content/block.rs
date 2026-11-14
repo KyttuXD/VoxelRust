@@ -1601,7 +1601,13 @@ impl Registry {
     /// `load` reads a file named by an `include` or `texture ... file` line.
     pub fn from_sources(sources: &[(&str, &str)], load: &mut dyn FnMut(&str) -> Option<Vec<u8>>) -> Registry {
         // Files named by the built-in data come from inside the program.
-        let mut with_builtin = |path: &str| embedded::file(path).map(|b| b.to_vec()).or_else(|| load(path));
+        let mut with_builtin = |path: &str| {
+            embedded::file(path).map(|b| b.to_vec()).or_else(|| load(path)).or_else(|| {
+                // A mod may name one of the game's own pictures (`textures/tools/...`): when the
+                // mod has no such file, the game's own is used.
+                path.find("/textures/").and_then(|at| embedded::file(&path[at + 1..])).map(|b| b.to_vec())
+            })
+        };
         let load: &mut dyn FnMut(&str) -> Option<Vec<u8>> = &mut with_builtin;
         let mut p = Parser {
             tiles: Vec::new(),
