@@ -248,3 +248,54 @@ pub fn explode(g: &mut Session, info: &mut ExplosionInfo) -> bool {
     }
     go
 }
+
+// ---- controls, HUD and screens (see script/host_ui.rs, client/modui)
+
+/// Call `hook` in the scripts of the mods `only` accepts.
+fn run_in(g: &mut Session, only: &dyn Fn(&str) -> bool, hook: &str, args: Vec<Value>) {
+    let world = g.name.clone();
+    with_host(|h| {
+        let mut host = SessionHost { g, rng: h.rng, mod_name: String::new() };
+        h.call_hook_in(&mut host, &world, Some(only), hook, &args, &mut |_| false);
+        h.rng = host.rng;
+    });
+}
+
+/// One of a mod's key bindings went down or up (`mod_name` is the cleaned
+/// name the bindings carry).
+pub fn key(g: &mut Session, mod_name: &str, id: &str, down: bool) {
+    if !live() {
+        return;
+    }
+    let hook = if down { "on_key_down" } else { "on_key_up" };
+    run_in(g, &|m| crate::client::modui::limits::clean_mod(m) == mod_name, hook, alloc::vec![Value::str(id)]);
+}
+
+/// Once a frame while playing: the scripts draw their HUD.
+pub fn hud(g: &mut Session, dt: f32) {
+    if !live() {
+        return;
+    }
+    run(g, "on_hud", alloc::vec![Value::Float(clean_f32(dt))], |_| false);
+}
+
+/// The player used a mod's screen: its scripts hear of it.
+pub fn ui_event(g: &mut Session, ev: &crate::client::modui::screens::UiEvent) {
+    use crate::client::modui::screens::{UiKind, UiValue};
+    if !live() {
+        return;
+    }
+    let (hook, args) = match &ev.kind {
+        UiKind::Click => ("on_ui_click", alloc::vec![Value::str(&ev.id)]),
+        UiKind::Change(v) => {
+            let value = match v {
+                UiValue::Bool(b) => Value::Bool(*b),
+                UiValue::Int(n) => Value::Int(*n),
+                UiValue::Text(t) => Value::str(t),
+            };
+            ("on_ui_change", alloc::vec![Value::str(&ev.id), value])
+        }
+        UiKind::Closed => ("on_ui_close", alloc::vec![Value::str(&ev.screen)]),
+    };
+    run_in(g, &|m| m == ev.mod_name, hook, args);
+}

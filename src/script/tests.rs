@@ -4,6 +4,7 @@
 
 use crate::script::host::mock::MockHost;
 use crate::script::host::{call_host_fn, HOST_FUNCTIONS};
+use crate::script::host_ui::UI_FUNCTIONS;
 use crate::script::interp::Interp;
 use crate::script::limits::Limits;
 use crate::script::state::ScriptState;
@@ -620,14 +621,14 @@ fn every_host_function_in_the_table_is_callable_and_nothing_else_is() {
     let mut state = ScriptState::default();
     let mut host = MockHost::default();
     let mut it = Interp::new(&prog, &mut consts, &mut host, &mut state, "demo", Limits::DEFAULT);
-    for (sig, what) in HOST_FUNCTIONS {
+    for (sig, what) in HOST_FUNCTIONS.iter().chain(UI_FUNCTIONS) {
         let name = sig.split('(').next().unwrap();
         assert!(!what.is_empty());
         assert!(call_host_fn(&mut it, name, &[]).is_some(), "{} is in the table but not implemented", name);
     }
     assert!(call_host_fn(&mut it, "format_disk", &[]).is_none());
     let mut seen = Vec::new();
-    for (sig, _) in HOST_FUNCTIONS {
+    for (sig, _) in HOST_FUNCTIONS.iter().chain(UI_FUNCTIONS) {
         let name = sig.split('(').next().unwrap();
         assert!(!seen.contains(&name), "{} is listed twice", name);
         seen.push(name);
@@ -637,7 +638,7 @@ fn every_host_function_in_the_table_is_callable_and_nothing_else_is() {
 #[test]
 fn the_docs_list_every_host_function_and_hook() {
     let docs = include_str!("../../docs/SCRIPTING.md");
-    for (sig, _) in HOST_FUNCTIONS {
+    for (sig, _) in HOST_FUNCTIONS.iter().chain(UI_FUNCTIONS) {
         let name = sig.split('(').next().unwrap();
         assert!(docs.contains(&format!("`{}(", name)), "docs/SCRIPTING.md does not describe the host function {}", name);
     }
@@ -889,4 +890,201 @@ fn the_global_host_loads_and_unloads() {
     assert_eq!(problems.len(), 1);
     ScriptHost::unload_all();
     assert!(!ScriptHost::is_live());
+}
+
+// ---- controls, HUD and screens
+
+use crate::client::modui::hudcmd::Cmd;
+use crate::client::modui::limits::{MAX_HUD_CMDS_PER_MOD, MAX_TEXT};
+
+#[test]
+fn hud_drawing_calls_make_commands_up_to_the_cap_and_then_say_false() {
+    let mut h = MockHost::default();
+    let v = try_run_with("fn t() -> i64 { let mut n = 0; for _ in 0..1000 { if hud_rect(\"top-left\", 0.0, 0.0, 4.0, 4.0, 0xFF0000) { n += 1; } } n }", &mut h, Limits::DEFAULT).unwrap();
+    assert_eq!(v, int(MAX_HUD_CMDS_PER_MOD as i64));
+    assert_eq!(h.ui.hud.buf.len(), MAX_HUD_CMDS_PER_MOD);
+    assert_eq!(h.ui.hud.buf.refused as usize, 1000 - MAX_HUD_CMDS_PER_MOD);
+}
+
+#[test]
+fn every_kind_of_hud_command_can_be_given_from_a_script() {
+    let mut h = MockHost::default();
+    let src = "hud_text(\"top\", 1.0, 2.0, 1.0, \"hi\", 0xFFFFFF); hud_rect(\"centre\", 0.0, 0.0, 5.0, 5.0, 0x80112233); hud_outline(\"bottom-right\", -2.0, -2.0, 9.0, 9.0, 1.0, 0xFF0000); hud_item(\"left\", 0.0, 0.0, 16.0, \"diamond\"); hud_block(\"right\", 0.0, 0.0, 16.0, \"stone\"); hud_bar(\"bottom\", 0.0, -30.0, 40.0, 4.0, 0.25, 0x00FF00);";
+    host_run(src, &mut h).unwrap();
+    let c = &h.ui.hud.buf.cmds;
+    assert_eq!(c.len(), 6);
+    assert!(matches!(&c[0], Cmd::Text { text, .. } if text == "HI"));
+    assert!(matches!(&c[1], Cmd::Rect { col, .. } if *col == [0x11, 0x22, 0x33, 0x80]));
+    assert!(matches!(&c[2], Cmd::Outline { .. }));
+    assert!(matches!(&c[3], Cmd::Item { id, .. } if id == "diamond"));
+    assert!(matches!(&c[4], Cmd::Block { id, .. } if id == "stone"));
+    assert!(matches!(&c[5], Cmd::Bar { frac, .. } if *frac == 0.25));
+}
+
+#[test]
+fn hud_text_is_cut_and_a_wrong_anchor_is_an_error() {
+    let mut h = MockHost::default();
+    host_run("hud_text(\"top-left\", 0.0, 0.0, 1.0, &\"x\".repeat(5000), 0xFFFFFF);", &mut h).unwrap();
+    match &h.ui.hud.buf.cmds[0] {
+        Cmd::Text { text, .. } => assert_eq!(text.len(), MAX_TEXT),
+        c => panic!("{:?}", c),
+    }
+    let e = host_run("hud_text(\"nowhere\", 0.0, 0.0, 1.0, \"x\", 0);", &mut h).unwrap_err();
+    assert!(e.contains("nowhere") && e.contains("anchor"), "{}", e);
+    let e = host_run("hud_set(\"nowhere\", \"a\", \"x\", 0);", &mut h).unwrap_err();
+    assert!(e.contains("slot"), "{}", e);
+}
+
+#[test]
+fn slots_toasts_and_the_action_bar_from_a_script() {
+    let mut h = MockHost::default();
+    let v = try_run_with("fn t() -> bool { hud_set(\"above_hotbar\", \"c\", \"north\", 0xFFFFFF) && hud_set_icon(\"c\", \"compass\") && toast(\"hello\", 2.0) && action_bar(\"saved\", 2.0) && !hud_set_icon(\"nope\", \"x\") }", &mut h, Limits::DEFAULT).unwrap();
+    assert_eq!(v, Value::Bool(true));
+    assert_eq!(h.ui.hud.elements.len(), 1);
+    assert_eq!((h.ui.hud.elements[0].text.as_str(), h.ui.hud.elements[0].icon.as_str(), h.ui.hud.elements[0].mod_name.as_str()), ("NORTH", "compass", "demo"));
+    assert_eq!(h.ui.hud.toasts.len(), 1);
+    assert!(h.ui.hud.action.is_some());
+    let v = try_run_with("fn t() -> bool { hud_remove(\"c\") && !hud_remove(\"c\") }", &mut h, Limits::DEFAULT).unwrap();
+    assert_eq!(v, Value::Bool(true));
+    assert!(h.ui.hud.elements.is_empty());
+}
+
+#[test]
+fn what_the_hud_may_read() {
+    let mut h = MockHost { health: 14, hunger: 17, air: 6.5, biome: String::from("forest"), selected: 3, heading: 90.0, pos: (1.0, 2.0, 3.0), time: 0.25, ..MockHost::default() };
+    h.ui.fps = 60.0;
+    let v = try_run_with("fn t() -> String { format!(\"{} {} {} {} {} {} {} {}\", player_health(), hunger(), air(), biome(), selected_slot(), heading(), fps(), time()) }", &mut h, Limits::DEFAULT).unwrap();
+    assert_eq!(v, text("14 17 6.5 forest 3 90 60 0.25"));
+}
+
+#[test]
+fn key_names_and_held_keys() {
+    let mut h = MockHost::default();
+    h.ui.set_held("demo", "dash", true);
+    let v = try_run_with("fn t() -> String { format!(\"{} {} {} {} {}\", key_scancode(\"g\"), key_scancode(\"F5\"), key_scancode(\"nonsense\"), key_held(\"dash\"), key_held(\"other\")) }", &mut h, Limits::DEFAULT).unwrap();
+    assert_eq!(v, text("10 62 0 true false"));
+}
+
+#[test]
+fn switches_are_read_by_the_mod_that_owns_them() {
+    let mut h = MockHost::default();
+    h.switches.push((String::from("demo.fast"), true));
+    let v = try_run_with("fn t() -> bool { setting_on(\"fast\") && !setting_on(\"slow\") }", &mut h, Limits::DEFAULT).unwrap();
+    assert_eq!(v, Value::Bool(true));
+}
+
+#[test]
+fn declaring_keys_is_only_allowed_while_registering() {
+    let mut h = MockHost::default();
+    let e = host_run("bind_key(\"a\", \"A\", \"\", 5);", &mut h).unwrap_err();
+    assert!(e.contains("on_register"), "{}", e);
+    let e = host_run("add_switch(\"a\", \"A\", true);", &mut h).unwrap_err();
+    assert!(e.contains("on_register"), "{}", e);
+}
+
+#[test]
+fn on_register_declares_bindings_and_switches() {
+    let mut host = ScriptHost::new();
+    let src = "fn on_register() {\n    bind_key(\"compass\", \"toggle compass\", \"hud\", \"g\");\n    bind_key(\"stats\", \"Stats\", \"\", 23);\n    add_switch(\"fast\", \"Fast mode\", true);\n}\n";
+    let problems = host.add_mod("demo mod", &files("main", src));
+    assert!(problems.is_empty(), "{:?}", problems);
+    let d = &host.decls;
+    assert_eq!(d.binds.len(), 2);
+    assert_eq!((d.binds[0].mod_name.as_str(), d.binds[0].id.as_str(), d.binds[0].default_key, d.binds[0].label.as_str(), d.binds[0].group.as_str()), ("demo_mod", "compass", 10, "TOGGLE COMPASS", "HUD"));
+    assert_eq!(d.binds[1].default_key, 23);
+    assert_eq!((d.switches.len(), d.switches[0].default), (1, true));
+    // Loading the mod again replaces what it declared; a mod without it declares nothing.
+    let src2 = "fn on_register() { bind_key(\"only\", \"Only\", \"\", 5); }";
+    host.add_mod("demo mod", &files("main", src2));
+    assert_eq!((host.decls.binds.len(), host.decls.binds[0].id.as_str(), host.decls.switches.len()), (1, "only", 0));
+    host.add_mod("demo mod", &files("main", "fn on_tick(dt: f32) {}"));
+    assert!(host.decls.binds.is_empty());
+}
+
+#[test]
+fn a_script_that_registers_badly_is_reported_and_switched_off() {
+    let mut host = ScriptHost::new();
+    let problems = host.add_mod("demo", &files("main", "fn on_register() { bind_key(\"bad id\", \"x\", \"\", 5); }\nfn on_tick(dt: f32) { say(\"tick\"); }"));
+    assert_eq!(problems.len(), 1);
+    assert!(problems[0].contains("key id"), "{:?}", problems);
+    let mut mock = MockHost::default();
+    call(&mut host, &mut mock, "on_tick", &[Value::Float(0.1)]);
+    assert!(mock.calls.is_empty(), "the script that failed is off");
+    // A bad key name is an error with the list of names.
+    let problems = host.add_mod("demo", &files("main", "fn on_register() { bind_key(\"a\", \"A\", \"\", \"banana\"); }"));
+    assert!(problems[0].contains("not a key name"), "{:?}", problems);
+    // Other mods are unaffected.
+    host.add_mod("other", &files("main", "fn on_tick(dt: f32) { say(\"ok\"); }"));
+    call(&mut host, &mut mock, "on_tick", &[Value::Float(0.1)]);
+    assert_eq!(mock.calls, ["say ok"]);
+}
+
+#[test]
+fn a_key_reaches_only_the_mod_it_belongs_to() {
+    let mut host = ScriptHost::new();
+    host.add_mod("a", &files("main", "fn on_key_down(id: String) { say(&format!(\"a down {}\", id)); }\nfn on_key_up(id: String) { say(&format!(\"a up {}\", id)); }"));
+    host.add_mod("b", &files("main", "fn on_key_down(id: String) { say(&format!(\"b down {}\", id)); }"));
+    let mut mock = MockHost::default();
+    let only_b = |m: &str| m == "b";
+    host.call_hook_in(&mut mock, "world", Some(&only_b as &dyn Fn(&str) -> bool), "on_key_down", &[text("jump")], &mut |_| false);
+    assert_eq!(mock.calls, ["say b down jump"]);
+    mock.calls.clear();
+    let only_a = |m: &str| m == "a";
+    host.call_hook_in(&mut mock, "world", Some(&only_a as &dyn Fn(&str) -> bool), "on_key_up", &[text("jump")], &mut |_| false);
+    assert_eq!(mock.calls, ["say a up jump"]);
+    // Asking everyone still works.
+    mock.calls.clear();
+    call(&mut host, &mut mock, "on_key_down", &[text("x")]);
+    assert_eq!(mock.calls, ["say a down x", "say b down x"]);
+}
+
+#[test]
+fn a_script_builds_a_screen_and_hears_the_player() {
+    let src = "fn open() {\n    ui_open(\"stats\", \"Stats\");\n    ui_text(\"hello\");\n    ui_button(\"go\", \"Go\");\n    ui_toggle(\"t\", \"Toggle\", false);\n    ui_stepper(\"n\", \"Count\", 3, 0, 9);\n    ui_input(\"who\", \"Name\", \"abc\");\n    ui_list(\"l\", \"one\\ntwo\\nthree\", 1);\n}\nfn on_ui_click(id: String) { say(&format!(\"click {}\", id)); }\nfn on_ui_change(id: String, value: i64) { say(&format!(\"change {} {}\", id, value)); }\nfn on_ui_close(name: String) { say(&format!(\"close {}\", name)); }\nfn peek() -> String { format!(\"{} {} {} {} {}\", ui_get_value(\"t\"), ui_get_value(\"n\"), ui_get_text(\"who\"), ui_get_value(\"l\"), ui_get_text(\"l\")) }\nfn poke() -> bool { ui_set_value(\"t\", 1) && ui_set_value(\"n\", 99) && ui_set_text(\"who\", \"zed\") && ui_set_line(0, \"changed\") && ui_close() }\n";
+    let mut host = ScriptHost::new();
+    assert!(host.add_mod("demo", &files("main", src)).is_empty());
+    let mut mock = MockHost::default();
+    call(&mut host, &mut mock, "open", &[]);
+    {
+        let o = mock.ui.screens.open.as_ref().expect("the screen is open");
+        assert_eq!((o.name.as_str(), o.title.as_str(), o.widgets.len()), ("stats", "STATS", 6));
+    }
+    assert!(mock.ui.screens.opened_now);
+    let seen = call(&mut host, &mut mock, "peek", &[]);
+    assert_eq!(seen, [text("0 3 abc 1 TWO")]);
+    // What the player does comes back through the hooks.
+    call(&mut host, &mut mock, "on_ui_click", &[text("go")]);
+    call(&mut host, &mut mock, "on_ui_change", &[text("t"), Value::Bool(true)]);
+    call(&mut host, &mut mock, "on_ui_close", &[text("stats")]);
+    assert_eq!(mock.calls, ["say click go", "say change t true", "say close stats"]);
+    // The script changes it and closes it; closing leaves an event for the game to deliver.
+    let r = call(&mut host, &mut mock, "poke", &[]);
+    assert_eq!(r, [Value::Bool(true)]);
+    assert!(mock.ui.screens.open.is_none());
+    let ev = mock.ui.screens.take_events();
+    assert_eq!(ev.len(), 1);
+    assert_eq!(ev[0].screen, "stats");
+}
+
+#[test]
+fn screen_calls_are_bounded() {
+    let mut h = MockHost::default();
+    let v = try_run_with("fn t() -> i64 { ui_open(\"s\", \"S\"); let mut n = 0; for i in 0..200 { if ui_text(&format!(\"line {}\", i)) { n += 1; } } n }", &mut h, Limits::DEFAULT).unwrap();
+    assert_eq!(v, int(crate::client::modui::limits::MAX_WIDGETS as i64));
+    // A used id, a bad id and a widget with no screen are refused (false), not errors.
+    let v = try_run_with("fn t() -> bool { ui_close(); !ui_button(\"a\", \"A\") }", &mut h, Limits::DEFAULT).unwrap();
+    assert_eq!(v, Value::Bool(true));
+}
+
+#[test]
+fn a_runaway_hud_script_is_stopped_by_the_step_budget_not_the_frame() {
+    let mut host = ScriptHost::new();
+    host.add_mod("demo", &files("main", "fn on_hud(dt: f32) { loop { hud_rect(\"top\", 0.0, 0.0, 1.0, 1.0, 0); } }"));
+    let mut mock = MockHost::default();
+    call(&mut host, &mut mock, "on_hud", &[Value::Float(0.016)]);
+    assert!(mock.ui.hud.buf.len() <= MAX_HUD_CMDS_PER_MOD);
+    assert!(!host.mods[0].scripts[0].disabled.is_none(), "it ran out of steps and was switched off");
+    let before = mock.ui.hud.buf.len();
+    call(&mut host, &mut mock, "on_hud", &[Value::Float(0.016)]);
+    assert_eq!(mock.ui.hud.buf.len(), before, "a script that was switched off draws nothing more");
 }

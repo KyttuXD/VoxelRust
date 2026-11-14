@@ -965,6 +965,9 @@ also passed to the mod's `on_event` hook.
 | `start` | a world is opened | none | `on_world_load` once the world is open | `fn(&mut Session)` |
 | (saving) | the world was saved | | `on_world_save` after the files are written | `fn(&mut Session)` |
 | (each frame) | the HUD is drawn in play | | `on_draw_hud` | `fn(&Session, &mut dyn HudSink)` |
+| (a key binding) | a mod's key binding goes down or up | | `on_key` (see [Controls, HUD and screens](#controls-hud-and-screens)) | `fn(&mut Session, id: &str, down: bool)` |
+| (each frame) | a frame of play | | `on_hud`: draw through the checked API | `fn(&Session, &mut ModApi)` |
+| (a mod's screen) | the player used a screen the mod opened | | `on_ui` | `fn(&mut Session, &mut ModApi, &UiEvent)` |
 | `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itempickup`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
 | `explode`, `blockexploded`, `tntprimed` | an explosion happens, breaks blocks, or TNT is lit | see [Explosions](#explosions) | `before_explode`: `false` cancels; `after_explode` and `on_prime` after | `fn(&mut Session, &mut ExplosionInfo) -> bool` |
 | `effectstart`, `effectend`, `wake` | a status effect starts or ends on the player; the player wakes | effect id | `effect_apply`: `false` refuses it; `effect_tick` every frame per running effect | `fn(&mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool` |
@@ -982,7 +985,7 @@ events it raises with `fire` are not passed back to its own `on_event`. A
 cancelled break or place leaves the world as it was (digging starts over);
 the script event is then not fired.
 
-`on_draw_hud` gets a `HudSink` with `size()`, `scale()`, `rect(x, y, w, h,
+`on_draw_hud` (the older, unchecked way) gets a `HudSink` with `size()`, `scale()`, `rect(x, y, w, h,
 colour)`, `text(x, y, scale, text, colour)` and `text_width(text, scale)`.
 Positions are screen pixels; multiply sizes by `scale()`.
 
@@ -1008,6 +1011,37 @@ renamed without leaving the old name as an alias.
 `on_block_break`, softens falls with `on_player_hurt` and draws the player's
 health with `on_draw_hud`, plus a few `when` scripts for the new events.
 Copy it to `mods/hooksdemo/` and rebuild.
+
+### Controls, HUD and screens
+
+A mod can put its own controls, HUD and screens in the game, from code
+(`Native`) or from a script ([SCRIPTING.md](SCRIPTING.md#controls-hud-and-screens),
+which has the same calls under other names). Both go through one checked
+handle, `ModApi` ([src/client/modui/api.rs](../src/client/modui/api.rs)):
+every string is cut, every count has a cap, NaN and huge numbers are brought
+into range, and a call over a cap just returns `false`. Nothing blocks the frame.
+
+| `Native` field | What it is |
+| --- | --- |
+| `bindings: &'static [KeyDecl]` | key bindings: `KeyDecl { id, label, group, key }` (`key` is an SDL scancode; `binds::key_scancode("g")` is 10). They are listed in SETTINGS > CONTROLS > KEY BINDINGS under a heading with the mod's name (and the group), can be rebound, and are saved as `modkey_<mod>.<id>` in `settings.txt`. |
+| `on_key: fn(&mut Session, id: &str, down: bool)` | a binding of this mod went down or up while playing (not while typing or in a menu; a release is always passed on). |
+| `on_hud: fn(&Session, &mut ModApi)` | once a frame while playing: draw with `api.hud_text`, `hud_rect`, `hud_outline`, `hud_item`, `hud_block`, `hud_bar` (anchor names `top-left`... `bottom-right`, distances in interface pixels, a colour as `0xRRGGBB` or `0xAARRGGBB`), keep lines in the slots with `hud_set` (`above_hotbar`, `beside_hearts`, `top_left_list`, `under_crosshair`), show `toast` and `action_bar`. At most 512 drawing commands a frame in all (256 for one mod); the rest return `false`. |
+| `on_ui: fn(&mut Session, &mut ModApi, &UiEvent)` | the player used a screen this mod opened with `api.ui_open(name, title)` and filled with `ui_text`, `ui_button`, `ui_toggle`, `ui_stepper`, `ui_input`, `ui_list`: a click, a change, or the screen closing (`UiEvent`, `UiKind`). |
+| `switches: &'static [SwitchDecl]` | rows for SETTINGS > GAME > MOD SWITCHES AND RELOAD: `SwitchDecl { id, label, default }`. Read one with `modui::keys::switch_on(g, NAME, id)`. |
+
+Reading the player for a HUD needs no new call: the hooks have the `Session`
+(`g.health`, `g.hunger`, `g.air`, `g.player.pos`, `g.held()`, `g.time`), and
+`modui::info::read(g, fps)` collects them (with the biome and a compass
+heading) into a `PlayerInfo`. Draw with the `ModApi` and not with the older
+`on_draw_hud` when you want the scaling, clipping and caps done for you.
+
+The list of key bindings **scrolls** (mouse wheel and a bar) when it is longer
+than the page: the game's own bindings come first, then each mod's under its
+name. Two bindings on one key are outlined in red; both fire. The same goes for
+the mod switches page. Do not call `with_ui` (or anything that calls a script)
+from inside these hooks: use the `ModApi` you are given. The example in
+[examples/hooks](../examples/hooks) has a binding that shows or hides a line
+beside the hearts.
 
 ### Adding an event or a hook
 

@@ -54,6 +54,35 @@ pub trait Host {
     }
     /// The mod whose script is about to run (for the log).
     fn set_mod(&mut self, _name: &str) {}
+
+    // ---- the interface (see `host_ui.rs`)
+
+    /// What mods keep on the HUD, in their screens and for their keys.
+    fn ui(&mut self) -> &mut crate::client::modui::ModUi;
+    /// Hunger, 0 to 20.
+    fn hunger(&mut self) -> i64 {
+        0
+    }
+    /// Breath left, 0 to 10.
+    fn air(&mut self) -> f64 {
+        10.0
+    }
+    /// The biome under the player, lower case.
+    fn biome(&mut self) -> String {
+        String::new()
+    }
+    /// The hotbar slot chosen, 0 to 8.
+    fn selected_slot(&mut self) -> i64 {
+        0
+    }
+    /// The compass heading in degrees (0 north, 90 east).
+    fn heading(&mut self) -> f64 {
+        0.0
+    }
+    /// Whether the mod's switch `id` is on.
+    fn setting_on(&mut self, _mod_name: &str, _id: &str) -> bool {
+        false
+    }
 }
 
 /// Every host function: (signature, what it does). Kept in step with
@@ -182,7 +211,7 @@ pub(crate) fn call_host_fn(it: &mut Interp, name: &str, args: &[Value]) -> Optio
         "state_get_int" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, int(name, args, 1)?))).map(|(k, d)| Value::Int(it.state.get(k).and_then(|s| s.trim().parse::<i64>().ok()).unwrap_or(d))),
         "state_set_int" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, int(name, args, 1)?))).and_then(|(k, v)| it.state.set(k, &format!("{}", v))).map(|_| Value::Unit),
         "mod_name" => want(name, args, 0).map(|_| Value::str(it.mod_name)),
-        _ => return None,
+        _ => return crate::script::host_ui::call(it, name, args),
     };
     Some(match r {
         Ok(v) => Ok(v),
@@ -340,6 +369,36 @@ impl Host for SessionHost<'_> {
     fn set_mod(&mut self, name: &str) {
         self.mod_name = String::from(name);
     }
+
+    fn ui(&mut self) -> &mut crate::client::modui::ModUi {
+        // Safety: the state is never freed; no code of the interface calls a
+        // script while it holds the state (see `modui::with_ui`).
+        unsafe { &mut *crate::client::modui::ui_ptr() }
+    }
+
+    fn hunger(&mut self) -> i64 {
+        self.g.hunger as i64
+    }
+
+    fn air(&mut self) -> f64 {
+        crate::script::value::clean_f32(self.g.air)
+    }
+
+    fn biome(&mut self) -> String {
+        crate::client::modui::info::biome_name(self.g)
+    }
+
+    fn selected_slot(&mut self) -> i64 {
+        self.g.selected as i64
+    }
+
+    fn heading(&mut self) -> f64 {
+        crate::client::modui::info::heading_degrees(self.g.player.yaw)
+    }
+
+    fn setting_on(&mut self, mod_name: &str, id: &str) -> bool {
+        crate::client::modui::keys::switch_on(self.g, mod_name, id)
+    }
 }
 
 /// A host that records what it was asked, for the tests.
@@ -359,6 +418,13 @@ pub mod mock {
         pub rng: u32,
         pub health: i64,
         pub items: Vec<(String, i64)>,
+        pub ui: crate::client::modui::ModUi,
+        pub hunger: i64,
+        pub air: f64,
+        pub biome: String,
+        pub selected: i64,
+        pub heading: f64,
+        pub switches: Vec<(String, bool)>,
     }
 
     impl Host for MockHost {
@@ -426,6 +492,28 @@ pub mod mock {
         }
         fn held_item(&mut self) -> String {
             String::from("stick")
+        }
+        fn ui(&mut self) -> &mut crate::client::modui::ModUi {
+            &mut self.ui
+        }
+        fn hunger(&mut self) -> i64 {
+            self.hunger
+        }
+        fn air(&mut self) -> f64 {
+            self.air
+        }
+        fn biome(&mut self) -> String {
+            self.biome.clone()
+        }
+        fn selected_slot(&mut self) -> i64 {
+            self.selected
+        }
+        fn heading(&mut self) -> f64 {
+            self.heading
+        }
+        fn setting_on(&mut self, mod_name: &str, id: &str) -> bool {
+            let name = alloc::format!("{}.{}", mod_name, id);
+            self.switches.iter().find(|s| s.0 == name).map_or(false, |s| s.1)
         }
     }
 }

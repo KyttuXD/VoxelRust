@@ -315,6 +315,8 @@ enum Screen {
     Emote,
     /// Typing a web address to fetch a skin picture from (see `client::skinweb`).
     SkinUrl,
+    /// A screen a mod opened (see `client::modui`).
+    ModUi,
 }
 
 /// Which build this is: the name its download carries. An update must
@@ -589,6 +591,10 @@ impl App {
                 }
             }
         }
+        // Leaving a mod's screen: its mod hears that it closed.
+        if self.screen == Screen::ModUi && screen != Screen::ModUi {
+            crate::client::modui::dispatch::closed_by_player();
+        }
         // Whatever lies in the crafting grid goes back in too.
         if self.screen != screen {
             match self.session.as_mut() {
@@ -803,7 +809,7 @@ impl App {
     fn key_down(&mut self, r: &Renderer, inp: &mut UiInput, sc: i32, repeat: bool) {
         if let Some(i) = self.rebinding.take() {
             if sc != key::ESCAPE {
-                self.settings.keys[i] = sc;
+                crate::client::modui::bind_page::rebind(&mut self.settings, i, sc);
             }
             return;
         }
@@ -834,6 +840,11 @@ impl App {
             _ => {}
         }
         let typing = self.focus != 0;
+        if self.screen == Screen::Game && !typing {
+            if let Some(g) = self.session.as_mut() {
+                crate::client::modui::keys::press(g, &self.settings, sc, true);
+            }
+        }
         let (k_inv, k_fly, k_map) = (self.settings.key(Action::Inventory), self.settings.key(Action::Fly), self.settings.key(Action::Map));
         let k_waypoints = self.settings.key(Action::Waypoints);
         let k_chat = self.settings.key(Action::Chat);
@@ -904,6 +915,7 @@ impl App {
             Screen::Join if sc == key::ESCAPE && !typing => self.set_screen(Screen::Title),
             Screen::EditWorld if sc == key::ESCAPE && !typing => self.set_screen(Screen::Worlds),
             Screen::SkinUrl if sc == key::ESCAPE => self.set_screen(Screen::Settings),
+            Screen::ModUi if sc == key::ESCAPE && !typing => self.set_screen(Screen::Game),
             Screen::Picker if sc == key::ESCAPE => {
                 self.close_picker(None);
             }
@@ -1041,6 +1053,27 @@ impl App {
         ui.centered(ui.w() * 0.5, y + step * 5.0, 1.0, "A DIRECT LINK TO THE PICTURE, HTTP OR HTTPS", ui::DIM);
     }
 
+    /// Once a frame: what the player did on a mod's screen goes to the mod, and
+    /// a screen a mod opened (or closed) is switched to (or away from).
+    fn mod_screens(&mut self) {
+        let Some(g) = self.session.as_mut() else { return };
+        crate::client::modui::dispatch::ui_events(g);
+        let open = crate::client::modui::dispatch::is_open();
+        if matches!(self.screen, Screen::Game | Screen::ModUi) && crate::client::modui::dispatch::take_opened() && open {
+            self.set_screen(Screen::ModUi);
+        } else if self.screen == Screen::ModUi && !open {
+            self.set_screen(Screen::Game);
+        }
+    }
+
+    /// A mod's own screen (see `client::modui::screen_draw`).
+    fn screen_mod_ui(&mut self, ui: &mut Ui) {
+        let closed = crate::client::modui::with_ui(|u| crate::client::modui::screen_draw::draw(ui, &mut u.screens)).unwrap_or(false);
+        if closed {
+            self.set_screen(Screen::Game);
+        }
+    }
+
     fn leave_settings(&mut self) {
         self.settings.player_name = crate::settings::clean_name(&self.settings.player_name, 16);
         if self.settings.player_name.is_empty() {
@@ -1069,6 +1102,9 @@ impl App {
                             self.set_screen(Screen::Pause);
                         }
                         self.keys = [false; 512];
+                        if let Some(g) = self.session.as_mut() {
+                            crate::client::modui::keys::release_all(g);
+                        }
                     }
                     _ => {}
                 },
@@ -1083,6 +1119,9 @@ impl App {
                     let sc = ev.i32_at(16);
                     if (0..512).contains(&sc) {
                         self.keys[sc as usize] = false;
+                        if let Some(g) = self.session.as_mut() {
+                            crate::client::modui::keys::press(g, &self.settings, sc, false);
+                        }
                     }
                 }
                 sdl::EV_DROPFILE => {
@@ -1492,6 +1531,7 @@ impl App {
                 crate::client::mods::progress::draw(r, w, h, s, done, total, !g.playable);
             }
         }
+        self.mod_screens();
         let before = self.screen;
         let mut focus = self.focus;
         let mut selected = self.text_selected;
@@ -1516,6 +1556,7 @@ impl App {
                 Screen::Picker => self.screen_picker(&mut ui),
                 Screen::Emote => self.screen_emote(&mut ui),
                 Screen::SkinUrl => self.screen_skin_url(&mut ui),
+                Screen::ModUi => self.screen_mod_ui(&mut ui),
             }
             clicked = ui.clicked_any;
         }
@@ -1675,6 +1716,7 @@ impl App {
     }
 
     fn draw_hud(&mut self, r: &mut Renderer, w: f32, h: f32, s: f32) {
+        crate::client::modui::dispatch::set_fps(self.fps);
         let g = match &self.session {
             Some(g) => g,
             None => return,
@@ -1743,6 +1785,8 @@ impl App {
                 }
             }
         }
+        // What mods put on the HUD (their drawing commands, lines in the slots, toasts).
+        crate::client::modui::hud_draw::draw(r, w, h, s, &crate::client::modui::hud::Geometry { hotbar_x: x0, hotbar_y: y0, survival });
         // Active effects, with their icons and the time left, top right (under the minimap).
         if matches!(self.screen, Screen::Game | Screen::Chat) && !g.fx.list.is_empty() {
             let under_map = if self.settings.minimap && self.minimap.tex != 0 { 70.0 * s } else { 0.0 };
@@ -2248,25 +2292,16 @@ impl App {
                     }
                 }
                 2 if self.video_detail == 1 => {
-                    let half = (bw - 4.0 * s) * 0.5;
-                    if ui.button(x, row(0), bw, bh, "< BACK TO CONTROLS") {
+                    // The game's keys, then each mod's under its name; it scrolls.
+                    let back = bw * 0.62;
+                    if ui.button(x, row(0), back, bh, "< BACK TO CONTROLS") {
                         self.video_detail = 0;
                     }
-                    for (i, a) in ACTIONS.iter().enumerate() {
-                        // Two columns of key bindings.
-                        let (cx, cy) = (x + (i % 2) as f32 * (half + 4.0 * s), row(1 + i / 2));
-                        let label = if self.rebinding == Some(i) {
-                            String::from("PRESS A KEY")
-                        } else {
-                            alloc::format!("{}: {}", a.2, key_name(st.keys[i]))
-                        };
-                        if ui.button(cx, cy, half, bh, &label) {
-                            self.rebinding = Some(i);
-                        }
+                    if ui.button(x + back + 4.0 * s, row(0), bw - back - 4.0 * s, bh, "RESET KEYS") {
+                        crate::client::modui::bind_page::reset(st);
                     }
-                    if ui.button(x, row(10), bw, bh, "RESET KEYS") {
-                        st.keys = Settings::default().keys;
-                    }
+                    let room = crate::client::modui::bind_page::Room { x, y: row(1), w: bw, bh, step, lines: 9 };
+                    crate::client::modui::bind_page::draw(ui, st, &mut self.rebinding, key_name, room);
                 }
                 2 => {
                     let half = (bw - 4.0 * s) * 0.5;
@@ -2387,6 +2422,9 @@ impl App {
                             changed |= touched;
                         }
                     }
+                    // ...and the switches the mods declared, in what room is left.
+                    let room = ((row(10) - at) / step + 0.01) as usize;
+                    changed |= crate::client::modui::switch_page::draw(ui, st, x, at, bw, bh, step, room);
                 }
                 _ => {
                     ui.text(x, row(0) + 4.0 * s, "PLAYER NAME", ui::DIM);

@@ -131,6 +131,9 @@ pub struct Settings {
     pub slim_arms: bool,
     /// The switches packs add (`setting <id> ...`), as last set here.
     pub flags: Vec<(String, bool)>,
+    /// Keys the player gave to mods' key bindings, as (`<mod>.<id>`, scancode);
+    /// a binding on its default key is not listed (see `client::modui::binds`).
+    pub mod_keys: Vec<(String, i32)>,
     /// Settings the game itself has no name for: what the mods' own code
     /// keeps here (see [`Settings::extra`]). Kept as written.
     pub extras: Vec<(String, String)>,
@@ -202,6 +205,7 @@ impl Default for Settings {
             map_waypoints: true,
             slim_arms: false,
             flags: Vec::new(),
+            mod_keys: Vec::new(),
             extras: Vec::new(),
             mods_off: String::new(),
             texture_pack: String::new(),
@@ -309,14 +313,22 @@ impl Settings {
             map_grid: flag("map_grid", false),
             map_waypoints: flag("map_waypoints", true),
             slim_arms: flag("slim_arms", false),
-            flags: text.lines().filter_map(|l| l.strip_prefix("flag_")).filter_map(|l| l.split_once('=')).map(|(k, v)| (String::from(k.trim()), v.trim() == "1")).take(64).collect(),
+            flags: text.lines().filter_map(|l| l.strip_prefix("flag_")).filter_map(|l| l.split_once('=')).map(|(k, v)| (String::from(k.trim()), v.trim() == "1")).take(160).collect(),
+            mod_keys: text
+                .lines()
+                .filter_map(|l| l.strip_prefix("modkey_"))
+                .filter_map(|l| l.split_once('='))
+                .filter_map(|(k, v)| v.trim().parse::<i32>().ok().filter(|c| (1..=511).contains(c)).map(|c| (String::from(k.trim()), c)))
+                .filter(|(k, _)| !k.is_empty() && k.len() <= 90 && k.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+                .take(256)
+                .collect(),
             extras: {
                 // Whatever is not one of the game's own settings.
                 let own = Settings::default().to_text();
                 text.lines()
                     .filter_map(|l| l.trim().split_once('='))
                     .filter(|(k, _)| !k.is_empty() && k.len() <= 32 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-                    .filter(|(k, _)| !k.starts_with("key_") && !k.starts_with("flag_") && kv(&own, k).is_none())
+                    .filter(|(k, _)| !k.starts_with("key_") && !k.starts_with("flag_") && !k.starts_with("modkey_") && kv(&own, k).is_none())
                     .map(|(k, v)| (String::from(k), v.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').take(120).collect::<String>()))
                     .take(32)
                     .collect()
@@ -381,6 +393,9 @@ impl Settings {
         for (id, on) in &self.flags {
             s.push_str(&alloc::format!("flag_{}={}\n", id, *on as i32));
         }
+        for (name, key) in &self.mod_keys {
+            s.push_str(&alloc::format!("modkey_{}={}\n", name, key));
+        }
         s
     }
 }
@@ -416,6 +431,18 @@ mod tests {
         assert_eq!(odd.player_name, "bxyb");
         assert_eq!(odd.key(Action::Jump), 1);
         assert_eq!(Settings::parse(""), Settings::default());
+    }
+
+    #[test]
+    fn mods_keys_and_switches_are_kept_and_junk_is_dropped() {
+        let s = Settings::parse("modkey_demo.compass=20\nmodkey_demo.bad=0\nmodkey_demo.big=9999\nmodkey_=5\nmodkey_a b.c=7\nmodkey_x.y=abc\nflag_demo.fast=1\n");
+        assert_eq!(s.mod_keys, [(String::from("demo.compass"), 20)]);
+        assert_eq!(s.flags, [(String::from("demo.fast"), true)]);
+        assert!(s.extras.is_empty(), "{:?}", s.extras);
+        assert_eq!(Settings::parse(&s.to_text()), s);
+        // Many of them are kept up to the cap, never more.
+        let many: String = (0..400).map(|i| alloc::format!("modkey_m.k{}={}\n", i, 5 + i % 100)).collect();
+        assert_eq!(Settings::parse(&many).mod_keys.len(), 256);
     }
 
     #[test]

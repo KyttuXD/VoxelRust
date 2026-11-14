@@ -229,6 +229,8 @@ pub fn poll(g: &mut Session, dt: f32) {
         g.fire(WEATHER, wet.name());
     }
     hooks::tick(g, dt);
+    // Mods' HUD: timers, then each mod draws the frame's commands.
+    crate::client::modui::dispatch::frame(g, dt);
 }
 
 /// The player hit a creature of this kind.

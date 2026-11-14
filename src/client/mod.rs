@@ -19,3 +19,5 @@ pub mod pack_text;
 pub mod pose_view;
 pub mod emote_wheel;
 pub mod mods;
+/// The interface hooks of mods: key bindings, HUD drawing, their own screens.
+pub mod modui;
