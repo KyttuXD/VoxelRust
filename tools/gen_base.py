@@ -816,9 +816,13 @@ for look in ["poison", "wither", "frozen", "absorb"]:
     for part in ["full", "half"]:
         tex(f"heart_{look}_{part}", f"paint heart_{look}_{part} 0 0 0")
 EFFECT_IDS = ["poison", "burning", "regeneration", "slowness", "speed", "hunger", "weakness", "strength",
-              "wither", "absorption", "frozen", "saturation", "night_vision", "jump_boost"]
+              "wither", "absorption", "frozen", "saturation", "night_vision", "jump_boost",
+              "decay", "haste", "mining_fatigue", "levitation", "blindness", "water_breathing"]
 for t in EFFECT_IDS + ["flame"]:
     tex(f"effect_{t}", f"paint effect_{t} 0 0 0")
+# The air meter's bubbles (painted by src/content/art/status.rs).
+for t in ["hud_bubble", "hud_bubble_pop"]:
+    tex(t, f"paint {t} 0 0 0")
 # Foods that start effects (see the `from eat` lines of the effects).
 tex("golden_apple", "paint fruit 240 196 52")
 tex("rotten_flesh", "paint meat 120 140 72")
@@ -837,6 +841,8 @@ fx.append("""# Status effects (written by tools/gen_base.py; see docs/DATA.md, "
 #     name <text>        kind good|bad|neutral     colour <r> <g> <b>     secs <default seconds>
 #     damage <points a second>   lethal yes|no     heal <points a second>   ticks <lumps a second>
 #     speed <percent>    jump <percent>     melee <percent>     (per level; negative slows/weakens)
+#     mine <percent>     lift <blocks a second up>     blind <percent of the view>     (per level)
+#     breath (no drowning)     tint <percent> (the screen takes `colour`)     sound <sound id> (on start)
 #     hunger <points a second, negative feeds>     absorb <health points>   vision   flame   extinguish
 #     heart normal|poison|wither|frozen            icon <texture>
 #     from block|entity|hit|eat|event <id> [seconds] [level] [chance]
@@ -861,7 +867,14 @@ effect("strength", "Strength", "good", ["melee 30"], "170 40 40", 30)
 effect("wither", "Wither", "bad", ["damage 1", "heart wither"], "60 60 70", 10)
 effect("absorption", "Absorption", "good", ["absorb 4", "from eat golden_apple 120 1"], "240 190 40", 120)
 effect("frozen", "Frozen", "bad", [
-    "damage 0.5", "lethal no", "speed -20", "heart frozen", "from block icicle 4 1"], "110 200 240", 8)
+    "damage 0.5", "lethal no", "speed -20", "heart frozen", "tint 14", "from block icicle 4 1"], "110 200 240", 8)
+effect("decay", "Decay", "bad", [
+    "damage 0.5", "heart wither", "from eat rotten_flesh 15 1 10"], "78 64 50", 20)
+effect("haste", "Haste", "good", ["mine 20"], "226 170 44", 60)
+effect("mining_fatigue", "Mining Fatigue", "bad", ["mine -30"], "112 104 92", 30)
+effect("levitation", "Levitation", "neutral", ["lift 1.8", "sound whoosh"], "160 134 214", 10)
+effect("blindness", "Blindness", "bad", ["blind 85", "tint 55"], "10 10 14", 10)
+effect("water_breathing", "Water Breathing", "good", ["breath", "sound splash"], "48 116 210", 180)
 effect("saturation", "Saturation", "good", ["hunger -1"], "220 130 60", 5)
 effect("night_vision", "Night Vision", "good", ["vision"], "60 60 200", 180)
 effect("jump_boost", "Jump Boost", "good", ["jump 40"], "100 220 110", 30)

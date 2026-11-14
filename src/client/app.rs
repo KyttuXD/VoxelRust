@@ -1390,6 +1390,7 @@ impl App {
                 rain: g.sky.rain,
                 flash: g.flash,
                 vision: crate::game::effects::apply::night_vision(&g.fx, &crate::game::effects::apply::lookup),
+                blind: crate::game::effects::body::blindness(&g.fx, &crate::game::effects::apply::lookup),
             };
             r.draw_world(&g.world, &cam, &env);
             let mut tags = Vec::new();
@@ -1655,7 +1656,12 @@ impl App {
                 crate::client::hand::on_body(held, crate::client::hand::white_tile(), 0.0, at, p.yaw, crate::player::HEIGHT as f32, &mut held_quads);
                 r.draw_quads(&held_quads, None);
                 if let Some((sx, sy)) = r.project(cam, [at[0], at[1] + 2.15, at[2]]) {
-                    tags.push((sx, sy, p.name.to_ascii_uppercase()));
+                    // Their strongest news under the name: an effect they have (and how many more).
+                    let mut label = p.name.to_ascii_uppercase();
+                    if let Some(d) = p.effects.first().and_then(|e| reg.fx.get(&e.0)) {
+                        label.push_str(&alloc::format!(" ({}{})", d.name.to_ascii_uppercase(), if p.effects.len() > 1 { alloc::format!(" +{}", p.effects.len() - 1) } else { String::new() }));
+                    }
+                    tags.push((sx, sy, label));
                 }
             }
         }
@@ -1681,6 +1687,10 @@ impl App {
         };
         if g.hurt_flash > 0.0 {
             r.rect(0.0, 0.0, w, h, [200, 20, 20, (g.hurt_flash * 300.0).min(110.0) as u8]);
+        }
+        // An effect that colours the screen (blindness, mods' own).
+        if let Some(t) = crate::game::effects::body::tint(&g.fx, &crate::game::effects::apply::lookup) {
+            r.rect(0.0, 0.0, w, h, t);
         }
         if self.screen == Screen::Game {
             let c: Color = [255, 255, 255, 200];
@@ -1733,15 +1743,7 @@ impl App {
                     r.rect(x + s, hy + s, if fill == 2 { 6.0 } else { 3.0 } * s, 5.0 * s, [214, 142, 62, 255]);
                 }
             }
-            if g.air < 9.9 {
-                let hy = hy - 9.0 * s;
-                let bubbles = (g.air + 0.99) as i32;
-                for i in 0..bubbles.clamp(0, 10) {
-                    let x = x0 + HOTBAR as f32 * slot - (i + 1) as f32 * 9.0 * s;
-                    r.rect(x + s, hy + s, 6.0 * s, 6.0 * s, [120, 190, 255, 230]);
-                    r.rect(x + 2.0 * s, hy + 2.0 * s, 2.0 * s, 2.0 * s, [230, 245, 255, 255]);
-                }
-            }
+            crate::client::effects_hud::bubbles(r, g, x0 + HOTBAR as f32 * slot, hy - 9.0 * s, s);
         }
         // Active effects, with their icons and the time left, top right (under the minimap).
         if matches!(self.screen, Screen::Game | Screen::Chat) && !g.fx.list.is_empty() {

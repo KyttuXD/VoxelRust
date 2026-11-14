@@ -52,6 +52,19 @@ pub trait Host {
     fn dimension(&mut self) -> String {
         String::new()
     }
+    /// Give an effect to `who` (`"player"` or `"target"`, the creature in the
+    /// crosshair); `secs` of 0 means the effect's own time.
+    fn apply_effect(&mut self, _who: &str, _id: &str, _secs: f64, _level: i64) -> bool {
+        false
+    }
+    /// Take an effect (all of them for an empty id) from `who`.
+    fn remove_effect(&mut self, _who: &str, _id: &str) -> bool {
+        false
+    }
+    /// The level of an effect on `who`; 0 when it is not active.
+    fn effect_level(&mut self, _who: &str, _id: &str) -> i64 {
+        0
+    }
     /// The mod whose script is about to run (for the log).
     fn set_mod(&mut self, _name: &str) {}
 }
@@ -75,6 +88,10 @@ pub const HOST_FUNCTIONS: &[(&str, &str)] = &[
     ("set_time(t: f64)", "set the time of day"),
     ("explode(x: f64, y: f64, z: f64, power: f64)", "set off an explosion (power 0.5 to 8)"),
     ("effect(id: &str, secs: f64, level: i64) -> bool", "give the player a status effect"),
+    ("apply_effect(who: &str, id: &str, secs: f64, level: i64) -> bool", "give a status effect to \"player\" or \"target\" (the creature in the crosshair); 0 seconds is the effect's own time"),
+    ("remove_effect(who: &str, id: &str) -> bool", "take a status effect (all of them for an empty id) from \"player\" or \"target\"; false if it was not there"),
+    ("has_effect(who: &str, id: &str) -> bool", "whether \"player\" or \"target\" has that status effect"),
+    ("effect_level(who: &str, id: &str) -> i64", "the level of a status effect on \"player\" or \"target\"; 0 if it is not active"),
     ("play_sound(id: &str)", "play a sound"),
     ("run_command(text: &str) -> String", "carry out a chat command as the player (with or without the `/`); returns what it answers"),
     ("rand(n: i64) -> i64", "a random whole number from 0 up to n (not including n)"),
@@ -162,6 +179,10 @@ pub(crate) fn call_host_fn(it: &mut Interp, name: &str, args: &[Value]) -> Optio
             Value::Unit
         }),
         "effect" => want(name, args, 3).and_then(|_| Ok((text(name, args, 0)?, num(name, args, 1)?, int(name, args, 2)?))).map(|(id, secs, level)| Value::Bool(it.host.effect(id, secs, level))),
+        "apply_effect" => want(name, args, 4).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?, num(name, args, 2)?, int(name, args, 3)?))).map(|(who, id, secs, level)| Value::Bool(it.host.apply_effect(who, id, secs, level))),
+        "remove_effect" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Bool(it.host.remove_effect(who, id))),
+        "has_effect" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Bool(it.host.effect_level(who, id) > 0)),
+        "effect_level" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Int(it.host.effect_level(who, id))),
         "play_sound" => want(name, args, 1).and_then(|_| text(name, args, 0)).map(|id| {
             it.host.play_sound(id);
             Value::Unit
@@ -271,6 +292,18 @@ impl Host for SessionHost<'_> {
 
     fn effect(&mut self, id: &str, secs: f64, level: i64) -> bool {
         crate::game::effects::apply::give(self.g, id, secs as f32, level.clamp(1, 255) as i32).is_ok()
+    }
+
+    fn apply_effect(&mut self, who: &str, id: &str, secs: f64, level: i64) -> bool {
+        crate::game::effects::script_api::give(self.g, who, id, secs, level)
+    }
+
+    fn remove_effect(&mut self, who: &str, id: &str) -> bool {
+        crate::game::effects::script_api::remove(self.g, who, id)
+    }
+
+    fn effect_level(&mut self, who: &str, id: &str) -> i64 {
+        crate::game::effects::script_api::level(self.g, who, id)
     }
 
     fn play_sound(&mut self, id: &str) {
@@ -397,6 +430,21 @@ pub mod mock {
         fn effect(&mut self, id: &str, secs: f64, level: i64) -> bool {
             self.calls.push(format!("effect {} {} {}", id, secs, level));
             true
+        }
+        fn apply_effect(&mut self, who: &str, id: &str, secs: f64, level: i64) -> bool {
+            self.calls.push(format!("apply_effect {} {} {} {}", who, id, secs, level));
+            true
+        }
+        fn remove_effect(&mut self, who: &str, id: &str) -> bool {
+            self.calls.push(format!("remove_effect {} {}", who, id));
+            true
+        }
+        fn effect_level(&mut self, who: &str, id: &str) -> i64 {
+            if who == "player" && id == "poison" {
+                2
+            } else {
+                0
+            }
         }
         fn play_sound(&mut self, id: &str) {
             self.calls.push(format!("sound {}", id));

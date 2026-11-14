@@ -13,11 +13,12 @@
 //!   `effect_strength`, `effect_wither`, `effect_absorption`, `effect_frozen`,
 //!   `effect_saturation`, `effect_night_vision`, `effect_jump_boost`; and
 //!   `effect_flame`, the flame shown beside the hearts of someone on fire.
+//!   The icons of the newer effects and the air bubbles are in `status.rs`.
 
 type Px = [u8; 4];
 
-const CLEAR: Px = [0, 0, 0, 0];
-const OUTLINE: Px = [26, 26, 26, 255];
+pub(super) const CLEAR: Px = [0, 0, 0, 0];
+pub(super) const OUTLINE: Px = [26, 26, 26, 255];
 const GLYPH: Px = [246, 246, 240, 255];
 
 /// The heart: `O` outline, `F` fill, `H` highlight. 9 wide, 8 tall.
@@ -104,7 +105,7 @@ fn heart(style: &str, x: i32, y: i32) -> Option<Px> {
 // ------------------------------------------------------------------- icons
 
 /// An 8 x 8 picture, `#` where the light glyph is. Holes show the badge.
-type Glyph = [&'static str; 8];
+pub(super) type Glyph = [&'static str; 8];
 
 const DROP: Glyph = ["...##...", "...##...", "..####..", "..####..", ".######.", ".######.", ".######.", "..####.."];
 const CROSS: Glyph = ["...##...", "...##...", "...##...", "########", "########", "...##...", "...##...", "...##..."];
@@ -158,18 +159,24 @@ fn on_ring(x: i32, y: i32) -> bool {
 
 fn icon(name: &str, x: i32, y: i32) -> Option<Px> {
     let (rgb, glyph) = icon_of(name)?;
+    Some(badge(rgb, &glyph, x, y))
+}
+
+/// One pixel of an effect's icon: the badge in `rgb` with the light `glyph`
+/// on it, in a dark ring. (Also used by `status.rs` for the newer effects.)
+pub(super) fn badge(rgb: [u8; 3], glyph: &Glyph, x: i32, y: i32) -> Px {
     if on_ring(x, y) {
-        return Some(OUTLINE);
+        return OUTLINE;
     }
     if !in_badge(x, y) {
-        return Some(CLEAR);
+        return CLEAR;
     }
     // The glyph, 8 x 8, in the middle.
     let (gx, gy) = (x - 4, y - 4);
     if (0..8).contains(&gx) && (0..8).contains(&gy) && glyph[gy as usize].as_bytes()[gx as usize] == b'#' {
-        return Some(GLYPH);
+        return GLYPH;
     }
-    Some([rgb[0], rgb[1], rgb[2], 255])
+    [rgb[0], rgb[1], rgb[2], 255]
 }
 
 /// The flame beside the hearts: the rows of it, as the span of pixels.

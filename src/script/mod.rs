@@ -29,6 +29,7 @@ pub mod builtins;
 pub mod builtins_list;
 pub mod builtins_text;
 pub mod check;
+pub mod effects_bridge;
 pub mod error;
 pub mod fmt;
 pub mod host;
@@ -82,6 +83,9 @@ pub const HOOKS: &[HookDoc] = &[
     HookDoc { name: "on_craft", params: &["item"], what: "the player crafted an item" },
     HookDoc { name: "on_event", params: &["name", "what"], what: "any event pack scripts can answer with `when` (see MODDING.md)" },
     HookDoc { name: "on_command", params: &["name", "args"], what: "a /command the game does not know; return true (or a reply string) if it is yours" },
+    HookDoc { name: "on_effect_start", params: &["id", "level"], what: "a status effect started on the player" },
+    HookDoc { name: "on_effect_tick", params: &["id", "secs_left", "level"], what: "about once a second for each status effect the player has" },
+    HookDoc { name: "on_effect_end", params: &["id"], what: "a status effect ran out, was put out or was taken away" },
     HookDoc { name: "on_explode", params: &["x", "y", "z", "power", "source"], what: "an explosion is about to happen; return false to cancel or a number to change its power" },
 ];
 

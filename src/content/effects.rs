@@ -18,6 +18,9 @@ pub struct HudTiles {
     pub absorb_full: Option<u16>,
     pub absorb_half: Option<u16>,
     pub flame: Option<u16>,
+    /// The air meter's bubble, whole and popped.
+    pub bubble: Option<u16>,
+    pub bubble_pop: Option<u16>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -92,7 +95,7 @@ pub fn build(sections: &[Section], tiles: &[TileDef], warnings: &mut Vec<String>
         }
     }
     let style = ["", "poison_", "wither_", "frozen_"];
-    let mut hud = HudTiles { empty: tile("heart_empty"), absorb_full: tile("heart_absorb_full"), absorb_half: tile("heart_absorb_half"), flame: tile("effect_flame"), ..HudTiles::default() };
+    let mut hud = HudTiles { empty: tile("heart_empty"), absorb_full: tile("heart_absorb_full"), absorb_half: tile("heart_absorb_half"), flame: tile("effect_flame"), bubble: tile("hud_bubble"), bubble_pop: tile("hud_bubble_pop"), ..HudTiles::default() };
     for (k, s) in style.iter().enumerate() {
         hud.full[k] = tile(&alloc::format!("heart_{}full", s));
         hud.half[k] = tile(&alloc::format!("heart_{}half", s));
@@ -107,12 +110,13 @@ mod tests {
     #[test]
     fn the_game_ships_its_effects_and_their_pictures() {
         let r = reg();
-        for id in ["poison", "burning", "regeneration", "slowness", "speed", "hunger", "weakness", "strength", "wither", "absorption", "frozen", "saturation", "night_vision", "jump_boost"] {
+        for id in ["poison", "burning", "regeneration", "slowness", "speed", "hunger", "weakness", "strength", "wither", "absorption", "frozen", "saturation", "night_vision", "jump_boost", "decay", "haste", "mining_fatigue", "levitation", "blindness", "water_breathing"] {
             let d = r.fx.get(id).unwrap_or_else(|| panic!("no effect {id}"));
             assert!(d.icon.is_some(), "{id} has no icon tile");
         }
         let h = &r.fx.hud;
         assert!(h.empty.is_some() && h.absorb_full.is_some() && h.absorb_half.is_some() && h.flame.is_some());
+        assert!(h.bubble.is_some() && h.bubble_pop.is_some(), "the air meter has no bubbles");
         assert!(h.full.iter().all(|t| t.is_some()) && h.half.iter().all(|t| t.is_some()));
         // Poison does not kill; burning does and is put out by water; wither is dark.
         assert!(!r.fx.get("poison").unwrap().lethal);
@@ -136,6 +140,20 @@ mod tests {
         let r = Registry::from_sources(&[("base.txt", crate::block::BASE_DATA), ("x/pack.txt", "effect poison\n  damage 9\n")], &mut |_| None);
         assert_eq!(r.fx.defs.iter().filter(|d| d.id == "poison").count(), 1);
         assert_eq!(r.fx.get("poison").unwrap().damage, 9.0);
+    }
+
+    #[test]
+    fn a_mod_pack_defines_an_effect_with_every_line_the_docs_list() {
+        let pack = "effect gloom\n  name Gloom\n  kind bad\n  colour 20 10 40\n  secs 45\n  damage 1.5\n  lethal no\n  heal 0.5\n  ticks 2\n  speed -10\n  jump -20\n  melee -5\n  hunger 0.1\n  mine -25\n  lift 0.5\n  blind 30\n  tint 20\n  breath\n  heart wither\n  sound hiss\n  icon effect_decay\n  from entity zombie 10 2 50\n";
+        let r = Registry::from_sources(&[("base.txt", crate::block::BASE_DATA), ("mods/gloom/pack.txt", pack)], &mut |_| None);
+        assert!(!r.warnings.iter().any(|w| w.contains("gloom")), "{:?}", r.warnings);
+        let d = r.fx.get("gloom").expect("gloom");
+        assert_eq!((d.damage, d.heal, d.ticks, d.lethal), (1.5, 0.5, 2.0, false));
+        assert_eq!((d.speed, d.jump, d.melee, d.mine, d.blind, d.tint), (-10, -20, -5, -25, 30, 20));
+        assert!(d.breath && d.lift == 0.5 && d.sound == "hiss");
+        assert_eq!(d.heart, crate::game::effects::HeartStyle::Wither);
+        assert_eq!(d.icon, r.fx.get("decay").and_then(|x| x.icon), "icon names a picture of the game's");
+        assert_eq!(d.sources.len(), 1);
     }
 
     #[test]

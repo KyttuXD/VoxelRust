@@ -10,6 +10,12 @@
 //!   lethal no         poison never takes the last heart
 //!   colour 120 200 60
 //!   heart poison
+//!   mine -30          percent of mining speed per level (haste is positive)
+//!   lift 3            blocks a second upwards per level (levitation)
+//!   blind 60          percent of the view lost per level (blindness)
+//!   breath            no drowning while it lasts (water breathing)
+//!   tint 25           the screen takes the colour, that strongly (percent)
+//!   sound chime       played when it starts
 //!   secs 12           how long when a command or source does not say
 //!   from entity spider 8 1      a spider's bite
 //!   from eat raw_fish 6 1 20    eating it: 20 in 100 times
@@ -115,6 +121,21 @@ pub struct EffectDef {
     pub hunger: f32,
     /// Absorption (health points of padding) per level.
     pub absorb: i32,
+    /// Percent change of how fast blocks are broken, per level (haste is
+    /// positive, mining fatigue negative).
+    pub mine: i32,
+    /// Blocks a second the body is lifted upwards, per level (levitation).
+    pub lift: f32,
+    /// Percent of the view that is lost, per level: 100 sees nothing at all
+    /// (blindness).
+    pub blind: i32,
+    /// Breathing under water: the air does not run out.
+    pub breath: bool,
+    /// How strongly the screen takes the effect's colour, in percent (0 for
+    /// not at all).
+    pub tint: u8,
+    /// The sound played when it starts (a sound id; empty for none).
+    pub sound: String,
     /// Night vision.
     pub vision: bool,
     /// Water puts it out.
@@ -149,6 +170,12 @@ impl EffectDef {
             melee: 0,
             hunger: 0.0,
             absorb: 0,
+            mine: 0,
+            lift: 0.0,
+            blind: 0,
+            breath: false,
+            tint: 0,
+            sound: String::new(),
             vision: false,
             extinguish: false,
             colour: [200, 200, 200],
@@ -243,6 +270,21 @@ pub fn parse_def(id: &str, at: &str, props: &[(String, Vec<String>)], warnings: 
             "melee" | "strength" => whole(w, 0).map(|v| d.melee = v.clamp(-100, 1000)).is_some(),
             "hunger" => number(w, 0).map(|v| d.hunger = v.clamp(-100.0, 100.0)).is_some(),
             "absorb" | "absorption" => whole(w, 0).map(|v| d.absorb = v.clamp(0, 200)).is_some(),
+            "mine" | "mining" | "haste" => whole(w, 0).map(|v| d.mine = v.clamp(-100, 400)).is_some(),
+            "lift" | "levitate" => number(w, 0).map(|v| d.lift = v.clamp(0.0, 20.0)).is_some(),
+            "blind" | "blindness" => whole(w, 0).map(|v| d.blind = v.clamp(0, 100)).is_some(),
+            "breath" | "breathe" | "waterbreathing" => {
+                d.breath = yes(w);
+                true
+            }
+            "tint" => whole(w, 0).map(|v| d.tint = v.clamp(0, 100) as u8).is_some(),
+            "sound" => match w.first() {
+                Some(id) => {
+                    d.sound = id.to_ascii_lowercase();
+                    true
+                }
+                None => false,
+            },
             "vision" | "nightvision" => {
                 d.vision = yes(w);
                 true
@@ -372,5 +414,22 @@ mod tests {
         let (defs, _) = parse_text("effect a\n  from event kill:spider 5\n  from event wake 10 2\n");
         assert_eq!((defs[0].sources[0].id.as_str(), defs[0].sources[0].what.as_str()), ("kill", "spider"));
         assert_eq!((defs[0].sources[1].id.as_str(), defs[0].sources[1].what.as_str(), defs[0].sources[1].level), ("wake", "", 2));
+    }
+
+    #[test]
+    fn mods_may_set_mining_lift_blindness_breath_tint_and_sound() {
+        let (defs, warnings) = parse_text("effect fog\n  mine -30\n  lift 2.5\n  blind 40\n  breath\n  tint 25\n  sound Chime\neffect fast\n  haste 20\n");
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let d = &defs[0];
+        assert_eq!((d.mine, d.lift, d.blind, d.breath, d.tint, d.sound.as_str()), (-30, 2.5, 40, true, 25, "chime"));
+        assert_eq!(defs[1].mine, 20);
+        // Out of range values are held, rubbish is reported.
+        let (defs, warnings) = parse_text("effect odd\n  blind 900\n  tint 900\n  lift 99\n  mine -900\n  sound\n  breath no\n");
+        let d = &defs[0];
+        assert_eq!((d.blind, d.tint, d.lift, d.mine, d.breath), (100, 100, 20.0, -100, false));
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        // Everything is off unless asked for.
+        let p = EffectDef::plain("x");
+        assert_eq!((p.mine, p.lift, p.blind, p.breath, p.tint, p.sound.as_str()), (0, 0.0, 0, false, 0, ""));
     }
 }

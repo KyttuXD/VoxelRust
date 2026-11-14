@@ -26,7 +26,7 @@ pub enum GameMode {
 
 pub const MAX_HEALTH: i32 = 20;
 pub const MAX_HUNGER: i32 = 20;
-const MAX_AIR: f32 = 10.0;
+const MAX_AIR: f32 = crate::game::effects::air::MAX_AIR;
 
 /// What the player is asking for this frame.
 #[derive(Clone, Copy, Default)]
@@ -2103,6 +2103,7 @@ impl Session {
             use crate::game::effects::apply as fxa;
             self.player.speed_scale *= fxa::speed_scale(&self.fx, &fxa::lookup);
             self.player.jump_scale = fxa::jump_scale(&self.fx, &fxa::lookup);
+            self.player.lift = crate::game::effects::body::lift_speed(&self.fx, &fxa::lookup);
             fxa::step(self, dt, audio);
         }
         // Movement. Until the ground under the player exists, hold still:
@@ -2349,18 +2350,16 @@ impl Session {
         // Breath.
         let eye = self.player.eye();
         let head = self.world.get(floord(eye[0]), floord(eye[1]), floord(eye[2]));
-        if reg().kind[head as usize] == Kind::Liquid {
-            self.air = (self.air - dt).max(0.0);
-            if self.air <= 0.0 {
-                self.drown += dt;
-                if self.drown >= 1.0 {
-                    self.drown = 0.0;
-                    self.damage_from("drown", 2, audio);
-                }
+        {
+            // Air runs out under water, unless an effect lets the body breathe (game/effects/air.rs).
+            use crate::game::effects::{air, apply as fxa, body};
+            let breathing = body::can_breathe(&self.fx, &fxa::lookup);
+            let (state, hurt) = air::step(air::Air { air: self.air, drown: self.drown }, dt, reg().kind[head as usize] == Kind::Liquid, breathing);
+            self.air = state.air;
+            self.drown = state.drown;
+            if hurt > 0 {
+                self.damage_from("drown", hurt, audio);
             }
-        } else {
-            self.air = (self.air + dt * 4.0).min(MAX_AIR);
-            self.drown = 0.0;
         }
         // Hunger: a point every 45 seconds, faster when sprinting about.
         let moving = self.player.vel[0] * self.player.vel[0] + self.player.vel[2] * self.player.vel[2] > 20.0;
@@ -2602,6 +2601,8 @@ impl Session {
                     };
                     // The right kind of tool digs several times faster.
                     let speed = if item.tool != 0 && item.tool == d.tool { item.speed } else { 1.0 };
+                    // Haste and mining fatigue.
+                    let speed = speed * crate::game::effects::body::mine_scale(&self.fx, &crate::game::effects::apply::lookup);
                     let progress = if d.hardness <= 0.0 { 1.0 } else { progress + dt * speed / d.hardness };
                     if progress >= 1.0 {
                         if self.cooldown[0] <= 0.0 {

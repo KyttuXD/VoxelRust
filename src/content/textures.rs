@@ -37,6 +37,10 @@ pub fn painted(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
     if let Some(p) = crate::content::art::hud::painted(style, x, y) {
         return Some(p);
     }
+    // The newer effects' icons and the air bubbles (content/art/status.rs).
+    if let Some(p) = crate::content::art::status::painted(style, x, y) {
+        return Some(p);
+    }
     crate::painters::paint(style, rgb, x, y)
 }
 

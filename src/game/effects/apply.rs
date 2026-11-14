@@ -14,9 +14,26 @@ use crate::session::{GameMode, Session, MAX_HEALTH, MAX_HUNGER};
 use alloc::string::String;
 use alloc::vec::Vec;
 
-/// The effect with this id in the content.
+/// Other names that are typed for effects (`/effect give freezing`): the
+/// name and the id of the effect it means. An effect that a pack defines
+/// under the name itself wins.
+const ALIASES: &[(&str, &str)] = &[
+    ("freezing", "frozen"),
+    ("fatigue", "mining_fatigue"),
+    ("blind", "blindness"),
+    ("levitate", "levitation"),
+    ("breathing", "water_breathing"),
+    ("waterbreathing", "water_breathing"),
+    ("regen", "regeneration"),
+    ("fire", "burning"),
+    ("nightvision", "night_vision"),
+    ("jump", "jump_boost"),
+];
+
+/// The effect with this id (or another name for it) in the content.
 pub fn lookup(id: &str) -> Option<&'static EffectDef> {
-    reg().fx.get(id)
+    let t = &reg().fx;
+    t.get(id).or_else(|| ALIASES.iter().find(|a| a.0 == id).and_then(|a| t.get(a.1)))
 }
 
 type Lookup<'a, 'b> = &'b dyn Fn(&str) -> Option<&'a EffectDef>;
@@ -87,6 +104,7 @@ pub fn frame_colour(n: Nature) -> [u8; 3] {
 pub fn give(g: &mut Session, id: &str, secs: f32, level: i32) -> Result<Given, String> {
     let id = id.to_ascii_lowercase();
     let Some(d) = lookup(&id) else { return Err(alloc::format!("NO SUCH EFFECT: {}", id.to_ascii_uppercase())) };
+    let id = d.id.clone();
     let mut secs = if secs > 0.0 { secs } else { d.secs };
     let mut level = level;
     secs = secs.clamp(0.0, MAX_SECS);
@@ -106,16 +124,43 @@ pub fn give(g: &mut Session, id: &str, secs: f32, level: i32) -> Result<Given, S
     level = level.clamp(1, MAX_LEVEL);
     let result = g.fx.give(d, secs, level);
     if result == Given::Started {
-        g.fire("effectstart", &id);
+        started(g, d, level);
     }
     Ok(result)
+}
+
+/// An effect has just started on the player: the event, its sound, and the
+/// mods' `effect_start` (native) and `on_effect_start` (script) hooks.
+fn started(g: &mut Session, d: &EffectDef, level: i32) {
+    g.fire("effectstart", &d.id);
+    if !d.sound.is_empty() && g.sound_queue.len() < 32 {
+        g.sound_queue.push(d.sound.clone());
+    }
+    for (_, n) in crate::native::active() {
+        if let Some(hook) = n.effect_start {
+            hook(g, &d.id, level);
+        }
+    }
+    crate::script::effects_bridge::start(g, &d.id, level);
+}
+
+/// An effect of the player's has ended (ran out, put out, cleared): the
+/// event and the mods' `effect_end` / `on_effect_end` hooks.
+fn ended(g: &mut Session, id: &str) {
+    g.fire("effectend", id);
+    for (_, n) in crate::native::active() {
+        if let Some(hook) = n.effect_end {
+            hook(g, id);
+        }
+    }
+    crate::script::effects_bridge::end(g, id);
 }
 
 /// Take one effect away, raising `effectend`. Returns whether it was there.
 pub fn clear(g: &mut Session, id: &str) -> bool {
     let gone = g.fx.clear(id);
     if gone {
-        g.fire("effectend", id);
+        ended(g, id);
     }
     gone
 }
@@ -123,7 +168,7 @@ pub fn clear(g: &mut Session, id: &str) -> bool {
 /// Take every effect away.
 pub fn clear_all(g: &mut Session) {
     for id in g.fx.clear_all() {
-        g.fire("effectend", &id);
+        ended(g, &id);
     }
 }
 
@@ -182,6 +227,7 @@ fn touch(g: &mut Session) {
 /// One frame of effects on the player: sources from the blocks around,
 /// water, mods' ticks, then time, damage, healing and hunger.
 pub fn step(g: &mut Session, dt: f32, audio: &mut Audio) {
+    super::sync::send_if_changed(g);
     if g.dead || !(dt > 0.0) {
         return;
     }
@@ -191,21 +237,31 @@ pub fn step(g: &mut Session, dt: f32, audio: &mut Audio) {
     }
     if g.fx.list.is_empty() {
         g.fx.changed = false;
+        g.fx.beat = 0.0;
         return;
     }
     if wet(g) {
         for id in g.fx.extinguish(&lookup) {
-            g.fire("effectend", &id);
+            ended(g, &id);
         }
     }
-    // The mods' code is told of each effect that is running.
-    if crate::native::active().any(|(_, n)| n.effect_tick.is_some()) {
+    // The mods' code is told of each effect that is running: native code
+    // every frame, scripts about once a second.
+    g.fx.beat += dt;
+    let script_beat = g.fx.beat >= 1.0 && crate::script::bridge::live();
+    if g.fx.beat >= 1.0 {
+        g.fx.beat = 0.0;
+    }
+    if script_beat || crate::native::active().any(|(_, n)| n.effect_tick.is_some()) {
         let running: Vec<(String, f32, i32)> = g.fx.list.iter().map(|a| (a.id.clone(), a.secs, a.level)).collect();
         for (id, secs, level) in running {
             for (_, n) in crate::native::active() {
                 if let Some(hook) = n.effect_tick {
                     hook(g, &id, secs, level, dt);
                 }
+            }
+            if script_beat {
+                crate::script::effects_bridge::tick(g, &id, secs, level);
             }
         }
     }
@@ -225,7 +281,7 @@ pub fn step(g: &mut Session, dt: f32, audio: &mut Audio) {
         }
     }
     for id in t.ended {
-        g.fire("effectend", &id);
+        ended(g, &id);
     }
     g.fx.changed = false;
 }
@@ -296,6 +352,15 @@ pub fn tick_mob(fx: &mut Effects, dt: f32, in_water: bool, base_speed: f32, spee
     t.heal - t.hard - t.soft
 }
 
+/// One step of a creature's air: whether its head is under water and what
+/// its effects say about breathing. Returns the health points that drowning
+/// takes.
+pub fn tick_mob_air(fx: &Effects, air: &mut super::air::Air, dt: f32, under: bool) -> i32 {
+    let (a, hurt) = super::air::step(*air, dt, under, super::body::can_breathe(fx, &lookup));
+    *air = a;
+    hurt
+}
+
 // ------------------------------------------------------------------ /effect
 
 fn say_given(g: &Session, id: &str) -> String {
@@ -322,10 +387,8 @@ pub fn command(g: &mut Session, words: &[&str]) -> String {
             if secs < 0.0 || level < 1 {
                 return String::from("/EFFECT GIVE ID [SECONDS] [LEVEL]  (LEVEL 1 OR MORE)");
             }
-            let id = arg(2).to_ascii_lowercase();
-            if lookup(&id).is_none() {
-                return known("NO SUCH EFFECT. KNOWN: ");
-            }
+            let Some(def) = lookup(&arg(2).to_ascii_lowercase()) else { return known("NO SUCH EFFECT. KNOWN: ") };
+            let id = def.id.clone();
             match give(g, &id, secs, level) {
                 Ok(Given::Unchanged) => alloc::format!("{} IS ALREADY STRONGER", id.to_ascii_uppercase()),
                 Ok(_) => say_given(g, &id),
@@ -337,7 +400,7 @@ pub fn command(g: &mut Session, words: &[&str]) -> String {
                 let n = g.fx.list.len();
                 clear_all(g);
                 alloc::format!("CLEARED {}", n)
-            } else if clear(g, &arg(2).to_ascii_lowercase()) {
+            } else if lookup(&arg(2).to_ascii_lowercase()).map_or(false, |d| clear(g, &d.id)) {
                 String::from("CLEARED")
             } else {
                 String::from("NOT ACTIVE")
@@ -482,5 +545,65 @@ mod tests {
         let mut fx = Effects::default();
         fx.give(r.fx.get("absorption").unwrap(), 5.0, 1);
         assert!(fx.absorb > 0);
+    }
+
+    #[test]
+    fn the_newer_effects_are_shipped_and_do_what_the_docs_say() {
+        use crate::game::effects::{air, body};
+        let r = reg();
+        let look = |id: &str| r.fx.get(id);
+        let with = |id: &str, level: i32| {
+            let mut fx = Effects::default();
+            fx.give(r.fx.get(id).unwrap_or_else(|| panic!("no effect {id}")), 30.0, level);
+            fx
+        };
+        assert!(body::mine_scale(&with("haste", 1), &look) > 1.0);
+        assert!(body::mine_scale(&with("mining_fatigue", 1), &look) < 1.0);
+        assert!(body::lift_speed(&with("levitation", 1), &look) > 0.0);
+        let blind = with("blindness", 1);
+        assert!(body::blindness(&blind, &look) > 0.5 && body::tint(&blind, &look).is_some());
+        assert!(body::tint(&with("frozen", 1), &look).is_some(), "freezing tints the screen blue");
+        assert!(!body::can_breathe(&Effects::default(), &look));
+        let breathing = with("water_breathing", 1);
+        assert!(body::can_breathe(&breathing, &look));
+        // Fourteen seconds under water: it takes damage, unless it breathes.
+        let (_, hurt) = air::step(air::Air::FULL, 14.0, true, false);
+        assert!(hurt > 0);
+        let (_, hurt) = air::step(air::Air::FULL, 14.0, true, body::can_breathe(&breathing, &look));
+        assert_eq!(hurt, 0);
+        // Decay is wither-like: dark hearts, half a point a second, and it can kill.
+        assert_eq!(heart_style(&with("decay", 1), &look), HeartStyle::Wither);
+        let mut fx = with("decay", 1);
+        let hard: i32 = (0..16).map(|_| fx.tick(0.25, &look).hard).sum();
+        assert_eq!(hard, 2);
+        // Freezing is the frozen effect: slow, blue hearts.
+        assert_eq!(heart_style(&with("frozen", 1), &look), HeartStyle::Frozen);
+        assert!(speed_scale(&with("frozen", 1), &look) < 1.0);
+    }
+
+    #[test]
+    fn other_names_find_the_effects() {
+        assert_eq!(lookup("freezing").map(|d| d.id.as_str()), Some("frozen"));
+        assert_eq!(lookup("fatigue").map(|d| d.id.as_str()), Some("mining_fatigue"));
+        assert_eq!(lookup("blind").map(|d| d.id.as_str()), Some("blindness"));
+        assert_eq!(lookup("poison").map(|d| d.id.as_str()), Some("poison"));
+        assert!(lookup("nonsense").is_none());
+        // Every alias leads somewhere.
+        for (alias, id) in ALIASES {
+            assert!(reg().fx.get(id).is_some(), "{alias} leads to {id}, which is not an effect");
+        }
+    }
+
+    #[test]
+    fn the_new_effects_are_saved_with_the_player_and_read_back() {
+        let r = reg();
+        let look = |id: &str| r.fx.get(id);
+        let mut fx = Effects::default();
+        for (id, secs, level) in [("levitation", 7.5, 2), ("water_breathing", 120.0, 1), ("blindness", 4.0, 1), ("haste", 60.0, 3)] {
+            fx.give(r.fx.get(id).unwrap(), secs, level);
+        }
+        let back = Effects::from_text(&fx.to_text(), fx.absorb, &look);
+        assert_eq!(back.ids(), ["levitation", "water_breathing", "blindness", "haste"]);
+        assert_eq!((back.level("haste"), back.get("levitation").unwrap().secs), (3, 7.5));
     }
 }

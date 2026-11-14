@@ -52,6 +52,8 @@ pub struct Env {
     pub flash: f32,
     /// 0..1: how much a night vision effect lifts the dark.
     pub vision: f32,
+    /// 0..1: how much of the view a blindness effect takes (fog closes in).
+    pub blind: f32,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -431,6 +433,11 @@ impl Renderer {
         if env.underwater {
             fog = [0.04 + 0.06 * day, 0.16 + 0.14 * day, 0.30 + 0.25 * day];
         }
+        // Blindness: the fog turns dark.
+        if env.blind > 0.0 {
+            let k = 1.0 - 0.85 * env.blind.min(1.0);
+            fog = [fog[0] * k, fog[1] * k, fog[2] * k];
+        }
         self.update_light_map(day, env.vision);
         let aspect = self.w as f32 / self.h.max(1) as f32;
         let view = math::view_rotation(cam.yaw, cam.pitch);
@@ -560,6 +567,7 @@ impl Renderer {
         } else {
             (far * 0.55, far * 0.96)
         };
+        let (fog_start, fog_end) = crate::game::effects::body::fog_range(fog_start, fog_end, env.blind);
         unsafe {
             (g.Enable)(gl::FOG);
             (g.Fogf)(gl::FOG_START, fog_start);

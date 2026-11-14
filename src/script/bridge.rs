@@ -20,7 +20,7 @@ pub fn live() -> bool {
     ScriptHost::is_live()
 }
 
-fn run(g: &mut Session, hook: &str, args: Vec<Value>, mut on_result: impl FnMut(&Value) -> bool) {
+pub(crate) fn run(g: &mut Session, hook: &str, args: Vec<Value>, mut on_result: impl FnMut(&Value) -> bool) {
     let world = g.name.clone();
     with_host(|h| {
         let mut host = SessionHost { g, rng: h.rng, mod_name: String::new() };
