@@ -1343,6 +1343,7 @@ impl App {
 
     fn draw(&mut self, r: &mut Renderer, inp: &UiInput) {
         r.render_scale = self.settings.render_scale;
+        crate::client::shaders::hook::sync(r, &self.settings.shader, self.session.as_ref().map(|g| &g.shader_uniforms));
         let mut underwater = false;
         let mut new_tags = Vec::new();
         if let Some(g) = &self.session {
@@ -2216,6 +2217,7 @@ impl App {
                     let rs = alloc::format!("3D DETAIL  < {}% >", st.render_scale);
                     changed |= step_list(ui, x, row(5), bw, bh, &rs, &mut st.render_scale, &[33, 50, 67, 75, 100]);
                     changed |= ui.toggle(x, row(6), bw, bh, "CLOUDS", &mut st.clouds);
+                    changed |= crate::client::shaders::menu::row(ui, x, row(7), bw, bh, &mut st.shader);
                 }
                 0 => {
                     if ui.button(x, row(0), bw, bh, "DETAIL AND DISTANCE...") {

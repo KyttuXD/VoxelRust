@@ -87,6 +87,8 @@ pub struct Renderer {
     pub render_scale: i32,
     scene_tex: u32,
     scene_tex_size: i32,
+    /// The mods' post-processing shader, if one is chosen (client/shaders).
+    pub post: crate::client::shaders::post::Post,
     /// Size the 3D view was drawn at this frame, if it still needs stretching.
     scaled: Option<(i32, i32)>,
     /// The models of the registry, by the registry's numbers; each is parsed and uploaded
@@ -286,6 +288,7 @@ impl Renderer {
             render_scale: 100,
             scene_tex: 0,
             scene_tex_size: 0,
+            post: crate::client::shaders::post::Post::new(),
             scaled: None,
             models: Vec::new(),
             model_tried: Vec::new(),
@@ -437,7 +440,21 @@ impl Renderer {
         let fogc = [fog[0], fog[1], fog[2], 1.0];
         let scale = self.render_scale.clamp(25, 100);
         let (vw, vh) = ((self.w * scale / 100).max(16), (self.h * scale / 100).max(16));
-        self.scaled = if scale < 100 { Some((vw, vh)) } else { None };
+        // A shader draws from the copy of the view too, even at full size.
+        let post_on = self.post.passes() > 0;
+        self.scaled = if scale < 100 || post_on { Some((vw, vh)) } else { None };
+        if post_on {
+            let a = env.time * TAU;
+            let sun = Vec3::new(cosf(a), sinf(a), 0.28).norm();
+            self.post.frame = crate::client::shaders::post::Frame {
+                time: crate::client::shaders::plan::wrap_time(env.clock),
+                sun: crate::client::shaders::plan::to_view(&view, [sun.x, sun.y, sun.z]),
+                daylight: day,
+                underwater: env.underwater,
+                rain: env.rain,
+                fov: cam.fov,
+            };
+        }
         unsafe {
             (g.Viewport)(0, 0, vw, vh);
             (g.ClearColor)(fog[0], fog[1], fog[2], 1.0);
@@ -1403,8 +1420,20 @@ impl Renderer {
             (g.Enable)(gl::BLEND);
         }
         if let Some((vw, vh)) = self.scaled.take() {
-            self.stretch_scene(vw, vh);
+            if self.post.passes() > 0 {
+                self.run_post(vw, vh);
+            } else {
+                self.stretch_scene(vw, vh);
+            }
         }
+    }
+
+    /// The 3D view in the bottom-left `vw` x `vh` pixels goes through the
+    /// shader chain and ends up over the whole window.
+    fn run_post(&mut self, vw: i32, vh: i32) {
+        let size = self.capture_scene(vw, vh);
+        self.post.run(self.scene_tex, size, (vw, vh), (self.w, self.h));
+        unsafe { (gl().Enable)(gl::BLEND) };
     }
 
     /// The 3D view was drawn into the bottom-left `vw` x `vh` pixels: copy
@@ -1412,11 +1441,26 @@ impl Renderer {
     /// 1.1; no framebuffer objects needed.)
     fn stretch_scene(&mut self, vw: i32, vh: i32) {
         let g = gl();
-        // A power-of-two texture big enough, for cards that need one.
-        let mut need = 256;
-        while need < vw.max(vh) {
-            need *= 2;
+        let need = self.capture_scene(vw, vh);
+        unsafe {
+            (g.Disable)(gl::BLEND);
         }
+        // Half a texel in from the edge, so nothing outside the view bleeds in.
+        let (u, v) = ((vw as f32 - 0.5) / need as f32, (vh as f32 - 0.5) / need as f32);
+        let (w, h) = (self.w as f32, self.h as f32);
+        self.batch_tex = self.scene_tex;
+        // The texture's first row is the bottom of the picture.
+        self.quad([[0.0, 0.0, 0.0], [w, 0.0, 0.0], [w, h, 0.0], [0.0, h, 0.0]], [[0.0, v], [u, v], [u, 0.0], [0.0, 0.0]], WHITE);
+        self.flush(gl::QUADS);
+        unsafe { (g.Enable)(gl::BLEND) };
+    }
+
+    /// Copy the bottom-left `vw` x `vh` pixels of the screen into the scene
+    /// texture (made, or made bigger, when needed). Returns the texture's side.
+    fn capture_scene(&mut self, vw: i32, vh: i32) -> i32 {
+        let g = gl();
+        // A power-of-two texture big enough, for cards that need one.
+        let need = crate::client::shaders::plan::texture_size(vw, vh);
         unsafe {
             if self.scene_tex == 0 || self.scene_tex_size != need {
                 if self.scene_tex == 0 {
@@ -1432,16 +1476,8 @@ impl Renderer {
             }
             (g.BindTexture)(gl::TEXTURE_2D, self.scene_tex);
             (g.CopyTexSubImage2D)(gl::TEXTURE_2D, 0, 0, 0, 0, 0, vw, vh);
-            (g.Disable)(gl::BLEND);
         }
-        // Half a texel in from the edge, so nothing outside the view bleeds in.
-        let (u, v) = ((vw as f32 - 0.5) / need as f32, (vh as f32 - 0.5) / need as f32);
-        let (w, h) = (self.w as f32, self.h as f32);
-        self.batch_tex = self.scene_tex;
-        // The texture's first row is the bottom of the picture.
-        self.quad([[0.0, 0.0, 0.0], [w, 0.0, 0.0], [w, h, 0.0], [0.0, h, 0.0]], [[0.0, v], [u, v], [u, 0.0], [0.0, 0.0]], WHITE);
-        self.flush(gl::QUADS);
-        unsafe { (g.Enable)(gl::BLEND) };
+        need
     }
 
     pub fn end_2d(&mut self) {

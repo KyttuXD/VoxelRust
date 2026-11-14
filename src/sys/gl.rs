@@ -156,6 +156,8 @@ pub fn load() -> Result<(), String> {
         )
     })?;
     API.store(Box::into_raw(Box::new(api)), Ordering::Release);
+    // Shaders are optional (gl_shader.rs): a card without them still plays.
+    super::gl_shader::load();
     Ok(())
 }
 

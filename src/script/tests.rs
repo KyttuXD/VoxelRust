@@ -603,6 +603,16 @@ fn state_persists_across_calls_in_the_same_state() {
 }
 
 #[test]
+fn a_script_sets_a_shader_uniform() {
+    let mut h = MockHost::default();
+    let r = host_run("set_shader_uniform(\"glow\", 2) && !set_shader_uniform(\"Bad Name\", 1.0)", &mut h).unwrap();
+    assert_eq!(r, Value::Bool(true));
+    assert_eq!(h.calls, ["shader_uniform glow 2", "shader_uniform Bad Name 1"]);
+    let e = host_run("set_shader_uniform(\"glow\");", &mut h).unwrap_err();
+    assert!(e.contains("takes 2"), "{}", e);
+}
+
+#[test]
 fn host_calls_with_wrong_arguments_are_errors() {
     let mut h = MockHost::default();
     let e = host_run("say(5);", &mut h).unwrap_err();

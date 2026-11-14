@@ -42,7 +42,7 @@ For each file it reads from disk, the game prints `voxelrust: content from
 
 ### The author's mods
 
-The game ships no mods. The author keeps the mods below (twenty-one: the eight below, the
+The game ships no mods. The author keeps the mods below (twenty-two: the eight below, the
 creature mods and the mods that hold the content the game used to carry itself;
 see [DATA.md](DATA.md): the game's core is small) in a separate repository
 (`VoxelRust-Mods`); each is an ordinary folder with a `pack.txt` (and a
@@ -74,6 +74,7 @@ with the `native-mods` feature (see [Code that mods bring](#code-that-mods-bring
 | Monsters | `mods/monsters` | what hunts at night and in the caves |
 | Villagers | `mods/villagers` | the eight trades |
 | The Wanderer | `mods/wanderer` | the Wanderer |
+| Shaders | `mods/shaders` | four post-processing shaders (soft bloom, warm sunset, underwater ripple, retro dither), chosen in SETTINGS > VIDEO (see [SHADERS.md](SHADERS.md)). Pack lines and `.glsl` files only |
 
 Where they are: in the separate folder `VoxelRust-Mods`, beside the game's
 repository (with `SHIPPED` and `tests.rs`, which only the `native-mods` build
@@ -599,6 +600,17 @@ child bone is bent for those, and the torso is one bone called `Body`, or
 three called `Pelvis`, `Belly` and `Chest`. Bones that are not named like
 those are left to their own animation. Emotes turn any bone by name (see
 below).
+
+### Shaders
+
+A mod adds post-processing shaders (a golden evening, bloom, an underwater wobble,
+the colours of an old console) with `shader <id> <file> [<file2> [<file3>]]` lines
+in its `pack.txt` and plain GLSL ES 1.00 files, usually in a `shaders/` folder of the mod.
+The player picks one in SETTINGS > VIDEO > DETAIL AND DISTANCE... > SHADER, scripts can
+feed them numbers with `set_shader_uniform`, and one that does not compile is logged and
+switched off. The whole format, the uniforms (`u_time`, `u_resolution`, `u_sun`,
+`u_daylight`, `u_underwater`, `u_rain`, `u_fov`), the limits and how it is drawn are in
+[SHADERS.md](SHADERS.md); the line is in [DATA.md](DATA.md#shaders).
 
 ### Emotes
 
