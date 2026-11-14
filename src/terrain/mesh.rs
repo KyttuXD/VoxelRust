@@ -318,6 +318,8 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                                 }
                                 let occ = o1 as usize + o2 as usize + o3 as usize;
                                 let c = (f.shade * AO[occ] / 256).min(255) as u8;
+                                // Lava is always full-bright (no side shade, no corner darkening), with a hot tint.
+                                let (c, tint) = crate::lava_look::vertex_look(r.fluid.get(b as usize).copied().flatten(), r.emit[b as usize], c);
                                 let mut p = [
                                     origin[0] + (f.o[0] + f.u[0] * cu + f.v[0] * cv) * 16,
                                     origin[1] + (f.o[1] + f.u[1] * cu + f.v[1] * cv) * 16,
@@ -329,7 +331,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                                 }
                                 quad[k] = Vertex {
                                     pos: [p[0] as i16, p[1] as i16, p[2] as i16, 0],
-                                    col: [c, c, c, 255],
+                                    col: [tint[0], tint[1], tint[2], 255],
                                     uv: tile_uv(d.tex[f.tex], cu * 16, (1 - cv) * 16),
                                     luv: [(blo * 16 / cnt + 8) as i16, (sky * 16 / cnt + 8) as i16],
                                 };

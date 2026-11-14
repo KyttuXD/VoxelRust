@@ -38,6 +38,8 @@ mod frame_update;
 mod frame_draw;
 #[path = "frame/creatures.rs"]
 mod frame_creatures;
+#[path = "frame/lights.rs"]
+mod frame_lights;
 #[path = "frame/hud.rs"]
 mod frame_hud;
 #[path = "frame/scripted.rs"]
@@ -317,6 +319,9 @@ struct App {
     /// F1: no HUD at all (for looking and for pictures).
     hud_hidden: bool,
     ui_clock: f32,
+    /// How much of the view the lava of the head's block has filled, 0 to 1 (terrain/lava_look.rs), and when it was stepped.
+    lava_fade: f32,
+    lava_stepped: f32,
     // Forms.
     worlds: Vec<String>,
     form_name: String,
@@ -1215,6 +1220,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         swallow_text: false,
         hud_hidden: false,
         ui_clock: 0.0,
+        lava_fade: 0.0,
+        lava_stepped: 0.0,
         worlds: Vec::new(),
         form_name: String::new(),
         form_seed: String::new(),

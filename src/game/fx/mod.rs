@@ -11,6 +11,7 @@
 //! | `drops.rs` | spawning a dropped item with a velocity (128 lie about, 1 to 64 in a stack) |
 //! | `falling.rs` | blocks flying and falling: the physics and what happens on landing (64 at most) |
 //! | `particles.rs` | the kinds, their looks, the budget (2000 live, fewer when the frame is slow) |
+//! | `lava_embers.rs` | embers rising off lava near the player (40 a patch, 120 in all, none past 24 blocks) |
 //! | `fog.rs` | the fog a mod holds over the dimension's, for the next world pass (0.5 s per call) |
 //! | `soft.rs` | soft round particles with their own alpha and size growth (512 live, 256 a mod) |
 //! | `quads.rs` | the registry of translucent world-space quads (256 a mod) |
@@ -25,6 +26,7 @@ pub mod blast;
 pub mod drops;
 pub mod falling;
 pub mod fog;
+pub mod lava_embers;
 pub mod particles;
 pub mod quads;
 pub mod sky;
@@ -54,6 +56,8 @@ pub struct FxState {
     /// Explosions and dropped items scripts made in this frame.
     pub blasts: u32,
     pub dropped: u32,
+    /// Seconds since embers were last let up over lava (`lava_embers.rs`).
+    pub ember_clock: f32,
 }
 
 /// The session's effects, made if there are none yet.

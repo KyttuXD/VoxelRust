@@ -28,6 +28,8 @@ mod hd;
 mod skin_tex;
 // Soft round particles of mods (game/fx/soft.rs).
 mod soft_fx;
+// The lava picture scrolling and pulsing (terrain/lava_look.rs).
+mod lava_anim;
 // A mod's pictures on the HUD (client/modui/hud_image.rs).
 mod hud_pic;
 
@@ -93,6 +95,8 @@ pub struct Renderer {
     pub tint_2d: [u8; 3],
     /// Which step of the water animation is in the atlas now.
     water_phase: i32,
+    /// The same for lava (scroll rows * 64 + pulse step; -1: none yet).
+    lava_phase: i32,
     font: u32,
     clouds: u32,
     emblem: u32,
@@ -313,6 +317,7 @@ impl Renderer {
             atlas,
             light,
             water_phase: 0,
+            lava_phase: -1,
             tint_2d: [255; 3],
             cracks: make_texture(80, 16, &crack_pixels(), gl::NEAREST, gl::CLAMP_TO_EDGE),
             font,
@@ -494,7 +499,7 @@ impl Renderer {
             }
         }
         if env.lava {
-            fog = [0.62, 0.20, 0.03];
+            fog = [0.86, 0.33, 0.05];
         } else if env.underwater {
             fog = [0.04 + 0.06 * day, 0.16 + 0.14 * day, 0.30 + 0.25 * day];
         }
@@ -968,7 +973,7 @@ impl Renderer {
     /// (`tex`), then the held item from the block atlas. Both are in the
     /// hand's space: the depth buffer is cleared and a close-up projection
     /// is used. `to_view` moves each model point into view space.
-    pub fn draw_first_person(&mut self, model: usize, tex: u32, fov: f32, height: f32, to_view: &dyn Fn([f32; 3]) -> [f32; 3], items: &[crate::client::hand::Quad]) {
+    pub fn draw_first_person(&mut self, model: usize, tex: u32, fov: f32, height: f32, to_view: &dyn Fn([f32; 3]) -> [f32; 3], items: &[crate::client::hand::Quad], light: f32) {
         let g = gl();
         self.flush(gl::QUADS);
         self.model_verts.clear();
@@ -987,7 +992,7 @@ impl Renderer {
             (g.Enable)(gl::ALPHA_TEST);
         }
         Self::atlas_matrix(false);
-        let arm: Vec<V2> = self.model_verts.iter().map(|v| V2 { pos: to_view(v.pos), uv: v.uv, col: [v.shade, v.shade, v.shade, 255] }).collect();
+        let arm: Vec<V2> = self.model_verts.iter().map(|v| V2 { pos: to_view(v.pos), uv: v.uv, col: { let c = (v.shade as f32 * light.clamp(0.0, 1.0)) as u8; [c, c, c, 255] } }).collect();
         if !arm.is_empty() && tex != 0 {
             self.batch_tex = tex;
             self.batch.extend(arm);
@@ -1097,6 +1102,7 @@ impl Renderer {
         };
         self.flush(gl::QUADS);
         self.animate_water(env.clock);
+        self.animate_lava(env.clock);
         unsafe {
             (g.Enable)(gl::FOG);
             (g.Fogf)(gl::FOG_START, fog.0);

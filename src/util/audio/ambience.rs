@@ -130,6 +130,12 @@ pub fn lava_level(lava: f32) -> f32 {
     smoothstep(0.02, 0.35, lava)
 }
 
+/// How loud a lava pop is for a lava level (`lava_level`, 0 to 1): the closer
+/// (and the more) lava, the louder; far lava still pops, quietly.
+pub fn lava_pop_loudness(amount: f32) -> f32 {
+    0.3 + 0.7 * clampf(amount, 0.0, 1.0)
+}
+
 pub fn fire_level(fire: f32) -> f32 {
     smoothstep(0.02, 0.3, fire)
 }
@@ -373,10 +379,11 @@ impl Ambience {
             let rate = if amount > 0.02 { 0.3 + 1.0 * amount } else { 0.0 };
             if rate >= 0.02 {
                 let hz0 = rng.range(80.0, 140.0);
+                let loud = lava_pop_loudness(amount);
                 if rng.unit() < 0.5 {
-                    put(OneShot { secs: rng.range(0.1, 0.22), noise: 0.55, hz0, hz1: hz0 * 0.55, lp: rng.range(0.1, 0.18), gain: rng.range(0.22, 0.4) });
+                    put(OneShot { secs: rng.range(0.1, 0.22), noise: 0.55, hz0, hz1: hz0 * 0.55, lp: rng.range(0.1, 0.18), gain: rng.range(0.22, 0.4) * loud });
                 } else {
-                    put(OneShot { secs: rng.range(0.12, 0.2), noise: 0.15, hz0, hz1: hz0 * 1.8, lp: 0.15, gain: rng.range(0.15, 0.25) });
+                    put(OneShot { secs: rng.range(0.12, 0.2), noise: 0.15, hz0, hz1: hz0 * 1.8, lp: 0.15, gain: rng.range(0.15, 0.25) * loud });
                 }
             }
             self.timers[3] = next_gap(rate, rng);
@@ -438,6 +445,15 @@ impl Ambience {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lava_pops_are_louder_the_closer_the_lava() {
+        let (far, mid, near) = (lava_pop_loudness(lava_level(0.03)), lava_pop_loudness(lava_level(0.2)), lava_pop_loudness(lava_level(0.9)));
+        assert!(far < mid && mid < near);
+        assert!(far >= 0.3 && near <= 1.0);
+        assert_eq!(lava_pop_loudness(5.0), 1.0);
+        assert_eq!(lava_pop_loudness(-1.0), 0.3);
+    }
 
     fn run(a: &mut Ambience, env: &Env, seconds: f32) -> Vec<Timed> {
         let mut out = Vec::new();

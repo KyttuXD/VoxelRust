@@ -29,3 +29,4 @@ pub mod pacing;
 pub mod modui;
 pub mod shaders;
 pub mod cull;
+pub mod block_light;

@@ -112,7 +112,10 @@ impl App {
                     let mut items = Vec::new();
                     crate::client::hand::first_person_view(held, &view, &mut items);
                     let to_view = |p: [f32; 3]| crate::client::hand::arm_point_view(p, &view, held);
-                    r.draw_first_person(hand, self.skin_tex, cam.fov, 0.24, &to_view, &items);
+                    // Lit by the sky, or by lava and lamps close by.
+                    let light = Self::hand_light(g, eye);
+                    crate::client::block_light::scale_quads(&mut items, light);
+                    r.draw_first_person(hand, self.skin_tex, cam.fov, 0.24, &to_view, &items, light);
                 }
             }
         } else {
@@ -157,8 +160,12 @@ impl App {
             r.rect(0.0, 0.0, w, h, [8, 10, 24, 60]);
         }
         let s = self.ui_scale(r);
-        if in_lava {
-            r.rect(0.0, 0.0, w, h, [220, 90, 10, 170]);
+        // Thick, bright lava over the view, filling in quickly and draining slowly.
+        let lava_dt = (self.ui_clock - self.lava_stepped).clamp(0.0, 0.25);
+        self.lava_stepped = self.ui_clock;
+        self.lava_fade = crate::lava_look::overlay_step(self.lava_fade, in_lava, lava_dt);
+        if self.lava_fade > 0.0 {
+            r.rect(0.0, 0.0, w, h, crate::lava_look::overlay_colour(self.lava_fade));
         } else if underwater {
             r.rect(0.0, 0.0, w, h, [20, 70, 150, 90]);
         }

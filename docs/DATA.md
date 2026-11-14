@@ -393,7 +393,22 @@ sets), [fluid_queue.rs](../src/game/fluid_queue.rs) (when) and
   four top corners are averaged with the cells round them, so a source
   beside a lower flow slopes. Faces between two cells of the same liquid are
   not drawn. Inside water the view is blue and 26 blocks deep; inside lava
-  it is orange and 4 blocks deep.
+  it is orange and 4 blocks deep, and the screen fills with thick bright
+  orange in about a seventh of a second and drains over half a second after
+  leaving it.
+- **Lava's look and light.** Lava faces are always at full brightness (no
+  side shade, no darker corners) with a hot tint, flowing lava 12 percent
+  dimmer than a source (`terrain/lava_look.rs`). The built-in lava picture
+  scrolls slowly (1.5 rows a second) and its brightness breathes between 90
+  and 100 percent (`client/render/lava_anim.rs`); a pack's own `lava` picture
+  is left as it is. The air around lava is lit by the block light of its
+  `light 12`. Creatures, dropped items, props, other players and the hand are
+  lit by it too (and by lamps, torches and every block with a `light` line):
+  the strongest light within 6 blocks, one level less per block, hidden by
+  walls, never darker than the sky's own light (`client/block_light.rs`).
+  Embers rise off lava that is open to the air within 24 blocks of the player
+  (40 alive in one patch, 120 in all, none when the particle budget is low;
+  `game/fx/lava_embers.rs`).
 - Not in the game: buckets and farmland moisture (the Farming mod's
   farmland does not dry or wet). A pack that adds them can read
   `block::fluid_of` and set blocks as the flow does.

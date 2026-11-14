@@ -34,6 +34,7 @@ pub mod effects;
 pub mod crafting;
 pub mod posing;
 pub mod ambience_probe;
+pub mod lava_probe;
 pub mod gear;
 pub mod creature_size;
 pub mod creature_extra;
