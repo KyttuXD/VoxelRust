@@ -11,8 +11,10 @@
 //! hurt and thrown the less the farther they are.
 //!
 //! Mods hear of it three ways (docs/MODDING.md): the native hooks
-//! `before_explode` (may change or cancel it) and `after_explode`, and the
-//! script events `explode` and `blockexploded`.
+//! `before_explode` (may change the radius or cancel it), `explode_block`
+//! (spares a block) and `after_explode`, the mods' immune block lists, the
+//! same hooks in scripts, and the script events `explode` and `blockexploded`
+//! (all in `game/explosion_hooks/`, which every path of `explode_with` uses).
 
 use crate::block::{self, reg, Block, Kind, AIR};
 use crate::chunk::CH;
@@ -46,6 +48,18 @@ pub enum ExplosionSource {
 }
 
 impl ExplosionSource {
+    /// The cause the mods' `before_explode` and `after_explode` hooks get:
+    /// `tnt`, `creature`, `script`, `player` (the `/blast` command), and
+    /// `fire` and `other`, which nothing raises yet.
+    pub fn cause(&self) -> &'static str {
+        match *self {
+            ExplosionSource::Tnt => "tnt",
+            ExplosionSource::Creature(_) => "creature",
+            ExplosionSource::Command => "player",
+            ExplosionSource::Mod(_) => "script",
+        }
+    }
+
     /// The name scripts see: `tnt`, `command`, the creature's id, or `mod<N>`.
     pub fn name(&self) -> String {
         match *self {
@@ -186,19 +200,20 @@ pub fn explode(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSourc
 /// of TNT caught for a chain count, creatures do not; 0 when a hook
 /// cancelled it).
 pub fn explode_with(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSource, flags: Flags) -> usize {
+    // Explosions inside hooks nest; the third level calls no hooks (see explosion_hooks).
+    let depth = crate::explosion_hooks::enter(g);
+    let n = explode_at_depth(g, at, power, source, flags, depth);
+    crate::explosion_hooks::leave(g);
+    n
+}
+
+fn explode_at_depth(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSource, flags: Flags, depth: u32) -> usize {
     if !(power > 0.0) || !at[0].is_finite() || !at[1].is_finite() || !at[2].is_finite() {
         return 0;
     }
     let mut info = ExplosionInfo { at, power: if power > MAX_POWER { MAX_POWER } else { power }, source };
-    for (_, n) in crate::native::active() {
-        if let Some(before) = n.before_explode {
-            if !before(g, &mut info) {
-                return 0;
-            }
-        }
-    }
-    // Scripts (script/bridge.rs) may cancel it or change its power too.
-    if !crate::script::bridge::explode(g, &mut info) {
+    // The mods (native code, then scripts) may cancel it or change its radius.
+    if crate::explosion_hooks::hooks_allowed(depth) && !crate::explosion_hooks::before(g, &mut info) {
         return 0;
     }
     // A hook may have made it nonsense.
@@ -221,9 +236,12 @@ pub fn explode_with(g: &mut Session, at: [f64; 3], power: f32, source: Explosion
     let wet = block::is_water(g.world.get(floord(at[0]), floord(at[1]), floord(at[2])));
     let breaks = if wet { crate::game::fluid_rules::underwater_block_power(power) } else { power };
     let cells = if flags.no_blocks { Vec::new() } else { blast_cells(at, radius(breaks), seed_of(at)) };
+    // Blocks a mod keeps immune stay, as do those a mod's `explode_block` spares.
+    let mut gate = crate::explosion_hooks::gate(g, depth);
+    let (ask_native, ask_script) = (gate.native_veto, gate.script_veto);
     for c in cells {
         let b = g.world.get(c[0], c[1], c[2]);
-        if b == AIR || resists(b) {
+        if b == AIR || resists(b) || !gate.allows(b, &mut || crate::explosion_hooks::ask_block(g, ask_native, ask_script, c, b)) {
             continue;
         }
         let d = block::def(b);
@@ -280,10 +298,8 @@ pub fn explode_with(g: &mut Session, at: [f64; 3], power: f32, source: Explosion
     for b in kinds {
         g.fire("blockexploded", &block::def(b).id);
     }
-    for (_, n) in crate::native::active() {
-        if let Some(after) = n.after_explode {
-            after(g, &info, destroyed);
-        }
+    if crate::explosion_hooks::hooks_allowed(depth) {
+        crate::explosion_hooks::after(g, &info, destroyed);
     }
     destroyed
 }

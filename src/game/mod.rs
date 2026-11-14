@@ -25,6 +25,7 @@ pub mod bow;
 pub mod eating;
 pub mod chest_anim;
 pub mod explosion;
+pub mod explosion_hooks;
 pub mod primed;
 pub mod events;
 pub mod mob_hooks;

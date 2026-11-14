@@ -162,8 +162,17 @@ pub struct Native {
     /// only, and only for damage above zero.
     pub hurt: Option<fn(g: &mut Session, amount: i32, attacker: Option<usize>) -> i32>,
     /// An explosion is about to happen (TNT, an exploding creature, `/blast`,
-    /// another mod): change it (`at`, `power`) or return false to cancel it.
-    pub before_explode: Option<fn(g: &mut Session, info: &mut ExplosionInfo) -> bool>,
+    /// another mod): its middle, its `radius` (0 to 16 blocks) and its cause
+    /// (`tnt`, `creature`, `script`, `player`, `fire`, `other`). Return the
+    /// radius to go ahead with (a different one changes the blast; 0 or more
+    /// than 16 is held to 0..16, and 0 cancels) or `None` to cancel it.
+    pub before_explode: Option<fn(g: &mut Session, x: f64, y: f64, z: f64, radius: f32, cause: &str) -> Option<f32>>,
+    /// Blocks no explosion destroys, by block id (any radius, every path:
+    /// TNT, creatures, `/blast`, scripts). Skipped without calling anything.
+    pub immune_blocks: &'static [&'static str],
+    /// A block an explosion is about to destroy: return false to spare it.
+    /// Asked for the first 20 000 blocks of a blast (see `explosion_hooks`).
+    pub explode_block: Option<fn(g: &mut Session, cell: [i32; 3], block: Block) -> bool>,
     /// An explosion has happened; `destroyed` is how many blocks it took.
     pub after_explode: Option<fn(g: &mut Session, info: &ExplosionInfo, destroyed: usize)>,
     /// A block of TNT at that cell is about to be lit: return false to stop it.
@@ -330,6 +339,8 @@ impl Native {
         hit: None,
         hurt: None,
         before_explode: None,
+        immune_blocks: &[],
+        explode_block: None,
         after_explode: None,
         on_prime: None,
         effect_apply: None,

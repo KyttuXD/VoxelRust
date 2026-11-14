@@ -702,7 +702,7 @@ fn the_examples_in_the_docs_load() {
 fn hook_names_are_unique() {
     let mut seen = Vec::new();
     for h in HOOKS {
-        assert!(h.name.starts_with("on_"));
+        assert!(h.name.starts_with("on_") || matches!(h.name, "before_explode" | "explode_block" | "after_explode"));
         assert!(!seen.contains(&h.name));
         seen.push(h.name);
     }
