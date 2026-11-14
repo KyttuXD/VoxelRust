@@ -369,6 +369,7 @@ block cactus_arm
   hardness 0.5
   hurts 1
   box 0 6 6 16 10 10
+  box 5 10 5 11 16 11
 block cactus_arm_z
   name Cactus Arm (Z)
   tex cactus_top cactus_side cactus_top
@@ -376,6 +377,7 @@ block cactus_arm_z
   hardness 0.5
   hurts 1
   box 6 6 0 10 10 16
+  box 5 10 5 11 16 11
 block lamp
   name Lamp
   tex lamp
@@ -5253,9 +5255,9 @@ block white_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block white_armchair
   name White Armchair
   tex white_wool
@@ -5265,9 +5267,9 @@ block white_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft white_couch 1 white_wool 3 planks 2
 craft white_armchair 1 white_wool 2 planks 2
 block light_gray_couch
@@ -5279,9 +5281,9 @@ block light_gray_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block light_gray_armchair
   name Light Gray Armchair
   tex light_gray_wool
@@ -5291,9 +5293,9 @@ block light_gray_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft light_gray_couch 1 light_gray_wool 3 planks 2
 craft light_gray_armchair 1 light_gray_wool 2 planks 2
 block gray_couch
@@ -5305,9 +5307,9 @@ block gray_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block gray_armchair
   name Gray Armchair
   tex gray_wool
@@ -5317,9 +5319,9 @@ block gray_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft gray_couch 1 gray_wool 3 planks 2
 craft gray_armchair 1 gray_wool 2 planks 2
 block black_couch
@@ -5331,9 +5333,9 @@ block black_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block black_armchair
   name Black Armchair
   tex black_wool
@@ -5343,9 +5345,9 @@ block black_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft black_couch 1 black_wool 3 planks 2
 craft black_armchair 1 black_wool 2 planks 2
 block brown_couch
@@ -5357,9 +5359,9 @@ block brown_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block brown_armchair
   name Brown Armchair
   tex brown_wool
@@ -5369,9 +5371,9 @@ block brown_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft brown_couch 1 brown_wool 3 planks 2
 craft brown_armchair 1 brown_wool 2 planks 2
 block red_couch
@@ -5383,9 +5385,9 @@ block red_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block red_armchair
   name Red Armchair
   tex red_wool
@@ -5395,9 +5397,9 @@ block red_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft red_couch 1 red_wool 3 planks 2
 craft red_armchair 1 red_wool 2 planks 2
 block orange_couch
@@ -5409,9 +5411,9 @@ block orange_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block orange_armchair
   name Orange Armchair
   tex orange_wool
@@ -5421,9 +5423,9 @@ block orange_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft orange_couch 1 orange_wool 3 planks 2
 craft orange_armchair 1 orange_wool 2 planks 2
 block yellow_couch
@@ -5435,9 +5437,9 @@ block yellow_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block yellow_armchair
   name Yellow Armchair
   tex yellow_wool
@@ -5447,9 +5449,9 @@ block yellow_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft yellow_couch 1 yellow_wool 3 planks 2
 craft yellow_armchair 1 yellow_wool 2 planks 2
 block lime_couch
@@ -5461,9 +5463,9 @@ block lime_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block lime_armchair
   name Lime Armchair
   tex lime_wool
@@ -5473,9 +5475,9 @@ block lime_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft lime_couch 1 lime_wool 3 planks 2
 craft lime_armchair 1 lime_wool 2 planks 2
 block green_couch
@@ -5487,9 +5489,9 @@ block green_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block green_armchair
   name Green Armchair
   tex green_wool
@@ -5499,9 +5501,9 @@ block green_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft green_couch 1 green_wool 3 planks 2
 craft green_armchair 1 green_wool 2 planks 2
 block cyan_couch
@@ -5513,9 +5515,9 @@ block cyan_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block cyan_armchair
   name Cyan Armchair
   tex cyan_wool
@@ -5525,9 +5527,9 @@ block cyan_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft cyan_couch 1 cyan_wool 3 planks 2
 craft cyan_armchair 1 cyan_wool 2 planks 2
 block light_blue_couch
@@ -5539,9 +5541,9 @@ block light_blue_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block light_blue_armchair
   name Light Blue Armchair
   tex light_blue_wool
@@ -5551,9 +5553,9 @@ block light_blue_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft light_blue_couch 1 light_blue_wool 3 planks 2
 craft light_blue_armchair 1 light_blue_wool 2 planks 2
 block blue_couch
@@ -5565,9 +5567,9 @@ block blue_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block blue_armchair
   name Blue Armchair
   tex blue_wool
@@ -5577,9 +5579,9 @@ block blue_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft blue_couch 1 blue_wool 3 planks 2
 craft blue_armchair 1 blue_wool 2 planks 2
 block purple_couch
@@ -5591,9 +5593,9 @@ block purple_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block purple_armchair
   name Purple Armchair
   tex purple_wool
@@ -5603,9 +5605,9 @@ block purple_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft purple_couch 1 purple_wool 3 planks 2
 craft purple_armchair 1 purple_wool 2 planks 2
 block magenta_couch
@@ -5617,9 +5619,9 @@ block magenta_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block magenta_armchair
   name Magenta Armchair
   tex magenta_wool
@@ -5629,9 +5631,9 @@ block magenta_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft magenta_couch 1 magenta_wool 3 planks 2
 craft magenta_armchair 1 magenta_wool 2 planks 2
 block pink_couch
@@ -5643,9 +5645,9 @@ block pink_couch
   rotate
   seat 7
   box 0 0 2 16 7 14
-  box 0 7 11 16 14 14
-  box 0 7 2 2 11 11
-  box 14 7 2 16 11 11
+  box 0 7 2 16 14 5
+  box 0 7 5 2 11 14
+  box 14 7 5 16 11 14
 block pink_armchair
   name Pink Armchair
   tex pink_wool
@@ -5655,9 +5657,9 @@ block pink_armchair
   rotate
   seat 7
   box 2 0 2 14 7 14
-  box 2 7 11 14 15 14
-  box 1 7 2 3 11 11
-  box 13 7 2 15 11 11
+  box 2 7 2 14 15 5
+  box 1 7 5 3 11 14
+  box 13 7 5 15 11 14
 craft pink_couch 1 pink_wool 3 planks 2
 craft pink_armchair 1 pink_wool 2 planks 2
 craft chair 2 planks 3 stick 2

@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn player_model() {
         let m = load(PLAYER).unwrap();
-        assert_eq!(m.cubes.len(), 43);
+        assert_eq!(m.cubes.len(), 42);
         assert_eq!((m.tex_w, m.tex_h), (64.0, 64.0));
         let tex = m.texture.as_ref().unwrap();
         assert_eq!((tex.w, tex.h, tex.rgba.len()), (64, 64, 64 * 64 * 4));

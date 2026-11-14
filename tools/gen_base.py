@@ -177,9 +177,9 @@ block("sandstone", "Sandstone", "sandstone", cat="Stone", hardness=1.6)
 block("cactus", "Cactus", "cactus_top cactus_side cactus_top", cat="Nature", hardness=0.5, hurts=1,
       box=["5 0 5 11 16 11", "4 3 6 5 7 10", "11 9 6 12 13 10"])
 block("cactus_arm", "Cactus Arm", "cactus_top cactus_side cactus_top", cat="Nature", hardness=0.5, hurts=1,
-      box=["0 6 6 16 10 10"])
+      box=["0 6 6 16 10 10", "5 10 5 11 16 11"])
 block("cactus_arm_z", "Cactus Arm (Z)", "cactus_top cactus_side cactus_top", cat="Nature", hardness=0.5, hurts=1,
-      box=["6 6 0 10 10 16"])
+      box=["6 6 0 10 10 16", "5 10 5 11 16 11"])
 block("lamp", "Lamp", "lamp", cat="Lights", hardness=0.5, light=15)
 block("flower_red", "Red Flower", "flower_red", shape="cross", cat="Nature", also="tomato_seeds 30")
 block("flower_yellow", "Yellow Flower", "flower_yellow", shape="cross", cat="Nature", also="carrot_seeds 30")
@@ -554,9 +554,9 @@ block("towel_rail", "Towel Rail", "white_wool", cat="Furniture", hardness=0.3, r
       box=["2 6 14 14 13 16"])
 for cid, cname, _ in COLOURS:
     block(f"{cid}_couch", f"{cname} Couch", f"{cid}_wool", cat="Furniture", hardness=0.8, tool="axe", rotate=True, seat=7,
-          box=["0 0 2 16 7 14", "0 7 11 16 14 14", "0 7 2 2 11 11", "14 7 2 16 11 11"])
+          box=["0 0 2 16 7 14", "0 7 2 16 14 5", "0 7 5 2 11 14", "14 7 5 16 11 14"])
     block(f"{cid}_armchair", f"{cname} Armchair", f"{cid}_wool", cat="Furniture", hardness=0.8, tool="axe", rotate=True, seat=7,
-          box=["2 0 2 14 7 14", "2 7 11 14 15 14", "1 7 2 3 11 11", "13 7 2 15 11 11"])
+          box=["2 0 2 14 7 14", "2 7 2 14 15 5", "1 7 5 3 11 14", "13 7 5 15 11 14"])
     w(f"craft {cid}_couch 1 {cid}_wool 3 planks 2")
     w(f"craft {cid}_armchair 1 {cid}_wool 2 planks 2")
 for line in ["chair 2 planks 3 stick 2", "stool 2 planks 1 stick 2", "park_bench 1 planks 3", "desk 1 planks 4",

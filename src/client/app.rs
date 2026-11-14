@@ -1355,6 +1355,10 @@ impl App {
             if p[0] * p[0] + p[2] * p[2] > 72.0 * 72.0 || behind(p, 4.0) {
                 continue;
             }
+            // A creature whose ground is not loaded stands still in mid-air: not drawn.
+            if !g.world.is_loaded(floord(m.body.pos[0]), floord(m.body.pos[2])) {
+                continue;
+            }
             let d = &reg.entities[m.kind];
             let (model, colour, height) = m.look();
             // Things that glow are not dimmed by the dark.

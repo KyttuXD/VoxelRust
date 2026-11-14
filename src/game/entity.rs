@@ -532,8 +532,14 @@ impl Mobs {
             }
             let (px, pz) = (floord(m.body.pos[0]), floord(m.body.pos[2]));
             if !world.is_loaded(px, pz) {
-                i += 1;
-                continue; // frozen until its chunk comes back
+                // Frozen until its chunk comes back; but one left far outside what is
+                // loaded is just removed (it would stand in the air for ever).
+                if dist > 48.0 && !m.tamed {
+                    self.list.swap_remove(i);
+                } else {
+                    i += 1;
+                }
+                continue;
             }
             // Ridden: it goes where its rider steers, and thinks of nothing else.
             if let Some((_, steer, yaw)) = self.rider.as_ref().filter(|r| r.0 == m.id) {

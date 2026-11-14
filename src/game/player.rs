@@ -129,7 +129,7 @@ impl Player {
                 self.vel[1] = (self.vel[1] + 22.0 * dt).min(3.6);
             }
         } else {
-            let speed = (if inp.sprint { 6.2 } else { 4.4 }) * self.speed_scale;
+            let speed = (if inp.sprint { 6.9 } else { 4.8 }) * self.speed_scale;
             let k = ((if self.on_ground { 14.0 } else { 3.5 }) * dt).min(1.0);
             self.vel[0] += (wx * speed - self.vel[0]) * k;
             self.vel[2] += (wz * speed - self.vel[2]) * k;
