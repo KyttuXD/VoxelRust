@@ -289,11 +289,11 @@ pub(crate) fn fetch_signed_list(base: &str, folder: &str) -> Result<String, bool
     let list_path = alloc::format!("{}nightly.txt", folder);
     let sig_path = alloc::format!("{}nightly.txt.sig", folder);
     sys::remove_file(&sig_path);
-    let Some(bytes) = fetch(&alloc::format!("{}nightly.txt", base), &list_path, 15) else {
+    let Some(bytes) = fetch(&alloc::format!("{}nightly.txt", base), &list_path, 15, LIST_LIMIT as u64 + 1) else {
         log("could not read the release list");
         return Err(false);
     };
-    let sig = fetch(&alloc::format!("{}nightly.txt.sig", base), &sig_path, 15);
+    let sig = fetch(&alloc::format!("{}nightly.txt.sig", base), &sig_path, 15, LIST_LIMIT as u64 + 1);
     sys::remove_file(&sig_path);
     let Some(sig) = sig else {
         log("could not read the release list's signature; the list is not used");
@@ -310,11 +310,14 @@ fn log(what: &str) {
     logf!("voxelrust: update: {}", what);
 }
 
-fn fetch(url: &str, to: &str, seconds: u32) -> Option<Vec<u8>> {
+/// `max_bytes`: curl gives up on a file bigger than this (a mirror, or whoever
+/// answers in its place, must not be able to fill the disk or the memory).
+fn fetch(url: &str, to: &str, seconds: u32, max_bytes: u64) -> Option<Vec<u8>> {
     let (u, t) = (sys::shell_arg(url)?, sys::shell_arg(to)?);
     let cmd = alloc::format!(
-        "curl -fsSL --connect-timeout 8 --max-time {} -A \"VoxelRust/{}\" -o {} {}",
+        "curl -fsSL --connect-timeout 8 --max-time {} --max-filesize {} -A \"VoxelRust/{}\" -o {} {}",
         seconds,
+        max_bytes,
         env!("CARGO_PKG_VERSION"),
         t,
         u
@@ -460,7 +463,7 @@ fn run_inner(build: &str, folder: &str, install: bool, mirror: &str) {
     // Left by an earlier update on Windows; it may still be locked, then it stays.
     sys::remove_file(&old);
 
-    let ok = match fetch(&alloc::format!("{}{}", base, file), &fresh, 300) {
+    let ok = match fetch(&alloc::format!("{}{}", base, file), &fresh, 300, size as u64 + 1) {
         Some(bytes) => bytes.len() == size && crate::sha256::hex(&bytes) == sum.to_ascii_lowercase(),
         None => false,
     };

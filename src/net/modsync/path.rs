@@ -35,9 +35,29 @@ pub fn allowed_ext(name: &str) -> bool {
     }
 }
 
-/// A mod's name as a folder name: letters, digits, `_` and `-`, 1 to 32 long.
+/// Whether `name` is one Windows reserves for devices (CON, NUL, COM1...),
+/// with or without an extension and in any case: opening such a file there
+/// opens the device instead, so it is never made on any system.
+pub fn is_reserved_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or("").trim_end_matches(' ').to_ascii_uppercase();
+    match stem.as_str() {
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$" | "CLOCK$" => true,
+        s => s.len() == 4 && (s.starts_with("COM") || s.starts_with("LPT")) && s.as_bytes()[3].is_ascii_digit(),
+    }
+}
+
+/// Folders of the data folder's tmp folder that belong to the game itself:
+/// a downloaded mod of that name would share them (a script's tmp_write goes
+/// to tmp/<mod>/, and tmp/mods and tmp/update hold the downloads and the
+/// updater's files).
+fn is_shared_folder(name: &str) -> bool {
+    ["mods", "update"].iter().any(|n| name.eq_ignore_ascii_case(n))
+}
+
+/// A mod's name as a folder name: letters, digits, `_` and `-`, 1 to 32 long,
+/// and not a name that is special on some file systems.
 pub fn clean_mod_name(name: &str) -> Option<String> {
-    let ok = !name.is_empty() && name.len() <= 32 && !name.starts_with('-') && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let ok = !name.is_empty() && name.len() <= 32 && !name.starts_with('-') && !is_reserved_name(name) && !is_shared_folder(name) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     if ok {
         Some(String::from(name))
     } else {
@@ -62,7 +82,7 @@ pub fn clean_rel_path(path: &str) -> Option<String> {
         return None;
     }
     for p in &parts {
-        if p.is_empty() || *p == "." || *p == ".." || p.starts_with('.') || p.len() > 64 || p.ends_with(' ') || p.ends_with('.') {
+        if p.is_empty() || *p == "." || *p == ".." || p.starts_with('.') || p.len() > 64 || p.ends_with(' ') || p.ends_with('.') || is_reserved_name(p) {
             return None;
         }
     }
@@ -107,13 +127,18 @@ mod tests {
         assert_eq!(clean_rel_path(&alloc::format!("{}b.txt", "a/".repeat(8))), None, "too deep");
         assert!(clean_rel_path(&alloc::format!("{}b.txt", "a/".repeat(7))).is_some());
         assert_eq!(clean_rel_path(&alloc::format!("{}.txt", "x".repeat(200))), None, "too long");
+        // Names Windows treats as devices, folders too, whatever the case or extension.
+        for bad in ["con.txt", "CON.png", "textures/nul.png", "Aux.txt", "com1.txt", "LPT9.rs", "sounds/prn.ogg", "con/x.png", "nul .txt"] {
+            assert_eq!(clean_rel_path(bad), None, "{bad:?}");
+        }
+        assert!(clean_rel_path("console.txt").is_some() && clean_rel_path("com10.txt").is_some() && clean_rel_path("lpt.txt").is_some());
     }
 
     #[test]
     fn mod_names_and_server_keys_are_plain() {
         assert_eq!(clean_mod_name("earth").as_deref(), Some("earth"));
         assert_eq!(clean_mod_name("my-mod_2").as_deref(), Some("my-mod_2"));
-        for bad in ["", "..", "a/b", "a b", ".x", "-x", &"x".repeat(33)] {
+        for bad in ["", "..", "a/b", "a b", ".x", "-x", &"x".repeat(33), "con", "NUL", "com3", "mods", "Update"] {
             assert_eq!(clean_mod_name(bad), None, "{bad:?}");
         }
         assert_eq!(server_key("play.example.com", 25590), "play_example_com_25590");

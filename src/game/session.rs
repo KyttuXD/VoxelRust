@@ -303,7 +303,7 @@ pub fn migrate_worlds(base: &str) {
             }
         }
     }
-    sys::write_file(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
+    sys::write_file_atomic(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
     sys::remove_file(&alloc::format!("{}worlds.txt", base));
 }
 
@@ -327,7 +327,7 @@ pub fn remember_world(base: &str, name: &str) {
         names.push(String::from(name));
         sys::make_dir(&world_dir(base));
         sys::make_dir(&world_dir(base));
-        sys::write_file(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
+        sys::write_file_atomic(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
     }
 }
 
@@ -343,7 +343,7 @@ pub fn world_files(base: &str, name: &str) -> Vec<String> {
 pub fn forget_world(base: &str, name: &str) {
     let names: Vec<String> = list_worlds(base).into_iter().filter(|n| n != name).collect();
     sys::make_dir(&world_dir(base));
-    sys::write_file(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
+    sys::write_file_atomic(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
 }
 
 /// Delete a world: every file it is made of, and its place in the index.
@@ -372,7 +372,11 @@ pub fn copy_world(base: &str, name: &str, to: &str) -> bool {
             None => return false,
         };
         let new_name = alloc::format!("{}.{}", to, &f[from_prefix.len()..]);
-        if !sys::write_file(&alloc::format!("{}{}", world_dir(base), new_name), &data) {
+        if !sys::write_file_atomic(&alloc::format!("{}{}", world_dir(base), new_name), &data) {
+            // Half a copy is no world: take away what was copied (a full disk).
+            for g in world_files(base, to) {
+                sys::remove_file(&alloc::format!("{}{}", world_dir(base), g));
+            }
             return false;
         }
     }
@@ -1214,6 +1218,7 @@ impl Session {
                 }
             }
             "/seed" => alloc::format!("SEED {}", self.base_seed),
+            "/version" => crate::net::version::report(self.net.as_ref().and_then(|n| n.server_info.as_ref())),
             "/mode" if online => String::from("USE  /GAMEMODE CREATIVE  OR  /GAMEMODE SURVIVAL  (IF THE SERVER ALLOWS IT)"),
             "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" | "/blast" | "/episode" | "/strip" | "/flood" => String::from("NOT ON A SERVER"),
             // A command of some mod's own code, perhaps.
@@ -1749,7 +1754,13 @@ impl Session {
                 crate::netplay::Event::Left(who) => self.fire(crate::game::events::LEAVE, &who.to_ascii_lowercase()),
                 // (Remote players keep their emote on their own record in `net.players`.)
                 crate::netplay::Event::Emote(..) => {}
-                crate::netplay::Event::Skin(id, png, slim) => self.skin_events.push((id, png, slim)),
+                crate::netplay::Event::Skin(id, png, slim) => {
+                    // (Skins pile up only if the screen is not drawing: keep the newest.)
+                    if self.skin_events.len() >= 64 {
+                        self.skin_events.remove(0);
+                    }
+                    self.skin_events.push((id, png, slim));
+                }
                 crate::netplay::Event::State(_, channel, key, data) => {
                     use crate::proto::channel as ch;
                     let text = String::from_utf8_lossy(&data).into_owned();

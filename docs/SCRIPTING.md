@@ -423,7 +423,7 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 
 | Function | What it does |
 | --- | --- |
-| `net_send(key: &str, text: &str) -> bool` | send a message to this mod's scripts on the other players' games (`on_net`); false when the game is not shared or the key is over 64 bytes or the text over 8000 |
+| `net_send(key: &str, text: &str) -> bool` | send a message to this mod's scripts on the other players' games (`on_net`); false when the game is not shared or the key is over 64 bytes (the mod's name and the key together) or the text over 8000 |
 
 ### Shots, sky, pushes
 
