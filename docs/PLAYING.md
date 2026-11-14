@@ -772,11 +772,13 @@ Settings are kept in `settings.txt` in the data folder. A switch a pack adds
 is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
 (such as the Earth mod's) sit beside them.
 
-- **VIDEO**: view distance (2-48 chunks), distant terrain (0-256 chunks, 0 is
-  off), field of view, interface size, HOLD FRAME RATE (lowers the view
+- **VIDEO**: field of view, interface size, HOLD FRAME RATE (lowers the view
   distance by itself to keep a rate you choose), frame rate limit, vsync,
-  clouds, 3D DETAIL (draws the 3D view at a lower resolution; a big help on
-  old graphics cards), show frame rate, full screen and its resolution.
+  show frame rate, full screen and its resolution. The button
+  **DETAIL AND DISTANCE...** opens a second page with view distance (2-48
+  chunks), distant terrain (0-256 chunks, 0 is off), the distant builds and
+  trees rows below, 3D DETAIL (draws the 3D view at a lower resolution; a big
+  help on old graphics cards) and clouds.
   Vsync is off unless you turn it on.
   Three rows set how the distant terrain is made: **DISTANT BUILDS AND TREES**
   (0-8 tiles; a tile is 4 x 4 chunks), **TREES** (none, some, all) and

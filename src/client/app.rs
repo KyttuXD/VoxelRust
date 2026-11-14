@@ -497,6 +497,8 @@ struct App {
     /// `--show creatures,looks:NAME`: line up every look of the creatures whose id contains NAME instead.
     show_looks: Option<String>,
     mods_scroll: i32,
+    /// Settings > VIDEO shows its detail page (distances, LOD, clouds).
+    video_detail: bool,
     form_mod_path: String,
     at_furnace: bool,
     /// The crafting grid and recipe book of the inventory and table screens.
@@ -2019,6 +2021,7 @@ impl App {
             let tx = x + i as f32 * tw;
             if ui.button(tx, top, tw - 2.0 * s, bh, t) {
                 self.tab = i;
+                self.video_detail = false;
                 self.rebinding = None;
                 *ui.focus = 0;
             }
@@ -2035,35 +2038,42 @@ impl App {
         {
             let st = &mut self.settings;
             match self.tab {
-                0 => {
-                    changed |= ui.stepper(x, row(0), bw, bh, "VIEW DISTANCE", &mut st.distance, 2, 48, 1);
-                    changed |= ui.stepper(x, row(1), bw, bh, "DISTANT TERRAIN", &mut st.far_distance, 0, 256, 16);
-                    changed |= ui.stepper(x, row(2), bw, bh, "FIELD OF VIEW", &mut st.fov, 50, 110, 5);
-                    let gs = if st.gui_scale == 0 { String::from("INTERFACE SIZE  < AUTO >") } else { alloc::format!("INTERFACE SIZE  < {} >", st.gui_scale) };
-                    changed |= ui.stepper_text(x, row(3), bw, bh, &gs, &mut st.gui_scale, 0, 6, 1);
-                    let tf = if st.target_fps == 0 { String::from("HOLD FRAME RATE  < OFF >") } else { alloc::format!("HOLD FRAME RATE  < {} >", st.target_fps) };
-                    changed |= step_list(ui, x, row(4), bw, bh, &tf, &mut st.target_fps, &[0, 30, 60, 85, 120, 144, 250]);
-                    let mf = if st.max_fps == 0 { String::from("FRAME RATE LIMIT  < NONE >") } else { alloc::format!("FRAME RATE LIMIT  < {} >", st.max_fps) };
-                    changed |= step_list(ui, x, row(5), bw, bh, &mf, &mut st.max_fps, &[0, 30, 60, 85, 120, 144, 250, 500]);
-                    changed |= ui.toggle(x, row(6), bw, bh, "VSYNC", &mut st.vsync);
+                0 if self.video_detail => {
                     let half = (bw - 4.0 * s) * 0.5;
-                    changed |= ui.toggle(x, row(7), half, bh, "CLOUDS", &mut st.clouds);
+                    if ui.button(x, row(0), bw, bh, "< BACK TO VIDEO") {
+                        self.video_detail = false;
+                    }
+                    changed |= ui.stepper(x, row(1), bw, bh, "VIEW DISTANCE", &mut st.distance, 2, 48, 1);
+                    changed |= ui.stepper(x, row(2), bw, bh, "DISTANT TERRAIN", &mut st.far_distance, 0, 256, 16);
+                    let real = if st.lod_real == 0 { String::from("DISTANT BUILDS AND TREES  < OFF >") } else { alloc::format!("DISTANT BUILDS AND TREES  < {} TILES >", st.lod_real) };
+                    changed |= ui.stepper_text(x, row(3), bw, bh, &real, &mut st.lod_real, 0, 8, 1);
+                    let trees = ["NONE", "SOME", "ALL"][st.lod_trees.clamp(0, 2) as usize];
+                    changed |= ui.stepper_text(x, row(4), half, bh, &alloc::format!("TREES  < {} >", trees), &mut st.lod_trees, 0, 2, 1);
+                    let detail = ["COARSE", "MEDIUM", "FINE"][st.lod_detail.clamp(0, 2) as usize];
+                    changed |= ui.stepper_text(x + half + 4.0 * s, row(4), half, bh, &alloc::format!("DETAIL  < {} >", detail), &mut st.lod_detail, 0, 2, 1);
                     let rs = alloc::format!("3D DETAIL  < {}% >", st.render_scale);
-                    changed |= step_list(ui, x + half + 4.0 * s, row(7), half, bh, &rs, &mut st.render_scale, &[33, 50, 67, 75, 100]);
-                    changed |= ui.toggle(x, row(8), bw, bh, "SHOW FRAME RATE", &mut st.show_fps);
+                    changed |= step_list(ui, x, row(5), bw, bh, &rs, &mut st.render_scale, &[33, 50, 67, 75, 100]);
+                    changed |= ui.toggle(x, row(6), bw, bh, "CLOUDS", &mut st.clouds);
+                }
+                0 => {
+                    if ui.button(x, row(0), bw, bh, "DETAIL AND DISTANCE...") {
+                        self.video_detail = true;
+                    }
+                    changed |= ui.stepper(x, row(1), bw, bh, "FIELD OF VIEW", &mut st.fov, 50, 110, 5);
+                    let gs = if st.gui_scale == 0 { String::from("INTERFACE SIZE  < AUTO >") } else { alloc::format!("INTERFACE SIZE  < {} >", st.gui_scale) };
+                    changed |= ui.stepper_text(x, row(2), bw, bh, &gs, &mut st.gui_scale, 0, 6, 1);
+                    let tf = if st.target_fps == 0 { String::from("HOLD FRAME RATE  < OFF >") } else { alloc::format!("HOLD FRAME RATE  < {} >", st.target_fps) };
+                    changed |= step_list(ui, x, row(3), bw, bh, &tf, &mut st.target_fps, &[0, 30, 60, 85, 120, 144, 250]);
+                    let mf = if st.max_fps == 0 { String::from("FRAME RATE LIMIT  < NONE >") } else { alloc::format!("FRAME RATE LIMIT  < {} >", st.max_fps) };
+                    changed |= step_list(ui, x, row(4), bw, bh, &mf, &mut st.max_fps, &[0, 30, 60, 85, 120, 144, 250, 500]);
+                    changed |= ui.toggle(x, row(5), bw, bh, "VSYNC", &mut st.vsync);
+                    changed |= ui.toggle(x, row(6), bw, bh, "SHOW FRAME RATE", &mut st.show_fps);
                     let half = (bw - 4.0 * s) * 0.5;
                     let mut fs = st.fullscreen;
-                    fullscreen_clicked = ui.toggle(x, row(9), half, bh, "FULL SCREEN", &mut fs);
+                    fullscreen_clicked = ui.toggle(x, row(7), half, bh, "FULL SCREEN", &mut fs);
                     let (mw, mh) = crate::settings::FULLSCREEN_MODES[st.fullscreen_mode as usize];
                     let label = if mw == 0 { String::from("AT  < DESKTOP SIZE >") } else { alloc::format!("AT  < {}X{} >", mw, mh) };
-                    mode_changed = ui.stepper_text(x + half + 4.0 * s, row(9), half, bh, &label, &mut st.fullscreen_mode, 0, crate::settings::FULLSCREEN_MODES.len() as i32 - 1, 1);
-                    // Distant terrain, in detail.
-                    let real = if st.lod_real == 0 { String::from("DISTANT BUILDS AND TREES  < OFF >") } else { alloc::format!("DISTANT BUILDS AND TREES  < {} TILES >", st.lod_real) };
-                    changed |= ui.stepper_text(x, row(10), bw, bh, &real, &mut st.lod_real, 0, 8, 1);
-                    let trees = ["NONE", "SOME", "ALL"][st.lod_trees.clamp(0, 2) as usize];
-                    changed |= ui.stepper_text(x, row(11), half, bh, &alloc::format!("TREES  < {} >", trees), &mut st.lod_trees, 0, 2, 1);
-                    let detail = ["COARSE", "MEDIUM", "FINE"][st.lod_detail.clamp(0, 2) as usize];
-                    changed |= ui.stepper_text(x + half + 4.0 * s, row(11), half, bh, &alloc::format!("DETAIL  < {} >", detail), &mut st.lod_detail, 0, 2, 1);
+                    mode_changed = ui.stepper_text(x + half + 4.0 * s, row(7), half, bh, &label, &mut st.fullscreen_mode, 0, crate::settings::FULLSCREEN_MODES.len() as i32 - 1, 1);
                 }
                 1 => {
                     changed |= ui.stepper(x, row(0), bw, bh, "MASTER VOLUME", &mut st.master_volume, 0, 10, 1);
@@ -3476,6 +3486,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         show_walking: opts.show.contains("walking"),
         show_looks: opts.show.split(',').find_map(|w| w.strip_prefix("looks:")).map(String::from),
         mods_scroll: 0,
+        video_detail: false,
         form_mod_path: String::new(),
         at_furnace: false,
         craft: Default::default(),
