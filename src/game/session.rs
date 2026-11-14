@@ -137,6 +137,8 @@ pub struct Session {
     pub shots: Vec<Shot>,
     /// Items on the ground.
     pub drops: Vec<Dropped>,
+    /// Lit TNT and the sparks of explosions (see `game::primed`).
+    pub primed: crate::primed::Primed,
     /// Seconds each `when every N` script has left.
     script_timers: Vec<f32>,
     started: bool,
@@ -503,6 +505,7 @@ impl Session {
             pending_hurt: 0,
             shots: Vec::new(),
             drops: Vec::new(),
+            primed: Default::default(),
             script_timers: Vec::new(),
             started: false,
             call_timer: 3.0,
@@ -875,22 +878,13 @@ impl Session {
                 self.say(&text);
                 String::new()
             }
-            // /blast R: clear a ball of blocks where the player is pointing.
+            // /blast R: an explosion of radius R where the player is pointing
+            // (see game::explosion).
             "/blast" if !online => {
                 if let Some(c) = self.target.as_ref().map(|h| h.cell) {
                     let rad = arg(1).parse::<i32>().unwrap_or(2).clamp(1, 5);
-                    for dx in -rad..=rad {
-                        for dy in -rad..=rad {
-                            for dz in -rad..=rad {
-                                let cell = [c[0] + dx, c[1] + dy, c[2] + dz];
-                                let b = self.world.get(cell[0], cell[1], cell[2]);
-                                if dx * dx + dy * dy + dz * dz <= rad * rad && b != AIR && !block::def(b).unbreakable && cell[1] > 0 {
-                                    self.world.set_block(cell[0], cell[1], cell[2], AIR);
-                                }
-                            }
-                        }
-                    }
-                    self.sound_queue.push(String::from("thunder"));
+                    let at = [c[0] as f64 + 0.5, c[1] as f64 + 0.5, c[2] as f64 + 0.5];
+                    crate::explosion::explode(self, at, rad as f32 / crate::explosion::RADIUS_PER_POWER, crate::explosion::ExplosionSource::Command);
                 }
                 String::new()
             }
@@ -1269,7 +1263,7 @@ impl Session {
 
     /// Hit creature `i`. In a shared game run by someone else, they are
     /// told, and decide what becomes of it. Returns whether it died.
-    fn strike(&mut self, i: usize, amount: i32, from: [f64; 3]) -> bool {
+    pub(crate) fn strike(&mut self, i: usize, amount: i32, from: [f64; 3]) -> bool {
         if self.runs_the_world() {
             return self.mobs.hurt(i, amount, from);
         }
@@ -1284,6 +1278,21 @@ impl Session {
             n.send_state(crate::proto::channel::HIT, false, "", alloc::format!("{} {}", id, amount).as_bytes());
         }
         health - amount <= 0
+    }
+
+    /// Set an item down in the world at `pos`, thrown with `vel` (at most 128
+    /// lie about; the oldest goes).
+    pub fn drop_item(&mut self, pos: [f64; 3], vel: [f32; 3], item: u16, count: u16) {
+        if self.drops.len() >= 128 {
+            self.drops.remove(0);
+        }
+        self.drops.push(Dropped { pos, vel, item, count, age: 0.0 });
+    }
+
+    /// Hurt the player by `amount` at the end of this frame (survival only;
+    /// armour and the mods' `hurt` hook apply).
+    pub fn hurt_later(&mut self, amount: i32) {
+        self.pending_hurt += amount.clamp(0, 100);
     }
 
     /// Send something flying from the player's eye the way they look.
@@ -1434,6 +1443,8 @@ impl Session {
         // Water and lava move on from whatever just changed (see game::fluid).
         crate::game::fluid::tick(&mut self.world, &pending);
         for c in pending {
+            // TNT next to lava or fire catches.
+            crate::primed::react(self, c);
             // Blocks that react to a neighbour: the changed cell and what touches it.
             for [dx, dy, dz] in [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] {
                 interact::react(&mut self.world, [c[0] + dx, c[1] + dy, c[2] + dz]);
@@ -1912,6 +1923,8 @@ impl Session {
                 k += 1;
             }
         }
+        // Lit TNT burns down, sparks fly.
+        crate::primed::tick(self, dt);
         // Scripts: once at the start, and those that run on a clock.
         if !self.started {
             self.started = true;
@@ -2484,6 +2497,16 @@ impl Session {
             }
         }
         self.mining = mining;
+
+        // The flint and steel lights the TNT it is pointed at.
+        if c.place_held && self.cooldown[1] <= 0.0 && !c.input.descend && crate::primed::is_igniter(&item.id) {
+            if let Some(cell) = self.target.as_ref().map(|h| h.cell) {
+                if crate::primed::ignite_cell(self, cell) {
+                    self.cooldown[1] = 0.5;
+                    return;
+                }
+            }
+        }
 
         // Using: a crafting table or chest in front of you opens; food is eaten.
         if c.place_held && self.cooldown[1] <= 0.0 && !c.input.descend {

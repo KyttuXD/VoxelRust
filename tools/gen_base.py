@@ -418,7 +418,8 @@ for line in ["step steps 0.09 0.95 90 60 0.10 0.55 Footsteps", "break effects 0.
              "buzz effects 0.40 0.20 210 230 0.70 0.20 Buzzing", "groan effects 0.90 0.30 120 80 0.20 0.60 Groaning",
              "rattle effects 0.30 0.85 900 700 0.85 0.45 Bones rattle", "roar effects 1.20 0.70 140 60 0.12 1.00 A roar",
              "chime effects 0.60 0.02 1200 1180 0.90 0.40 Chime", "rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails",
-             "whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh", "sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling"]:
+             "whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh", "sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling",
+             "explosion effects 1.10 1.00 90 30 0.06 1.00 Explosion"]:
     w("sound " + line)
 
 w("""
@@ -596,7 +597,7 @@ block("blast_furnace", "Blast Furnace", "stone_bricks blast_front stone_bricks",
 block("kiln", "Kiln", "brick furnace_front brick", cat="Farming", hardness=2.0, tool="pick", use="furnace", light=6)
 block("smoker", "Smoker", "planks oven_front planks", cat="Farming", hardness=1.6, tool="axe", use="oven", light=5)
 block("campfire", "Campfire", "log_side", cat="Farming", hardness=0.6, tool="axe", use="oven", light=13, hurts=1,
-      box=["1 0 6 15 3 10", "6 0 1 10 3 15", "5 3 5 11 7 11"], sound="sizzle")
+      box=["1 0 6 15 3 10", "6 0 1 10 3 15", "5 3 5 11 7 11"], sound="sizzle", tag="fire")
 for mid, mname, (r, g, b) in (("iron", "Iron", (214, 214, 220)), ("copper", "Copper", (206, 124, 80))):
     tex(f"{mid}_ingot", f"paint ingot {r} {g} {b}")
     w(f"item {mid}_ingot\n  name {mname} Ingot\n  icon {mid}_ingot\n  category Materials")
@@ -716,6 +717,29 @@ JOINT_TRUNK = "5 0 5 11 16 11", "4 3 6 5 7 10", "11 9 6 12 13 10"
 for side, stub in [("px", "11 6 6 16 10 10"), ("nx", "0 6 6 5 10 10"), ("pz", "6 6 11 10 10 16"), ("nz", "6 6 0 10 10 5")]:
     block(f"cactus_joint_{side}", "Cactus", "cactus_top cactus_side cactus_top", hardness=0.5, hurts=1,
           hidden=True, drops="cactus", box=list(JOINT_TRUNK) + [stub])
+
+# ---- Explosives ----
+# TNT is any block with `tag tnt <power>` (see src/game/primed.rs and
+# src/game/explosion.rs): it catches fire from lava and from blocks tagged
+# `tag fire` (the campfire), from another explosion, and from the flint and
+# steel, then burns a four second fuse and explodes. `tag blastproof` marks a
+# block that explosions leave standing.
+w("""
+# ---- Explosives ----
+#   block ... tag tnt <power>     explodes when lit (power 2.5 clears a ball about 5 blocks wide)
+#   block ... tag fire            sets TNT beside it alight
+#   block ... tag blastproof      explosions leave it standing""")
+tex("tnt_side", "paint tnt_side 200 52 40")
+tex("tnt_top", "paint tnt_top 200 52 40")
+tex("tnt_bottom", "paint tnt_bottom 200 52 40")
+tex("gunpowder", "paint powder 96 96 106")
+tex("flint_and_steel", "paint flint_steel 176 180 190")
+block("tnt", "TNT", "tnt_top tnt_side tnt_bottom", cat="Tools", hardness=0, tag="tnt 2.5")
+w("item gunpowder\n  name Gunpowder\n  icon gunpowder\n  category Materials")
+w("item flint_and_steel\n  name Flint and Steel\n  icon flint_and_steel\n  category Tools\n  stack 1\n  damage 2")
+w("craft gunpowder 2 coal 2 sand 1")
+w("craft tnt 1 gunpowder 5 sand 4")
+w("craft flint_and_steel 1 iron_ingot 1 gravel 1")
 
 if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "creatures.txt")):
     w("\n# Models, then every creature, live in their own files.\ninclude creatures.txt")

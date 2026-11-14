@@ -411,6 +411,18 @@ anything that is not a sword) does 3 damage to a creature.
 | Crystal | 12 |
 | Ruby | 15 |
 
+### TNT
+
+Gunpowder (2 from 2 coal and a sand, at a crafting table) and sand make TNT
+(1 from 5 gunpowder and 4 sand). Right click a block of TNT with a flint and
+steel (1 from an iron ingot and some gravel) to light it. TNT is also lit by
+lava or a campfire beside it, and by any explosion. A lit block flashes white
+for four seconds, then explodes: it clears a ball of blocks about ten blocks
+across (water, lava and unbreakable blocks stay), drops some of them in
+survival, sets off TNT near it a moment later, and hurts and throws whoever
+is close, you included. TNT is in the creative list's Tools tab. Lit TNT is
+not saved with the world.
+
 ### Caves
 
 Underground the caves differ from region to region:
@@ -629,7 +641,7 @@ blocks from it.
 | `/shoot [DAMAGE] [SPEED] [BLOCK]` | loose a shot the way you look (damage 4 and speed 30 if left out). BLOCK, if given, is left where the shot lands | no |
 | `/aim BLOCK` | put that block against the face you are pointing at | no |
 | `/strike [DAMAGE]` | lightning on the block you point at: thunder, a flash, and DAMAGE (12 if left out) to every creature within 4 blocks | no |
-| `/blast [R]` | clear a ball of blocks of radius R (1 to 5; 2 if left out) around the block you point at. Unbreakable blocks and height 0 stay | no |
+| `/blast [R]` | an explosion of radius R (1 to 5; 2 if left out) round the block you point at: it clears a rough ball of blocks, drops some of them in survival, and hurts and throws you if you are near. Unbreakable blocks, water, lava and height 0 stay | no |
 | `/take ITEM [N]` | remove N of an item from your inventory (1 if left out), if you have it | works |
 | `/title TEXT` | show a notice in large letters in the middle of the screen for two seconds | works |
 | `/var NAME = N`, `+ N`, `- N`, `random N` | set, add to or subtract from a numbered variable, or set it to a random whole number from 0 to N-1 | works |

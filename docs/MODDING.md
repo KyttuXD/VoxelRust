@@ -183,6 +183,9 @@ command <name> <commands separated by ;>
 | `death` | you die | none |
 | `episode <id>` | an episode of a pack begins (see [Episodes](#episodes)) | episode id |
 | `episode_end <id>` | that episode ends | episode id |
+| `tntprimed <block>` | a block of TNT is lit (by fire, lava, an explosion or the flint and steel) | block id |
+| `explode` | an explosion happens, before it breaks anything (TNT, an exploding creature, `/blast`, a mod's code) | what set it off: `tnt`, `command`, a creature's id, or `mod<N>` |
+| `blockexploded <block>` | an explosion has broken blocks: once for each kind of block it took, after it is over | block id |
 | *any name* | a pack raises it with `/fire <event> [what]` | whatever it sends |
 
 A pack hooks into another by raising an event with `/fire`, and the other
@@ -313,7 +316,53 @@ limit of six levels of nesting.
 | --- | --- |
 | `/take ITEM [N]` | removes N of the item (1 if left out) from the player, if they have it. Pair it with `/if has ITEM N` to charge a price |
 | `/title TEXT` | large letters in the middle of the screen for two seconds |
-| `/blast [R]` | clears a ball of blocks of radius R (1 to 5; 2 if left out) around the block the player points at; unbreakable blocks stay. Not on a server |
+| `/blast [R]` | an explosion of radius R (1 to 5; 2 if left out) round the block the player points at: it clears a rough ball of blocks (unbreakable blocks, liquids and `tag blastproof` blocks stay), hurts and throws what is near, and fires the explosion events below. Not on a server |
+
+### Explosions
+
+TNT and every other explosion (an exploding creature, `/blast`, a mod's
+code) go through one function, `explosion::explode` in
+[src/game/explosion.rs](../src/game/explosion.rs). An explosion of power P
+clears a rough ball of blocks of radius 2P (TNT has power 2.5: a ball about
+10 blocks across). Water, lava, unbreakable blocks and blocks marked
+`tag blastproof` stay. In survival about a third of what is broken drops as
+items (at most 24 a blast) and a broken chest scatters what it held. TNT in
+the ball is lit with a fuse of half a second to a second and a half, so a
+stack goes off in a chain. Creatures and the player within three times P
+blocks are hurt and thrown the less the farther they are (TNT takes 20
+health point blank, about 4 at four blocks).
+
+A block is TNT when it has `tag tnt <power>` (see [DATA.md](DATA.md#blocks)).
+It is lit by lava or a `tag fire` block (the campfire) beside it, by an
+explosion, or by right clicking it with the `flint_and_steel` item. A lit
+block leaves the world and burns a four second fuse as a block that flashes
+white, then explodes. Lit blocks are not saved with the world.
+
+Scripts hear of it with three events (see the table above): `tntprimed`,
+`explode` and `blockexploded`. `blockexploded` is raised once for each kind
+of block an explosion broke, not once for every block, and only when some
+pack has a `when blockexploded` line.
+
+```
+when tntprimed do /say &cFUSE LIT
+when explode creeper do /title SSSSS...BOOM
+when blockexploded diamond_ore do /give ruby 1
+```
+
+Mod code has three hooks for explosions (see
+[Code that mods bring](#code-that-mods-bring)):
+
+| Hook | Called | May |
+| --- | --- | --- |
+| `before_explode(g, &mut ExplosionInfo) -> bool` | before an explosion breaks anything | change `at` and `power`, or return false to cancel it |
+| `after_explode(g, &ExplosionInfo, destroyed)` | when it is over; `destroyed` is how many blocks went | |
+| `on_prime(g, cell) -> bool` | before a block of TNT is lit | return false to keep it from being lit |
+
+`ExplosionInfo` is `{ at: [f64; 3], power: f32, source: ExplosionSource }`
+and `ExplosionSource` is `Tnt`, `Creature(entity index)`, `Command` or
+`Mod(number)`. Mod code can set off its own explosion with
+`crate::explosion::explode(g, at, power, ExplosionSource::Mod(n))`; the power
+is at most 8.
 
 ### Episodes
 
@@ -724,6 +773,7 @@ and the land of a dimension of its own (`dimension_terrain`),
 a world being opened, saved or reloaded, each frame, clicks, chat commands,
 `/if` conditions, the player killing a creature (`killed`) and being hurt
 (`hurt`, which may lessen or cancel the blow and says which creature bit),
+explosions (`before_explode`, `after_explode`) and TNT being lit (`on_prime`),
 messages and state shared between players, drawing, the map,
 rows in SETTINGS > GAME, and answers to a server. A mod claims pack lines and
 indented sections by name; the game keeps those word for word for the code to

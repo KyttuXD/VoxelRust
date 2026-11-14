@@ -177,8 +177,17 @@ category is `Blocks`; `solid` is yes for everything except `cross` and
   hunger and half as much health, and removes the block.
 - `tag <name> [number]`: a mark on the block, the number being 1 if left out.
   A block can carry up to 16 tags, and saying a name again replaces its
-  number. The game reads no tag itself; what a mark means is up to the mod
-  code that looks for it.
+  number. The game itself reads only `tnt`, `fire` and `blastproof` (below);
+  what any other mark means is up to the mod code that looks for it.
+- `tag tnt [power]`: the block is TNT (default power 2.5, at most 8). It is
+  lit by lava or a `tag fire` block beside it, by an explosion, or by the
+  `flint_and_steel` item, burns four seconds and explodes with that power
+  (radius twice the power). The base game's `tnt` has `tag tnt 2.5`. See
+  [Explosions](MODDING.md#explosions).
+- `tag fire`: the block sets TNT beside it alight (the base campfire has it;
+  lava does without, it is known by being lava).
+- `tag blastproof`: explosions leave the block standing. (Water, lava and
+  `unbreakable` blocks already do.)
 - `tag track <percent>`: the block is track. Rail vehicles on it move at
   that percentage of their speed (10..400; 100 if no number is given). The
   Trains mod's `speed_rail` has 220 and `slow_rail` 40.
@@ -410,6 +419,16 @@ Left click breaks, right click places.
   item crossbow
     shoots 13 54 1.8 arrow
   ```
+
+- **Explosives.** The base data has the block `tnt` (`tag tnt 2.5`, in the
+  Tools tab; made at a crafting table from `gunpowder 5 sand 4`), the
+  item `gunpowder` (`gunpowder 2` from `coal 2 sand 1`) and the item
+  `flint_and_steel` (from `iron_ingot 1 gravel 1`). The flint and steel is
+  recognised by its id: right click a TNT block with it to light it. Their
+  textures are `tnt_top`, `tnt_side`, `tnt_bottom`, `gunpowder` and
+  `flint_and_steel` (a texture pack's pictures of those names are used). The
+  explosion plays the sound `explosion` and the fuse `hiss`. See
+  [Explosions](MODDING.md#explosions).
 
 ```
 item copper_pick

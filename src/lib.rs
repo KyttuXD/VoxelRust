@@ -33,6 +33,6 @@ pub use util::math::noise;
 pub use util::archive::zip;
 pub use content::{block, textures, painters, font, icon, bbmodel, model, pack_entities};
 pub use terrain::{chunk, world, worldgen, mesh, lod, save, jobs, weather};
-pub use game::{player, inventory, interact, entity, path, session};
+pub use game::{player, inventory, interact, entity, path, session, explosion, primed};
 pub use net::{proto, server, netplay};
 pub use client::{app, render, ui, audio, update, picker, skinfile};

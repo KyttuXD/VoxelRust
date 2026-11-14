@@ -2433,6 +2433,7 @@ sound chime effects 0.60 0.02 1200 1180 0.90 0.40 Chime
 sound rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails
 sound whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh
 sound sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling
+sound explosion effects 1.10 1.00 90 30 0.06 1.00 Explosion
 
 # ---- Dimensions ----
 # Other worlds inside each world, with their own land and their own saved
@@ -5798,6 +5799,7 @@ block campfire
   box 6 0 1 10 3 15
   box 5 3 5 11 7 11
   sound sizzle
+  tag fire
 texture iron_ingot paint ingot 214 214 220
 item iron_ingot
   name Iron Ingot
@@ -6512,6 +6514,35 @@ block cactus_joint_nz
   box 4 3 6 5 7 10
   box 11 9 6 12 13 10
   box 6 6 0 10 10 5
+
+# ---- Explosives ----
+#   block ... tag tnt <power>     explodes when lit (power 2.5 clears a ball about 5 blocks wide)
+#   block ... tag fire            sets TNT beside it alight
+#   block ... tag blastproof      explosions leave it standing
+texture tnt_side paint tnt_side 200 52 40
+texture tnt_top paint tnt_top 200 52 40
+texture tnt_bottom paint tnt_bottom 200 52 40
+texture gunpowder paint powder 96 96 106
+texture flint_and_steel paint flint_steel 176 180 190
+block tnt
+  name TNT
+  tex tnt_top tnt_side tnt_bottom
+  category Tools
+  hardness 0
+  tag tnt 2.5
+item gunpowder
+  name Gunpowder
+  icon gunpowder
+  category Materials
+item flint_and_steel
+  name Flint and Steel
+  icon flint_and_steel
+  category Tools
+  stack 1
+  damage 2
+craft gunpowder 2 coal 2 sand 1
+craft tnt 1 gunpowder 5 sand 4
+craft flint_and_steel 1 iron_ingot 1 gravel 1
 
 # Models, then every creature, live in their own files.
 include creatures.txt
