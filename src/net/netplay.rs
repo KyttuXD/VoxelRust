@@ -598,7 +598,7 @@ mod tests {
         let ann = b.players.values().next().unwrap();
         assert_eq!((ann.pos, ann.yaw), ([10.5, 64.0, -2.25], 1.0));
         assert!(eb.iter().any(|e| matches!(e, Event::Block(5, 60, 5, 0))));
-        assert!(eb.iter().any(|e| matches!(e, Event::Chat(t) if t == "<ANN> HELLO BOB")));
+        assert!(eb.iter().any(|e| matches!(e, Event::Chat(t) if t == "<ANN> hello bob")));
 
         // Leaving is announced.
         drop(b);
@@ -740,7 +740,7 @@ mod tests {
         for i in 0..60 {
             a.send_chat(&alloc::format!("spam {i}"));
         }
-        let heard = pump(&mut b, 200).iter().filter(|e| matches!(e, Event::Chat(l) if l.contains("SPAM"))).count();
+        let heard = pump(&mut b, 200).iter().filter(|e| matches!(e, Event::Chat(l) if l.contains("spam"))).count();
         assert!((1..=12).contains(&heard), "{heard} lines got through");
         // Bob is not the one who runs the creatures: his snapshot goes nowhere.
         b.send_state(channel::MOBS, false, "all", b"x");
