@@ -399,7 +399,8 @@ clears a rough ball of blocks of radius 2P (TNT has power 2.5: a ball about
 `tag blastproof` stay. In survival about a third of what is broken drops as
 items (at most 24 a blast) and a broken chest scatters what it held. TNT in
 the ball is lit with a fuse of half a second to a second and a half, so a
-stack goes off in a chain. Creatures and the player within three times P
+stack goes off in a chain. A blast that goes off in water breaks no blocks
+and hurts about 0.6 as much (`fluid_rules::UNDERWATER_HURT`). Creatures and the player within three times P
 blocks are hurt and thrown the less the farther they are (TNT takes 20
 health point blank, about 4 at four blocks).
 

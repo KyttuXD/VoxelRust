@@ -1499,7 +1499,10 @@ impl Session {
             self.world.changed = pending.split_off(600);
         }
         // Water and lava move on from whatever just changed (see game::fluid).
+        self.fluid.fast_lava = crate::game::fluid_queue::fast_lava_in(&self.dim);
         self.fluid.run(&mut self.world, &pending, step);
+        // What the flow swept away gives its drops (game/fluid_wash.rs).
+        crate::game::fluid_wash::collect(self);
         for c in pending {
             // TNT next to lava or fire catches.
             crate::primed::react(self, c);
@@ -2043,12 +2046,11 @@ impl Session {
         while k < self.drops.len() {
             let d = &mut self.drops[k];
             d.age += dt;
-            d.vel[1] -= 18.0 * dt;
-            let next = [d.pos[0] + (d.vel[0] * dt) as f64, d.pos[1] + (d.vel[1] * dt) as f64, d.pos[2] + (d.vel[2] * dt) as f64];
-            if block::is_solid(self.world.get(floord(next[0]), floord(next[1]), floord(next[2]))) {
-                d.vel = [0.0; 3];
-            } else {
-                d.pos = next;
+            // Falls in the air, floats and drifts in water, burns up in lava (game/drop_fluid.rs).
+            if crate::game::drop_fluid::step(&|x, y, z| self.world.get(x, y, z), &mut d.pos, &mut d.vel, dt) == crate::game::drop_fluid::Fate::Burnt {
+                self.drops.swap_remove(k);
+                self.sound_queue.push(String::from("hiss"));
+                continue;
             }
             let near = (d.pos[0] - px) * (d.pos[0] - px) + (d.pos[2] - pz) * (d.pos[2] - pz) < 1.6 && d.pos[1] > py - 1.0 && d.pos[1] < py + 2.2;
             if d.age > 300.0 || d.pos[1] < -8.0 {
@@ -2385,8 +2387,17 @@ impl Session {
         if airborne {
             self.peak_y = if self.was_airborne { y.max(self.peak_y) } else { y };
         } else {
-            if self.was_airborne && on_ground {
+            let in_liquid = self.player.in_water;
+            if self.was_airborne && (on_ground || in_liquid) {
                 let fell = (self.peak_y - y) as f32;
+                // Landing in water softens the fall: halved in one block of it, none in two (game/fluid_rules.rs).
+                let fell = if in_liquid {
+                    let world = &self.world;
+                    let depth = crate::game::fluid_rules::depth_at(&|x, y, z| world.get(x, y, z), floord(self.player.pos[0]), floord(y + 0.4), floord(self.player.pos[2]));
+                    crate::game::fluid_rules::fall_after_water(fell, depth)
+                } else {
+                    fell
+                };
                 if fell > 3.5 {
                     self.damage_from("fall", (fell - 3.0) as i32, audio);
                 } else if fell > 1.2 {
