@@ -774,20 +774,6 @@ pub fn remove_file(path: &str) -> bool {
     }
 }
 
-/// Whether a file can be opened for reading (without reading it).
-pub fn file_exists(path: &str) -> bool {
-    let p = cstr(path);
-    let api = sdl::sdl();
-    unsafe {
-        let rw = (api.SDL_RWFromFile)(p.as_ptr() as *const c_char, b"rb\0".as_ptr() as *const c_char);
-        if rw.is_null() {
-            return false;
-        }
-        ((*rw).close)(rw);
-        true
-    }
-}
-
 pub fn write_file(path: &str, data: &[u8]) -> bool {
     let p = cstr(path);
     let api = sdl::sdl();
