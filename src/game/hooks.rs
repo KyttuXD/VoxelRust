@@ -39,6 +39,7 @@ pub fn has_any(n: &Native) -> bool {
         || n.on_chat.is_some()
         || n.on_item_use.is_some()
         || n.on_craft.is_some()
+        || n.on_item_pickup.is_some()
         || n.on_tick.is_some()
         || n.on_event.is_some()
 }
@@ -110,6 +111,15 @@ pub fn item_use(g: &mut Session, item: usize) -> bool {
         return true;
     }
     allow(crate::native::active().filter_map(|(_, n)| n.on_item_use), |f| f(g, item)) && crate::script::bridge::item_use(g, item)
+}
+
+/// The player is about to pick up `count` of item `item` from the ground;
+/// `false` leaves it lying there.
+pub fn item_pickup(g: &mut Session, item: usize, count: u16) -> bool {
+    if !g.ev.hooks_live {
+        return true;
+    }
+    allow(crate::native::active().filter_map(|(_, n)| n.on_item_pickup), |f| f(g, item, count)) && crate::script::bridge::item_pickup(g, item, count)
 }
 
 /// The player crafted item `out`.

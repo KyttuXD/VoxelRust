@@ -1287,6 +1287,7 @@ impl Session {
         // Wild things stay behind; pets come along.
         self.mobs.list.retain(|m| m.tamed);
         self.shots.clear();
+        crate::game::fx::leave_dimension(self);
         self.sitting = None;
         self.target = None;
         self.mining = None;
@@ -2049,6 +2050,12 @@ impl Session {
                 // A partly fitting stack gives what fits and keeps lying
                 // there with the rest (it must not be taken whole as well).
                 let (item, before) = (d.item, d.count);
+                // A mod's `on_item_pickup` may refuse: the item lies there and is offered again a second later.
+                if !crate::game::hooks::item_pickup(self, item as usize, before) {
+                    self.drops[k].age = 0.2;
+                    k += 1;
+                    continue;
+                }
                 let left = self.inv.add(item, before);
                 if left < before {
                     audio.play(Sound::Pop, 0.6);
@@ -2068,6 +2075,8 @@ impl Session {
         }
         // Lit TNT burns down, sparks fly.
         crate::primed::tick(self, dt);
+        // Blocks a mod threw, its quads, the counts of this frame (game/fx).
+        crate::game::fx::tick(self, dt);
         crate::chest_anim::tick(self, dt, audio);
         // Creatures, sleep and weather for scripts, and the mods' tick hook.
         crate::game::events::poll(self, dt);

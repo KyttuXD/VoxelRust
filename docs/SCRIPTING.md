@@ -213,6 +213,7 @@ not call scripts again.
 | `fn on_chat(text: String) -> bool` | the player typed a line (commands too, with their `/`) | `false` swallows it |
 | `fn on_item_use(item: String) -> bool` | the player pressed use holding an item (once per press) | `false` stops it |
 | `fn on_craft(item: String)` | the player crafted something | |
+| `fn on_item_pickup(item: String, count: i64) -> bool` | the player is about to pick up a dropped item (one that was thrown, dropped by a block or a creature, or made with `drop_item`) | `false` leaves it lying; it is offered again a second later |
 | `fn on_event(name: String, what: String)` | any event pack scripts can answer with `when` (the table in [MODDING.md](MODDING.md#events)) | |
 | `fn on_effect_start(id: String, level: i64)` | a status effect started on the player (not when it is only made longer or stronger) | |
 | `fn on_effect_tick(id: String, secs_left: f32, level: i64)` | about once a second for each status effect the player has | |
@@ -258,7 +259,7 @@ nothing) unless the player may run them there.
 | `dimension() -> String` | the dimension the player is in (empty for the home world) |
 | `time() -> f64` | the time of day, 0 to 1 (0 is sunrise, 0.25 noon) |
 | `set_time(t: f64)` | set the time of day |
-| `explode(x: f64, y: f64, z: f64, power: f64)` | set off an explosion (power 0.5 to 8); goes through `on_explode` of the other mods |
+| `explode(x: f64, y: f64, z: f64, power: f64)` | set off an explosion (power 0.5 to 8); goes through `on_explode` of the other mods. With a fifth argument, flags, it is the explosion of [Effects](#effects-items-explosions-blocks-particles-quads-skies) and answers how many blocks it destroyed |
 | `effect(id: &str, secs: f64, level: i64) -> bool` | give the player a status effect |
 | `apply_effect(who: &str, id: &str, secs: f64, level: i64) -> bool` | give a status effect to `"player"` or `"target"` (the creature in the crosshair, up to 8 blocks); 0 seconds is the effect's own time; false if there is no such effect or target, or a mod refused it |
 | `remove_effect(who: &str, id: &str) -> bool` | take a status effect (all of them for an empty id) from `"player"` or `"target"`; false if it was not there |
@@ -434,6 +435,66 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 | `mob_set_vel(id: i64, x: f64, y: f64, z: f64)` | set a creature's velocity in blocks a second (up to 60 in each direction): a push or a leap |
 | `clear_effect(id: &str) -> bool` | take a status effect off the player (a cure); false if they did not have it |
 | `push_player(x: f64, y: f64, z: f64)` | add to the player's velocity in blocks a second (up to 40 in each direction) |
+
+### Effects: items, explosions, blocks, particles, quads, skies
+
+Pictures and things that happen in the world, with limits that keep any one
+mod from costing a frame. All of them work only in a running game, and the ones
+that break, place or throw things in the world are refused (they answer `false`
+or 0) in a shared game for a player who does not run it. A call that is only
+over a limit answers `false` or 0; a call with a nonsense argument (a name that is
+not a kind, a corner that is not a number) is an error that switches the
+script off, as everywhere.
+
+| Function | What it does |
+| --- | --- |
+| `drop_item(x: f64, y: f64, z: f64, item: &str, count: i64, vx: f64, vy: f64, vz: f64) -> bool` | set an item down with a velocity (blocks a second, held to 40 each way). It falls, floats in water, burns in lava and is picked up as any dropped item. `count` is held to 1 to 64. `false` if there is no such item, 128 drops already lie about (a script never pushes out the player's own), 32 were made this frame, or it is not allowed here |
+| `explode(x: f64, y: f64, z: f64, power: f64, flags: &str) -> i64` | the game's own explosion, with choices; answers how many blocks it destroyed (0 if a mod's `on_explode` cancelled it). `power` is held to 8 (a ball 16 blocks across its radius). `flags` is a text of names separated by commas or spaces, or a number: `fire` (1) leaves fires on the ground in the ball, `no_blocks` (2) breaks no blocks and lights no TNT, `no_damage` (4) hurts and throws nobody, `silent` (8) makes no sound, shaking or flash; `""` is none. Creatures and the player are hurt as by TNT, TNT in the ball is lit with a short fuse (the usual chain, never more than 400 lit blocks), other mods' `before_explode` and `on_explode` hear of it. At most 16 a frame |
+| `spawn_falling_block(x: f64, y: f64, z: f64, block_id: &str, vx: f64, vy: f64, vz: f64) -> bool` | throw a block: a small cube with the block's pictures that falls under gravity, bounces off walls, and when it comes to rest on something solid becomes the block in the cell it rests in if that cell is free (air), else it falls apart into dust. Speed held to 60. Gives up after 30 seconds, below the world, or where the land is not loaded. At most 64 fly at once; `false` if there is no such block, 64 fly already, or it is not allowed here |
+| `spawn_particles(kind: &str, x: f64, y: f64, z: f64, count: i64, spread: f64, speed: f64, r: i64, g: i64, b: i64) -> i64` | make particles: `spark`, `smoke`, `flame`, `bubble`, `dust`, `magic`, `heart` or `cloud` (each its own little picture, life, pull and size; sparks, flames and magic glow by adding their light, the rest are laid over the view). They start within `spread` blocks (0 to 16) of the place, flying out at up to `speed` blocks a second (0 to 30), tinted by the colour (each a little different). At most 64 a call and 2000 alive in all (the explosions' sparks count too); a frame under 25 frames a second makes fewer, under 15 none; a place more than 96 blocks from the player makes none. Answers how many were made |
+| `quad_create(id: i64, texture: &str, c0: [f64; 3], c1: [f64; 3], c2: [f64; 3], c3: [f64; 3], r: i64, g: i64, b: i64, a: i64, blend: &str) -> bool` | keep a see-through quad in the world until it is removed: for storm clouds, beams and auras. `id` is the mod's own number for it (the same again replaces it); the corners go in order round it, as `(x, y, z)` tuples or `[x, y, z]`, none more than 512 blocks from the first; `texture` is `block:<id>` (the top picture of a block), the name of a picture the mod brought (`picture <name> file ...` in its pack), or `""` for a plain colour (a name that is not found is a plain colour too); the colour multiplies the picture and `a` is the opacity (0 to 255); `blend` is `"alpha"` (laid over) or `"additive"` (adds light). Drawn in the translucent pass with the depth test, farthest first, out to 192 blocks. At most 256 a mod and 1024 in all; `false` when that is used up |
+| `quad_move(id: i64, c0: [f64; 3], c1: [f64; 3], c2: [f64; 3], c3: [f64; 3]) -> bool` | give one of this mod's quads new corners (call it every frame to make one travel); `false` if the mod has none with that id |
+| `quad_tint(id: i64, r: i64, g: i64, b: i64, a: i64) -> bool` | change a quad's colour and opacity (a fade); `false` if there is none with that id |
+| `quad_remove(id: i64) -> bool` | take one of this mod's quads away; `false` if there is none |
+| `set_dimension_sky(dim: &str, key: &str, value: &str) -> bool` | change the look of a dimension's sky while playing (`""` or `"home"` is the home world). The keys are the properties a pack's `dimension` line may carry ([DATA.md](DATA.md#dimensions)): `sky_colour`, `fog_colour` (`"r,g,b"`, `"#rrggbb"`, an `(r, g, b)` tuple, or `"none"` to give the day and night colours back), `fog_distance` (times the usual, 0.1 to 4), `stars`, `clouds`, `sun`, `moon` (`"yes"`/`"no"` or a bool), `ambient_light` (0 to 15, the least sky light), `time` (a fixed time of day 0 to 1, or `"none"`). `false` if there is no such dimension; an error for an unknown key or a value that makes no sense. Only what is seen changes: the game's own clock, sleeping and mobs go on |
+
+A quad and a particle are only pictures: they do not hurt, block or light
+anything. The quads of a mod are taken away when the mod is switched off, its
+script stops with an error, or the world closes (flying blocks and particles
+are not kept by a saved world either).
+
+```rust
+fn on_item_use(item: String) -> bool {
+    if item == "stick" {
+        let (x, y, z) = player_pos();
+        // A small blast with fire and no hole: it burns, it throws, it breaks nothing.
+        let broken = explode(x, y + 1.0, z + 3.0, 1.5, "fire, no_blocks");
+        spawn_particles("flame", x, y + 1.0, z + 3.0, 24, 1.0, 4.0, 255, 140, 40);
+        spawn_particles("smoke", x, y + 1.5, z + 3.0, 8, 0.5, 1.0, 90, 90, 90);
+        drop_item(x, y + 2.0, z + 3.0, "coal", 3, 0.0, 6.0, 1.0);
+        spawn_falling_block(x, y + 2.0, z + 3.0, "dirt", 2.0, 8.0, 0.0);
+        // A glowing ring of light on the ground, kept until removed.
+        quad_create(1, "", (x - 1.0, y + 0.05, z + 2.0), (x + 1.0, y + 0.05, z + 2.0), (x + 1.0, y + 0.05, z + 4.0), (x - 1.0, y + 0.05, z + 4.0), 255, 200, 80, 120, "additive");
+        if broken > 0 {
+            say("it broke something");
+        }
+        return false;
+    }
+    true
+}
+
+fn on_item_pickup(item: String, count: i64) -> bool {
+    // Nobody may pick up the mod's cursed coal.
+    item != "coal"
+}
+
+fn on_load() {
+    // This dimension is always dusk, with no stars and a red haze.
+    set_dimension_sky("sky", "fog_colour", "#6a2a14");
+    set_dimension_sky("sky", "stars", "no");
+    set_dimension_sky("sky", "time", "0.5");
+}
+```
 
 ### Lines and sections for scripts
 

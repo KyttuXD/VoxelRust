@@ -1008,6 +1008,7 @@ also passed to the mod's `on_event` hook.
 | `chat`, `command` | the player types a line | first word / command name | `on_chat`: `false` swallows the line (commands too) | `fn(&mut Session, line: &str) -> bool` |
 | `useitem` (`itemuse`) | the player right clicks with an item that has a script | item id | `on_item_use`: asked for any held item, once per press; `false` stops the use | `fn(&mut Session, item: usize) -> bool` |
 | `craft` | the player crafts | output item id | no, `on_craft` after | `fn(&mut Session, out: usize)` |
+| `itempickup` | the player is about to pick up a dropped item | item id | `on_item_pickup`: `false` leaves it lying (offered again a second later) | `fn(&mut Session, item: usize, count: u16) -> bool` |
 | `every N` | every N seconds | seconds | no, `on_tick` runs every frame | `fn(&mut Session, dt: f32)` |
 | (every event) | any event above or `/fire` | the event's | `on_event` hears it, cannot cancel | `fn(&mut Session, name: &str, what: &str)` |
 | `start` | a world is opened | none | `on_world_load` once the world is open | `fn(&mut Session)` |
@@ -1016,7 +1017,7 @@ also passed to the mod's `on_event` hook.
 | (a key binding) | a mod's key binding goes down or up | | `on_key` (see [Controls, HUD and screens](#controls-hud-and-screens)) | `fn(&mut Session, id: &str, down: bool)` |
 | (each frame) | a frame of play | | `on_hud`: draw through the checked API | `fn(&Session, &mut ModApi)` |
 | (a mod's screen) | the player used a screen the mod opened | | `on_ui` | `fn(&mut Session, &mut ModApi, &UiEvent)` |
-| `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itempickup`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
+| `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
 | `explode`, `blockexploded`, `tntprimed` | an explosion happens, breaks blocks, or TNT is lit | see [Explosions](#explosions) | `before_explode`: `false` cancels; `after_explode` and `on_prime` after | `fn(&mut Session, &mut ExplosionInfo) -> bool` |
 | `effectstart`, `effectend`, `wake` | a status effect starts or ends on the player; the player wakes | effect id | `effect_apply`: `false` refuses it; `effect_tick` every frame per running effect; `effect_start`, `effect_end` when it starts and ends (scripts: `on_effect_start`, `on_effect_tick`, `on_effect_end`) | `fn(&mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool` |
 
@@ -1083,6 +1084,25 @@ renamed without leaving the old name as an alias.
 `on_block_break`, softens falls with `on_player_hurt` and draws the player's
 health with `on_draw_hud`, plus a few `when` scripts for the new events.
 Copy it to `mods/hooksdemo/` and rebuild.
+
+### Effects for mods (items, blasts, blocks, particles, quads, skies)
+
+What scripts do with `drop_item`, `explode` with flags, `spawn_falling_block`,
+`spawn_particles`, `quad_*` and `set_dimension_sky` (see
+[SCRIPTING.md](SCRIPTING.md#effects-items-explosions-blocks-particles-quads-skies)) is plain
+functions of the game that native code calls too, with the same limits:
+
+| What | Function (in `src/game/fx/`) |
+| --- | --- |
+| a dropped item with a velocity | `drops::spawn(g, pos, vel, item, count) -> bool` |
+| an explosion with flags; answers the blocks destroyed | `explosion::explode_with(g, at, power, source, blast::Flags) -> usize` (`blast::run` for the limits scripts have) |
+| a flying block | `falling::launch(&mut fx::state(g).falling, block, pos, vel) -> bool` |
+| particles | `particles::spawn(g, &particles::Request { .. }) -> u32` (they are `Session::primed.sparks`) |
+| translucent quads | `fx::state(g).quads.create(quads::FxQuad { .. })`, `move_to`, `tint`, `remove`, `remove_mod` (name your quads by your mod's name; call `remove_mod` on world close) |
+| a dimension's sky | `sky::set(g, dim, key, value)`; read with `sky::current(g)` |
+| the pickup hook | `Native::on_item_pickup: fn(&mut Session, item: usize, count: u16) -> bool` (`false` leaves the item lying) |
+
+The pack's own sky properties for a dimension are in [DATA.md](DATA.md#the-sky-of-a-dimension).
 
 ### Controls, HUD and screens
 

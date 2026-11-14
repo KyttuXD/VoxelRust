@@ -16,6 +16,7 @@ pub mod shader_defs;
 pub mod pose;
 pub mod mod_runtime;
 pub mod script_claims;
+pub mod dim_sky;
 
 #[cfg(test)]
 mod core_tests;

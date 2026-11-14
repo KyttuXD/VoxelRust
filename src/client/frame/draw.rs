@@ -46,10 +46,13 @@ impl App {
             let head = g.world.get(floord(eye[0]), floord(eye[1]), floord(eye[2]));
             in_lava = matches!(crate::block::fluid_of(head), Some((true, _)));
             underwater = crate::block::is_water(head) || in_lava;
+            // The sky of this dimension (a pack's `dimension` line, or a script's `set_dimension_sky`).
+            let look = crate::game::fx::sky::current(g);
             let env = Env {
-                time: g.time,
+                time: look.time_of(g.time),
+                sky: look,
                 distance: self.eff.distance,
-                clouds: self.settings.clouds,
+                clouds: self.settings.clouds && look.clouds,
                 underwater,
                 lava: in_lava,
                 clock: g.clock,
@@ -82,6 +85,8 @@ impl App {
                 r.draw_funnel([(x as f64 - cam.pos[0]) as f32, (ground - cam.pos[1]) as f32, (z as f64 - cam.pos[2]) as f32], g.clock);
             }
             r.finish_world(&cam, &env);
+            // Particles and translucent quads of mods, over the finished world.
+            r.draw_effects(g, &cam, &env);
             // The hand and what it holds, in their own close-up pass.
             // (While emoting only the arm shows, and only for emotes that move it; the item is put away.)
             let emoting = g.posing.emote.is_some();

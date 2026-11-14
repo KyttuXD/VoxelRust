@@ -673,6 +673,9 @@ pub struct Registry {
     /// Other worlds inside a world: a name and the lie of its land
     /// (an index into `worldgen::SHAPES`).
     pub dimensions: Vec<(String, u8)>,
+    /// The sky of each dimension that sets any of its looks (`dimension <name> <shape> sky_colour ...`);
+    /// a dimension not listed has the ordinary sky (see `content/dim_sky.rs`).
+    pub dim_skies: Vec<(String, crate::dim_sky::DimSky)>,
     /// Parts of the game that packs switch on (`feature <name>`): things
     /// built into the program that only run when a pack asks for them.
     pub features: Vec<String>,
@@ -2171,6 +2174,7 @@ impl Registry {
         let mut commands: Vec<(String, Vec<String>)> = Vec::new();
         let mut scripts: Vec<Script> = Vec::new();
         let mut dimensions: Vec<(String, u8)> = Vec::new();
+        let mut dim_skies: Vec<(String, crate::dim_sky::DimSky)> = Vec::new();
         let mut features: Vec<String> = Vec::new();
         let mut episodes: Vec<EpisodeDef> = Vec::new();
         let mut toggles: Vec<(String, bool, String)> = Vec::new();
@@ -2308,6 +2312,15 @@ impl Registry {
                     match shape {
                         Some(k) if !id.is_empty() && id.len() <= 12 && id.chars().all(|c| c.is_ascii_alphanumeric()) => {
                             dimensions.retain(|d| d.0 != id);
+                            dim_skies.retain(|d| d.0 != id);
+                            // Properties of its sky may follow the shape (content/dim_sky.rs).
+                            let (sky, problems) = crate::dim_sky::DimSky::parse_props(&w[3.min(w.len())..]);
+                            for p in problems {
+                                warnings.push(alloc::format!("{}: dimension {}: {}", at, id, p));
+                            }
+                            if !sky.is_default() {
+                                dim_skies.push((id.clone(), sky));
+                            }
                             dimensions.push((id, k as u8));
                         }
                         _ => warnings.push(alloc::format!("{}: dimension needs <name of letters and digits> <normal|flat|void|islands>", at)),
@@ -2538,6 +2551,7 @@ impl Registry {
             episodes,
             toggles,
             dimensions,
+            dim_skies,
             features,
             plants,
             by_id,

@@ -206,6 +206,9 @@ pub struct Native {
     pub on_item_use: Option<fn(g: &mut Session, item: usize) -> bool>,
     /// The player crafted item `out`.
     pub on_craft: Option<fn(g: &mut Session, out: usize)>,
+    /// The player is about to pick up `count` of item `item` lying on the
+    /// ground. `false` leaves it there (it is offered again a second later).
+    pub on_item_pickup: Option<fn(g: &mut Session, item: usize, count: u16) -> bool>,
     /// Once a frame, after the game's own timers (cheaper to leave `None`
     /// than to return early).
     pub on_tick: Option<fn(g: &mut Session, dt: f32)>,
@@ -303,6 +306,7 @@ impl Native {
         on_chat: None,
         on_item_use: None,
         on_craft: None,
+        on_item_pickup: None,
         on_tick: None,
         on_draw_hud: None,
         on_event: None,

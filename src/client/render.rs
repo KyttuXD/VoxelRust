@@ -17,6 +17,9 @@ use crate::world::{GpuMesh, MeshSink, World};
 use alloc::vec::Vec;
 use core::ffi::c_void;
 
+// Particles and translucent quads of mods (game/fx).
+mod fx;
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct V2 {
@@ -56,6 +59,8 @@ pub struct Env {
     pub vision: f32,
     /// 0..1: how much of the view a blindness effect takes (fog closes in).
     pub blind: f32,
+    /// What the dimension's sky is like (`content/dim_sky.rs`): fixed colours, no stars...
+    pub sky: crate::dim_sky::DimSky,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -422,6 +427,15 @@ impl Renderer {
         let g = gl();
         self.stats = FrameStats::default();
         let (mut zenith, mut fog, mut day) = sky_colors(env.time);
+        // A dimension may fix the colours and keep a least light.
+        let rgb = |c: [u8; 3]| [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0];
+        if let Some(c) = env.sky.sky {
+            zenith = rgb(c);
+        }
+        if let Some(c) = env.sky.fog {
+            fog = rgb(c);
+        }
+        day = env.sky.light(day);
         if env.rain > 0.0 || env.flash > 0.0 {
             // Overcast: colours drain toward grey and the light drops.
             let k = env.rain.clamp(0.0, 1.0) * 0.7;
@@ -509,7 +523,7 @@ impl Renderer {
             }
             // Stars fade in at night.
             let night = 1.0 - day;
-            if night > 0.05 {
+            if night > 0.05 && env.sky.stars {
                 let a = (night * 255.0) as u8;
                 let turn = env.time * TAU;
                 let (s, c) = (sinf(turn), cosf(turn));
@@ -525,8 +539,8 @@ impl Renderer {
             let a = env.time * TAU;
             let sun = Vec3::new(cosf(a), sinf(a), 0.28).norm();
             let r = reg();
-            for (dir, tile, size) in [(sun, r.sun_tile, 16.0f32), (sun * -1.0, r.moon_tile, 11.0)] {
-                if dir.y < -0.25 {
+            for (which, (dir, tile, size)) in [(sun, r.sun_tile, 16.0f32), (sun * -1.0, r.moon_tile, 11.0)].into_iter().enumerate() {
+                if dir.y < -0.25 || (which == 0 && !env.sky.sun) || (which == 1 && !env.sky.moon) {
                     continue;
                 }
                 let right = dir.cross(Vec3::new(0.0, 0.0, 1.0)).norm() * size;
@@ -593,6 +607,8 @@ impl Renderer {
         } else {
             (far * 0.55, far * 0.96)
         };
+        // A dimension may pull the fog in or push it out (never past what is loaded).
+        let (fog_start, fog_end) = if env.underwater || env.sky.fog_scale == 1.0 { (fog_start, fog_end) } else { (fog_start * env.sky.fog_scale, (fog_end * env.sky.fog_scale).min(far * 1.5 + 90.0)) };
         let (fog_start, fog_end) = crate::game::effects::body::fog_range(fog_start, fog_end, env.blind);
         unsafe {
             (g.Enable)(gl::FOG);

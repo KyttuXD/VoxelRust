@@ -8,7 +8,9 @@ impl App {
     /// the camera is outside it.
     pub(super) fn draw_creatures(&self, r: &mut Renderer, g: &Session, cam: &Camera, tags: &mut Vec<(f32, f32, String)>) {
         let reg = reg();
-        let (_, _, day) = crate::render::sky_colors(g.time);
+        let look = crate::game::fx::sky::current(g);
+        let (_, _, day) = crate::render::sky_colors(look.time_of(g.time));
+        let day = look.light(day);
         // Light at a spot: full daylight under open sky, dimmer under cover.
         let light_at = |pos: [f64; 3]| -> f32 {
             let (x, z) = (floord(pos[0]), floord(pos[2]));
@@ -78,7 +80,8 @@ impl App {
         }
         let mut sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
         // The sparks of fuses and explosions.
-        sparks.extend(g.primed.sparks.iter().map(|s| (rel(s.pos), s.colour)));
+        // (the particles of mods, kinds 1 and up, are drawn by `Renderer::draw_effects`)
+        sparks.extend(g.primed.sparks.iter().filter(|s| s.kind == 0).map(|s| (rel(s.pos), s.colour)));
         r.draw_sparks(&sparks);
         // Things lying on the ground are the things themselves, turning slowly.
         let white = crate::client::hand::white_tile();
@@ -91,6 +94,10 @@ impl App {
         }
         // Lit TNT, flashing white.
         crate::client::hand::primed_blocks(&g.primed.list, white, &rel, &mut lying);
+        // Blocks a mod threw.
+        if let Some(fx) = crate::game::fx::state_ref(g) {
+            crate::client::hand::falling_blocks(&fx.falling, &rel, &mut lying);
+        }
         r.draw_quads(&lying, None);
         // Whatever the mods' own code has to show.
         {
