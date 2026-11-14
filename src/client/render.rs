@@ -70,6 +70,8 @@ pub struct Env {
 pub struct FrameStats {
     pub chunks_drawn: u32,
     pub quads: u32,
+    /// `glDrawArrays` calls for the terrain this frame.
+    pub draw_calls: u32,
 }
 
 pub struct Renderer {
@@ -118,12 +120,16 @@ pub struct Renderer {
     /// Bytes of model and creature pictures on the card (for the memory budget).
     pub model_tex_bytes: usize,
     pass: Option<Pass>,
+    /// Which sections of the chunks are drawn (`client/cull.rs`); the lists
+    /// it makes are walked again by `finish_world` for the water.
+    pub culler: crate::client::cull::Culler,
+    /// The view of the last `draw_world`, to cull creatures and particles by.
+    frustum: Option<Frustum>,
 }
 
 /// What `draw_world` hands on to `finish_world`.
 struct Pass {
     view: Mat4,
-    visible: Vec<(i32, Vec3, GpuMesh)>,
     far: f32,
     day: f32,
     fog: (f32, f32),
@@ -311,6 +317,8 @@ impl Renderer {
             model_verts: Vec::new(),
             model_tex_bytes: 0,
             pass: None,
+            culler: crate::client::cull::Culler::new(),
+            frustum: None,
         }
     }
 
@@ -573,29 +581,8 @@ impl Renderer {
         let frustum = Frustum::new(&math::mat_mul(&proj, &view));
         let (ccx, ccz) = crate::world::chunk_at(cam.pos[0], cam.pos[2]);
         let reach = env.distance * env.distance + env.distance;
-        let mut visible: Vec<(i32, Vec3, GpuMesh)> = Vec::new();
-        for (&(cx, cz), chunk) in world.chunks.iter() {
-            let m = match chunk.mesh {
-                Some(m) if m.opaque_count > 0 || m.water_count > 0 || m.glass_count > 0 => m,
-                _ => continue,
-            };
-            let (dx, dz) = (cx - ccx, cz - ccz);
-            let d2 = dx * dx + dz * dz;
-            if d2 > reach {
-                continue;
-            }
-            let origin = Vec3::new(
-                ((cx * CW) as f64 - cam.pos[0]) as f32,
-                (0.0 - cam.pos[1]) as f32,
-                ((cz * CW) as f64 - cam.pos[2]) as f32,
-            );
-            let min = Vec3::new(origin.x, origin.y + m.ymin as f32, origin.z);
-            let max = Vec3::new(origin.x + CW as f32, origin.y + m.ymax as f32, origin.z + CW as f32);
-            if frustum.box_visible(min, max) {
-                visible.push((d2, origin, m));
-            }
-        }
-        visible.sort_unstable_by_key(|v| v.0);
+        // Which sections of which chunks to draw, nearest first.
+        self.culler.plan(world, cam.pos, &frustum, env.distance);
 
         // With distant terrain behind them, the detailed chunks must not
         // fade out at their own edge: fog is set by the far distance instead.
@@ -651,12 +638,15 @@ impl Renderer {
         // them, and the graphics card skips every distant pixel that a
         // nearby block already hides (most of the screen, usually).
         unsafe { (g.DepthRange)(0.0, if lod { 0.9 } else { 1.0 }) };
-        for &(_, origin, m) in &visible {
-            if m.opaque_count > 0 {
-                Self::draw_chunk(&view, origin, m.opaque, m.opaque_count);
-                self.stats.chunks_drawn += 1;
-                self.stats.quads += m.opaque_count as u32 / 4;
+        for c in &self.culler.chunks {
+            let runs = self.culler.runs_of(c, 0);
+            if runs.is_empty() {
+                continue;
             }
+            Self::draw_runs(&view, Vec3::new(c.origin[0], c.origin[1], c.origin[2]), c.vbo[0], runs);
+            self.stats.chunks_drawn += 1;
+            self.stats.draw_calls += runs.len() as u32;
+            self.stats.quads += runs.iter().map(|r| r[1] as u32 / 4).sum::<u32>();
         }
         if lod {
             let far_proj = math::perspective(cam.fov, aspect, 2.0, lod_far * 1.3 + 256.0);
@@ -692,6 +682,10 @@ impl Renderer {
                 if world.settled && reach_x * reach_x + reach_z * reach_z < inner * inner {
                     continue;
                 }
+                // Or every chunk under it is drawn already (also while the world still loads).
+                if crate::client::cull::tile_covered(tx, tz, ccx, ccz, reach, &|cx, cz| world.chunks.get(&(cx, cz)).map_or(false, |c| c.mesh.is_some())) {
+                    continue;
+                }
                 let min = Vec3::new(origin.x, origin.y + m.ymin as f32, origin.z);
                 let max = Vec3::new(origin.x + tile, origin.y + m.ymax as f32, origin.z + tile);
                 if far_frustum.box_visible(min, max) {
@@ -702,6 +696,7 @@ impl Renderer {
             tiles.sort_unstable_by_key(|t| t.0);
             for &(_, origin, m) in &tiles {
                 Self::draw_chunk(&view, origin, m.opaque, m.opaque_count);
+                self.stats.draw_calls += 1;
                 self.stats.quads += m.opaque_count as u32 / 4;
             }
             unsafe {
@@ -726,7 +721,37 @@ impl Renderer {
             (g.Disable)(gl::CULL_FACE);
         }
         Self::atlas_matrix(false);
-        self.pass = Some(Pass { view, visible, far, day, fog: (fog_start, fog_end) });
+        self.frustum = Some(frustum);
+        self.pass = Some(Pass { view, far, day, fog: (fog_start, fog_end) });
+    }
+
+    /// Draw ranges `[first vertex, count]` of one chunk's buffer: the matrix
+    /// and the vertex pointers are set once, then each range is one call.
+    fn draw_runs(view: &Mat4, origin: Vec3, vbo: u32, runs: &[[i32; 2]]) {
+        let g = gl();
+        unsafe {
+            let m = math::translate_scale(view, origin, 1.0 / 16.0);
+            (g.LoadMatrixf)(m.as_ptr());
+            (g.BindBuffer)(gl::ARRAY_BUFFER, vbo);
+            (g.VertexPointer)(3, gl::SHORT, 20, core::ptr::null());
+            (g.ColorPointer)(4, gl::UNSIGNED_BYTE, 20, 8 as *const c_void);
+            (g.TexCoordPointer)(2, gl::SHORT, 20, 12 as *const c_void);
+            (g.ClientActiveTexture)(gl::TEXTURE1);
+            (g.TexCoordPointer)(2, gl::SHORT, 20, 16 as *const c_void);
+            (g.ClientActiveTexture)(gl::TEXTURE0);
+            for r in runs {
+                (g.DrawArrays)(gl::QUADS, r[0], r[1]);
+            }
+        }
+    }
+
+    /// Whether a sphere (`rel` is relative to the camera) is inside the view
+    /// of the last frame; true when there was none.
+    pub fn in_view(&self, rel: [f32; 3], radius: f32) -> bool {
+        match &self.frustum {
+            Some(f) => f.sphere_visible(Vec3::new(rel[0], rel[1], rel[2]), radius),
+            None => true,
+        }
     }
 
     fn draw_chunk(view: &Mat4, origin: Vec3, vbo: u32, count: i32) {
@@ -1026,7 +1051,7 @@ impl Renderer {
     /// The second half of drawing the world: water, then clouds.
     pub fn finish_world(&mut self, cam: &Camera, env: &Env) {
         let g = gl();
-        let Pass { view, visible, far, day, fog } = match self.pass.take() {
+        let Pass { view, far, day, fog } = match self.pass.take() {
             Some(p) => p,
             None => return,
         };
@@ -1057,14 +1082,16 @@ impl Renderer {
         }
         // A slow swell: the whole surface rises and falls a little.
         let swell = math::sinf(env.clock * 1.1) * 0.03 - 0.035;
-        for &(_, origin, m) in visible.iter().rev() {
-            if m.glass_count > 0 {
-                Self::draw_chunk(&view, origin, m.glass, m.glass_count);
-                self.stats.quads += m.glass_count as u32 / 4;
-            }
-            if m.water_count > 0 {
-                Self::draw_chunk(&view, Vec3::new(origin.x, origin.y + swell, origin.z), m.water, m.water_count);
-                self.stats.quads += m.water_count as u32 / 4;
+        for c in self.culler.chunks.iter().rev() {
+            let origin = Vec3::new(c.origin[0], c.origin[1], c.origin[2]);
+            for (kind, at) in [(2, origin), (1, Vec3::new(origin.x, origin.y + swell, origin.z))] {
+                let runs = self.culler.runs_of(c, kind);
+                if runs.is_empty() {
+                    continue;
+                }
+                Self::draw_runs(&view, at, c.vbo[kind], runs);
+                self.stats.draw_calls += runs.len() as u32;
+                self.stats.quads += runs.iter().map(|r| r[1] as u32 / 4).sum::<u32>();
             }
         }
         unsafe {
@@ -1709,6 +1736,7 @@ impl MeshSink for Renderer {
             glass_count: m.glass.len() as i32,
             ymin: m.ymin,
             ymax: m.ymax,
+            sec: m.sections,
         };
         unsafe { (g.BindBuffer)(gl::ARRAY_BUFFER, 0) };
         mesh

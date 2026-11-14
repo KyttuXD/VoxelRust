@@ -12,3 +12,6 @@ pub mod migrate;
 pub mod jobs;
 pub mod weather;
 pub mod footprint;
+pub mod sections;
+pub mod visibility;
+pub mod uploads;

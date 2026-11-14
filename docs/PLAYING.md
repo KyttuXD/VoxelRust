@@ -71,7 +71,8 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | Esc | menu / close a screen (also from a screen with a text box in use: the multiplayer list, a world's options, SETTINGS and a mod's own screens) |
 | F1 | hide or show the HUD |
 | F2 | save a screenshot (`screenshot-<number>.bmp` in the data folder) |
-| F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts, memory use against its limit (see [MEMORY.md](MEMORY.md)) |
+| F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts, sections drawn and culled (by the view and by hidden caves), draw calls and culling time, memory use against its limit (see [MEMORY.md](MEMORY.md)) |
+| F3 + O | turn the hidden-section culling off and on again, to compare the frame rate (also `--show nocull`) |
 | F5 | third-person view |
 | F11 | full screen |
 

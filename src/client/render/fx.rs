@@ -124,8 +124,7 @@ impl Renderer {
     /// Draw the particles and quads the session holds, over the finished world.
     pub fn draw_effects(&mut self, g: &Session, cam: &Camera, env: &Env) {
         let rel = |p: [f64; 3]| [(p[0] - cam.pos[0]) as f32, (p[1] - cam.pos[1]) as f32, (p[2] - cam.pos[2]) as f32];
-        let ahead = math::forward(cam.yaw, cam.pitch);
-        let in_front = |p: [f32; 3], size: f32| p[0] * ahead.x + p[1] * ahead.y + p[2] * ahead.z > -size;
+        // Inside the view of the world's frustum (a sphere test); out of it nothing is drawn.
         // Particles of the kinds (kind 0, the plain specks, are drawn with the creatures).
         let mut parts: Vec<PartDraw> = Vec::new();
         for s in g.primed.sparks.iter().filter(|s| s.kind != 0) {
@@ -137,7 +136,7 @@ impl Renderer {
                 continue;
             }
             let at = rel(s.pos);
-            if at[0] * at[0] + at[1] * at[1] + at[2] * at[2] > PARTICLE_RANGE * PARTICLE_RANGE || !in_front(at, half) {
+            if at[0] * at[0] + at[1] * at[1] + at[2] * at[2] > PARTICLE_RANGE * PARTICLE_RANGE || !self.in_view(at, half * 1.5) {
                 continue;
             }
             parts.push(PartDraw { at, half, col: [s.colour[0], s.colour[1], s.colour[2], alpha], additive, tile });
@@ -151,7 +150,13 @@ impl Renderer {
                 }
                 let p = [rel(q.corners[0]), rel(q.corners[1]), rel(q.corners[2]), rel(q.corners[3])];
                 let d2 = middle_dist2(&p);
-                if d2 > (DRAW_RANGE * DRAW_RANGE) as f32 || p.iter().all(|c| !in_front(*c, 1.0)) {
+                if d2 > (DRAW_RANGE * DRAW_RANGE) as f32 {
+                    continue;
+                }
+                // A sphere round the quad: its middle, out to the farthest corner.
+                let mid = [0, 1, 2].map(|a| (p[0][a] + p[1][a] + p[2][a] + p[3][a]) * 0.25);
+                let reach = p.iter().map(|c| (c[0] - mid[0]) * (c[0] - mid[0]) + (c[1] - mid[1]) * (c[1] - mid[1]) + (c[2] - mid[2]) * (c[2] - mid[2])).fold(0.0f32, |a, b| if b > a { b } else { a });
+                if !self.in_view(mid, math::sqrtf(reach) + 1.0) {
                     continue;
                 }
                 quads.push((d2, QuadDraw { p, tex: tex_of(&q.tex), col: q.rgba, additive: q.blend == Blend::Additive }));

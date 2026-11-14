@@ -26,3 +26,4 @@ pub mod pacing;
 /// The interface hooks of mods: key bindings, HUD drawing, their own screens.
 pub mod modui;
 pub mod shaders;
+pub mod cull;

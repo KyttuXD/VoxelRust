@@ -191,6 +191,18 @@ impl App {
                     r.vbo_bytes / 1024,
                     self.distance
                 ),
+                {
+                    let c = r.culler.stats;
+                    alloc::format!(
+                        "SECTIONS {} DRAWN, {} FRUSTUM CULLED, {} OCCLUDED OF {}   OCCLUSION {} (F3+O)",
+                        c.drawn,
+                        c.frustum,
+                        c.occluded,
+                        c.total,
+                        if r.culler.occlusion { "ON" } else { "OFF" }
+                    )
+                },
+                alloc::format!("DRAW CALLS {}   CULLING {:.2} MS", st.draw_calls, r.culler.stats.micros as f32 / 1000.0),
                 alloc::format!("JOBS {} ON {} THREADS   TIME {:.2}", g.pool.in_flight, g.pool.thread_count(), g.time),
                 gl::get_string(gl::RENDERER),
             ];

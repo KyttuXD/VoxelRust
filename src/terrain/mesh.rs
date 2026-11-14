@@ -36,6 +36,9 @@ pub struct MeshData {
     /// Blocks drawn as models rather than as part of the mesh: where in
     /// the chunk each is, and which block.
     pub props: Vec<([u8; 3], crate::block::Block)>,
+    /// Where each section's vertices start, its bounds, and which of its
+    /// faces see each other (see `terrain/sections.rs`).
+    pub sections: crate::sections::SectionTables,
 }
 
 const R: usize = 48;
@@ -241,14 +244,24 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
     let reg_ = Region { blk, light };
     let opaque = |b: Block| b == u16::MAX || r.opaque[b as usize] != 0;
 
-    let mut out = MeshData { opaque: Vec::new(), water: Vec::new(), glass: Vec::new(), ymin: CH, ymax: 0, props: Vec::new() };
+    let mut out = MeshData { opaque: Vec::new(), water: Vec::new(), glass: Vec::new(), ymin: CH, ymax: 0, props: Vec::new(), sections: Default::default() };
     let mut shape: Vec<Bx> = Vec::new();
+    let mut tabs = crate::sections::SectionTables { valid: true, ..Default::default() };
 
-    for lx in 0..CW {
+    // The geometry is made section by section (16 blocks of height each) so
+    // that each section's vertices lie together in the buffers.
+    for sy in 0..crate::sections::SECTIONS {
+        tabs.opaque[sy] = out.opaque.len() as u32;
+        tabs.water[sy] = out.water.len() as u32;
+        tabs.glass[sy] = out.glass.len() as u32;
+        tabs.conn[sy] = section_connectivity(&reg_, sy);
+        // Bounds of the cells that gave geometry: x0 y0 z0 x1 y1 z1.
+        let mut bb = [255u8, 255, 255, 0, 0, 0];
+        for lx in 0..CW {
         for lz in 0..CW {
             let (x, z) = (lx + 16, lz + 16);
             let base = ri(x as usize, 0, z as usize);
-            for y in 0..CH {
+            for y in sy as i32 * 16..sy as i32 * 16 + 16 {
                 let b = reg_.blk[base + y as usize];
                 if b == 0 {
                     continue;
@@ -386,15 +399,54 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                 if out.opaque.len() + out.water.len() + out.glass.len() != before {
                     out.ymin = out.ymin.min(y);
                     out.ymax = out.ymax.max(y + 1);
+                    let ry = (y - sy as i32 * 16) as u8;
+                    let (cx, cz) = (lx as u8, lz as u8);
+                    bb = [bb[0].min(cx), bb[1].min(ry), bb[2].min(cz), bb[3].max(cx + 1), bb[4].max(ry + 1), bb[5].max(cz + 1)];
                 }
             }
         }
+        }
+        tabs.bounds[sy] = if bb[3] == 0 { [0; 6] } else { bb };
     }
+    let end = crate::sections::SECTIONS;
+    tabs.opaque[end] = out.opaque.len() as u32;
+    tabs.water[end] = out.water.len() as u32;
+    tabs.glass[end] = out.glass.len() as u32;
+    out.sections = tabs;
     if out.ymin > out.ymax {
         out.ymin = 0;
         out.ymax = 0;
     }
     out
+}
+
+/// Which faces of section `sy` of the middle chunk see each other through
+/// cells that do not block sight (see `terrain/sections.rs`).
+fn section_connectivity(region: &Region, sy: usize) -> u16 {
+    let r = reg();
+    let mut open = [0u8; 4096];
+    let mut any_open = false;
+    let mut any_shut = false;
+    for x in 0..16usize {
+        for z in 0..16usize {
+            // A column's cells are contiguous in the region: read it along y.
+            let base = ri(x + 16, sy * 16, z + 16);
+            for y in 0..16usize {
+                let b = region.blk[base + y];
+                let o = r.opaque[b as usize] == 0;
+                open[x + 16 * z + 256 * y] = o as u8;
+                any_open |= o;
+                any_shut |= !o;
+            }
+        }
+    }
+    if !any_open {
+        return 0;
+    }
+    if !any_shut {
+        return crate::sections::CONN_ALL;
+    }
+    crate::sections::connectivity(&open)
 }
 
 /// Emit the six faces of one box of a `Boxes` block. A face is skipped when
@@ -518,6 +570,91 @@ mod tests {
         assert!(m.opaque.iter().all(|v| v.luv[0] == 8 && v.luv[1] >= 14 * 16 + 8));
         assert!(m.opaque.iter().filter(|v| v.pos[1] == 61 * 16).all(|v| v.luv[1] == 15 * 16 + 8));
         assert!(m.opaque.iter().any(|v| v.luv[1] < 15 * 16 + 8));
+    }
+
+    fn floor_chunk() -> ChunkData {
+        let mut c = ChunkData::new();
+        for x in 0..16 {
+            for z in 0..16 {
+                for y in 0..70 {
+                    c.set(x, y, z, reg().wk.stone);
+                }
+            }
+        }
+        c
+    }
+
+    #[test]
+    fn a_solid_floor_draws_only_its_top_even_at_the_chunk_borders() {
+        // Faces between blocks, against solid neighbouring chunks and against the
+        // world's floor are never made: only the 256 tops remain.
+        let f = floor_chunk();
+        let n = [&f, &f, &f, &f, &f, &f, &f, &f, &f];
+        let m = build(&n);
+        assert_eq!(m.opaque.len(), 256 * 4);
+        assert!(m.opaque.iter().all(|v| v.pos[1] == 70 * 16));
+    }
+
+    #[test]
+    fn a_buried_block_makes_no_faces() {
+        let e = ChunkData::new();
+        let mut c = ChunkData::new();
+        let s = reg().wk.stone;
+        for x in 6..9 {
+            for y in 60..63 {
+                for z in 6..9 {
+                    c.set(x, y, z, s);
+                }
+            }
+        }
+        // A 3 x 3 x 3 cube: nine faces on each side and nothing from the middle block.
+        assert_eq!(hood(&c, &e).opaque.len(), 6 * 9 * 4);
+    }
+
+    #[test]
+    fn sections_split_the_buffers_by_height() {
+        let e = ChunkData::new();
+        let mut c = ChunkData::new();
+        c.set(8, 60, 8, reg().wk.stone);
+        c.set(2, 200, 3, reg().wk.stone);
+        let m = hood(&c, &e);
+        let t = &m.sections;
+        assert!(t.valid);
+        assert_eq!(t.opaque[16] as usize, m.opaque.len());
+        assert_eq!(m.opaque.len(), 48);
+        for s in 0..16 {
+            assert_eq!(t.has_geometry(s), s == 3 || s == 12, "section {}", s);
+        }
+        // Section 3 holds y 48..64 and comes first.
+        assert_eq!((t.opaque[3], t.opaque[4]), (0, 24));
+        assert_eq!((t.opaque[12], t.opaque[13]), (24, 48));
+        assert!(m.opaque[..24].iter().all(|v| (60 * 16..=61 * 16).contains(&v.pos[1])));
+        assert!(m.opaque[24..].iter().all(|v| (200 * 16..=201 * 16).contains(&v.pos[1])));
+        // The bounds are those of the block, y from the section's floor.
+        assert_eq!(t.bounds[3], [8, 12, 8, 9, 13, 9]);
+        assert_eq!(t.bounds[12], [2, 8, 3, 3, 9, 4]);
+        // Open air all through.
+        assert!(t.conn.iter().all(|&c| c == crate::sections::CONN_ALL));
+    }
+
+    #[test]
+    fn solid_sections_see_nothing_and_a_floor_cuts_the_underside_off() {
+        use crate::sections::{connected, FACE_NX, FACE_NY, FACE_PX, FACE_PY};
+        let f = floor_chunk();
+        let n = [&f, &f, &f, &f, &f, &f, &f, &f, &f];
+        let t = build(&n).sections;
+        // Sections 0..=3 (y < 64) are solid.
+        for s in 0..4 {
+            assert_eq!(t.conn[s], 0, "section {}", s);
+        }
+        // Section 4 has the floor's top at 70: air above it joins the sides and the top,
+        // but not the bottom, which is rock.
+        assert!(connected(t.conn[4], FACE_NX, FACE_PX));
+        assert!(connected(t.conn[4], FACE_NX, FACE_PY));
+        assert!(!connected(t.conn[4], FACE_NY, FACE_PY));
+        for s in 5..16 {
+            assert_eq!(t.conn[s], crate::sections::CONN_ALL);
+        }
     }
 
     #[test]
