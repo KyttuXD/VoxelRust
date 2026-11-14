@@ -106,8 +106,8 @@ pub fn call(g: &mut Session, ctx: &Ctx, name: &str, args: &[Value]) -> Result<Va
             let mut left = 0i64;
             for s in 0..data(g).storages[i].inv.slots.len() {
                 let Some(stack) = data(g).storages[i].inv.slots[s] else { continue };
-                let rest = g.inv.add(stack.item, stack.count);
-                data(g).storages[i].inv.slots[s] = if rest == 0 { None } else { Some(crate::inventory::Stack { item: stack.item, count: rest }) };
+                let rest = g.inv.add_stack(stack);
+                data(g).storages[i].inv.slots[s] = if rest == 0 { None } else { Some(stack.with_count(rest)) };
                 left += rest as i64;
             }
             Ok(Value::Int(left))

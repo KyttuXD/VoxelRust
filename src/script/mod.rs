@@ -34,6 +34,7 @@ pub mod effects_bridge;
 pub mod error;
 pub mod ext;
 pub mod fmt;
+pub mod gear_bridge;
 pub mod host;
 pub mod host_ui;
 pub mod host_qol;
@@ -99,7 +100,8 @@ pub const HOOKS: &[HookDoc] = &[
     HookDoc { name: "on_effect_start", params: &["id", "level"], what: "a status effect started on the player" },
     HookDoc { name: "on_effect_tick", params: &["id", "secs_left", "level"], what: "about once a second for each status effect the player has" },
     HookDoc { name: "on_effect_end", params: &["id"], what: "a status effect ran out, was put out or was taken away" },
-    HookDoc { name: "on_explode", params: &["x", "y", "z", "power", "source"], what: "an explosion is about to happen; return false to cancel or a number to change its power" },
+    HookDoc { name: "on_armor_change", params: &["slot"], what: "a worn armour piece was put on, taken off, set by a script or broke (slot 0 head, 1 chest, 2 legs, 3 feet)" },
+    HookDoc { name: "on_explode",params: &["x", "y", "z", "power", "source"], what: "an explosion is about to happen; return false to cancel or a number to change its power" },
     HookDoc { name: "on_update", params: &["dt"], what: "once a frame, before the player moves: the place to move things, carry the player (`hold_player`) and ask for pictures (`draw_model`, `hud_frac_rect`)" },
     HookDoc { name: "on_interact", params: &["reach"], what: "the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is); return true if the click was used up" },
     HookDoc { name: "on_condition", params: &["name", "args"], what: "an `/if` condition the game does not know (`/if name args`); return true or false if it is yours, nothing if it is not" },

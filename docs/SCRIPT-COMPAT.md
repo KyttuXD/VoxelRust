@@ -91,6 +91,23 @@ has for it (the host calls marked *new* were added in this round for them and fo
 | witherstorm: sparks, sky, shake, sounds | `draw_speck`, `force_sky` (rain only, not tint), `shake`, `play_sound` (not placed in space) |
 | witherstorm: saved state (`witherstorm.txt`) | `state_*` (512 keys of 4 096 bytes); a storm's whole record fits |
 
+### Armour, wear, item data, attributes (new)
+
+Gaps the ports found in the engine, now closed (all in `docs/SCRIPTING.md`):
+
+| Gap | Engine |
+| --- | --- |
+| armour slots: carried pieces stood in for worn ones | four worn slots, `armor` item data, `get_armor`, `set_armor`, `armor_defense`, `armor_toughness`, `on_armor_change` (**supported**) |
+| durability: tools never wore out; a mod's wear counters | `durability` item data, wear per block, hit, shot and blow, `item_damage`, `item_wear`, `item_durability`, `repair_item`, repair by crafting two worn ones (**supported**) |
+| spawn eggs named by recipes, trades and loot of any pack | `<id>_egg` items exist before references are resolved, order-independent, with a warning for a creature that does not exist (**supported**) |
+| per-stack state and item tags | `item_get`, `item_set`, `item_clear`, `item_keys`, `has_tag`, `item_tag_value`, item data kept with stacks in the pack, chests, drops and saves (**supported**) |
+| a mod's own timers for status effects; a fixed 20 health | `effect_secs`, `list_effects`, `effect_defined` with `effect_level`; attributes `set_attribute`, `get_attribute`, `add_attribute_modifier`, `remove_attribute_modifier`, `max_health` up to 100 with rows of hearts, `walk_speed`, `jump_height`, `armor`, `damage` (**supported**) |
+
+Not done in this round: other players do not see a worn piece (the position
+message carries only the held item; armour is drawn on your own body, in third
+person and in the inventory), and a creature's own most health
+(`set_creature_health`) belongs to the creatures work.
+
 Missing host calls, in the order they would unblock the most:
 
 1. **World generation hooks** (a world kind and per-dimension terrain): needed by orespawn and by Earth.

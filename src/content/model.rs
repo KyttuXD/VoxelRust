@@ -168,6 +168,18 @@ fn classify(name: &str) -> Swing {
     Swing::Limb(sign)
 }
 
+/// Which worn slot covers a bone: 0 head, 1 chest (body and arms), 2 legs
+/// (thighs and the belt), 3 feet (calves and feet).
+pub fn armor_slot_of(role: Role) -> Option<usize> {
+    match role {
+        Role::Head | Role::Neck => Some(0),
+        Role::Chest | Role::Torso | Role::Belly | Role::Arm(_) | Role::Forearm(_) | Role::Hand(_) => Some(1),
+        Role::Pelvis | Role::Thigh(_) => Some(2),
+        Role::Calf(_) | Role::Foot(_) => Some(3),
+        Role::Other => None,
+    }
+}
+
 impl ModelDef {
     pub fn from_bbmodel(id: &str, text: &str) -> Result<ModelDef, String> {
         let model = bbmodel::load(text)?;
@@ -192,6 +204,21 @@ impl ModelDef {
     /// convention as the player: 0 faces -z) and placed with its feet at
     /// `at`. `flip_y` mirrors it vertically, for drawing in screen space.
     pub fn quads(&self, pose: &Pose, at: [f32; 3], yaw: f32, height: f32, flip_y: bool, out: &mut Vec<ModelVert>) {
+        self.quads_inner(pose, at, yaw, height, flip_y, None, out);
+    }
+
+    /// The layer of armour worn in `slot` (0 head, 1 chest, 2 legs, 3 feet):
+    /// copies of the cubes of the bones that slot covers, a little bigger
+    /// than the body, posed the same. Drawn with the armour's own picture
+    /// (laid out like a skin) or a plain colour. Bounded: no more quads than
+    /// the body itself has.
+    pub fn armor_quads(&self, slot: usize, pose: &Pose, at: [f32; 3], yaw: f32, height: f32, flip_y: bool, out: &mut Vec<ModelVert>) {
+        // About 0.6 of a skin pixel (the player is 32 pixels tall).
+        let grow = self.height() * (0.6 / 32.0);
+        self.quads_inner(pose, at, yaw, height, flip_y, Some((slot, grow)), out);
+    }
+
+    fn quads_inner(&self, pose: &Pose, at: [f32; 3], yaw: f32, height: f32, flip_y: bool, armor: Option<(usize, f32)>, out: &mut Vec<ModelVert>) {
         let m = &self.model;
         let scale = height / self.height();
         let (sy, cy) = (sinf(yaw), cosf(yaw));
@@ -295,13 +322,20 @@ impl ModelDef {
             bone_m.push(mul(&parent, &local));
         }
         for (bi, b) in m.bones.iter().enumerate() {
+            // An armour layer is drawn only for the bones its slot covers.
+            if let Some((slot, _)) = armor {
+                if !self.rig.humanoid || armor_slot_of(self.roles[bi]) != Some(slot) {
+                    continue;
+                }
+            }
             for &ci in &b.cubes {
                 let c = match m.cubes.get(ci) {
                     Some(c) => c,
                     None => continue,
                 };
                 let t = mul(&bone_m[bi], &rotate_about(c.origin, c.rotation));
-                let (lo, hi) = (c.from, c.to);
+                let g = armor.map_or(0.0, |a| a.1);
+                let (lo, hi) = ([c.from[0] - g, c.from[1] - g, c.from[2] - g], [c.to[0] + g, c.to[1] + g, c.to[2] + g]);
                 // Corners of each face as seen from outside: top-left,
                 // top-right, bottom-right, bottom-left. Faces are in the
                 // loader's order: east, west, up, down, south, north.
@@ -467,5 +501,26 @@ mod tests {
         assert_eq!(classify("Leg-BR"), Swing::Limb(1.0));
         assert_eq!(classify("Chest"), Swing::None);
         assert!(ModelDef::from_bbmodel("x", "{}").is_err());
+    }
+
+    #[test]
+    fn an_armour_layer_is_a_bigger_copy_of_the_cubes_of_its_slot() {
+        let m = ModelDef::from_bbmodel("player", PLAYER).unwrap();
+        let (mut body, mut head, mut chest, mut legs, mut feet) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let pose = Pose::default();
+        m.quads(&pose, [0.0; 3], 0.0, 1.8, false, &mut body);
+        for (slot, out) in [(0, &mut head), (1, &mut chest), (2, &mut legs), (3, &mut feet)] {
+            m.armor_quads(slot, &pose, [0.0; 3], 0.0, 1.8, false, out);
+            assert!(!out.is_empty(), "slot {} covers nothing", slot);
+            assert!(out.iter().all(|v| v.pos.iter().all(|c| c.is_finite())));
+        }
+        // Every cube is in one slot only: the layers together are no more than the body.
+        assert!(head.len() + chest.len() + legs.len() + feet.len() <= body.len());
+        // The head layer is bigger than the head: it reaches higher than the body does.
+        let top = |v: &Vec<ModelVert>| v.iter().map(|q| q.pos[1]).fold(f32::MIN, f32::max);
+        assert!(top(&head) > top(&body));
+        assert_eq!(armor_slot_of(Role::Head), Some(0));
+        assert_eq!(armor_slot_of(Role::Foot(1)), Some(3));
+        assert_eq!(armor_slot_of(Role::Other), None);
     }
 }

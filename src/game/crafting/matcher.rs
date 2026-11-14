@@ -128,7 +128,7 @@ pub fn consume(cells: &mut [Slot], uses: &[(usize, u16)]) {
         if let Some(slot) = cells.get_mut(i) {
             let left = slot.as_ref().map_or(0, |s| s.count.saturating_sub(n));
             *slot = match *slot {
-                Some(s) if left > 0 => Some(crate::inventory::Stack { item: s.item, count: left }),
+                Some(s) if left > 0 => Some(s.with_count(left)),
                 _ => None,
             };
         }
@@ -149,7 +149,7 @@ mod tests {
     }
 
     fn cell(item: u16, count: u16) -> Slot {
-        Some(Stack { item, count })
+        Some(Stack::new(item, count))
     }
 
     /// A grid from rows of letters: `.` empty, `I`, `S`, `P` one item.

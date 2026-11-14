@@ -252,6 +252,26 @@ and ruby ore drop coal, crystals and rubies. Iron and copper ore go into
 tool recipes as they are; a furnace turns them into ingots, which other
 recipes need (see [Furnaces](#furnaces)).
 
+### Armour and wear
+
+Armour (a mod's, or what a `/give` brings) goes in the four slots beside your
+picture in the inventory screen: head, chest, legs and feet. Shift-click or
+right click a piece in your pack to put it on (what was worn there comes back
+to the pack), click a worn piece with an empty hand to take it off, or put one
+in the slot with the mouse. Your picture and your body in third person wear it.
+Each point of armour takes 4 percent off a creature's blow, an arrow or a blast
+(at most 80 percent); falling, drowning, hunger and poison ignore it.
+
+Tools, swords, bows and armour wear out: a thin bar under the item's picture,
+green to red, shows what is left once it has been used, and at the last use it
+breaks. Pick-axes and the like lose a use for each block they break, swords for
+each hit, bows for each shot, armour for each blow it softens. In creative
+nothing wears. To repair, put two worn ones of the same kind in the crafting
+grid and take the mended one: it has the uses left of both and a little more.
+
+With some mods you may have more than ten hearts: they wrap into rows of ten
+(up to 100 health), with the yellow absorption hearts above.
+
 ### Crafting
 
 Press E. In survival the upper part of the inventory screen is a **2 x 2

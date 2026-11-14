@@ -7,4 +7,5 @@
 //! `app.rs` with `#[path]`, as children of it, because they need its private
 //! fields; see docs/BUILDING.md, "Faster builds".
 
+pub mod armor_slots;
 pub mod crafting;

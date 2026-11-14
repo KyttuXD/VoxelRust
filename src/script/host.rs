@@ -444,7 +444,7 @@ impl Host for SessionHost<'_> {
 
     fn heal(&mut self, n: i64) {
         if n > 0 && self.g.health > 0 {
-            self.g.health = (self.g.health as i64 + n).min(crate::session::MAX_HEALTH as i64) as i32;
+            self.g.health = (self.g.health as i64 + n).min(self.g.max_health() as i64) as i32;
         }
     }
 

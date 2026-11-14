@@ -542,6 +542,11 @@ item <id>
   turns <from block> <to block>   right click turns one block into the other
   shoots <damage> [speed] [seconds between shots] [ammunition item]
   category <tab name>   default: Tools
+  armor <head|chest|legs|feet> <defense 0..20> [toughness 0..20]   worn in an armour slot
+  armor_tex <picture>   the picture worn on the player's body (laid out like a skin, 64 x 64)
+  armor_tint <r> <g> <b>   the colour of the plain layer worn when there is no armor_tex
+  durability <1..60000>   uses before it breaks (see below)
+  tag <name> [number]   a mark mod code reads (`has_tag`), the number being 1 if left out
 ```
 
 Left click breaks, right click places.
@@ -558,6 +563,33 @@ Left click breaks, right click places.
 - A `tool` speeds up only blocks whose own `tool` property names the same
   kind. Tools usually also want `stack 1`.
 - `damage`: 0..1000. Anything below 3 hits like a bare hand.
+- `armor <slot> <defense> [toughness]`: the item can be worn. In the inventory
+  screen four slots stand beside the player's picture (head, chest, legs,
+  feet); shift-click or right click armour in the pack puts it on (what was
+  worn goes back to the pack, or to the ground if it is full), and clicking a
+  worn piece with an empty hand takes it off. Each point of defense takes 4
+  percent off a creature's blow, an arrow or a blast, at most 80 percent in
+  all (falling, drowning, hunger, touching blocks and status effects are not
+  helped by armour); `toughness` adds up to 2 percent a point more against
+  big blows. Every such blow wears each worn piece by one use. The player's
+  body wears a layer slightly bigger than the body part: with `armor_tex`
+  (a picture in the pack's textures, drawn like a skin over the same parts: the
+  head, the body and arms, the legs, the feet) or else a plain colour
+  (`armor_tint`, else a guess from the item's id: `leather_`, `iron_`,
+  `gold_`...). Worn armour shows in the inventory picture and in third
+  person; on a server only the wearer sees it.
+- `durability <uses>`: the item wears out. One use is spent for each block a
+  tool breaks (and for each hit of a weapon, each shot of a bow, each blow a
+  piece of armour takes); at the last use the item breaks with a sound. A
+  thin bar under the item's picture, green to red, shows what is left once it
+  has been used. An item that wears is a stack of one (`stack` is ignored).
+  Nothing wears in creative mode. Two damaged stacks of the same item laid in
+  the crafting grid, with nothing else, make one with the uses left of both
+  plus 5 percent of a new one's. The base game's tools, swords, hoes and bows
+  have it (wood 60, stone 132, copper 190, iron 250, crystal 700, ruby 1100;
+  bow 384, longbow 500, crossbow 465, flint and steel 64). Wear is kept with
+  the stack: in the pack, chests and the world's save.
+- `tag <name> [number]`: up to 16 on an item. Mod code asks `has_tag(item, name)`.
 - `turns`: may be given several times. The base hoes have
   `turns dirt farmland` and `turns grass farmland`.
 - `shoots`: holding right click draws the item back and letting go looses a
@@ -979,6 +1011,13 @@ creature appears on the block aimed at; in survival the egg is used up.
 Nothing needs declaring. A pack that declares an item with that id itself
 keeps its own item, and no egg is made for that creature. Eggs can be used
 in recipes, trades and `/give` like any other item.
+
+The eggs are made once every pack has been read and before anything that names
+items is resolved, so a recipe, a trade, a `loot` line or a block's `drops` in
+any pack can name the egg of a creature of any other pack, whichever pack is
+read first. A name like `dragon_egg` for a creature that no pack declares
+shows up in the pack check as `unknown item` with a note that there is no
+creature `dragon`.
 
 ## Vehicles
 

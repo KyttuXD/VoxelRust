@@ -261,6 +261,17 @@ pub struct ItemExtra {
     pub shoots: Option<(i32, f32, f32, Option<usize>)>,
     /// A spawn egg: using it brings out one of this creature.
     pub egg: Option<usize>,
+    /// Armour: the worn slot (0 head, 1 chest, 2 legs, 3 feet), the defense
+    /// points (0..20) and the toughness (see `game/gear/armor.rs`).
+    pub armor: Option<(u8, u8, f32)>,
+    /// The picture the player model wears for this armour (a texture name), if any.
+    pub armor_tex: String,
+    /// The colour of the plain layer worn when there is no `armor_tex`.
+    pub armor_tint: Option<[u8; 3]>,
+    /// Uses before it breaks (0 = does not wear); see `game/gear/wear.rs`.
+    pub durability: u16,
+    /// Marks mod code reads (`has_tag`), with their numbers.
+    pub tags: Vec<(String, f32)>,
 }
 
 #[derive(Clone, Debug)]
@@ -1554,7 +1565,7 @@ impl Parser<'_> {
                     _ => bad = Some("stack must be 1..999"),
                 },
                 "category" => it.category = rest.to_string(),
-                "turns" | "damage" | "shoots" => it.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect())),
+                "turns" | "damage" | "shoots" | "armor" | "armor_tex" | "armor_tint" | "durability" | "tag" => it.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect())),
                 _ => bad = Some("unknown item property"),
             }
         }
@@ -1849,6 +1860,31 @@ impl Registry {
             });
         }
 
+        // A spawn egg for every creature, `<id>_egg`, made now: before anything
+        // that names items (block drops, groups, recipes, creatures' loot and
+        // trades) is resolved, and from every pack read, so any of them can name
+        // the egg of a creature of any pack, in whatever order the packs came.
+        {
+            let creatures: Vec<(&str, &str)> = raw_entities.iter().filter(|e| models.iter().any(|m| m.id == e.model)).map(|e| (e.id.as_str(), e.name.as_str())).collect();
+            for egg in crate::game::gear::eggs::plan(&creatures, &|id| items.iter().any(|it| it.id == id), items.len(), 60_000) {
+                items.push(ItemDef {
+                    id: egg.id,
+                    name: egg.name,
+                    icon: 0,
+                    place: None,
+                    brush: 0,
+                    reach: 0.0,
+                    stack: 64,
+                    tool: 0,
+                    speed: 1.0,
+                    food: 0,
+                    section: None,
+                    category: String::from("Eggs"),
+                    x: ItemExtra { egg: Some(egg.creature), ..ItemExtra::default() },
+                });
+            }
+        }
+
         // What each block gives when broken: itself unless the data says
         // otherwise (`drops <item>` or `drops nothing`).
         for rb in &raw_blocks {
@@ -1967,6 +2003,43 @@ impl Registry {
                         }
                         items[ri.0].x.shoots = Some((word(0).parse::<i32>().unwrap_or(4).clamp(0, 500), word(1).parse::<f32>().unwrap_or(32.0).clamp(4.0, 80.0), word(2).parse::<f32>().unwrap_or(0.6).clamp(0.1, 10.0), ammo));
                     }
+                    // armor <head|chest|legs|feet> <defense 0..20> [toughness 0..20]
+                    "armor" => {
+                        let slot = crate::game::gear::armor::slot_named(word(0));
+                        let defense = word(1).parse::<u8>().ok().filter(|d| *d <= crate::game::gear::armor::MAX_DEFENSE);
+                        let tough = if word(2).is_empty() { Some(0.0) } else { word(2).parse::<f32>().ok().filter(|t| t.is_finite() && (0.0..=crate::game::gear::armor::MAX_TOUGHNESS).contains(t)) };
+                        match (slot, defense, tough) {
+                            (Some(sl), Some(d), Some(t)) => items[ri.0].x.armor = Some((sl as u8, d, t)),
+                            _ => warnings.push(alloc::format!("item {}: armor needs head, chest, legs or feet, a defense 0..20 and an optional toughness 0..20", items[ri.0].id)),
+                        }
+                    }
+                    "armor_tex" => items[ri.0].x.armor_tex = crate::pack_entities::clean_name(word(0)),
+                    "armor_tint" => {
+                        let v: Vec<u8> = a.iter().filter_map(|s| s.parse::<u8>().ok()).collect();
+                        if v.len() == 3 && a.len() == 3 {
+                            items[ri.0].x.armor_tint = Some([v[0], v[1], v[2]]);
+                        } else {
+                            warnings.push(alloc::format!("item {}: armor_tint needs three numbers 0..255", items[ri.0].id));
+                        }
+                    }
+                    "durability" => match word(0).parse::<u16>() {
+                        Ok(n) if (1..=60_000).contains(&n) => {
+                            items[ri.0].x.durability = n;
+                            // A worn item is its own stack.
+                            items[ri.0].stack = 1;
+                        }
+                        _ => warnings.push(alloc::format!("item {}: durability must be 1..60000", items[ri.0].id)),
+                    },
+                    "tag" => {
+                        if word(0).is_empty() || items[ri.0].x.tags.len() >= 16 {
+                            warnings.push(alloc::format!("item {}: tag needs a name (at most 16 tags)", items[ri.0].id));
+                        } else {
+                            let value = word(1).parse::<f32>().ok().filter(|v| v.is_finite()).unwrap_or(1.0);
+                            let it = &mut items[ri.0];
+                            it.x.tags.retain(|t| t.0 != word(0));
+                            it.x.tags.push((word(0).to_ascii_lowercase(), value));
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -2012,7 +2085,7 @@ impl Registry {
                             grid_recipes.push(rc);
                         }
                     }
-                    Err(why) => warnings.push(alloc::format!("{}: recipe: {}", at, why)),
+                    Err(why) => warnings.push(alloc::format!("{}: recipe: {}", at, crate::game::gear::eggs::explain(&why, &|c| raw_entities.iter().any(|e| e.id == c)))),
                 }
                 continue;
             }
@@ -2157,7 +2230,8 @@ impl Registry {
                                 _ => {}
                             }
                             if !ok {
-                                warnings.push(alloc::format!("entity {}: `{} {}` is not understood", e.id, key, a.join(" ")));
+                                let hint = a.iter().filter_map(|w| crate::game::gear::eggs::creature_of(w)).find(|c| !raw_entities.iter().any(|o| o.id == *c)).map(|c| alloc::format!(" (there is no creature `{}`, so no spawn egg of that name)", c)).unwrap_or_default();
+                                warnings.push(alloc::format!("entity {}: `{} {}` is not understood{}", e.id, key, a.join(" "), hint));
                             }
                         }
                         x
@@ -2317,29 +2391,6 @@ impl Registry {
             }
         }
         let raw_rules: Vec<(String, Vec<String>)> = raw_rules.into_iter().filter(|r| r.1[0] == "ore" || r.1[0] == "plant").collect();
-        // An egg for every creature, to set one down in creative mode (or
-        // as a prize): `<id>_egg`. Its picture is the creature itself.
-        for (k, e) in entities.iter().enumerate() {
-            let id = alloc::format!("{}_egg", e.id);
-            if items.iter().any(|it| it.id == id) || items.len() >= 60_000 {
-                continue;
-            }
-            items.push(ItemDef {
-                id,
-                name: alloc::format!("{} Egg", e.name),
-                icon: 0,
-                place: None,
-                brush: 0,
-                reach: 0.0,
-                stack: 64,
-                tool: 0,
-                speed: 1.0,
-                food: 0,
-                section: None,
-                category: String::from("Eggs"),
-                x: ItemExtra { egg: Some(k), ..ItemExtra::default() },
-            });
-        }
         // What packs add to the terrain.
         let (mut ores, mut plants) = (Vec::new(), Vec::new());
         for (at, w) in &raw_rules {

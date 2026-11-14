@@ -14,7 +14,8 @@ use crate::block::reg;
 use crate::game::effects::apply;
 use crate::game::effects::{clock, roman, Nature};
 use crate::render::{Color, Renderer};
-use crate::session::{Session, MAX_HEALTH};
+use crate::game::gear::hearts;
+use crate::session::Session;
 use alloc::string::String;
 
 const WHITE: Color = [255, 255, 255, 255];
@@ -32,26 +33,27 @@ pub fn hearts(r: &mut Renderer, g: &Session, x0: f32, y: f32, s: f32) -> bool {
     let (Some(empty), Some(full), Some(half)) = (t.empty, t.full[style], t.half[style]) else { return false };
     // The heart is 9 x 8 inside a 16 x 16 tile, from (3, 4).
     let (tile, ox, oy) = (16.0 * s, 3.0 * s, 4.0 * s);
-    for i in 0..MAX_HEALTH / 2 {
-        let picture = match (g.health - i * 2).clamp(0, 2) {
+    // Ten hearts to a row, more health in rows above (game/gear/hearts.rs).
+    let rows = hearts::rows(g.max_health());
+    for c in hearts::layout(g.health, g.max_health()) {
+        let picture = match c.fill {
             2 => full,
             1 => half,
             _ => empty,
         };
-        r.icon(x0 + i as f32 * STEP * s - ox, y - oy, tile, picture, WHITE);
+        r.icon(x0 + c.col as f32 * STEP * s - ox, y - oy - c.row as f32 * 9.0 * s, tile, picture, WHITE);
     }
-    // Absorption: yellow hearts in a row above, a point to a half.
+    // Absorption: yellow hearts in a row above all of them, a point to a half.
     if let (true, Some(af), Some(ah)) = (g.fx.absorb > 0, t.absorb_full, t.absorb_half) {
-        let n = ((g.fx.absorb + 1) / 2).min(MAX_HEALTH / 2);
-        for i in 0..n {
-            let picture = if g.fx.absorb - i * 2 >= 2 { af } else { ah };
-            r.icon(x0 + i as f32 * STEP * s - ox, y - oy - 9.0 * s, tile, picture, WHITE);
+        for c in hearts::absorption(g.fx.absorb, rows) {
+            let picture = if c.fill == 2 { af } else { ah };
+            r.icon(x0 + c.col as f32 * STEP * s - ox, y - oy - c.row as f32 * 9.0 * s, tile, picture, WHITE);
         }
     }
     // On fire: a flame after the hearts.
     if let (true, Some(flame)) = (apply::on_fire(&g.fx, &apply::lookup), t.flame) {
         let wob = if (g.clock * 6.0) as i32 % 2 == 0 { 0.0 } else { s };
-        r.icon(x0 + (MAX_HEALTH / 2) as f32 * STEP * s + 2.0 * s - 3.0 * s, y - oy - wob, tile, flame, WHITE);
+        r.icon(x0 + hearts::PER_ROW as f32 * STEP * s + 2.0 * s - 3.0 * s, y - oy - wob, tile, flame, WHITE);
     }
     true
 }
