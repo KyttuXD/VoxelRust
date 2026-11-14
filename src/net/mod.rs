@@ -3,3 +3,4 @@
 pub mod proto;
 pub mod server;
 pub mod netplay;
+pub mod voice;

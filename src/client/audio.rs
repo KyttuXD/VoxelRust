@@ -4,6 +4,7 @@
 //! The mixer state is a fixed table of voices shared with the audio thread;
 //! the main thread only adds voices while holding SDL's audio lock.
 
+use super::voice::stream::VoiceStream;
 use crate::sys::sdl::sdl;
 use alloc::vec::Vec;
 use core::ffi::{c_int, c_void};
@@ -60,8 +61,19 @@ struct Voice {
 const VOICES: usize = 12;
 const RATE: i32 = 22050;
 
+/// Other players' voices playing at once (proximity voice chat, see `voice`).
+const VOICE_STREAMS: usize = 6;
+
 struct Mixer {
     voices: [Voice; VOICES],
+    /// Streamed speech: fed by the game thread, played from here.
+    streams: [VoiceStream; VOICE_STREAMS],
+}
+
+impl Mixer {
+    fn new() -> Mixer {
+        Mixer { voices: [SILENT; VOICES], streams: core::array::from_fn(|_| VoiceStream::new()) }
+    }
 }
 
 const SILENT: Voice =
@@ -132,6 +144,9 @@ fn mix(m: &mut Mixer, out: &mut [i16]) {
             v.left -= 1;
         }
     }
+    for st in m.streams.iter_mut() {
+        st.mix_into(out);
+    }
 }
 
 unsafe extern "C" fn callback(user: *mut c_void, stream: *mut u8, len: c_int) {
@@ -159,7 +174,7 @@ impl Audio {
     /// Open the default sound device. If there is none the game simply
     /// stays silent.
     pub fn new() -> Audio {
-        let mixer = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Mixer { voices: [SILENT; VOICES] }));
+        let mixer = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Mixer::new()));
         let mut audio = Audio { device: 0, mixer, seed: 0x1234_5678, effects: 0.5, steps: 0.4, ui: 0.4, captions: Vec::new(), user: Vec::new() };
         let api = sdl();
         unsafe {
@@ -194,7 +209,7 @@ impl Audio {
 
     /// An audio system that plays nothing (for scripted runs).
     pub fn silent() -> Audio {
-        let mixer = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Mixer { voices: [SILENT; VOICES] }));
+        let mixer = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Mixer::new()));
         Audio { device: 0, mixer, seed: 1, effects: 0.0, steps: 0.0, ui: 0.0, captions: Vec::new(), user: Vec::new() }
     }
 
@@ -257,6 +272,9 @@ impl Audio {
         unsafe {
             (api.SDL_LockAudioDevice)(self.device);
             (*self.mixer).voices = [SILENT; VOICES];
+            for st in (*self.mixer).streams.iter_mut() {
+                st.release();
+            }
             (api.SDL_UnlockAudioDevice)(self.device);
         }
     }
@@ -267,6 +285,34 @@ impl Audio {
             c.1 -= dt;
         }
         self.captions.retain(|c| c.1 > 0.0);
+    }
+
+    /// Add decoded speech of player `id` (mono, at [`crate::wav::RATE`]) to
+    /// that player's stream in the mixer. `gain` is the final loudness (0..1);
+    /// `pan` is -1 (left) to 1 (right). Does nothing with no sound device.
+    pub fn voice_push(&mut self, id: u16, samples: &[i16], gain: f32, pan: f32) {
+        if self.device == 0 || id == 0 || samples.is_empty() {
+            return;
+        }
+        let api = sdl();
+        unsafe {
+            (api.SDL_LockAudioDevice)(self.device);
+            let m = &mut *self.mixer;
+            let slot = match m.streams.iter().position(|v| v.id == id) {
+                Some(i) => Some(i),
+                None => m.streams.iter().position(|v| v.free()).or_else(|| {
+                    // All busy: take over the one with least left to play.
+                    (0..VOICE_STREAMS).min_by_key(|&i| m.streams[i].buffered())
+                }),
+            };
+            if let Some(i) = slot {
+                if m.streams[i].id != id {
+                    m.streams[i].claim(id);
+                }
+                m.streams[i].push(samples, gain, pan);
+            }
+            (api.SDL_UnlockAudioDevice)(self.device);
+        }
     }
 
     /// Play a sound. `volume` scales it further (distance, for example).
@@ -384,7 +430,7 @@ mod tests {
 
     #[test]
     fn a_voice_makes_sound_then_falls_silent() {
-        let mut m = Mixer { voices: [SILENT; VOICES] };
+        let mut m = Mixer::new();
         m.voices[0] = Voice { left: 1000, total: 1000, gain: 0.8, noise: 0.5, step0: 0.02, step1: 0.01, phase: 0.0, lp: 0.0, lp_k: 0.3, rng: 7, clip: core::ptr::null(), clip_len: 0, pos: 0.0, step: 1.0 };
         let mut buf = [0i16; 1500];
         mix(&mut m, &mut buf);
@@ -397,7 +443,7 @@ mod tests {
 
     #[test]
     fn many_loud_voices_do_not_overflow() {
-        let mut m = Mixer { voices: [SILENT; VOICES] };
+        let mut m = Mixer::new();
         for (i, v) in m.voices.iter_mut().enumerate() {
             *v = Voice { left: 400, total: 400, gain: 5.0, noise: 1.0, step0: 0.0, step1: 0.0, phase: 0.0, lp: 0.0, lp_k: 1.0, rng: 99 + i as u32, clip: core::ptr::null(), clip_len: 0, pos: 0.0, step: 1.0 };
         }

@@ -20,9 +20,11 @@ pub enum Action {
     Waypoints,
     Chat,
     Drop,
+    /// Push to talk (proximity voice chat).
+    Voice,
 }
 
-pub const ACTIONS: [(Action, &str, &str, i32); 13] = [
+pub const ACTIONS: [(Action, &str, &str, i32); 14] = [
     (Action::Forward, "forward", "MOVE FORWARD", 26),
     (Action::Back, "back", "MOVE BACK", 22),
     (Action::Left, "left", "MOVE LEFT", 4),
@@ -36,6 +38,7 @@ pub const ACTIONS: [(Action, &str, &str, i32); 13] = [
     (Action::Waypoints, "waypoints", "WAYPOINT MAP", 17),
     (Action::Chat, "chat", "CHAT", 23),
     (Action::Drop, "drop", "DROP THE HELD ITEM", 20),
+    (Action::Voice, "voice", "PUSH TO TALK", 25),
 ];
 
 /// Built-in skins by name (the pictures are `skin_<name>` in `data/textures/entity`,
@@ -81,6 +84,19 @@ pub struct Settings {
     pub effects_volume: i32,
     pub steps_volume: i32,
     pub ui_volume: i32,
+    // Voice chat (multiplayer servers only)
+    /// Hear other players' voices (default on).
+    pub voice_hear: bool,
+    /// The microphone is on: you may talk (default OFF).
+    pub voice_mic: bool,
+    /// Talk by voice activation instead of the push-to-talk key.
+    pub voice_activation: bool,
+    /// How loud speech must be for voice activation, 0 (anything) to 10.
+    pub voice_threshold: i32,
+    /// Loudness of other players' voices, 0..=10 (8 as they came).
+    pub voice_volume: i32,
+    /// Name of the microphone to use (empty: the system's default).
+    pub voice_device: String,
     /// Show in words what is heard.
     pub subtitles: bool,
     // Controls
@@ -156,6 +172,12 @@ impl Default for Settings {
             effects_volume: 8,
             steps_volume: 6,
             ui_volume: 6,
+            voice_hear: true,
+            voice_mic: false,
+            voice_activation: false,
+            voice_threshold: 3,
+            voice_volume: 8,
+            voice_device: String::new(),
             subtitles: false,
             sens: 5,
             invert_y: false,
@@ -257,6 +279,12 @@ impl Settings {
             effects_volume: int("effects_volume", d.effects_volume, 0, 10),
             steps_volume: int("steps_volume", d.steps_volume, 0, 10),
             ui_volume: int("ui_volume", d.ui_volume, 0, 10),
+            voice_hear: flag("voice_hear", true),
+            voice_mic: flag("voice_mic", false),
+            voice_activation: flag("voice_activation", false),
+            voice_threshold: int("voice_threshold", d.voice_threshold, 0, 10),
+            voice_volume: int("voice_volume", d.voice_volume, 0, 10),
+            voice_device: kv(text, "voice_device").unwrap_or("").chars().filter(|c| !c.is_control()).take(120).collect(),
             subtitles: flag("subtitles", false),
             sens: int("sens", d.sens, 1, 20),
             invert_y: flag("invert_y", d.invert_y),
@@ -327,6 +355,15 @@ impl Settings {
         s.push_str(&alloc::format!("map_zoom={}\nmap_preset_1={}\nmap_preset_2={}\nmap_preset_3={}\nmap_follow={}\nmap_grid={}\nmap_waypoints={}\n", self.map_zoom, self.map_preset[0], self.map_preset[1], self.map_preset[2], self.map_follow as i32, self.map_grid as i32, self.map_waypoints as i32));
         s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\ntexture_pack={}\npack_hue={}\npack_saturation={}\npack_brightness={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.texture_pack, self.pack_hue, self.pack_saturation, self.pack_brightness, self.auto_update as i32));
         s.push_str(&alloc::format!("picker_dir={}\n", self.picker_dir));
+        s.push_str(&alloc::format!(
+            "voice_hear={}\nvoice_mic={}\nvoice_activation={}\nvoice_threshold={}\nvoice_volume={}\nvoice_device={}\n",
+            self.voice_hear as i32,
+            self.voice_mic as i32,
+            self.voice_activation as i32,
+            self.voice_threshold,
+            self.voice_volume,
+            self.voice_device
+        ));
         for (i, a) in ACTIONS.iter().enumerate() {
             s.push_str(&alloc::format!("key_{}={}\n", a.1, self.keys[i]));
         }
@@ -371,6 +408,27 @@ mod tests {
         assert_eq!(odd.player_name, "bxyb");
         assert_eq!(odd.key(Action::Jump), 1);
         assert_eq!(Settings::parse(""), Settings::default());
+    }
+
+    #[test]
+    fn voice_chat_starts_muted_but_listening_and_keeps_its_settings() {
+        let d = Settings::default();
+        assert!(d.voice_hear && !d.voice_mic && !d.voice_activation);
+        assert_eq!(d.key(Action::Voice), 25);
+        let mut s = Settings::default();
+        s.voice_mic = true;
+        s.voice_hear = false;
+        s.voice_activation = true;
+        s.voice_threshold = 7;
+        s.voice_volume = 3;
+        s.voice_device = String::from("USB Microphone (Blue Yeti)");
+        s.keys[ACTIONS.len() - 1] = 30;
+        let back = Settings::parse(&s.to_text());
+        assert_eq!(back, s);
+        assert!(back.extra("voice_mic").is_empty() && back.extra("voice_device").is_empty(), "typed, not extras");
+        // Junk is brought back into range.
+        let odd = Settings::parse("voice_threshold=99\nvoice_volume=-4\nvoice_device=a\u{7}b\n");
+        assert_eq!((odd.voice_threshold, odd.voice_volume, odd.voice_device.as_str()), (10, 0, "ab"));
     }
 
     #[test]

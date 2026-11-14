@@ -43,6 +43,9 @@ struct Conn {
     last_move: Option<([f64; 3], f32, f32, u16)>,
     skin: Vec<u8>,
     skin_slim: bool,
+    /// What this player's voice chat is set to (`VOICE_` flags); 0 until they say.
+    voice_flags: u8,
+    voice_bucket: crate::net_voice::Bucket,
     /// Ticks since anything arrived; idle strangers are dropped.
     quiet: u32,
     gone: bool,
@@ -74,6 +77,8 @@ pub struct Server {
     pub perms: Vec<(String, u8)>,
     /// Players in creative mode (lower-case names); everyone else is in survival.
     pub creative: Vec<String>,
+    /// Voice chat: who is muted and how far a voice carries (see [`crate::net_voice`]).
+    pub voice: crate::net_voice::Rules,
 }
 
 const SEND_TIMEOUT: u32 = 3000;
@@ -83,7 +88,7 @@ impl Server {
         let listener = TcpListener::bind(cfg.port)?;
         Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
             kept: BTreeMap::new(), ops: Vec::new(), banned: Vec::new(), ops_dirty: false,
-            default_perms: crate::proto::PERM_BUILD, perms: Vec::new(), creative: Vec::new() })
+            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE, perms: Vec::new(), creative: Vec::new(), voice: Default::default() })
     }
 
     pub fn port(&self) -> u16 {
@@ -100,7 +105,7 @@ impl Server {
         use crate::proto::*;
         let lower = who.to_ascii_lowercase();
         let mut f = if self.ops.iter().any(|o| o.eq_ignore_ascii_case(who)) {
-            PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS
+            PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE
         } else {
             self.perms.iter().find(|p| p.0 == lower).map_or(self.default_perms, |p| p.1)
         };
@@ -125,27 +130,37 @@ impl Server {
 
     /// The permission lines kept with the operators.
     pub fn perm_text(&self) -> String {
-        let mut t = alloc::format!("default {}\n", self.default_perms);
+        // Flag 128 marks lines written since voice chat existed: older files
+        // have no voice bit, and voice is allowed unless a line says otherwise.
+        let mut t = alloc::format!("default {}\n", self.default_perms | 128);
         for (n, f) in &self.perms {
-            t.push_str(&alloc::format!("perm {} {}\n", f, n));
+            t.push_str(&alloc::format!("perm {} {}\n", f | 128, n));
         }
         for n in &self.creative {
             t.push_str(&alloc::format!("creative {}\n", n));
         }
+        t.push_str(&self.voice.text());
         t
+    }
+
+    /// Flags as written to the permissions file: files from before voice chat
+    /// (no 128 mark) allow voice.
+    fn read_flags(f: u8) -> u8 {
+        let kept = f & (crate::proto::PERM_BUILD | crate::proto::PERM_GAMEMODE | crate::proto::PERM_COMMANDS | crate::proto::PERM_VOICE);
+        if f & 128 == 0 { kept | crate::proto::PERM_VOICE } else { kept }
     }
 
     /// Read one line written by `perm_text`; false if it is not one.
     pub fn load_perm_line(&mut self, line: &str) -> bool {
         match line.split_once(' ') {
-            Some(("default", f)) => self.default_perms = f.trim().parse().unwrap_or(crate::proto::PERM_BUILD) & 7,
+            Some(("default", f)) => self.default_perms = Self::read_flags(f.trim().parse().unwrap_or(crate::proto::PERM_BUILD)),
             Some(("perm", rest)) => {
                 if let Some((f, n)) = rest.split_once(' ') {
-                    self.perms.push((n.to_ascii_lowercase(), f.parse::<u8>().unwrap_or(0) & 7));
+                    self.perms.push((n.to_ascii_lowercase(), Self::read_flags(f.parse::<u8>().unwrap_or(0))));
                 }
             }
             Some(("creative", n)) => self.creative.push(n.to_ascii_lowercase()),
-            _ => return false,
+            _ => return self.voice.load_line(line),
         }
         true
     }
@@ -163,6 +178,7 @@ impl Server {
                 "build" => PERM_BUILD,
                 "gamemode" => PERM_GAMEMODE,
                 "commands" => PERM_COMMANDS,
+                "voice" => PERM_VOICE,
                 _ => return None,
             };
             flags = if on { flags | bit } else { flags & !bit };
@@ -173,7 +189,7 @@ impl Server {
     fn describe(flags: u8) -> String {
         use crate::proto::*;
         let mut v: Vec<&str> = Vec::new();
-        for (bit, n) in [(PERM_BUILD, "build"), (PERM_GAMEMODE, "gamemode"), (PERM_COMMANDS, "commands")] {
+        for (bit, n) in [(PERM_BUILD, "build"), (PERM_GAMEMODE, "gamemode"), (PERM_COMMANDS, "commands"), (PERM_VOICE, "voice")] {
             if flags & bit != 0 {
                 v.push(n);
             }
@@ -193,7 +209,7 @@ impl Server {
                 let names: Vec<String> = self.conns.iter().filter(|c| c.joined && !c.gone).map(|c| if self.ops.iter().any(|o| o.eq_ignore_ascii_case(&c.name)) { alloc::format!("{}*", c.name) } else { c.name.clone() }).collect();
                 alloc::format!("online ({}): {}   (* = operator)", names.len(), names.join(", "))
             }
-            "/help" => String::from("server: /list /gamemode creative|survival (if allowed)   operators: /op /deop /kick /ban /pardon NAME  /say TEXT  /time 0..1  /perm NAME [+build -gamemode +commands]  /default [+build ...]  /gamemode NAME creative|survival"),
+            "/help" => String::from("server: /list /gamemode creative|survival (if allowed)   operators: /op /deop /kick /ban /pardon NAME  /say TEXT  /time 0..1  /perm NAME [+build -gamemode +commands +voice]  /default [+build ...]  /mute NAME  /unmute NAME  /voicerange BLOCKS  /gamemode NAME creative|survival"),
             "/gamemode" if arg(2).is_empty() || !is_op => {
                 // Your own game mode, if you may choose it.
                 let mode = if arg(2).is_empty() { arg(1) } else { arg(2) };
@@ -228,7 +244,29 @@ impl Server {
                         self.send_perms(None);
                         alloc::format!("{} may now: {}", arg(1), Self::describe(f))
                     }
-                    None => String::from("use /perm NAME +build -build +gamemode -gamemode +commands -commands"),
+                    None => String::from("use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice"),
+                }
+            }
+            "/mute" | "/unmute" if !arg(1).is_empty() => {
+                let mute = arg(0).eq_ignore_ascii_case("/mute");
+                let changed = self.voice.set_muted(arg(1), mute);
+                self.ops_dirty |= changed;
+                match (mute, changed) {
+                    (true, true) => alloc::format!("{} may not talk on voice chat", arg(1)),
+                    (true, false) => alloc::format!("{} is already muted", arg(1)),
+                    (false, true) => alloc::format!("{} may talk on voice chat again", arg(1)),
+                    (false, false) => alloc::format!("{} was not muted", arg(1)),
+                }
+            }
+            "/voicerange" => {
+                if w.len() == 1 {
+                    return alloc::format!("voices carry {} blocks", self.voice.range);
+                }
+                if self.voice.set_range(arg(1)) {
+                    self.ops_dirty = true;
+                    alloc::format!("voices now carry {} blocks", self.voice.range)
+                } else {
+                    alloc::format!("use /voicerange with a number of blocks from 2 to {}", crate::net_voice::MAX_RANGE)
                 }
             }
             "/default" => {
@@ -242,7 +280,7 @@ impl Server {
                         self.send_perms(None);
                         alloc::format!("players may now by default: {}", Self::describe(f))
                     }
-                    None => String::from("use /default +build -build +gamemode -gamemode +commands -commands"),
+                    None => String::from("use /default +build -build +gamemode -gamemode +commands -commands +voice -voice"),
                 }
             }
             "/op" if !arg(1).is_empty() => {
@@ -326,6 +364,43 @@ impl Server {
         }
     }
 
+    /// A talker's voice frame: pass it, with a loudness worked out from the
+    /// distance, to every player in range who has voice on. Frames from
+    /// players who may not talk (no permission, muted, mic off, too many)
+    /// are dropped without a word. Nothing is kept.
+    fn relay_voice(&mut self, from: usize, seq: u16, frame: &[u8]) {
+        let talker = &mut self.conns[from];
+        if talker.voice_flags & crate::proto::VOICE_TALK == 0 || !talker.voice_bucket.allow() || !crate::net_voice::frame_ok(frame) {
+            return;
+        }
+        let (id, name, at) = (talker.id, talker.name.clone(), talker.last_move.map(|m| m.0));
+        let Some(at) = at else { return };
+        if self.voice.is_muted(&name) || self.flags_for(&name) & crate::proto::PERM_VOICE == 0 {
+            return;
+        }
+        let listeners: Vec<Option<([f64; 3], bool)>> = self
+            .conns
+            .iter()
+            .enumerate()
+            .map(|(k, c)| {
+                if k == from || !c.joined || c.gone {
+                    return None;
+                }
+                c.last_move.map(|m| (m.0, c.voice_flags & crate::proto::VOICE_HEAR != 0))
+            })
+            .collect();
+        let gains = crate::net_voice::audience(at, &listeners, self.voice.range);
+        for (k, g) in gains.into_iter().enumerate() {
+            if let Some(gain) = g {
+                let bytes = Msg::Voice { id, seq, gain, frame: frame.to_vec() }.encode();
+                // A short wait: a listener who cannot keep up is dropped like any other.
+                if self.conns[k].stream.send_all(&bytes, 500).is_err() {
+                    self.conns[k].gone = true;
+                }
+            }
+        }
+    }
+
     /// Do one round of work: accept, read, relay. `tile` fetches a map tile
     /// for a relay request line. Returns lines for the server's log.
     pub fn tick(&mut self, dt: f32, tile: &mut dyn FnMut(&str) -> Option<Vec<u8>>) -> Vec<String> {
@@ -340,11 +415,14 @@ impl Server {
             let t = self.time;
             self.broadcast(&Msg::Time { time: t }, 0);
         }
+        for c in self.conns.iter_mut() {
+            c.voice_bucket.refill(dt);
+        }
         for _ in 0..8 {
             match self.listener.accept(0) {
                 Ok(Some(mut stream)) => {
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, quiet: 0, gone: false });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, gone: false });
                 }
                 _ => break,
             }
@@ -486,6 +564,10 @@ impl Server {
                             self.broadcast(&Msg::SetBlock { x, y, z, block }, id);
                         }
                     }
+                    Msg::VoiceState { flags } if joined => {
+                        self.conns[i].voice_flags = flags & (crate::proto::VOICE_HEAR | crate::proto::VOICE_TALK);
+                    }
+                    Msg::Voice { seq, frame, .. } if joined => self.relay_voice(i, seq, &frame),
                     Msg::State { channel, keep, key, data, .. } if joined => {
                         if keep {
                             if data.is_empty() {
@@ -572,29 +654,29 @@ mod tests {
         let mut s = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new() }).unwrap();
         s.ops.push(String::from("Ann"));
         // By default players build, and nothing else; operators do everything.
-        assert_eq!(s.flags_for("Bob"), PERM_BUILD);
-        assert_eq!(s.flags_for("ann"), PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS);
+        assert_eq!(s.flags_for("Bob"), PERM_BUILD | PERM_VOICE);
+        assert_eq!(s.flags_for("ann"), PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE);
         // Bob may not choose his game mode until he is allowed to.
         assert_eq!(s.command("Bob", "/gamemode creative"), "you may not change your game mode here");
         assert_eq!(s.command("Bob", "/perm Bob +gamemode"), "only operators may do that");
-        assert_eq!(s.command("Ann", "/perm Bob +gamemode -build"), "Bob may now: gamemode");
-        assert_eq!(s.flags_for("bob"), PERM_GAMEMODE);
+        assert_eq!(s.command("Ann", "/perm Bob +gamemode -build"), "Bob may now: gamemode voice");
+        assert_eq!(s.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE);
         assert_eq!(s.command("Bob", "/gamemode creative"), "Bob is now in creative mode");
-        assert_eq!(s.flags_for("Bob"), PERM_GAMEMODE | PERM_CREATIVE);
+        assert_eq!(s.flags_for("Bob"), PERM_GAMEMODE | PERM_VOICE | PERM_CREATIVE);
         assert_eq!(s.command("Bob", "/gamemode Ann survival"), "only operators may change someone else's game mode");
         // The default for everyone else.
-        assert_eq!(s.command("Ann", "/default -build"), "players may now by default: nothing");
-        assert_eq!(s.flags_for("Cy"), 0);
-        assert_eq!(s.command("Ann", "/default +build +commands"), "players may now by default: build commands");
-        assert_eq!(s.command("Ann", "/perm Bob +fly"), "use /perm NAME +build -build +gamemode -gamemode +commands -commands");
+        assert_eq!(s.command("Ann", "/default -build"), "players may now by default: voice");
+        assert_eq!(s.flags_for("Cy"), PERM_VOICE);
+        assert_eq!(s.command("Ann", "/default +build +commands"), "players may now by default: build commands voice");
+        assert_eq!(s.command("Ann", "/perm Bob +fly"), "use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice");
         // It is all kept.
         let text = s.perm_text();
         let mut t = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new() }).unwrap();
         for line in text.lines() {
             assert!(t.load_perm_line(line), "{line}");
         }
-        assert_eq!(t.default_perms, PERM_BUILD | PERM_COMMANDS);
-        assert_eq!(t.flags_for("bob"), PERM_GAMEMODE | PERM_CREATIVE);
+        assert_eq!(t.default_perms, PERM_BUILD | PERM_COMMANDS | PERM_VOICE);
+        assert_eq!(t.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE | PERM_CREATIVE);
     }
 
     #[test]
@@ -618,5 +700,37 @@ mod tests {
         assert_eq!(s.time, 0.25);
         assert!(s.command("Bob", "/time later").starts_with("use /time"));
         assert!(s.command("Bob", "/dance").starts_with("no such server command"));
+    }
+
+    #[test]
+    fn voice_permission_muting_and_range_are_commands_and_are_kept() {
+        use crate::proto::*;
+        let cfg = || Config { port: 0, seed: 1, kind: String::new(), max_players: 4, content: 0, states: 1, pack: Vec::new() };
+        let mut s = Server::bind(cfg()).unwrap();
+        s.ops.push(String::from("Ann"));
+        assert_eq!(s.command("Bob", "/mute Cy"), "only operators may do that");
+        assert_eq!(s.command("Bob", "/voicerange 5"), "only operators may do that");
+        assert_eq!(s.command("Ann", "/mute Cy"), "Cy may not talk on voice chat");
+        assert_eq!(s.command("Ann", "/mute cy"), "cy is already muted");
+        assert!(s.voice.is_muted("CY") && !s.voice.is_muted("Bob"));
+        assert_eq!(s.command("Ann", "/unmute Bob"), "Bob was not muted");
+        assert_eq!(s.command("Ann", "/voicerange 40"), "voices now carry 40 blocks");
+        assert!(s.command("Ann", "/voicerange far").starts_with("use /voicerange"));
+        assert_eq!(s.command("Ann", "/voicerange"), "voices carry 40 blocks");
+        assert_eq!(s.command("Ann", "/perm Bob -voice"), "Bob may now: build");
+        assert_eq!(s.flags_for("Bob") & PERM_VOICE, 0);
+        // All of it is kept, and files from before voice chat still allow voice.
+        let mut t = Server::bind(cfg()).unwrap();
+        for line in s.perm_text().lines() {
+            assert!(t.load_perm_line(line), "{line}");
+        }
+        assert!(t.voice.is_muted("cy") && t.voice.range == 40.0);
+        assert_eq!(t.flags_for("Bob") & PERM_VOICE, 0);
+        assert_eq!(t.flags_for("Dee") & PERM_VOICE, PERM_VOICE);
+        let mut old = Server::bind(cfg()).unwrap();
+        assert!(old.load_perm_line("default 1"));
+        assert!(old.load_perm_line("perm 1 eve"));
+        assert_eq!(old.flags_for("Zed"), PERM_BUILD | PERM_VOICE);
+        assert_eq!(old.flags_for("Eve"), PERM_BUILD | PERM_VOICE);
     }
 }

@@ -34,5 +34,5 @@ pub use util::archive::zip;
 pub use content::{block, textures, painters, palette, font, icon, bbmodel, model, pack_entities};
 pub use terrain::{chunk, world, worldgen, mesh, lod, save, jobs, weather};
 pub use game::{player, inventory, interact, entity, entity_explode, entity_variant, path, session, explosion, primed, crafting};
-pub use net::{proto, server, netplay};
+pub use net::{proto, server, netplay, voice as net_voice};
 pub use client::{app, render, ui, audio, update, picker, skinfile};

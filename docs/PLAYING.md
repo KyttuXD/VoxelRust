@@ -66,6 +66,7 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | M | The world map: the whole map on every world (Earth worlds: the Earth map) |
 | N | The world map with waypoints, on every world |
 | T * | chat |
+| V * | push to talk (voice chat on a server, with the microphone turned on in SETTINGS > VOICE) |
 | Esc | menu / close a screen |
 | F1 | hide or show the HUD |
 | F2 | save a screenshot (`screenshot-<number>.bmp` in the data folder) |
@@ -724,6 +725,47 @@ it are mostly there for packs, which run them from scripts and can add
 commands of their own. Variables, conditions and the rest of the scripting
 commands are explained in [MODDING.md](MODDING.md#scripts-and-commands).
 
+## Voice chat
+
+On a multiplayer server you can talk to the players near you, and hear them.
+Everything about it is in SETTINGS > VOICE, and nothing happens in single
+player.
+
+- **You are muted by default.** MICROPHONE is OFF until you turn it on, so
+  nobody hears you and the game never opens your microphone. You can still
+  hear players who have theirs on: **HEAR OTHER PLAYERS** is ON (turn it off
+  and the server stops sending you voices at all).
+- **Talking.** With the microphone ON, hold the push-to-talk key (V; the KEY
+  button, or SETTINGS > CONTROLS, changes it) and speak. Or choose TALK BY
+  VOICE: the game then sends your voice whenever it is louder than the
+  VOICE ACTIVATION LEVEL (0 hears anything, 10 only loud speech). The
+  microphone is opened only while push to talk is held (and for a moment
+  after) or, with voice activation, while the microphone is ON on a server.
+- **Who hears you.** Only players within 24 blocks (the server may change
+  that, `/voicerange`), louder the nearer they are. A server can forbid you
+  to talk (`THIS SERVER DOES NOT LET YOU TALK`) or mute you; you can still
+  hear.
+- **What you see.** A small microphone at the left of the screen while you
+  are on the air (green: your voice is being sent; grey: the microphone is
+  open and waiting for you to speak), a speaker beside the name tag of every
+  player who is talking, and their names in a short list under the
+  microphone.
+- **INPUT** chooses the microphone (DEFAULT is the system's own). **VOICE
+  VOLUME** is how loud other players are (0 to 10; 8 is as they came, then
+  the master volume on top). **TEST MICROPHONE** shows a level bar for as
+  long as you leave it on (leaving the tab turns it off); nothing is sent.
+  The bar's white mark is the voice-activation level.
+- **Privacy.** Nothing is ever recorded or stored: not by the game, not by the
+  server, which passes each 20 ms of speech to the players near you and
+  forgets it. See [MULTIPLAYER.md](MULTIPLAYER.md#voice-chat).
+- The sound is mono (the game's mixer has one channel), so voices do not
+  move left and right as you turn; they are just quieter with distance. In a
+  browser there is no microphone: you can hear but not talk.
+
+The settings are `voice_hear`, `voice_mic`, `voice_activation`,
+`voice_threshold`, `voice_volume`, `voice_device` and `key_voice` in
+`settings.txt`.
+
 ## Settings
 
 Settings are kept in `settings.txt` in the data folder. A switch a pack adds
@@ -760,6 +802,7 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   mod is on, its two rows: PLACE NOTICES (off, countries, regions or towns)
   and MAP DATA RELAY (host:port, for old machines; see
   [EARTH.md](EARTH.md)).
+- **VOICE**: proximity voice chat on servers, see [Voice chat](#voice-chat).
 - **SKIN**: pick one of the built-in looks or choose your own 64 x 64 picture with the built-in file browser. See
   [MODDING.md](MODDING.md#player-skins).
 - **MODS**: a switch for every mod, and UPDATE THE GAME AUTOMATICALLY. See

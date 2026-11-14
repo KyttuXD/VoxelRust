@@ -7,7 +7,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub const VERSION: u16 = 7;
+pub const VERSION: u16 = 8;
 
 /// What a player may do on a server (the flags of [`Msg::Perms`]).
 pub const PERM_BUILD: u8 = 1;
@@ -15,6 +15,13 @@ pub const PERM_GAMEMODE: u8 = 2;
 pub const PERM_COMMANDS: u8 = 4;
 /// Not a permission: the player is in creative mode (survival otherwise).
 pub const PERM_CREATIVE: u8 = 8;
+/// May talk over proximity voice chat (allowed by default).
+pub const PERM_VOICE: u8 = 16;
+/// Largest voice frame, in bytes (a 20 ms frame is about 163).
+pub const MAX_VOICE_FRAME: usize = 200;
+/// [`Msg::VoiceState`] flags: this client wants to hear others / may talk.
+pub const VOICE_HEAR: u8 = 1;
+pub const VOICE_TALK: u8 = 2;
 pub const DEFAULT_PORT: u16 = 25590;
 /// Most bytes of pack text in one message.
 pub const MAX_PACK_PART: usize = 40_000;
@@ -52,6 +59,15 @@ pub enum Msg {
     /// A player's skin: a small PNG, and whether their arms are slim
     /// (sent by its owner, relayed with their id).
     Skin { id: u16, png: Vec<u8>, slim: bool },
+    /// Voice chat: one 20 ms frame of ADPCM speech (see `client::voice::codec`).
+    /// Sent by a talker (`id` ignored, the server knows who it is) and relayed
+    /// by the server only to players in range, with `gain` (0..=255) already
+    /// worked out from the distance.
+    Voice { id: u16, seq: u16, gain: u8, frame: Vec<u8> },
+    /// Voice chat switches of this client (`VOICE_` flags): whether it wants
+    /// to hear others and whether it may talk (its microphone is on). Players
+    /// start with both off, so a client that never sends this costs nothing.
+    VoiceState { flags: u8 },
     // Server to client.
     Welcome { id: u16, seed: u32, time: f32, kind: String },
     /// The server will not let you in.
@@ -199,6 +215,19 @@ impl Msg {
                 w.u16(n as u16);
                 w.0.extend_from_slice(&data[..n]);
             }
+            Msg::Voice { id, seq, gain, frame } => {
+                w.u8(7);
+                w.u16(*id);
+                w.u16(*seq);
+                w.u8(*gain);
+                let n = frame.len().min(MAX_VOICE_FRAME);
+                w.u8(n as u8);
+                w.0.extend_from_slice(&frame[..n]);
+            }
+            Msg::VoiceState { flags } => {
+                w.u8(8);
+                w.u8(*flags);
+            }
             Msg::Welcome { id, seed, time, kind } => {
                 w.u8(10);
                 w.u16(*id);
@@ -275,6 +304,15 @@ impl Msg {
                 }
                 Msg::State { id, channel, keep, key, data: r.take(n)?.to_vec() }
             }
+            7 => {
+                let (id, seq, gain) = (r.u16()?, r.u16()?, r.u8()?);
+                let n = r.u8()? as usize;
+                if n > MAX_VOICE_FRAME {
+                    return None;
+                }
+                Msg::Voice { id, seq, gain, frame: r.take(n)?.to_vec() }
+            }
+            8 => Msg::VoiceState { flags: r.u8()? },
             10 => Msg::Welcome { id: r.u16()?, seed: r.u32()?, time: r.f32()?, kind: r.str()? },
             11 => Msg::Refuse { reason: r.str()? },
             12 => Msg::Join { id: r.u16()?, name: r.str()? },
@@ -379,6 +417,9 @@ mod tests {
             Msg::Time { time: 0.99 },
             Msg::Perms { flags: PERM_BUILD | PERM_CREATIVE },
             Msg::Pack { last: true, data: b"block x\n tex stone\n".to_vec() },
+            Msg::Voice { id: 5, seq: 65_535, gain: 200, frame: alloc::vec![9; 163] },
+            Msg::Voice { id: 0, seq: 0, gain: 0, frame: Vec::new() },
+            Msg::VoiceState { flags: VOICE_HEAR | VOICE_TALK },
         ];
         let mut inbox = Inbox::default();
         for m in &all {
@@ -411,6 +452,12 @@ mod tests {
         nan[3..7].copy_from_slice(&f32::NAN.to_le_bytes());
         let mut i = Inbox::default();
         i.push(&nan);
+        assert_eq!(i.next(), Next::Bad);
+        // A voice frame longer than allowed is not this protocol.
+        let mut big = Msg::Voice { id: 1, seq: 1, gain: 1, frame: alloc::vec![1; 10] }.encode();
+        big[8] = 201;
+        let mut i = Inbox::default();
+        i.push(&big);
         assert_eq!(i.next(), Next::Bad);
         // Names are cleaned of anything that is not printable ASCII.
         let mut hello = Msg::Join { id: 1, name: String::from("a\u{7}b") }.encode();

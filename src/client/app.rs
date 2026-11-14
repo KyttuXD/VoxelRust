@@ -314,7 +314,7 @@ pub const BUILD: &str = match option_env!("VOXELRUST_BUILD") {
 /// The project's public server (port 25590, the default).
 const PUBLIC_SERVER: &str = "195.62.47.178";
 
-const TABS: [&str; 6] = ["VIDEO", "AUDIO", "CONTROLS", "GAME", "SKIN", "MODS"];
+const TABS: [&str; 7] = ["VIDEO", "AUDIO", "CONTROLS", "GAME", "SKIN", "MODS", "VOICE"];
 
 /// A small arrow on the minimap at (cx, cy), its tip pointing the way `yaw`
 /// faces: a shaft of pixels and a head that widens back from the tip.
@@ -411,6 +411,8 @@ fn skin_pixels(base: &str, name: &str, player: &str) -> Option<Vec<u8>> {
 struct App {
     window: *mut c_void,
     audio: Audio,
+    /// Proximity voice chat (client::voice): off unless on a server and switched on.
+    voice: crate::client::voice::Voice,
     settings: Settings,
     settings_path: String,
     base: String,
@@ -1028,6 +1030,19 @@ impl App {
 
     // -------------------------------------------------------------- update
 
+    /// Voice chat, once a frame: the microphone out, other players in.
+    fn update_voice(&mut self, dt: f32) {
+        let key = (self.settings.key(Action::Voice) as usize).min(511);
+        let ptt = self.focus == 0 && self.keys[key] && matches!(self.screen, Screen::Game | Screen::Inventory | Screen::Craft | Screen::Chest | Screen::Map | Screen::FullMap);
+        let meter = self.screen == Screen::Settings && self.tab == 6;
+        let wire = self.session.as_mut().and_then(|g| {
+            let allowed = g.perms.map_or(true, |f| f & crate::proto::PERM_VOICE != 0);
+            let (pos, yaw) = (g.player.pos, g.player.yaw);
+            g.net.as_mut().map(|client| crate::client::voice::Wire { client, pos, yaw, allowed })
+        });
+        self.voice.update(dt, &self.settings, ptt, wire, &mut self.audio, meter);
+    }
+
     fn update(&mut self, r: &mut Renderer, dt: f32, real_dt: f32) {
         self.help_timer -= dt;
         self.ui_clock += real_dt;
@@ -1123,6 +1138,7 @@ impl App {
             }
         }
         self.audio.tick(real_dt);
+        self.update_voice(real_dt);
         self.paint_minimap(r);
         if self.screen == Screen::FullMap {
             self.work_full_map(r);
@@ -1564,6 +1580,15 @@ impl App {
             r.rect(x - tw * 0.5 - 2.0 * s, y - 2.0 * s, tw + 4.0 * s, 11.0 * s, [0, 0, 0, 110]);
             r.label(x - tw * 0.5, *y, s, name, WHITE);
         }
+        // Voice chat: your microphone, and who is talking.
+        {
+            let names: Vec<String> = match g.net.as_ref() {
+                Some(n) => self.voice.talking().filter_map(|id| n.players.get(&id)).map(|p| p.name.to_ascii_uppercase()).collect(),
+                None => Vec::new(),
+            };
+            let shown: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
+            crate::client::voice::hud::draw(r, s, h, self.voice.mic(), &shown, &self.tags);
+        }
         // Chat and notices, newest at the bottom, fading out.
         let lines: Vec<&(String, f32)> = g.chat.iter().filter(|c| c.1 > 0.0 || self.screen == Screen::Chat).collect();
         for (i, (line, left)) in lines.iter().rev().enumerate() {
@@ -1976,7 +2001,7 @@ impl App {
         ui.r.rect(0.0, 0.0, ui.w(), ui.h(), [8, 10, 18, 190]);
         let (_, y, _, bh, step) = Self::column(ui, 13);
         // Wider than the other menus: key names need the room.
-        let bw = (300.0 * s).min(ui.w() - 8.0 * s);
+        let bw = (360.0 * s).min(ui.w() - 8.0 * s);
         let x = (ui.w() - bw) * 0.5;
         let top = (y - 10.0 * s).max(24.0 * s);
         ui.centered(ui.w() * 0.5, top - 20.0 * s, 2.0, "SETTINGS", WHITE);
@@ -2120,6 +2145,17 @@ impl App {
                     let note = self.status.clone();
                     ui.text(x, row(8) + 2.0 * s, &note, ui::ACCENT);
                     changed |= ui.toggle(x, row(9), bw, bh, "UPDATE THE GAME AUTOMATICALLY", &mut st.auto_update);
+                }
+                6 => {
+                    let at = ACTIONS.iter().position(|a| a.0 == Action::Voice).unwrap_or(0);
+                    let label = if self.rebinding == Some(at) { String::from("PRESS A KEY") } else { key_name(st.keys[at]) };
+                    let online = self.session.as_ref().map_or(false, |g| g.net.is_some());
+                    let allowed = self.session.as_ref().map_or(false, |g| g.perms.map_or(true, |f| f & crate::proto::PERM_VOICE != 0));
+                    let asks = crate::client::voice::menu::draw(ui, st, &mut self.voice, (x, row(0), bw, bh, step), &label, online, allowed);
+                    changed |= asks.changed;
+                    if asks.rebind {
+                        self.rebinding = Some(at);
+                    }
                 }
                 _ => {
                     ui.text(x, row(0) + 4.0 * s, "PLAYER NAME", ui::DIM);
@@ -3363,6 +3399,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mut app = App {
         window,
         audio: if scripted { Audio::silent() } else { Audio::new() },
+        voice: crate::client::voice::Voice::new(),
         distance: settings.distance,
         settings,
         settings_path,

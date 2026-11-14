@@ -11,3 +11,4 @@ pub mod screens;
 pub mod skinfile;
 pub mod audio;
 pub mod update;
+pub mod voice;
