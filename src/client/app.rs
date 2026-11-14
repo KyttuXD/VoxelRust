@@ -282,6 +282,8 @@ struct App {
     distance: i32,
     tune_timer: f32,
     show_debug: bool,
+    /// Occlusion culling of the world's sections is off (F3 + O, `--show nocull`).
+    no_occlusion: bool,
     help_timer: f32,
     /// When the world started waiting for its first chunks (0 once playable).
     loading_since: f64,
@@ -1171,6 +1173,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         fps: 0.0,
         tune_timer: 0.0,
         show_debug: opts.show.contains("debug"),
+        no_occlusion: opts.show.contains("nocull"),
         help_timer: 0.0,
         loading_since: 0.0,
         wheel: Default::default(),
@@ -1545,13 +1548,18 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     let n = opts.bench.unwrap_or(1);
                     let total = sys::now() - *start;
                     logf!(
-                        "voxelrust: bench: {} frames, {:.2} ms average ({:.0} FPS), {:.2} ms worst, {} quads, view distance {}",
+                        "voxelrust: bench: {} frames, {:.2} ms average ({:.0} FPS), {:.2} ms worst, {} quads, view distance {}, {} sections drawn ({} frustum culled, {} occluded), {} draw calls, {:.2} ms culling",
                         n,
                         total * 1000.0 / n as f64,
                         n as f64 / total,
                         *worst * 1000.0,
                         r.stats.quads,
-                        app.distance
+                        app.distance,
+                        r.culler.stats.drawn,
+                        r.culler.stats.frustum,
+                        r.culler.stats.occluded,
+                        r.stats.draw_calls,
+                        r.culler.stats.micros as f32 / 1000.0
                     );
                     if opts.flypass.is_some() {
                         logf!("voxelrust: flypass: {} blocks flown, terrain three chunks ahead was missing for {} of {} frames", n / 2, unloaded_frames, n);

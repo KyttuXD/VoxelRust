@@ -33,6 +33,11 @@ impl App {
         if repeat {
             return;
         }
+        // F3 held with O: occlusion culling off and on again, to compare.
+        if sc == 18 && self.keys[key::F3 as usize] {
+            self.no_occlusion = !self.no_occlusion;
+            return;
+        }
         match sc {
             key::F2 => return self.save_screenshot(r),
             key::F3 => {

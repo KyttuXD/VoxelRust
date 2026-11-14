@@ -256,7 +256,28 @@ impl Frustum {
         let (r0, r1, r2, r3) = (row(0), row(1), row(2), row(3));
         let add = |a: [f32; 4], b: [f32; 4]| [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]];
         let sub = |a: [f32; 4], b: [f32; 4]| [a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]];
-        Frustum { planes: [add(r3, r0), sub(r3, r0), add(r3, r1), sub(r3, r1), add(r3, r2), sub(r3, r2)] }
+        let mut planes = [add(r3, r0), sub(r3, r0), add(r3, r1), sub(r3, r1), add(r3, r2), sub(r3, r2)];
+        // Unit normals, so a plane's value is a distance (for spheres).
+        for p in planes.iter_mut() {
+            let len = sqrtf(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+            if len > 1e-12 {
+                for v in p.iter_mut() {
+                    *v /= len;
+                }
+            }
+        }
+        Frustum { planes }
+    }
+
+    /// Whether a sphere (centre `c`, radius `r`, in the same space as the
+    /// matrix's input) may be seen: false only when it lies wholly outside a plane.
+    pub fn sphere_visible(&self, c: Vec3, r: f32) -> bool {
+        for p in &self.planes {
+            if p[0] * c.x + p[1] * c.y + p[2] * c.z + p[3] < -r {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn box_visible(&self, min: Vec3, max: Vec3) -> bool {
@@ -319,5 +340,11 @@ mod tests {
         // Looking down -Z: a box in front is visible, one behind is not.
         assert!(f.box_visible(Vec3::new(-1.0, -1.0, -10.0), Vec3::new(1.0, 1.0, -8.0)));
         assert!(!f.box_visible(Vec3::new(-1.0, -1.0, 8.0), Vec3::new(1.0, 1.0, 10.0)));
+        // The same for spheres: one in front, one behind, one behind but big enough to reach.
+        assert!(f.sphere_visible(Vec3::new(0.0, 0.0, -10.0), 1.0));
+        assert!(!f.sphere_visible(Vec3::new(0.0, 0.0, 10.0), 1.0));
+        assert!(f.sphere_visible(Vec3::new(0.0, 0.0, 3.0), 4.0));
+        // Far to the side of a 70 degree view.
+        assert!(!f.sphere_visible(Vec3::new(50.0, 0.0, -5.0), 2.0));
     }
 }

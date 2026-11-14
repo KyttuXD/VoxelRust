@@ -68,12 +68,13 @@ Run it with no options for the title screen. Options:
                       (one of each) or walking (the same, mid-stride);
                       craft:ITEM (the crafting table with that item's recipe
                       laid out), looks:NAME (with creatures: every look of
-                      the creatures with NAME in their id)
+                      the creatures with NAME in their id); nocull (no
+                      occlusion culling of hidden sections, to compare)
 
 Controls (all can be changed in Settings): WASD move, mouse look, Space jump,
 Ctrl sprint, Space twice to fly (creative), left click break, right click place, middle click pick,
 1-9 or wheel select, E inventory, M map, T chat, F1 hide the HUD,
-F2 screenshot, F3 details, F5 third-person view, F11 full screen, Esc menu.";
+F2 screenshot, F3 details (F3 + O: occlusion culling off/on), F5 third-person view, F11 full screen, Esc menu.";
 
 #[derive(Default)]
 pub(super) struct Opts {
