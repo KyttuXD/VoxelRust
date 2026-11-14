@@ -200,7 +200,7 @@ pub struct Tracker {
 /// Once a frame, from `Session::update`: creatures that appeared or died,
 /// sleeping, the weather, and the mods' per-frame hook.
 pub fn poll(g: &mut Session, dt: f32) {
-    g.ev.hooks_live = hooks::any_active();
+    g.ev.hooks_live = hooks::any_active() || crate::script::bridge::live();
     let (born, died) = (core::mem::take(&mut g.mobs.born), core::mem::take(&mut g.mobs.died));
     // Only whoever runs the world knows when creatures come and go.
     if g.runs_the_world() {

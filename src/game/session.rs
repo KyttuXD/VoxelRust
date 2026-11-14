@@ -1207,7 +1207,7 @@ impl Session {
                 if online && !self.may(crate::proto::PERM_COMMANDS) && !FREE.contains(&arg(0)) && arg(0).starts_with('/') {
                     return Some(String::from("YOU MAY NOT USE THAT COMMAND ON THIS SERVER"));
                 }
-                return crate::native::active().filter_map(|(_, n)| n.command).find_map(|command| command(self, &words));
+                return crate::native::active().filter_map(|(_, n)| n.command).find_map(|command| command(self, &words)).or_else(|| crate::script::bridge::command(self, &words));
             }
         })
     }
