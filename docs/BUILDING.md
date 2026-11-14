@@ -304,8 +304,10 @@ Switching it off:
 - UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS (`auto_update` in
   `settings.txt`, on by default): when off, the game still checks but only
   reports that a newer version is out.
-- A program built by hand with no release number is never replaced; it too
-  only reports a newer version. A release replaces a program only if its
+- A program built by hand gets a release number from its checkout (the number of
+  commits, as the release script counts them), so it updates too when a newer
+  release is out; only a build from a source copy with no git history has no
+  number, is never replaced, and only reports a newer version. A release replaces a program only if its
   number (`seq` in `nightly.txt`) is larger, so an old list cannot move a
   program back. The new program must pass its checksum and `--stamp` check.
 - A server (`--server`) updates itself as well, with the same options, but

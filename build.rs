@@ -174,6 +174,17 @@ fn main() {
             println!("cargo:rustc-env=VOXELRUST_COMMIT={c}");
         }
     }
+    // A build with no release number from the script still gets one: how many commits
+    // the checkout has, so that it can tell when a newer release is out and update
+    // itself (a build with no number never updates). The same rule as the release script.
+    if std::env::var("VOXELRUST_SEQ").is_err() {
+        let git = |args: &[&str]| std::process::Command::new("git").args(args).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+        if git(&["rev-parse", "--is-shallow-repository"]).as_deref() == Some("false") {
+            if let Some(n) = git(&["rev-list", "--count", "HEAD"]).filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())) {
+                println!("cargo:rustc-env=VOXELRUST_SEQ={n}");
+            }
+        }
+    }
     embed_data();
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     if var("CARGO_CFG_TARGET_OS") != "windows" {

@@ -436,6 +436,7 @@ fn run_inner(build: &str, folder: &str, install: bool, mirror: &str) {
     };
     // A program built by hand, without a release number, is left alone.
     let Some(own) = SEQ else {
+        log("this build has no release number, so it is left alone");
         return set_state(AVAILABLE);
     };
     if !is_newer(Some(own), listed) {
