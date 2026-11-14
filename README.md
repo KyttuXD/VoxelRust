@@ -195,8 +195,11 @@ one run; UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS turns the
 replacing off (the game then only says a newer version is out). Limits:
 
 - The download is done by the system's `curl`. Mac OS X 10.6's own `curl`
-  cannot make modern HTTPS connections, so **the old-Mac build cannot update
-  itself**: replace the app by hand.
+  cannot make modern HTTPS connections, so **the old-Mac build updates only
+  from a plain-HTTP mirror** (`update_mirror` in `settings.txt`, see
+  [docs/BUILDING.md](docs/BUILDING.md)); without one, replace the app by hand.
+  Whatever the source, the list of files is signed by the project's key and
+  the game refuses anything whose signature or checksum does not fit.
 - Only the program is replaced. The `mods` folder that came with it, the
   docs and SDL2 are not.
 - A program built by hand without a commit stamp is never replaced, and

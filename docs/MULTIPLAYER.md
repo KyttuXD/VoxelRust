@@ -51,9 +51,22 @@ voxelrust --server --world myworld
 | `--pack FILE` | content packs every player will use (see below) |
 | `--data DIR` | where the server keeps its files |
 | `--log FILE` | also write the server's output to a file |
+| `--no-update` | do not keep the server up to date (see below) |
+| `--update-mirror URL` | fetch updates from this web folder over plain HTTP, tried before the release (or `update_mirror=URL` in `settings.txt` in `--data`) |
 
 The server prints who joins and leaves, chat, and relay requests. Stop it
 with Ctrl+C.
+
+A server keeps itself up to date with the same updater as the game (see
+[BUILDING.md](BUILDING.md#how-the-game-updates-itself)): every ten minutes it
+looks at the nightly release, and installs a newer program and restarts into
+it once nobody is connected. What it reads is signed: the list of programs
+(`nightly.txt`) must carry a valid `nightly.txt.sig` made with the project's
+key, and each program must match its listed SHA-256, or nothing is installed
+(the server logs `update: the release list's signature is not valid`). A
+server that cannot reach GitHub (or sits behind a plain-HTTP-only path) can
+take the same files from a mirror with `--update-mirror`; the mirror needs no
+trust, because everything it serves is checked.
 
 ### Files it writes
 

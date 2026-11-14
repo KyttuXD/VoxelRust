@@ -12,6 +12,7 @@ pub mod skinfile;
 pub mod skinweb;
 pub mod audio;
 pub mod update;
+pub mod update_key;
 pub mod voice;
 pub mod startup;
 pub mod pack_text;

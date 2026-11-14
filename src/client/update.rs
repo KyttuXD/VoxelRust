@@ -15,6 +15,16 @@
 //! back; a program built without a number (a developer's build) is never
 //! replaced at all.
 //!
+//! The list is signed: beside it is `nightly.txt.sig`, an Ed25519 signature
+//! over the exact bytes of `nightly.txt`, made with a private key that only
+//! the release machine has. The matching public key is built into the program
+//! (`update_key.rs`). A list whose signature does not check is thrown away
+//! unread, wherever it came from, so the files can be served by anyone, even
+//! over plain HTTP: a mirror (the `update_mirror` setting, or `--update-mirror`)
+//! is how a program that cannot make HTTPS connections (the build for Mac OS X
+//! 10.6) is updated. Whoever serves the files can withhold an update but cannot
+//! make a program install anything the key's owner did not publish.
+//!
 //! A program only ever takes the file listed for its own build name (see
 //! `app::BUILD`), checked against its SHA-256 and size, and then run with
 //! `--stamp` to make sure it is the build the list describes. Only then does
@@ -22,7 +32,9 @@
 //! is next quit: the update thread never restarts a game in play, and the
 //! restarted copy never restarts again.
 
+use super::update_key::UPDATE_KEY;
 use crate::sys;
+use crate::util::crypto::ed25519;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
@@ -72,6 +84,8 @@ pub const AVAILABLE: u8 = 4;
 pub const FAILED: u8 = 5;
 /// Putting the new program in place. Quitting waits for it to finish.
 pub const SWAPPING: u8 = 6;
+/// A release list was found whose signature is wrong: nothing was used.
+pub const REFUSED: u8 = 7;
 static STATE: AtomicU8 = AtomicU8::new(IDLE);
 /// The release number of the program installed by this run.
 static INSTALLED_SEQ: AtomicU32 = AtomicU32::new(0);
@@ -125,6 +139,7 @@ pub fn message() -> &'static str {
         UPDATED => "A NEWER VERSION IS INSTALLED - THE GAME RESTARTS WHEN YOU QUIT",
         SWAPPING => "INSTALLING A NEWER VERSION...",
         AVAILABLE => "A NEWER VERSION IS OUT (AUTOMATIC UPDATES ARE OFF)",
+        REFUSED => "AN UPDATE WAS REFUSED: ITS SIGNATURE IS NOT VALID",
         // Not being able to look (no network, or the release is not open to
         // the public) is nothing the player need be told on every start.
         FAILED => "",
@@ -186,6 +201,99 @@ pub fn stamp_text(build: &str) -> String {
     alloc::format!("voxelrust-stamp {} {} {}", build, COMMIT, seq)
 }
 
+/// The most a list or its signature may weigh: nothing real is near this.
+const LIST_LIMIT: usize = 64 * 1024;
+
+/// A signature file: the 64 bytes as they are (what `openssl` writes), or as
+/// 128 hexadecimal digits, with spaces or a line end around them.
+pub fn parse_signature(bytes: &[u8]) -> Option<[u8; 64]> {
+    let mut out = [0u8; 64];
+    if bytes.len() == 64 {
+        out.copy_from_slice(bytes);
+        return Some(out);
+    }
+    let text = core::str::from_utf8(bytes).ok()?.trim();
+    if text.len() != 128 || !text.is_ascii() {
+        return None;
+    }
+    let digits = text.as_bytes();
+    for i in 0..64 {
+        let hi = (digits[i * 2] as char).to_digit(16)?;
+        let lo = (digits[i * 2 + 1] as char).to_digit(16)?;
+        out[i] = (hi * 16 + lo) as u8;
+    }
+    Some(out)
+}
+
+/// Whether `signature` (a signature file) is a valid signature of the
+/// exact bytes of `list` by the owner of `key`.
+pub fn list_is_signed_by(key: &[u8; 32], list: &[u8], signature: &[u8]) -> bool {
+    match parse_signature(signature) {
+        Some(sig) => ed25519::verify(key, list, &sig),
+        None => false,
+    }
+}
+
+/// Whether the list is signed by the project's key (the one in the program).
+pub fn list_is_signed(list: &[u8], signature: &[u8]) -> bool {
+    list_is_signed_by(&UPDATE_KEY, list, signature)
+}
+
+/// A mirror's address as the updater uses it: `http://` or `https://`, a host
+/// and a folder made of plain characters, and a `/` at the end. Anything
+/// else (a space, a quote, another kind of address) is no mirror.
+pub fn mirror_url(text: &str) -> Option<String> {
+    let t = text.trim();
+    let rest = t.strip_prefix("http://").or_else(|| t.strip_prefix("https://"))?;
+    let plain = rest.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '~' | '/' | ':' | '[' | ']' | '%' | '@' | '+'));
+    if rest.is_empty() || !plain || rest.starts_with('/') || t.len() > 300 {
+        return None;
+    }
+    let mut url = String::from(t);
+    if !url.ends_with('/') {
+        url.push('/');
+    }
+    Some(url)
+}
+
+/// Where to look, in order: the mirror, if there is one, then the project's
+/// release (not for a build that cannot make secure connections).
+fn sources(build: &str, mirror: &str) -> Vec<String> {
+    let mut list = Vec::new();
+    if let Some(m) = mirror_url(mirror) {
+        list.push(m);
+    }
+    if !build.starts_with("macos-legacy") {
+        list.push(String::from(RELEASE));
+    }
+    list
+}
+
+/// Fetch `nightly.txt` and its signature from `base`, and give the list only
+/// if the signature is right.
+/// Err(true) when a list was there but its signature is wrong, Err(false)
+/// when the files could not be read at all.
+fn fetch_signed_list(base: &str, folder: &str) -> Result<String, bool> {
+    let list_path = alloc::format!("{}nightly.txt", folder);
+    let sig_path = alloc::format!("{}nightly.txt.sig", folder);
+    sys::remove_file(&sig_path);
+    let Some(bytes) = fetch(&alloc::format!("{}nightly.txt", base), &list_path, 15) else {
+        log("could not read the release list");
+        return Err(false);
+    };
+    let sig = fetch(&alloc::format!("{}nightly.txt.sig", base), &sig_path, 15);
+    sys::remove_file(&sig_path);
+    let Some(sig) = sig else {
+        log("could not read the release list's signature; the list is not used");
+        return Err(false);
+    };
+    if bytes.len() > LIST_LIMIT || sig.len() > LIST_LIMIT || !list_is_signed(&bytes, &sig) {
+        log("the release list's signature is not valid; the list is refused");
+        return Err(true);
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 fn log(what: &str) {
     logf!("voxelrust: update: {}", what);
 }
@@ -229,27 +337,28 @@ fn stamp_matches(program: &str, build: &str, commit: &str, seq: u32, folder: &st
 /// Look at the release and, if `install`, put a newer program in place of
 /// this one. `folder` is the data folder: downloads and the stamp check go
 /// there. Blocks while it downloads: call it from a thread of its own.
-pub fn run(build: &str, folder: &str, install: bool) {
-    // The old-Mac build cannot do this: the `curl` of Mac OS X 10.6 has no
-    // way to make the secure connection the release needs. It is updated
-    // by hand (the release page says which file).
-    if build.starts_with("macos-legacy") {
+pub fn run(build: &str, folder: &str, install: bool, mirror: &str) {
+    // The old-Mac build cannot reach the release: the `curl` of Mac OS X 10.6
+    // has no way to make the secure connection it needs. It updates only from
+    // a mirror over plain HTTP (see the module notes); without one it is
+    // updated by hand (the release page says which file).
+    if sources(build, mirror).is_empty() {
         return;
     }
     // Let the game get its window up first.
     sys::sleep_ms(4000);
-    run_inner(build, folder, install);
+    run_inner(build, folder, install, mirror);
 }
 
 /// For a program that stays up for days (a server): look again every ten
 /// minutes until a newer version is installed. Call it from a thread of its own.
-pub fn watch(build: &str, folder: &str, install: bool) {
-    if build.starts_with("macos-legacy") {
+pub fn watch(build: &str, folder: &str, install: bool, mirror: &str) {
+    if sources(build, mirror).is_empty() {
         return;
     }
     sys::sleep_ms(4000);
     loop {
-        run_inner(build, folder, install);
+        run_inner(build, folder, install, mirror);
         if STATE.load(Ordering::Acquire) == UPDATED {
             return;
         }
@@ -265,19 +374,28 @@ fn tmp_folder(folder: &str) -> String {
     alloc::format!("{}tmp/update/", folder)
 }
 
-fn run_inner(build: &str, folder: &str, install: bool) {
+fn run_inner(build: &str, folder: &str, install: bool, mirror: &str) {
     set_state(CHECKING);
     let own = tmp_folder(folder);
     sys::make_dirs(&own);
     // Earlier versions kept the list loose in the data folder.
     sys::remove_file(&alloc::format!("{}nightly.txt", folder));
     let folder = own.as_str();
-    let list = match fetch(&alloc::format!("{}nightly.txt", RELEASE), &alloc::format!("{}nightly.txt", folder), 15) {
-        Some(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-        None => {
-            log("could not read the release list");
-            return set_state(FAILED);
+    // The first source with a list that is properly signed. Nothing in a
+    // list is believed before that: not the numbers, not the checksums.
+    let mut found = None;
+    let mut refused = false;
+    for base in sources(build, mirror) {
+        match fetch_signed_list(&base, folder) {
+            Ok(list) => {
+                found = Some((base, list));
+                break;
+            }
+            Err(bad_signature) => refused |= bad_signature,
         }
+    }
+    let Some((base, list)) = found else {
+        return set_state(if refused { REFUSED } else { FAILED });
     };
     let (Some(commit), Some(listed)) = (listed_commit(&list), listed_seq(&list)) else {
         log("the release list has no commit or sequence number");
@@ -309,7 +427,7 @@ fn run_inner(build: &str, folder: &str, install: bool) {
     // Left by an earlier update on Windows; it may still be locked, then it stays.
     sys::remove_file(&old);
 
-    let ok = match fetch(&alloc::format!("{}{}", RELEASE, file), &fresh, 300) {
+    let ok = match fetch(&alloc::format!("{}{}", base, file), &fresh, 300) {
         Some(bytes) => bytes.len() == size && crate::sha256::hex(&bytes) == sum.to_ascii_lowercase(),
         None => false,
     };
@@ -346,8 +464,8 @@ fn run_inner(build: &str, folder: &str, install: bool) {
 /// The same check and install as [`run`], without the wait, for the
 /// updater's end-to-end test (only in builds with the `update-test` feature).
 #[cfg(feature = "update-test")]
-pub fn run_now(build: &str, folder: &str) {
-    run_inner(build, folder, true);
+pub fn run_now(build: &str, folder: &str, mirror: &str) {
+    run_inner(build, folder, true, mirror);
 }
 
 /// Called when the game is quit, after everything is saved and the window
@@ -418,6 +536,92 @@ mod tests {
         assert_eq!(entry(&list, "windows-x86_64"), None);
         assert_eq!(entry(&list, "macos-x86_64"), None);
         assert_eq!(listed_commit("commit not-a-hash\n"), None);
+    }
+
+    // A list signed with a throwaway key (made with `openssl pkeyutl -sign -rawin`).
+    const TEST_KEY: &str = "e42289f222a499a8d102f7877ec0417e6feb82a73306cf3acfb8618470ecbf02";
+    const TEST_LIST: &str = "commit 1a2b3c4d5e6f\nseq 42\nlinux-x86_64 voxelrust-linux-x86_64.bin ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad 1500000\n";
+    const TEST_SIG: &str = "3a3340520238a222ea0bdfbb7475bcd3003c5e8b7aab4581b5bcac23527a46544010039ac4577cdf2cfcaaa90f9b3e03e4082c4152ccce266bf7a489a74d030a";
+
+    fn unhex(s: &str) -> Vec<u8> {
+        let digit = |c: u8| (c as char).to_digit(16).unwrap_or(0) as u8;
+        s.as_bytes().chunks(2).map(|p| digit(p[0]) * 16 + digit(p[1])).collect()
+    }
+
+    fn test_key() -> [u8; 32] {
+        let mut k = [0u8; 32];
+        k.copy_from_slice(&unhex(TEST_KEY));
+        k
+    }
+
+    #[test]
+    fn a_signed_list_is_accepted_and_read() {
+        let key = test_key();
+        let raw = unhex(TEST_SIG);
+        assert!(list_is_signed_by(&key, TEST_LIST.as_bytes(), &raw), "the signature file as raw bytes");
+        let hex_file = alloc::format!("{}\n", TEST_SIG);
+        assert!(list_is_signed_by(&key, TEST_LIST.as_bytes(), hex_file.as_bytes()), "as hexadecimal text");
+        // Once signed, it parses as always.
+        assert_eq!(listed_commit(TEST_LIST), Some("1a2b3c4d5e6f"));
+        assert_eq!(listed_seq(TEST_LIST), Some(42));
+        assert!(entry(TEST_LIST, "linux-x86_64").is_some());
+    }
+
+    #[test]
+    fn a_changed_list_or_signature_is_refused() {
+        let key = test_key();
+        let raw = unhex(TEST_SIG);
+        // A newer number, another checksum, one added byte, a lost newline.
+        let changed = [
+            TEST_LIST.replace("seq 42", "seq 43"),
+            TEST_LIST.replace("ba7816bf", "ba7816be"),
+            alloc::format!("{}\n", TEST_LIST),
+            String::from(TEST_LIST.trim_end()),
+            String::new(),
+        ];
+        for list in &changed {
+            assert!(!list_is_signed_by(&key, list.as_bytes(), &raw), "{list:?}");
+        }
+        // A signature that is damaged, short, long, or missing.
+        let mut bad = raw.clone();
+        bad[10] ^= 0x40;
+        assert!(!list_is_signed_by(&key, TEST_LIST.as_bytes(), &bad));
+        assert!(!list_is_signed_by(&key, TEST_LIST.as_bytes(), &raw[..63]));
+        assert!(!list_is_signed_by(&key, TEST_LIST.as_bytes(), b""));
+        assert!(!list_is_signed_by(&key, TEST_LIST.as_bytes(), b"not a signature"));
+        let mut long = raw.clone();
+        long.push(b'\n');
+        assert!(!list_is_signed_by(&key, TEST_LIST.as_bytes(), &long));
+        // Another key's name does not do.
+        let mut other = key;
+        other[0] ^= 1;
+        assert!(!list_is_signed_by(&other, TEST_LIST.as_bytes(), &raw));
+        // And the project's own key does not accept the throwaway key's list.
+        assert!(!list_is_signed(TEST_LIST.as_bytes(), &raw));
+    }
+
+    #[test]
+    fn mirror_addresses_are_checked() {
+        assert_eq!(mirror_url("http://example.org/vox").as_deref(), Some("http://example.org/vox/"));
+        assert_eq!(mirror_url(" http://192.168.1.5:8000/ ").as_deref(), Some("http://192.168.1.5:8000/"));
+        assert_eq!(mirror_url("https://example.org/a/b/").as_deref(), Some("https://example.org/a/b/"));
+        assert_eq!(mirror_url(""), None);
+        assert_eq!(mirror_url("ftp://example.org/"), None);
+        assert_eq!(mirror_url("http://"), None);
+        assert_eq!(mirror_url("http://exa mple.org/"), None);
+        assert_eq!(mirror_url("http://example.org/';rm -rf ~;'"), None);
+        assert_eq!(mirror_url("http://example.org/$(x)"), None);
+    }
+
+    #[test]
+    fn the_old_mac_build_looks_only_in_a_mirror() {
+        assert!(sources("macos-legacy-x86_64", "").is_empty());
+        assert!(sources("macos-legacy-x86_64", "not a url").is_empty());
+        assert_eq!(sources("macos-legacy-x86_64", "http://m.example/v"), alloc::vec![String::from("http://m.example/v/")]);
+        assert_eq!(sources("linux-x86_64", "").len(), 1);
+        let both = sources("linux-x86_64", "http://m.example/v/");
+        assert_eq!(both.len(), 2);
+        assert_eq!(both[0], "http://m.example/v/", "the mirror first");
     }
 
     #[test]
