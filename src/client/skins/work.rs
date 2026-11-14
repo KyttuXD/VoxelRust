@@ -14,7 +14,7 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// Skins up to this side are worked on in the frame itself.
 pub const INLINE_SIDE: usize = 256;
@@ -85,8 +85,49 @@ pub fn pack_own(side: usize, rgba: &[u8], limit: usize) -> (Vec<u8>, usize, Vec<
     }
 }
 
+/// Bytes of the decode jobs running right now (see [`inflight_bytes`]).
+static INFLIGHT: AtomicUsize = AtomicUsize::new(0);
+
+/// The total bytes of decode jobs currently running: each job's input (its PNG,
+/// or its RGBA for an own skin) plus the RGBA it makes. For memory accounting.
+pub fn inflight_bytes() -> usize {
+    INFLIGHT.load(Ordering::Relaxed)
+}
+
+/// Holds one running job's bytes in [`INFLIGHT`] until it is dropped, so a
+/// panic that unwinds through the job still gives them back.
+struct Inflight(usize);
+
+impl Inflight {
+    fn start(bytes: usize) -> Inflight {
+        INFLIGHT.fetch_add(bytes, Ordering::Relaxed);
+        Inflight(bytes)
+    }
+}
+
+impl Drop for Inflight {
+    fn drop(&mut self) {
+        INFLIGHT.fetch_sub(self.0, Ordering::Relaxed);
+    }
+}
+
+/// The bytes a job holds while it runs. A remote skin is counted at the size
+/// it asks for (clamped as [`run`] clamps it); the real picture may be smaller.
+fn job_bytes(job: &Job) -> usize {
+    let rgba = |side: usize| side.saturating_mul(side).saturating_mul(4);
+    match job {
+        Job::Own { rgba: px, .. } => px.len(),
+        Job::Remote { png, full, target, .. } => {
+            let out = (*target).max(64).min((*full).max(64));
+            png.len().saturating_add(rgba(out))
+        }
+        Job::Load { png, side, .. } => png.len().saturating_add(rgba(*side)),
+    }
+}
+
 /// Do a job.
 pub fn run(job: Job) -> Done {
+    let _running = Inflight::start(job_bytes(&job));
     match job {
         Job::Own { gen, side, rgba } => {
             let (hd, side, small) = pack_own(side, &rgba, MAX_SKIN);
@@ -160,6 +201,11 @@ pub fn submit(job: Job) {
         }
     });
     if sys::thread::spawn(task).is_none() {
+        // No worker thread (the system refused one, or the platform has none):
+        // the job is done here on the frame's thread after all. That can stall
+        // one frame for as long as a big skin takes to decode (seconds at most
+        // for a 4096 x 4096 one). It is acceptable because it is rare, and the
+        // only other outcome is that the skin never arrives.
         if let Some(job) = slot.with(|j| j.take()) {
             push_done(run(job));
         }
@@ -219,7 +265,58 @@ mod tests {
     }
 
     #[test]
+    fn a_custom_skin_file_is_unpacked_by_a_load_job() {
+        let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let px = noisy(64);
+        let png = crate::png::encode(64, 64, &px);
+        let Done::Loaded { gen, result } = run(Job::Load { gen: 7, side: 64, png }) else { panic!() };
+        assert_eq!(gen, 7);
+        let (side, rgba) = result.unwrap();
+        assert_eq!((side, rgba), (64, px));
+        // Bytes that are no picture give no skin, never a panic.
+        let Done::Loaded { result, .. } = run(Job::Load { gen: 1, side: 64, png: b"not a picture".to_vec() }) else { panic!() };
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn a_job_is_counted_by_its_input_and_its_rgba() {
+        let png = vec![0u8; 100];
+        assert_eq!(job_bytes(&Job::Load { gen: 1, side: 64, png: png.clone() }), 100 + 64 * 64 * 4);
+        assert_eq!(job_bytes(&Job::Remote { id: 1, gen: 1, full: 256, png: png.clone(), target: 128 }), 100 + 128 * 128 * 4);
+        // A target below 64, or a skin below 64, is counted at 64.
+        assert_eq!(job_bytes(&Job::Remote { id: 1, gen: 1, full: 32, png: png.clone(), target: 16 }), 100 + 64 * 64 * 4);
+        assert_eq!(job_bytes(&Job::Own { gen: 1, side: 64, rgba: vec![0u8; 64 * 64 * 4] }), 64 * 64 * 4);
+    }
+
+    #[test]
+    fn a_running_job_is_counted_until_it_ends() {
+        let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = inflight_bytes();
+        {
+            let _held = Inflight::start(1000);
+            assert_eq!(inflight_bytes(), before + 1000);
+        }
+        assert_eq!(inflight_bytes(), before);
+        let png = crate::png::encode(64, 64, &noisy(64));
+        run(Job::Load { gen: 1, side: 64, png });
+        assert_eq!(inflight_bytes(), before);
+    }
+
+    #[test]
+    fn a_panic_gives_the_counted_bytes_back() {
+        let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = inflight_bytes();
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _held = Inflight::start(5000);
+            panic!("expected: a job that panics");
+        }));
+        assert!(r.is_err());
+        assert_eq!(inflight_bytes(), before);
+    }
+
+    #[test]
     fn a_remote_skin_is_unpacked_at_the_size_asked_for() {
+        let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let px = noisy(256);
         let png = crate::png::encode(256, 256, &px);
         for (target, want) in [(256usize, 256usize), (1024, 256), (64, 64), (100, 100)] {
