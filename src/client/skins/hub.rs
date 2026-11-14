@@ -15,8 +15,9 @@ use alloc::vec::Vec;
 
 /// Most players whose skins are kept.
 const MAX_REMOTE: usize = 256;
-/// Most bytes of compressed skins kept for unpacking again.
-const KEEP_BYTES: usize = 24 << 20;
+/// Most bytes of compressed skins kept for unpacking again (a typical HD
+/// skin is a few hundred kilobytes, so a few dozen players keep theirs).
+const KEEP_BYTES: usize = 64 << 20;
 /// Most unpacking jobs under way at once.
 const MAX_JOBS: usize = 2;
 /// Seconds between looks at who is near.
@@ -187,10 +188,15 @@ impl SkinHub {
 
     /// Drop the compressed pictures of the skins whose players were near
     /// longest ago while more than [`KEEP_BYTES`] are kept. (Those skins stay
-    /// at the size they have.)
+    /// at the size they have until their player sends the skin again.)
     fn trim(&mut self) {
+        self.trim_to(KEEP_BYTES);
+    }
+
+    /// [`SkinHub::trim`] with the limit given.
+    fn trim_to(&mut self, keep: usize) {
         let mut kept: usize = self.remote.values().map(|e| e.png.len()).sum();
-        while kept > KEEP_BYTES {
+        while kept > keep {
             let pick = self.remote.iter().filter(|(_, e)| !e.png.is_empty() && e.cur != 0 && e.want == 0).min_by_key(|(id, e)| (e.last_near, **id)).map(|(id, _)| *id);
             let Some(id) = pick else { break };
             if let Some(e) = self.remote.get_mut(&id) {
@@ -392,5 +398,94 @@ mod tests {
         let own = hub.take_own().expect("packed");
         assert_eq!(own.side, 128);
         assert!(hub.take_own().is_none());
+    }
+
+    /// A picture of `len` bytes in all: a skin's header, then padding (the hub only reads the header
+    /// of a picture it is handed, and a trim does not decode it).
+    fn padded(len: usize) -> Vec<u8> {
+        let mut p = skin(64);
+        p.resize(len, 0);
+        p
+    }
+
+    #[test]
+    fn a_trim_past_the_limit_drops_the_least_recently_near_picture_and_its_skin_stays_put() {
+        let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        work::take_done();
+        let (mut hub, mut gpu, mut tex) = (SkinHub::default(), Mock::default(), BTreeMap::new());
+        for id in 1..=3 {
+            hub.on_skin(id, skin(128));
+        }
+        // Player 1 is far (60 blocks, still a middle-tier skin of 128); 2 and 3 are near.
+        hub.plan(1.0, &dists(&[(1, 60.0), (2, 10.0), (3, 10.0)]), &mut gpu, &mut tex);
+        hub.pump(&mut gpu, &mut tex);
+        assert_eq!(hub.remote[&1].last_near, 0);
+        assert!(hub.remote[&2].last_near > 0 && hub.remote[&3].last_near > 0);
+        let one = hub.kept_bytes() / 3;
+        assert!(one > 0);
+        // Room for two pictures only: player 1's (the least recently near) goes.
+        hub.trim_to(2 * one);
+        assert!(hub.remote[&1].png.is_empty());
+        assert!(!hub.remote[&2].png.is_empty() && !hub.remote[&3].png.is_empty());
+        assert_eq!(hub.kept_bytes(), 2 * one);
+        // Its skin stays on the card at the size it had, and no job is started for it.
+        assert_eq!(gpu.live[&tex[&1]], 128);
+        hub.plan(1.0, &dists(&[(1, 10.0), (2, 10.0), (3, 10.0)]), &mut gpu, &mut tex);
+        assert_eq!(hub.inflight, 0, "a skin whose picture is gone is not unpacked again");
+        hub.pump(&mut gpu, &mut tex);
+        assert_eq!(gpu.live[&tex[&1]], 128);
+        // When its player sends the skin again, it is planned afresh and comes up at the new size.
+        hub.on_skin(1, skin(192));
+        hub.plan(0.0, &dists(&[(1, 10.0), (2, 10.0), (3, 10.0)]), &mut gpu, &mut tex);
+        hub.pump(&mut gpu, &mut tex);
+        assert_eq!(gpu.live[&tex[&1]], 192);
+        assert_eq!(gpu.live.len(), 3, "no texture is left behind");
+    }
+
+    #[test]
+    fn the_real_limit_is_held_by_pump_and_drops_the_least_recently_near_first() {
+        let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        work::take_done();
+        let (mut hub, mut gpu, mut tex) = (SkinHub::default(), Mock::default(), BTreeMap::new());
+        // Five pictures of a quarter of the limit (and a byte more) each: the limit holds three.
+        for id in 1..=5u16 {
+            hub.on_skin(id, padded(KEEP_BYTES / 4 + 1));
+            let e = hub.remote.get_mut(&id).expect("kept");
+            e.cur = 64;
+            e.last_near = id as u64;
+        }
+        hub.pump(&mut gpu, &mut tex);
+        assert!(hub.remote[&1].png.is_empty() && hub.remote[&2].png.is_empty());
+        assert!(!hub.remote[&3].png.is_empty() && !hub.remote[&4].png.is_empty() && !hub.remote[&5].png.is_empty());
+        assert!(hub.kept_bytes() <= KEEP_BYTES);
+        assert_eq!(hub.kept_bytes(), 3 * (KEEP_BYTES / 4 + 1));
+    }
+
+    #[test]
+    fn past_max_remote_a_new_player_is_refused_and_a_known_one_is_still_taken() {
+        let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        work::take_done();
+        let mut hub = SkinHub::default();
+        for id in 0..MAX_REMOTE as u16 {
+            hub.on_skin(id, skin(64));
+        }
+        assert_eq!(hub.remote.len(), MAX_REMOTE);
+        // One more player: refused, and nothing else changes.
+        let extra = MAX_REMOTE as u16;
+        hub.on_skin(extra, skin(64));
+        assert_eq!(hub.remote.len(), MAX_REMOTE);
+        assert!(!hub.remote.contains_key(&extra));
+        // A player already there may send a new skin (it is not a new place).
+        hub.on_skin(7, skin(128));
+        assert_eq!(hub.remote[&7].full, 128);
+        assert_eq!(hub.remote.len(), MAX_REMOTE);
+        // A picture that is no skin does not take a place either.
+        hub.remote.remove(&0);
+        hub.on_skin(extra, b"not a picture".to_vec());
+        assert_eq!(hub.remote.len(), MAX_REMOTE - 1);
+        // Once a place is free, the new player is taken.
+        hub.on_skin(extra, skin(64));
+        assert!(hub.remote.contains_key(&extra));
+        assert_eq!(hub.remote.len(), MAX_REMOTE);
     }
 }

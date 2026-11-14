@@ -567,10 +567,9 @@ impl App {
     fn close_world(&mut self, r: &mut Renderer) {
         self.loading_since = 0.0;
         // Other players' skins belong to the players of that visit (their numbers are used again
-        // on the next one): forget them, so nobody wears someone else's skin.
-        let stale: Vec<u32> = self.remote_skins.values().copied().collect();
-        r.delete_textures(&stale);
-        self.remote_skins.clear();
+        // on the next one): the hub forgets them, so nobody wears someone else's skin.
+        self.skins.forget_all(r, &mut self.remote_skins);
+        self.remote_slim.clear();
         // The map's selection, name box and view belong to the world it was in.
         self.full = None;
         if let Some(mut s) = self.session.take() {
