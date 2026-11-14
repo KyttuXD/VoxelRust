@@ -31,6 +31,10 @@ mod pvp_flow;
 #[path = "sync/server_side.rs"]
 mod sync_flow;
 
+/// The server's half of land from the server (see `net/chunks`).
+#[path = "chunks/server_side.rs"]
+mod chunks_flow;
+
 pub struct Config {
     pub port: u16,
     pub seed: u32,
@@ -91,6 +95,8 @@ struct Conn {
     sync: crate::net::sync::state::ConnSync,
     /// Player versus player: their gear, last hit, spawn protection (see `net/pvp`).
     pvp: crate::net::pvp::state::ConnPvp,
+    /// What they may still ask of the land the server sends (see `net/chunks`).
+    chunks: crate::net::chunks::limiter::ConnChunks,
 }
 
 pub struct Server {
@@ -133,6 +139,8 @@ pub struct Server {
     sync: crate::net::sync::state::ServerSync,
     /// Player versus player: the switches, the clock and the kills (see `net/pvp`).
     pub pvp: crate::net::pvp::state::Pvp,
+    /// Makes the land that players ask for, when this server is the only one that can (see `net/chunks`).
+    chunkgen: Option<crate::net::chunks::gen::ChunkGen>,
 }
 
 const SEND_TIMEOUT: u32 = 3000;
@@ -160,7 +168,7 @@ impl Server {
         let listener = TcpListener::bind(cfg.port)?;
         Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
             kept: BTreeMap::new(), kept_bytes: 0, ops: Vec::new(), banned: Vec::new(), ops_dirty: false, spots: BTreeMap::new(), spots_dirty: false,
-            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE | crate::proto::PERM_PVP, perms: Vec::new(), creative: Vec::new(), voice: Default::default(), acct: Default::default(), pvp: Default::default(), sync: Default::default() })
+            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE | crate::proto::PERM_PVP, perms: Vec::new(), creative: Vec::new(), voice: Default::default(), acct: Default::default(), pvp: Default::default(), sync: Default::default(), chunkgen: None })
     }
 
     /// A player number no one here has: never 0 (the server) or 65535 (what
@@ -588,6 +596,7 @@ impl Server {
         for c in self.conns.iter_mut() {
             c.voice_bucket.refill(dt);
             c.throttle.refill(dt);
+            c.chunks.refill(dt);
             c.skin.tick(dt);
         }
         self.account_tick(dt);
@@ -603,7 +612,7 @@ impl Server {
                         continue;
                     }
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: crate::net::skinslot::SkinSlot::deferred(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default() });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: crate::net::skinslot::SkinSlot::deferred(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default(), chunks: Default::default() });
                 }
                 _ => break,
             }
@@ -769,6 +778,7 @@ impl Server {
                         if may && room && (0..CH).contains(&y) && block < self.cfg.states {
                             self.edits.insert((x, y, z), block);
                             self.dirty = true;
+                            self.chunk_edited(x, z);
                             self.broadcast(&Msg::SetBlock { x, y, z, block }, id);
                             // Two players changing one block at once would each be left with the
                             // other's: the one who came last (the server's copy) is told to both.
@@ -827,7 +837,7 @@ impl Server {
                             ch::PVP_GEAR => self.pvp_gear(i, &data, &mut log),
                             _ => {}
                         }
-                        if (ch::PVP_HIT..=ch::PVP_GEAR).contains(&channel) {
+                        if (ch::PVP_HIT..=ch::PVP_GEAR).contains(&channel) || !crate::net::relay_rules::player_may_send(channel) {
                             continue;
                         }
                         let flags = self.flags_for(&self.conns[i].name);
@@ -875,6 +885,10 @@ impl Server {
                         self.sync.history.push(&alloc::format!("<{}> {}", self.conns[i].name, text));
                         self.broadcast(&Msg::Chat { id, text }, id);
                     }
+                    // Land, for a client that cannot make the world's terrain (protocol 15 and later only).
+                    Msg::ChunkRequest { cx, cz } if joined && self.conns[i].proto >= crate::proto::CHUNK_PROTOCOL => {
+                        self.on_chunk_request(i, cx, cz, &mut log);
+                    }
                     // Anything else from a client is not allowed.
                     _ => {
                         self.conns[i].gone = true;
@@ -914,6 +928,8 @@ impl Server {
                 c.gone = true;
             }
         }
+        // Land that was asked for and has been made.
+        self.chunk_tick();
         // A few pieces of skins for whoever is waiting for them.
         for c in self.conns.iter_mut().filter(|c| !c.gone && !c.skin_out.is_empty()) {
             let mut batch = Vec::new();
@@ -1149,7 +1165,7 @@ mod tests {
         // One still in use after the counter went round is not given out again.
         let mut s = Server::bind(plain_config()).unwrap();
         let stream = crate::sys::net::TcpStream::connect("127.0.0.1", s.port(), 2000).unwrap();
-        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default() });
+        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default(), chunks: Default::default() });
         s.next_id = 6;
         assert_eq!((s.fresh_id(), s.fresh_id()), (6, 8));
     }

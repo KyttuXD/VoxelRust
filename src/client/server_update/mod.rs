@@ -11,6 +11,7 @@
 //!   into the new program, and how it leaves (self-restart, or an exit code
 //!   for `scripts/server-supervisor.sh`).
 
+pub mod game_restart;
 pub mod restart;
 pub mod schedule;
 pub mod watch;

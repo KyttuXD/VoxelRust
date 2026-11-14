@@ -56,10 +56,13 @@ pub fn surface_in(get: &dyn Fn(i32, i32, i32) -> Block, x: i32, z: i32, lo: i32,
     let mut y = hi;
     while y >= lo {
         let b = get(x, y, z);
-        if b != AIR && matches!(fluid_of(b), Some((true, _))) && get(x, y + 1, z) == AIR {
+        if b != AIR && matches!(fluid_of(b), Some((true, _))) && get(x, y.saturating_add(1), z) == AIR {
             return Some(y);
         }
-        y -= 1;
+        y = match y.checked_sub(1) {
+            Some(v) => v,
+            None => break,
+        };
     }
     None
 }
@@ -107,7 +110,7 @@ pub fn tick(g: &mut Session, dt: f32) {
         let (ang, dist) = (a * crate::math::TAU, REACH as f32 * d * d);
         let x = crate::math::floord(p[0] + (crate::math::cosf(ang) * dist) as f64);
         let z = crate::math::floord(p[2] + (crate::math::sinf(ang) * dist) as f64);
-        let py = crate::math::floord(p[1]);
+        let py = crate::math::floord(p[1]).clamp(-(1 << 28), 1 << 28);
         let y = match surface_in(&|x, y, z| g.world.get(x, y, z), x, z, py - DOWN, py + UP) {
             Some(y) => y,
             None => continue,
@@ -129,6 +132,13 @@ pub fn tick(g: &mut Session, dt: f32) {
 mod tests {
     use super::*;
     use crate::block::reg;
+
+    #[test]
+    fn a_search_at_the_end_of_the_numbers_does_not_overflow() {
+        let none = |_: i32, _: i32, _: i32| AIR;
+        assert_eq!(surface_in(&none, 0, 0, i32::MAX - 3, i32::MAX), None);
+        assert_eq!(surface_in(&none, 0, 0, i32::MIN, i32::MIN + 2), None);
+    }
 
     #[test]
     fn nothing_beyond_twenty_four_blocks() {

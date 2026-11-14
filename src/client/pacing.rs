@@ -54,7 +54,7 @@ pub fn cap(f: &Facts) -> Option<i32> {
 /// most `limit` percent of the time: a card that is asked for frames as fast as it can make
 /// them sits at 100 percent, and this leaves it idle the rest of the time.
 pub fn gpu_wait_ms(limit: i32, spent: f64) -> u32 {
-    if !(10..100).contains(&limit) || spent <= 0.0 {
+    if !(10..100).contains(&limit) || !(spent > 0.0) {
         return 0;
     }
     let rest = spent * (100.0 / limit as f64 - 1.0) * 1000.0;
@@ -141,5 +141,7 @@ mod tests {
         assert_eq!(gpu_wait_ms(100, 0.005), 0, "no limit");
         assert_eq!(gpu_wait_ms(0, 0.005), 0, "nonsense is no limit");
         assert_eq!(gpu_wait_ms(20, 1.0), 100, "a hitch is not stretched out");
+        assert_eq!(gpu_wait_ms(50, f64::NAN), 0, "a time that is not a number rests nothing");
+        assert_eq!(gpu_wait_ms(50, -1.0), 0);
     }
 }

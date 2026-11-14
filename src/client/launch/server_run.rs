@@ -224,7 +224,12 @@ pub(super) fn run_server(opts: &Opts, base: &str, pack_text: &[u8], pack_paths: 
         logf!("voxelrust: checking for a new release every {} seconds", interval);
         sys::thread::spawn(alloc::boxed::Box::new(move || crate::client::server_update::watch::watch(BUILD, &scratch, &mirror, interval, &state_dir)));
     }
-    let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, crate::client::mods::serving::served(pack_paths, mods_off, only.as_deref()), &Settings::default())?;
+    let (mut server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, crate::client::mods::serving::served(pack_paths, mods_off, only.as_deref()), &Settings::default())?;
+    // A world whose land only this server's code can make: players whose game lacks that code
+    // are sent the land chunk by chunk (see net/chunks).
+    if server.enable_chunk_stream() {
+        logf!("voxelrust: this world's land is made here and sent to players whose game cannot make it");
+    }
     let address = sys::net::local_address().unwrap_or_else(|| String::from("<this machine's address>"));
     logf!("voxelrust: players join with:  voxelrust --join {}:{}", address, server.port());
     if server_loop(server, edits_path, false) {

@@ -18,6 +18,10 @@ use crate::worldgen;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+/// Land from the server, for worlds this game cannot generate (see `net/chunks`).
+#[path = "land_stream.rs"]
+mod land_stream;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GameMode {
     Survival,
@@ -448,6 +452,8 @@ impl Session {
         let meta = meta.unwrap_or_default();
         let seed = kv(&meta, "seed").and_then(|v| v.parse::<u32>().ok()).unwrap_or(new.seed);
         let kind = kv(&meta, "kind").and_then(worldgen::WorldKind::parse).unwrap_or_else(|| new.kind.clone());
+        // A saved world of a kind this game does not know (a mod it lacks) is played with ordinary terrain.
+        let missing_kind = kv(&meta, "kind").filter(|k| worldgen::WorldKind::parse(k).is_none()).map(|k| String::from(k.split(' ').next().unwrap_or("")));
         let mode = match kv(&meta, "gamemode") {
             Some("creative") => GameMode::Creative,
             Some("survival") => GameMode::Survival,
@@ -631,6 +637,9 @@ impl Session {
                 open(g)
             }
         });
+        if let Some(word) = missing_kind {
+            session.push_chat(alloc::format!("THIS WORLD NEEDS THE {} MOD", word.to_ascii_uppercase()));
+        }
         crate::game::hooks::world_loaded(&mut session);
         session
     }
@@ -648,7 +657,10 @@ impl Session {
     pub fn join_with(base: &str, address: &str, name: &str, threads: usize, auth: &crate::net::accounts::client::JoinAuth) -> Result<Session, crate::net::accounts::client::ConnectError> {
         let (host, port) = crate::netplay::parse_address(address).ok_or_else(|| crate::net::accounts::client::ConnectError::Failed(String::from("TYPE THE SERVER'S ADDRESS, LIKE HOST:25590")))?;
         let (client, welcome) = crate::netplay::Client::connect_auth(&host, port, name, auth)?;
-        let kind = worldgen::WorldKind::parse(&welcome.kind).unwrap_or(worldgen::WorldKind::Normal);
+        // A kind this game cannot make (a mod's terrain that is not in this build): the server sends the land.
+        let parsed = worldgen::WorldKind::parse(&welcome.kind);
+        let from_server = parsed.is_none();
+        let kind = parsed.unwrap_or(worldgen::WorldKind::Normal);
         let new = NewWorld { seed: welcome.seed, mode: GameMode::Survival, kind };
         // A name no saved world can have, so nothing on disk is touched.
         let mut s = Session::open(base, "~multiplayer", &new, threads);
@@ -657,6 +669,10 @@ impl Session {
         s.net = Some(client);
         s.mod_sync = Some(crate::net::modsync::client::ClientSync::new(base, &host, port));
         s.push_chat(alloc::format!("CONNECTED TO {}", address.to_ascii_uppercase()));
+        if from_server {
+            s.world.start_streaming(&welcome.kind);
+            s.push_chat(String::from("THIS WORLD'S LAND COMES FROM THE SERVER"));
+        }
         Ok(s)
     }
 
@@ -763,6 +779,12 @@ impl Session {
     /// packs. Returns what to tell the player; `None` if `line` is not a
     /// command this knows.
     pub fn command(&mut self, line: &str) -> Option<String> {
+        // The short game mode forms (`/gm c`) also work from scripts and `--run` lines.
+        let lower = line.to_ascii_lowercase();
+        let spelled = crate::game::aliases::expand(&lower, self.net.is_some());
+        if spelled != lower {
+            return self.run(&spelled, 0);
+        }
         self.run(line, 0)
     }
 
@@ -1278,7 +1300,9 @@ impl Session {
             "/blockat" => match (arg(1).parse::<i32>(), arg(2).parse::<i32>(), arg(3).parse::<i32>()) {
                 (Ok(x), Ok(y), Ok(z)) => {
                     let b = self.world.get(x, y, z);
-                    alloc::format!("BLOCK AT {} {} {}: {} (STATE {}, {} LOADED)", x, y, z, block::def(b).id.to_ascii_uppercase(), b, if self.world.is_loaded(x, z) { "CHUNK" } else { "NO CHUNK" })
+                    // (And the colour distant terrain gives that column, to compare with what you see far off.)
+                    let far = self.world.far_colour_at(x, z);
+                    alloc::format!("BLOCK AT {} {} {}: {} (STATE {}, {} LOADED)  FAR COLOUR {} {} {}", x, y, z, block::def(b).id.to_ascii_uppercase(), b, if self.world.is_loaded(x, z) { "CHUNK" } else { "NO CHUNK" }, far[0], far[1], far[2])
                 }
                 _ => String::from("USE  /BLOCKAT X Y Z"),
             },
@@ -1823,6 +1847,8 @@ impl Session {
                 crate::netplay::Event::Left(who) => self.fire(crate::game::events::LEAVE, &who.to_ascii_lowercase()),
                 // (Remote players keep their emote on their own record in `net.players`.)
                 crate::netplay::Event::Emote(..) => {}
+                crate::netplay::Event::ChunkCaps(flags, limit) => self.land_caps(flags, limit),
+                crate::netplay::Event::Chunk(cx, cz, part, parts, data) => self.land_part(cx, cz, part, parts, data),
                 crate::netplay::Event::Skin(id, png, slim) => {
                     // (Skins pile up only if the screen is not drawing: keep the newest, at most
                     // 64 and 8 MiB of pictures.)
@@ -1837,7 +1863,8 @@ impl Session {
                     let host = self.runs_the_world();
                     match channel {
                         // The server sends back where we were, and how we were.
-                        ch::PLAYER if self.net.is_some() => match key.as_str() {
+                        // (Only the server's word, player number 0.)
+                        ch::PLAYER if self.net.is_some() && from == 0 => match key.as_str() {
                             "health" => self.restore_health(&text),
                             _ => self.go_to_spot(&text),
                         },
@@ -1915,6 +1942,8 @@ impl Session {
                 }
             }
         }
+        // Ask the server for the land the world is missing, if it is the server's to give.
+        self.land_pump(dt);
         // How we are, for the others (and the server's memory of us).
         self.share_vitals(dt);
     }

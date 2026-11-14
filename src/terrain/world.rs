@@ -6,14 +6,24 @@ use crate::chunk::{chunk_of, ChunkData, CH, CW};
 use crate::jobs::{Job, JobResult, Pool};
 use crate::math::{floord, Vec3};
 use crate::mesh::MeshData;
+use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+
+/// Land that comes from the server, for worlds this game cannot generate.
+#[path = "world_remote.rs"]
+mod remote;
 
 /// Where changed chunks are kept between sessions.
 pub trait ChunkStore {
     fn load(&mut self, cx: i32, cz: i32) -> Option<ChunkData>;
     fn save(&mut self, cx: i32, cz: i32, data: &ChunkData);
+    /// Whether what is saved here lasts (a world's files): then distant terrain also shows
+    /// the chunks the player changed in earlier sessions (see `far_dirty`).
+    fn persistent(&self) -> bool {
+        false
+    }
 }
 
 /// A store that remembers nothing.
@@ -70,7 +80,9 @@ pub struct Chunk {
     /// The mesh does not match the blocks any more.
     dirty: bool,
     /// Changed by the player since it was last saved.
-    modified: bool,
+    pub(crate) modified: bool,
+    /// Came from the save (it was changed in an earlier session).
+    pub(crate) from_store: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -87,7 +99,13 @@ pub struct Hit {
 #[derive(Default)]
 pub struct FarTile {
     pub mesh: Option<GpuMesh>,
-    requested: bool,
+    pub(crate) requested: bool,
+    /// A job for this tile is running.
+    pub(crate) busy: bool,
+    /// What the tile shows is out of date (an edit arrived): it is made again soon.
+    pub dirty: bool,
+    /// When it was last finished (seconds on the clock; 0 where there is none).
+    pub(crate) built_at: f64,
 }
 
 pub struct World {
@@ -105,6 +123,14 @@ pub struct World {
     pub far_detail: i32,
     far_in_flight: usize,
     far_center: (i32, i32, i32),
+    /// Tops of changed chunks that were saved or dropped, for distant tiles (see `far_dirty`).
+    pub(crate) far_tops: BTreeMap<(i32, i32), Box<[u32]>>,
+    /// Save regions whose changed chunks have been summarised.
+    pub(crate) far_scanned: alloc::collections::BTreeSet<(i32, i32)>,
+    /// Chunks edited by others while on screen: their tile is made again when they are dropped.
+    pub(crate) far_unseen: alloc::collections::BTreeSet<(i32, i32)>,
+    /// Save regions read for tiles this frame.
+    pub(crate) far_scans: u32,
     /// Multiplayer: block changes made by others, by chunk, applied to
     /// chunks as they are generated: (local x, y, local z, block).
     pub overlay: BTreeMap<(i32, i32), Vec<(i32, i32, i32, Block)>>,
@@ -118,6 +144,8 @@ pub struct World {
     pub task_results: Vec<(u32, Vec<u8>, Vec<u8>)>,
     /// New chunks and placed blocks, for the mod hooks (see `world_log`).
     pub log: crate::terrain::world_log::WorldLog,
+    /// Set when the land comes from the server instead of the generator (see `world_remote.rs`).
+    pub remote: Option<crate::net::chunks::client_state::Streamer>,
     offsets: Vec<(i32, i32)>,
     offsets_radius: i32,
     urgent: Vec<(i32, i32)>,
@@ -142,12 +170,17 @@ impl World {
             far_detail: 1,
             far_in_flight: 0,
             far_center: (i32::MIN, 0, 0),
+            far_tops: BTreeMap::new(),
+            far_scanned: Default::default(),
+            far_unseen: Default::default(),
+            far_scans: 0,
             overlay: BTreeMap::new(),
             edit_log: Vec::new(),
             changed: Vec::new(),
             log_edits: false,
             task_results: Vec::new(),
             log: Default::default(),
+            remote: None,
             offsets: Vec::new(),
             offsets_radius: -1,
             urgent: Vec::new(),
@@ -218,6 +251,10 @@ impl World {
         if ok && changed && self.log_edits {
             self.edit_log.push((x, y, z, b));
             self.remember(x, y, z, b);
+        } else if ok && changed {
+            // Not a shared world: the distant tile is told all the same (when the chunk
+            // is drawn as real blocks, once it is dropped or no longer drawn).
+            self.far_note_edit(x, z);
         }
         ok
     }
@@ -235,6 +272,8 @@ impl World {
         let list = self.overlay.entry((chunk_of(x), chunk_of(z))).or_default();
         list.retain(|e| (e.0, e.1, e.2) != (x & 15, y, z & 15));
         list.push((x & 15, y, z & 15, b));
+        // The distant tile that covers it is out of date.
+        self.far_note_edit(x, z);
     }
 
     /// A change made by another player: remembered for chunks not loaded
@@ -407,6 +446,8 @@ impl World {
                     sink.free(old);
                 }
                 t.mesh = Some(sink.upload(&mesh));
+                t.busy = false;
+                t.built_at = crate::far_dirty::clock().unwrap_or(0.0);
             }
         }
         if !self.backlog.is_empty() {
@@ -434,6 +475,7 @@ impl World {
                 self.chunks.keys().filter(|k| Self::reach2(k.0 - ccx, k.1 - ccz) > keep || (k.0 - ccx).abs() > radius + 3 || (k.1 - ccz).abs() > radius + 3).copied().collect();
             for key in gone {
                 if let Some(c) = self.chunks.remove(&key) {
+                    self.far_note_drop(key, &c);
                     if let (true, Some(d)) = (c.modified, &c.data) {
                         store.save(key.0, key.1, d);
                     }
@@ -441,6 +483,17 @@ impl World {
                         sink.free(m);
                     }
                 }
+            }
+            // Edited chunks that are kept but no longer drawn (the margin beyond the view
+            // distance): the distant tile that covers them shows the edit from now on.
+            let hidden: Vec<(i32, i32)> = self.far_unseen.iter().filter(|k| (k.0 - ccx) * (k.0 - ccx) + (k.1 - ccz) * (k.1 - ccz) > mesh_r2).copied().collect();
+            for key in hidden {
+                self.far_unseen.remove(&key);
+                self.far_mark(key.0, key.1);
+            }
+            // (Chunks of the server's land that were dropped are not asked for any more.)
+            if let Some(r) = self.remote.as_mut() {
+                r.forget_far((ccx, ccz), i64::from(keep));
             }
         }
 
@@ -459,6 +512,8 @@ impl World {
         let cap = (pool.thread_count() * 3).max(4);
         let mut loads = 0;
         let mut waiting = false;
+        // Chunks of the server's land that were kept from before (shown after the loop).
+        let mut kept: Vec<((i32, i32), Vec<u8>)> = Vec::new();
         for i in 0..self.offsets.len() {
             if pool.in_flight >= cap {
                 waiting = true;
@@ -487,10 +542,19 @@ impl World {
                             c.data = Some(Arc::new(d));
                             c.dirty = true;
                             c.modified = false;
+                            c.from_store = true;
                         }
                         None => {
                             c.gen_requested = true;
-                            pool.submit(Job::Gen { cx: key.0, cz: key.1 }, false);
+                            // A world whose land the server makes asks the server instead.
+                            match self.remote.as_mut().filter(|r| r.takes_chunks()) {
+                                Some(r) => {
+                                    if let Some(bytes) = r.want(key) {
+                                        kept.push((key, bytes));
+                                    }
+                                }
+                                None => pool.submit(Job::Gen { cx: key.0, cz: key.1 }, false),
+                            }
                         }
                     }
                 }
@@ -502,15 +566,27 @@ impl World {
                 self.try_mesh(key, pool, false);
             }
         }
-        let far_waiting = self.update_far(ccx, ccz, pool, sink, waiting);
+        remote::show_kept(self, kept);
+        let far_waiting = self.update_far(ccx, ccz, pool, sink, store, waiting);
         self.settled = !waiting && !far_waiting && pool.in_flight == 0 && self.backlog.is_empty();
     }
 
     /// Request and drop distant-terrain tiles. Detailed chunks come first:
     /// tiles are only queued while the workers have room. Returns whether
     /// any tile is still missing.
-    fn update_far(&mut self, ccx: i32, ccz: i32, pool: &mut Pool, sink: &mut dyn MeshSink, busy: bool) -> bool {
+    fn update_far(&mut self, ccx: i32, ccz: i32, pool: &mut Pool, sink: &mut dyn MeshSink, store: &mut dyn ChunkStore, busy: bool) -> bool {
         use crate::lod::{step_with, TILE_CHUNKS};
+        // No distant terrain where the land comes from the server: the terrain function it is
+        // made from is not here (the chunks that have arrived are all there is to see).
+        if self.remote.is_some() {
+            for (_, t) in core::mem::take(&mut self.far) {
+                if let Some(m) = t.mesh {
+                    sink.free(m);
+                }
+            }
+            self.far_center = (i32::MIN, 0, 0);
+            return false;
+        }
         let (tcx, tcz) = (ccx.div_euclid(TILE_CHUNKS), ccz.div_euclid(TILE_CHUNKS));
         // A change of how distant terrain is made: start it afresh.
         let lod = (self.far_real, self.far_trees, self.far_detail);
@@ -546,6 +622,8 @@ impl World {
         let cap = (pool.thread_count() * 3).max(4);
         let limit = if busy { 1 } else { 4 };
         let mut missing = false;
+        self.far_scans = 0;
+        let now = crate::far_dirty::clock();
         // Nearest tiles first: walk outward ring by ring.
         'rings: for ring in 0..=reach {
             for dx in -ring..=ring {
@@ -553,34 +631,42 @@ impl World {
                     if dx.abs().max(dz.abs()) != ring || dx * dx + dz * dz > reach * reach {
                         continue;
                     }
-                    let t = self.far.entry((tcx + dx, tcz + dz)).or_default();
-                    if t.mesh.is_some() {
+                    let key = (tcx + dx, tcz + dz);
+                    let (has_mesh, requested, dirty, working, built) = {
+                        let t = self.far.entry(key).or_default();
+                        (t.mesh.is_some(), t.requested, t.dirty, t.busy, t.built_at)
+                    };
+                    if has_mesh && !dirty {
                         continue;
                     }
                     missing = true;
-                    if t.requested {
+                    if has_mesh {
+                        // Out of date (an edit arrived): made again, at most once a second.
+                        if working || !crate::far_dirty::rebuild_due(now, built) {
+                            continue;
+                        }
+                    } else if requested {
                         continue;
                     }
                     if self.far_in_flight >= limit || pool.in_flight >= cap {
                         break 'rings;
                     }
-                    t.requested = true;
+                    // What the player saved in earlier sessions is read once per region.
+                    if !self.far_scan_region(key.0, key.1, store) {
+                        continue;
+                    }
+                    let input = self.far_input(key.0, key.1);
+                    if let Some(t) = self.far.get_mut(&key) {
+                        t.requested = true;
+                        t.busy = true;
+                        t.dirty = false;
+                    }
                     self.far_in_flight += 1;
-                    let (tx, tz) = (tcx + dx, tcz + dz);
-                    // Near the player: made from the real blocks, with the player's edits.
+                    let (tx, tz) = key;
+                    // Near the player: made from the real blocks (with everyone's edits);
+                    // farther out from the terrain function, with the same edits folded in.
                     let real = ring <= self.far_real;
-                    let edits = if real {
-                        let mut v = Vec::with_capacity(16);
-                        for i in 0..TILE_CHUNKS {
-                            for j in 0..TILE_CHUNKS {
-                                v.push(self.overlay.get(&(tx * TILE_CHUNKS + i, tz * TILE_CHUNKS + j)).cloned().unwrap_or_default());
-                            }
-                        }
-                        v
-                    } else {
-                        Vec::new()
-                    };
-                    pool.submit(Job::Far { tx, tz, step: step_with(ring, self.far_detail), real, trees: self.far_trees.clamp(0, 2) as u8, edits }, false);
+                    pool.submit(Job::Far { tx, tz, step: step_with(ring, self.far_detail), real, trees: self.far_trees.clamp(0, 2) as u8, input }, false);
                 }
             }
         }
@@ -604,6 +690,7 @@ impl World {
                 e.3 = fix(e.3);
             }
         }
+        self.far_remap(&fix);
         // Distant terrain is cheap to make again with the new textures.
         for t in core::mem::take(&mut self.far).into_values() {
             if let Some(m) = t.mesh {

@@ -414,6 +414,10 @@ impl Server {
         }
         // Then what mods can be downloaded (even if none).
         out.extend(Msg::ModList { mods: self.cfg.mods.iter().map(|m| m.info()).collect() }.encode());
+        // Whether this server sends land (clients that cannot make the world's terrain ask for it).
+        if version >= crate::proto::CHUNK_PROTOCOL {
+            out.extend(self.chunk_caps().encode());
+        }
         // Who runs the creatures and the last lines of chat (see net/sync).
         out.extend(self.sync_intro());
         // Big skins (clients of protocol 14) are not in this blob: they wait in the

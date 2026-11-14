@@ -723,37 +723,8 @@ pub fn generate(seed: u32, cx: i32, cz: i32) -> ChunkData {
             let col = column(seed, x, z);
             cols[(lx * CW + lz) as usize] = col;
             let h = col.height;
-            let under_water = h < SEA;
-            // Invented shores are sandy; real ones say so themselves (the
-            // map marks sand, and it arrives here as the Desert biome).
-            let beach = source().is_none() && h <= SEA + 1 && col.biome != Biome::Tundra && col.biome != Biome::Taiga;
-            let (top, fill) = if under_water {
-                let bed = match hash2(seed ^ 0xB1, x >> 2, z >> 2) % 8 {
-                    0 => wk.clay,
-                    1 | 2 => wk.gravel,
-                    _ => wk.sand,
-                };
-                (bed, bed)
-            } else if beach {
-                (wk.sand, wk.sand)
-            } else {
-                match col.biome {
-                    Biome::Desert => (wk.sand, wk.sandstone),
-                    Biome::Badlands => {
-                        let band = wk.bands[(h.rem_euclid(8) / 2) as usize];
-                        (band, band)
-                    }
-                    Biome::Tundra | Biome::Taiga => (wk.snowy_grass, wk.dirt),
-                    Biome::Mountain => {
-                        if h > SEA + 54 {
-                            (wk.snow, wk.stone)
-                        } else {
-                            (wk.stone, wk.stone)
-                        }
-                    }
-                    _ => (wk.grass, wk.dirt),
-                }
-            };
+            // The ground blocks come from `surface_rules` (distant terrain asks there too).
+            let (top, fill) = crate::surface_rules::surface_blocks(wk, seed, x, z, &col);
             for y in 0..=h {
                 let b = if y == 0 || (y < 3 && hash3(seed ^ 0xB2, x, y, z) % 2 == 0) {
                     wk.deepstone

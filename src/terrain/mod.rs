@@ -18,3 +18,11 @@ pub mod footprint;
 pub mod sections;
 pub mod visibility;
 pub mod uploads;
+/// The top and filling blocks of a column, shared by chunk generation and distant terrain.
+pub mod surface_rules;
+/// Average colours of blocks, for distant terrain.
+pub mod block_colour;
+/// What distant terrain shows: real surface blocks and everyone's edits.
+pub mod far_surface;
+/// Which distant tiles must be made again after edits.
+pub mod far_dirty;

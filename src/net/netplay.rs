@@ -63,6 +63,10 @@ pub enum Event {
     Left(String),
     /// Another player started (code above 0) or stopped (0) an emote: who and which.
     Emote(u16, u16),
+    /// What the server does about land (`proto::CHUNKS_SERVED` in the flags) and how far it reaches.
+    ChunkCaps(u8, u32),
+    /// A piece of the land of one chunk: cx, cz, the piece's place, how many pieces, the bytes.
+    Chunk(i32, i32, u8, u8, Vec<u8>),
 }
 
 pub struct Welcome {
@@ -340,6 +344,8 @@ impl Client {
                     // Health, ping and the like are kept here; the game does not see them as events.
                     Msg::State { id, channel: crate::proto::channel::VITALS, key, data, .. } => self.on_vitals_state(id, &key, &data),
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
+                    Msg::ChunkCaps { flags, limit } => events.push(Event::ChunkCaps(flags, limit)),
+                    Msg::ChunkData { cx, cz, part, parts, data } => events.push(Event::Chunk(cx, cz, part, parts, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
                     Msg::ModList { mods } => events.push(Event::ModList(mods)),
                     Msg::ModPart { index, last, data } => events.push(Event::ModPart(index, last, data)),
@@ -402,6 +408,11 @@ impl Client {
     pub fn send_effects(&mut self, list: &[(String, u8, u32)]) {
         let id = self.id;
         self.send(&Msg::Effects { id, list: list.to_vec() });
+    }
+
+    /// Ask the server for the land of chunk (cx, cz) (only for worlds this game cannot make).
+    pub fn send_chunk_request(&mut self, cx: i32, cz: i32) {
+        self.send(&Msg::ChunkRequest { cx, cz });
     }
 
     pub fn send_block(&mut self, x: i32, y: i32, z: i32, block: u16) {

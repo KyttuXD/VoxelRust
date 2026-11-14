@@ -48,8 +48,11 @@ fn column_cover(world: &World, x: i32, z: i32, from_y: i32) -> (f32, f32) {
 /// What the player at `pos` (the feet) can hear around them, with the
 /// weather `sky` there.
 pub fn sample(world: &World, pos: [f64; 3], sky: Sky) -> Env {
-    let (px, py, pz) = (floord(pos[0]), floord(pos[1]), floord(pos[2]));
-    let head = floord(pos[1] + 1.6);
+    // (Held well inside the numbers, so that the sums below cannot overflow for a place a script
+    // sent the player to, far outside the world.)
+    let far = |v: f64| floord(v).clamp(-(1 << 28), 1 << 28);
+    let (px, py, pz) = (far(pos[0]), far(pos[1]), far(pos[2]));
+    let head = far(pos[1] + 1.6);
     let underwater = is_water(world.get(px, head, pz));
 
     // Roof: the middle and four columns two blocks out.

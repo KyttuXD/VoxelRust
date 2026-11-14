@@ -15,8 +15,13 @@ use alloc::vec::Vec;
 /// ([`channel::MODMSG`], `net/modmsg.rs`). Version 14 added big (HD) skins in
 /// pieces ([`Msg::SkinCaps`], [`Msg::SkinBegin`], [`Msg::SkinPart`],
 /// `net/skinxfer.rs`) and the accounts ([`Msg::AuthChallenge`] and the
-/// messages around it, `net/accounts`).
-pub const VERSION: u16 = 14;
+/// messages around it, `net/accounts`). Version 15 added the terrain a server
+/// sends to clients that cannot make it themselves ([`Msg::ChunkRequest`],
+/// [`Msg::ChunkData`], [`Msg::ChunkCaps`], `net/chunks`).
+pub const VERSION: u16 = 15;
+/// The first protocol that knows the chunk messages: older clients are never
+/// sent one (and never ask for one).
+pub const CHUNK_PROTOCOL: u16 = 15;
 /// The oldest protocol a server still lets in: version 13 clients know every
 /// message a 14 server sends them (it sends them the 64 x 64 version of a
 /// big skin, as a plain [`Msg::Skin`], and none of the account messages: a
@@ -109,6 +114,13 @@ pub struct ModInfo {
     pub files: u16,
 }
 
+/// Most bytes of a chunk's compressed blocks in one [`Msg::ChunkData`].
+pub const MAX_CHUNK_PART: usize = 40_000;
+/// Most pieces one chunk may come in.
+pub const MAX_CHUNK_PARTS: usize = 8;
+/// [`Msg::ChunkCaps`] flag: this server sends the land when asked.
+pub const CHUNKS_SERVED: u8 = 1;
+
 /// Most mods in one [`Msg::ModList`].
 pub const MAX_MOD_LIST: usize = 64;
 
@@ -180,6 +192,9 @@ pub enum Msg {
     /// "Give me a challenge" for `op` (`accounts::state::op`), from a player already in the game
     /// (`/register`, `/pin`).
     AuthAsk { op: u8 },
+    /// "Send me the land of chunk (cx, cz)", from a client of protocol 15 or later that cannot
+    /// make this world's terrain itself (see `net/chunks`); answered with [`Msg::ChunkData`].
+    ChunkRequest { cx: i32, cz: i32 },
     // Server to client.
     Welcome { id: u16, seed: u32, time: f32, kind: String },
     /// The server will not let you in.
@@ -222,6 +237,13 @@ pub enum Msg {
     /// for showing to the player (the protocol version decides whether a
     /// client may join).
     Info { build: String, release: u32, commit: String },
+    /// The land of one chunk, in the answer to a [`Msg::ChunkRequest`]: the blocks run-length
+    /// encoded as the save files do and compressed (see `net/chunks/codec.rs`), in `parts`
+    /// pieces (`part` is this one's place, from 0) that all come one after the other.
+    ChunkData { cx: i32, cz: i32, part: u8, parts: u8, data: Vec<u8> },
+    /// What the server does about land, sent after the mod list to clients of protocol 15 or
+    /// later: `flags` ([`CHUNKS_SERVED`]) and how far from the origin (in blocks) it answers.
+    ChunkCaps { flags: u8, limit: u32 },
 }
 
 struct W(Vec<u8>);
@@ -539,6 +561,26 @@ impl Msg {
                 w.u32(*release);
                 w.str(commit);
             }
+            Msg::ChunkRequest { cx, cz } => {
+                w.u8(47);
+                w.i32(*cx);
+                w.i32(*cz);
+            }
+            Msg::ChunkData { cx, cz, part, parts, data } => {
+                w.u8(48);
+                w.i32(*cx);
+                w.i32(*cz);
+                w.u8(*part);
+                w.u8(*parts);
+                let n = data.len().min(MAX_CHUNK_PART);
+                w.u16(n as u16);
+                w.0.extend_from_slice(&data[..n]);
+            }
+            Msg::ChunkCaps { flags, limit } => {
+                w.u8(49);
+                w.u8(*flags);
+                w.u32(*limit);
+            }
             Msg::Pack { last, data } => {
                 w.u8(16);
                 w.u8(*last as u8);
@@ -641,6 +683,16 @@ impl Msg {
                 }
                 Msg::ModPart { index, last, data: r.take(n)?.to_vec() }
             }
+            47 => Msg::ChunkRequest { cx: r.i32()?, cz: r.i32()? },
+            48 => {
+                let (cx, cz, part, parts) = (r.i32()?, r.i32()?, r.u8()?, r.u8()?);
+                let n = r.u16()? as usize;
+                if n > MAX_CHUNK_PART || parts == 0 || parts as usize > MAX_CHUNK_PARTS || part >= parts {
+                    return None;
+                }
+                Msg::ChunkData { cx, cz, part, parts, data: r.take(n)?.to_vec() }
+            }
+            49 => Msg::ChunkCaps { flags: r.u8()?, limit: r.u32()? },
             22 => Msg::Info { build: r.str()?, release: r.u32()?, commit: r.str()? },
             40 => Msg::AuthLogin { proof: r.array()? },
             41 => Msg::AuthRegister { key: r.array()? },
@@ -791,6 +843,10 @@ mod tests {
             Msg::AuthResult { ok: false, tries: 2, text: String::from("wrong PIN") },
             Msg::AuthResult { ok: true, tries: 0, text: String::new() },
             Msg::Account { mode: 1, flags: 3 },
+            Msg::ChunkRequest { cx: -1875, cz: 1874 },
+            Msg::ChunkData { cx: -3, cz: 7, part: 1, parts: 3, data: alloc::vec![5; MAX_CHUNK_PART] },
+            Msg::ChunkData { cx: 0, cz: 0, part: 0, parts: 1, data: Vec::new() },
+            Msg::ChunkCaps { flags: CHUNKS_SERVED, limit: 30_000 },
         ];
         let mut inbox = Inbox::default();
         for m in &all {

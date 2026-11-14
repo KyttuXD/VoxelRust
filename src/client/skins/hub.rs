@@ -376,6 +376,23 @@ mod tests {
     }
 
     #[test]
+    fn after_the_game_is_left_a_player_with_the_same_number_wears_nobody_elses_skin() {
+        let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        work::take_done();
+        let (mut hub, mut gpu, mut tex) = (SkinHub::default(), Mock::default(), BTreeMap::new());
+        hub.on_skin(7, skin(128));
+        hub.plan(0.0, &dists(&[(7, 5.0)]), &mut gpu, &mut tex);
+        hub.pump(&mut gpu, &mut tex);
+        assert!(tex.contains_key(&7));
+        hub.forget_all(&mut gpu, &mut tex);
+        assert_eq!(hub.kept_bytes(), 0);
+        // The next visit: number 7 is someone else, who has sent no skin.
+        hub.plan(1.0, &dists(&[(7, 5.0)]), &mut gpu, &mut tex);
+        hub.pump(&mut gpu, &mut tex);
+        assert!(tex.is_empty() && gpu.live.is_empty());
+    }
+
+    #[test]
     fn junk_and_odd_sizes_are_never_uploaded() {
         let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         work::take_done();

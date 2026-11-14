@@ -26,6 +26,8 @@ pub fn expand(line: &str, online: bool) -> String {
         "/gmc" => (Some("creative"), words.get(1).copied()),
         "/gms" => (Some("survival"), words.get(1).copied()),
         "/gm" | "/gamemode" | "/mode" => match (words.get(1).and_then(|w| mode_word(w)), words.get(2).and_then(|w| mode_word(w))) {
+            // A player named like a mode word (`/gamemode s creative`): the last word is the mode.
+            (Some(_), Some(m)) if online => (Some(m), words.get(1).copied()),
             (Some(m), _) => (Some(m), words.get(2).copied()),
             (None, Some(m)) => (Some(m), words.get(1).copied()),
             _ => return String::from(line),
@@ -67,5 +69,12 @@ mod tests {
         assert_eq!(expand("/gm what", true), "/gm what");
         assert_eq!(expand("/time day", false), "/time day");
         assert_eq!(expand("", false), "");
+        // A player whose name is a mode word.
+        assert_eq!(expand("/gamemode s creative", true), "/gamemode s creative");
+        assert_eq!(expand("/gm c survival", true), "/gamemode c survival");
+        assert_eq!(expand("/gm c s", false), "/mode creative");
+        // Very long or odd lines do not matter.
+        assert_eq!(expand("/gm    c   ", true), "/gamemode creative");
+        assert_eq!(expand("   ", true), "   ");
     }
 }
