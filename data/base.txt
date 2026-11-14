@@ -64,8 +64,8 @@ texture white flat 255 255 255
 palette ruby #e83668 #a01a4c #ff94b4
 texture ruby_ore paint ore palette ruby
 texture workbench_top paint workbench 176 136 84
-texture stick paint stick 122 88 52
-texture ruby paint gem 232 54 104
+texture stick file textures/tools/stick.tga
+texture ruby file textures/tools/ruby.tga
 texture crystal paint gem 124 224 246
 texture coal paint gem 42 42 58
 texture apple paint fruit 206 48 44
@@ -74,15 +74,15 @@ texture raw_meat paint meat 214 96 96
 texture cooked_meat paint meat 150 92 54
 texture raw_fish paint fishfood 130 170 196
 texture cooked_fish paint fishfood 206 160 110
-texture wood_pick paint pick 166 118 70
-texture wood_axe paint axe 166 118 70
-texture wood_shovel paint shovel 166 118 70
+texture wood_pick file textures/tools/wood_pick.tga
+texture wood_axe file textures/tools/wood_axe.tga
+texture wood_shovel file textures/tools/wood_shovel.tga
 texture stone_pick paint pick 128 136 152
 texture stone_axe paint axe 128 136 152
 texture stone_shovel paint shovel 128 136 152
-texture iron_pick paint pick 204 212 230
-texture iron_axe paint axe 204 212 230
-texture iron_shovel paint shovel 204 212 230
+texture iron_pick file textures/tools/iron_pick.tga
+texture iron_axe file textures/tools/iron_axe.tga
+texture iron_shovel file textures/tools/iron_shovel.tga
 texture pine_planks paint planks 122 88 56
 texture oak_chest paint chest_front 176 136 84
 texture oak_chest_side paint chest_side 176 136 84
@@ -767,14 +767,14 @@ block furnace
   tool pick
   use furnace
   light 8
-texture iron_ingot paint ingot 204 212 230
+texture iron_ingot file textures/tools/iron_ingot.tga
 item iron_ingot
   name Iron Ingot
   icon iron_ingot
   category Materials
 smelt iron_ingot 1 iron_ore 1 coal 1
 smelt iron_ingot 3 iron_ore 2 coal 2
-texture copper_ingot paint ingot 216 116 70
+texture copper_ingot file textures/tools/copper_ingot.tga
 item copper_ingot
   name Copper Ingot
   icon copper_ingot
@@ -810,7 +810,7 @@ item bow
   shoots 6 34 0.7 arrow
 shaped arrow 4 "G" "S" with G gravel S stick
 shaped bow 1 "SM." "S.M" "SM." with M string S stick
-texture wood_sword paint sword 166 118 70
+texture wood_sword file textures/tools/wood_sword.tga
 item wood_sword
   name Wooden Sword
   icon wood_sword
@@ -826,7 +826,7 @@ item stone_sword
   stack 1
   damage 7
 shaped stone_sword 1 "I" "I" "S" with I cobble S stick
-texture iron_sword paint sword 204 212 230
+texture iron_sword file textures/tools/iron_sword.tga
 item iron_sword
   name Iron Sword
   icon iron_sword
