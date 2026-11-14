@@ -497,8 +497,8 @@ struct App {
     /// `--show creatures,looks:NAME`: line up every look of the creatures whose id contains NAME instead.
     show_looks: Option<String>,
     mods_scroll: i32,
-    /// Settings > VIDEO shows its detail page (distances, LOD, clouds).
-    video_detail: bool,
+    /// Which sub-page of the settings tab is open (0 is the tab itself).
+    video_detail: u8,
     form_mod_path: String,
     at_furnace: bool,
     /// The crafting grid and recipe book of the inventory and table screens.
@@ -2021,7 +2021,7 @@ impl App {
             let tx = x + i as f32 * tw;
             if ui.button(tx, top, tw - 2.0 * s, bh, t) {
                 self.tab = i;
-                self.video_detail = false;
+                self.video_detail = 0;
                 self.rebinding = None;
                 *ui.focus = 0;
             }
@@ -2038,10 +2038,10 @@ impl App {
         {
             let st = &mut self.settings;
             match self.tab {
-                0 if self.video_detail => {
+                0 if self.video_detail == 1 => {
                     let half = (bw - 4.0 * s) * 0.5;
                     if ui.button(x, row(0), bw, bh, "< BACK TO VIDEO") {
-                        self.video_detail = false;
+                        self.video_detail = 0;
                     }
                     changed |= ui.stepper(x, row(1), bw, bh, "VIEW DISTANCE", &mut st.distance, 2, 48, 1);
                     changed |= ui.stepper(x, row(2), bw, bh, "DISTANT TERRAIN", &mut st.far_distance, 0, 256, 16);
@@ -2057,7 +2057,7 @@ impl App {
                 }
                 0 => {
                     if ui.button(x, row(0), bw, bh, "DETAIL AND DISTANCE...") {
-                        self.video_detail = true;
+                        self.video_detail = 1;
                     }
                     changed |= ui.stepper(x, row(1), bw, bh, "FIELD OF VIEW", &mut st.fov, 50, 110, 5);
                     let gs = if st.gui_scale == 0 { String::from("INTERFACE SIZE  < AUTO >") } else { alloc::format!("INTERFACE SIZE  < {} >", st.gui_scale) };
@@ -2085,10 +2085,11 @@ impl App {
                         ui.centered(ui.w() * 0.5, row(4) + 4.0 * s, 1.0, "NO SOUND DEVICE IS IN USE", ui::ACCENT);
                     }
                 }
-                2 => {
+                2 if self.video_detail == 1 => {
                     let half = (bw - 4.0 * s) * 0.5;
-                    changed |= ui.stepper(x, row(0), half, bh, "MOUSE SPEED", &mut st.sens, 1, 20, 1);
-                    changed |= ui.toggle(x + half + 4.0 * s, row(0), half, bh, "INVERT MOUSE", &mut st.invert_y);
+                    if ui.button(x, row(0), bw, bh, "< BACK TO CONTROLS") {
+                        self.video_detail = 0;
+                    }
                     for (i, a) in ACTIONS.iter().enumerate() {
                         // Two columns of key bindings.
                         let (cx, cy) = (x + (i % 2) as f32 * (half + 4.0 * s), row(1 + i / 2));
@@ -2101,8 +2102,16 @@ impl App {
                             self.rebinding = Some(i);
                         }
                     }
-                    if ui.button(x, row(8), bw, bh, "RESET KEYS") {
+                    if ui.button(x, row(10), bw, bh, "RESET KEYS") {
                         st.keys = Settings::default().keys;
+                    }
+                }
+                2 => {
+                    let half = (bw - 4.0 * s) * 0.5;
+                    changed |= ui.stepper(x, row(0), half, bh, "MOUSE SPEED", &mut st.sens, 1, 20, 1);
+                    changed |= ui.toggle(x + half + 4.0 * s, row(0), half, bh, "INVERT MOUSE", &mut st.invert_y);
+                    if ui.button(x, row(1), bw, bh, "KEY BINDINGS...") {
+                        self.video_detail = 1;
                     }
                 }
                 4 => {
@@ -2176,21 +2185,21 @@ impl App {
                         self.rebinding = Some(at);
                     }
                 }
-                _ => {
-                    ui.text(x, row(0) + 4.0 * s, "PLAYER NAME", ui::DIM);
-                    ui.text_field(10, x + 80.0 * s, row(0), bw - 80.0 * s, bh, &mut st.player_name, 16, ui::name_char);
-                    changed |= ui.stepper(x, row(1), bw, bh, "AUTOSAVE EVERY (SECONDS)", &mut st.autosave_seconds, 10, 600, 10);
+                _ if self.video_detail == 1 => {
                     let half = (bw - 4.0 * s) * 0.5;
-                    changed |= ui.toggle(x, row(2), half, bh, "VIEW BOBBING", &mut st.view_bobbing);
-                    changed |= ui.toggle(x + half + 4.0 * s, row(2), half, bh, "WEATHER", &mut st.weather);
-                    if let Some(g) = self.session.as_mut() {
-                        let label = alloc::format!("GAME MODE  {}", if g.mode == GameMode::Survival { "SURVIVAL" } else { "CREATIVE" });
-                        if ui.button_lr(x, row(3), bw, bh, &label, true) != 0 {
-                            g.set_mode(if g.mode == GameMode::Survival { GameMode::Creative } else { GameMode::Survival });
-                        }
+                    if ui.button(x, row(0), bw, bh, "< BACK TO GAME") {
+                        self.video_detail = 0;
                     }
-                    changed |= ui.toggle(x, row(4), half, bh, "MINIMAP", &mut st.minimap);
-                    if ui.button(x + half + 4.0 * s, row(4), half, bh, "RELOAD MODS NOW") {
+                    changed |= ui.toggle(x, row(1), half, bh, "VIEW BOBBING", &mut st.view_bobbing);
+                    changed |= ui.toggle(x + half + 4.0 * s, row(1), half, bh, "WEATHER", &mut st.weather);
+                    changed |= ui.toggle(x, row(2), bw, bh, "MINIMAP", &mut st.minimap);
+                }
+                _ if self.video_detail == 2 => {
+                    let half = (bw - 4.0 * s) * 0.5;
+                    if ui.button(x, row(0), bw, bh, "< BACK TO GAME") {
+                        self.video_detail = 0;
+                    }
+                    if ui.button(x, row(1), bw, bh, "RELOAD MODS NOW") {
                         self.want_reload = true;
                     }
                     // Switches the mods add (`setting` lines in their packs)...
@@ -2198,20 +2207,37 @@ impl App {
                     for (k, (id, default, label)) in toggles.iter().take(4).enumerate() {
                         let mut on = st.flags.iter().find(|f| &f.0 == id).map_or(*default, |f| f.1);
                         let wide = if toggles.len() == 1 { bw } else { half };
-                        if ui.toggle(x + (k % 2) as f32 * (half + 4.0 * s), row(5 + k / 2), wide, bh, label, &mut on) {
+                        if ui.toggle(x + (k % 2) as f32 * (half + 4.0 * s), row(2 + k / 2), wide, bh, label, &mut on) {
                             st.flags.retain(|f| &f.0 != id);
                             st.flags.push((id.clone(), on));
                             changed = true;
                         }
                     }
                     // ...and the rows their own code adds.
-                    let mut at = row(5 + (toggles.len().min(4) + 1) / 2);
+                    let mut at = row(2 + (toggles.len().min(4) + 1) / 2);
                     for (_, n) in crate::native::active() {
                         if let Some(rows) = n.settings {
                             let (used, touched) = rows(ui, st, x, at, bw, bh, step);
                             at += used * step;
                             changed |= touched;
                         }
+                    }
+                }
+                _ => {
+                    ui.text(x, row(0) + 4.0 * s, "PLAYER NAME", ui::DIM);
+                    ui.text_field(10, x + 80.0 * s, row(0), bw - 80.0 * s, bh, &mut st.player_name, 16, ui::name_char);
+                    changed |= ui.stepper(x, row(1), bw, bh, "AUTOSAVE EVERY (SECONDS)", &mut st.autosave_seconds, 10, 600, 10);
+                    if let Some(g) = self.session.as_mut() {
+                        let label = alloc::format!("GAME MODE  {}", if g.mode == GameMode::Survival { "SURVIVAL" } else { "CREATIVE" });
+                        if ui.button_lr(x, row(2), bw, bh, &label, true) != 0 {
+                            g.set_mode(if g.mode == GameMode::Survival { GameMode::Creative } else { GameMode::Survival });
+                        }
+                    }
+                    if ui.button(x, row(3), bw, bh, "VIEW, WEATHER AND MAP...") {
+                        self.video_detail = 1;
+                    }
+                    if ui.button(x, row(4), bw, bh, "MOD SWITCHES AND RELOAD...") {
+                        self.video_detail = 2;
                     }
                 }
             }
@@ -3486,7 +3512,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         show_walking: opts.show.contains("walking"),
         show_looks: opts.show.split(',').find_map(|w| w.strip_prefix("looks:")).map(String::from),
         mods_scroll: 0,
-        video_detail: false,
+        video_detail: 0,
         form_mod_path: String::new(),
         at_furnace: false,
         craft: Default::default(),

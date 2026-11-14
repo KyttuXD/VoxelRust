@@ -794,10 +794,11 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   FOR SOUNDS, which names what you hear (`THUNDER`, `DOOR`, `WOLF HOWLS`) at
   the right of the screen for a couple of seconds. All sound stops when you
   leave a world.
-- **CONTROLS**: mouse speed, invert mouse, every key marked * above, RESET
-  KEYS. Click a binding, then press the new key (Esc cancels).
-- **GAME**: player name, autosave interval, view bobbing, weather, the
-  minimap, RELOAD MODS NOW, and GAME MODE while a world is open. Below those
+- **CONTROLS**: mouse speed, invert mouse, and a KEY BINDINGS... page with
+  every key marked * above and RESET KEYS. Click a binding, then press the new key (Esc cancels).
+- **GAME**: player name, autosave interval, GAME MODE while a world is open,
+  and two pages: VIEW, WEATHER AND MAP... (view bobbing, weather, minimap) and
+  MOD SWITCHES AND RELOAD... (RELOAD MODS NOW and the switches mods add). Below those
   come the switches the packs add (the first four are shown; NATURAL
   DISASTERS is one, from the Disasters mod, see
   [Weather and disasters](#weather-and-disasters)). Then, while the Earth
