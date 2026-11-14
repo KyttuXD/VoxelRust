@@ -162,6 +162,14 @@ impl Voice {
         }
     }
 
+    /// Stop a search (the settings screen was left): the microphones are closed and an answer
+    /// that nobody took is forgotten.
+    pub fn cancel_detect(&mut self) {
+        self.detect = None;
+        self.detected = None;
+        self.detect_note.clear();
+    }
+
     /// Seconds the search has left (0 when none is running).
     pub fn detect_left(&self) -> f32 {
         self.detect.as_ref().map_or(0.0, |d| d.left)
@@ -247,6 +255,8 @@ impl Voice {
         let dt = dt.clamp(0.0, 0.5);
         if !screen_meter {
             self.testing = false;
+            // A search listens to up to 8 microphones: not once nobody watches it.
+            self.cancel_detect();
         }
         let online = wire.is_some();
         let may_talk = set.voice_mic && wire.as_ref().map_or(false, |w| w.allowed);
@@ -376,5 +386,29 @@ impl Voice {
             t.1 -= dt;
         }
         self.talking.retain(|t| t.1 > 0.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn leaving_the_voice_tab_ends_a_search_and_forgets_its_answer() {
+        let mut v = Voice::new();
+        v.detect = Some(Detect { left: 3.0, mics: Vec::new() });
+        v.detected = Some(String::from("Old Mic"));
+        v.cancel_detect();
+        assert_eq!(v.detect_left(), 0.0);
+        assert_eq!(v.take_detected(), None, "a stale answer must not be applied later");
+    }
+
+    #[test]
+    fn a_search_with_nothing_heard_ends_with_an_empty_answer() {
+        let mut v = Voice::new();
+        v.detect = Some(Detect { left: 0.1, mics: Vec::new() });
+        v.step_detect(1.0e9);
+        assert_eq!(v.take_detected(), Some(String::new()));
+        assert_eq!(v.detect_left(), 0.0);
     }
 }

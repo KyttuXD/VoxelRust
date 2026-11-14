@@ -1054,6 +1054,13 @@ refused (the title screen says so). `update_mirror=http://host/folder/` in
 `settings.txt` (or `--update-mirror URL`) names a plain-HTTP web folder to
 fetch updates from, for the old-Mac build, which cannot reach the release.
 
+With UPDATE AND RESTART AUTOMATICALLY on, the game starts the new version itself once it is
+installed: from a menu after a 3 second countdown shown on the title screen, from a world
+after a 30 second warning in the chat (the world is saved first). It never restarts while
+you are typing in a text field (a name, an address, chat, a PIN) or while a server's mods or
+world are still arriving: the countdown starts again when that is over. A copy that an update
+started does not restart again, and scripted runs never do.
+
 Things to know:
 
 - On Mac OS X 10.6 the system's `curl` cannot make modern HTTPS

@@ -817,7 +817,7 @@ impl Server {
                             ch::PVP_GEAR => self.pvp_gear(i, &data, &mut log),
                             _ => {}
                         }
-                        if (ch::PVP_HIT..=ch::PVP_GEAR).contains(&channel) {
+                        if (ch::PVP_HIT..=ch::PVP_GEAR).contains(&channel) || !crate::net::relay_rules::player_may_send(channel) {
                             continue;
                         }
                         let flags = self.flags_for(&self.conns[i].name);

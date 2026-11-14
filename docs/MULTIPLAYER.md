@@ -213,6 +213,12 @@ All of this is one state channel (7, `channel::VITALS` in `src/net/proto.rs`;
 the code is in `src/net/sync/`), so the protocol version did not change: an
 older game ignores the messages, and an older server just passes them on.
 
+The server's own channels are never taken from a player to be passed on: the place and
+health a server gives back on joining (channel 6), the news of a hit (9 and 10), and
+the sync channel (7, which the server reads itself). A game also believes channel 6 only
+from the server (player number 0), so another player cannot move or hurt a newcomer
+with a forged message (`src/net/relay_rules.rs`).
+
 ### Joining, leaving and joining again
 
 What a server tells a player who joins, in this order: the world (seed, time of day), the

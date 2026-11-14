@@ -563,9 +563,10 @@ impl App {
         self.loading_since = 0.0;
         // Other players' skins belong to the players of that visit (their numbers are used again
         // on the next one): forget them, so nobody wears someone else's skin.
-        let stale: Vec<u32> = self.remote_skins.values().copied().collect();
-        r.delete_textures(&stale);
-        self.remote_skins.clear();
+        // (The skin hub forgets them too: its copies of the pictures and its notes would otherwise
+        // be dressed on a newcomer who gets the same number.)
+        self.skins.forget_all(r, &mut self.remote_skins);
+        self.remote_slim.clear();
         // The map's selection, name box and view belong to the world it was in.
         self.full = None;
         if let Some(mut s) = self.session.take() {
@@ -1498,7 +1499,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mut dt_smooth = 0.0f32;
     // After an update is installed the game restarts itself: at once from a menu, after a
     // warning (so the world is saved and nothing is lost) from a world.
-    let mut restart_plan = crate::client::server_update::restart::RestartPlan::default();
+    let mut restart_plan = crate::client::server_update::game_restart::GameRestart::default();
     let frames = move || -> Result<bool, String> {
     loop {
         let frame_start = sys::now();
@@ -1508,12 +1509,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         #[cfg(not(target_arch = "wasm32"))]
         if !scripted && !opts.server && app.settings.auto_update && !app.quit && crate::update::can_restart() {
-            use crate::client::server_update::restart::Step;
+            use crate::client::server_update::game_restart::{Busy, Step};
             let in_world = app.session.is_some() && !matches!(app.screen, Screen::Title);
-            match restart_plan.step(crate::update::state() == crate::update::UPDATED, in_world as usize, sys::now()) {
+            // Not while a text field has the keyboard, nor while a server's world or mods arrive.
+            let typing = app.focus != 0 || matches!(app.screen, Screen::Chat | Screen::AddServer | Screen::Pin | Screen::SkinUrl | Screen::NewWorld);
+            let downloading = app.session.as_ref().map_or(false, |g| !g.playable || g.mod_sync.as_ref().map_or(false, |m| m.progress().is_some()));
+            let busy = Busy { in_world, typing, downloading };
+            match restart_plan.step(crate::update::state() == crate::update::UPDATED, busy, sys::now()) {
                 Step::Say(text) => {
                     if let Some(g) = app.session.as_mut() {
                         g.push_chat(alloc::format!("{} (YOUR WORLD IS SAVED FIRST)", text));
+                    }
+                    app.status = text;
+                }
+                Step::Cancel => {
+                    if app.status.starts_with("RESTARTING FOR AN UPDATE") {
+                        app.status.clear();
                     }
                 }
                 Step::Go => app.quit = true,
@@ -1526,7 +1537,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         // Frame times wobble (the driver, the frame limiter, the system's timer): moving by each
         // raw one makes the camera and the hand shake. A running average moves things evenly
         // and still adds up to the real time; a long hitch is taken as it is.
-        dt_smooth = if real_dt > dt_smooth * 2.5 + 0.004 || dt_smooth <= 0.0 { real_dt } else { dt_smooth + (real_dt - dt_smooth) * 0.2 };
+        dt_smooth = crate::client::frame_smooth::next(dt_smooth, real_dt);
         let dt = dt_smooth.clamp(0.0, 0.1);
         if real_dt > 0.0 {
             app.fps += (1.0 / real_dt - app.fps) * 0.05;

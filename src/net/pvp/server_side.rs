@@ -30,7 +30,12 @@ impl Server {
         let victim = self.conns[i].name.clone();
         let Some(killer) = self.conns[i].pvp.killer(now).map(String::from) else { return };
         self.conns[i].pvp.hurt_by = None;
-        *self.pvp.kills.entry(killer.to_ascii_lowercase()).or_insert(0) += 1;
+        // (At most 4096 killers are counted: guests may come under any name.)
+        let key = killer.to_ascii_lowercase();
+        if self.pvp.kills.len() < crate::net::pvp::state::MAX_KILLERS || self.pvp.kills.contains_key(&key) {
+            let n = self.pvp.kills.entry(key).or_insert(0);
+            *n = n.saturating_add(1);
+        }
         let text = alloc::format!("{} was slain by {}", victim, killer);
         log.push(text.clone());
         self.announce(&text);

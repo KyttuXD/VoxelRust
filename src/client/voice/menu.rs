@@ -20,7 +20,8 @@ fn log2_guess(x: f32) -> f32 {
 /// them (a full-scale sound is the right end, 54 dB below it the left), so a microphone that
 /// is twice as loud moves the bar by the same amount wherever it starts.
 pub fn meter_pos(level: f32) -> f32 {
-    if level <= 0.0 {
+    if !(level > 0.0) {
+        // (Nothing, and a number that is not one.)
         return 0.0;
     }
     let db = 6.0206 * log2_guess(level);
@@ -115,7 +116,7 @@ pub fn draw(ui: &mut Ui, st: &mut Settings, voice: &mut Voice, (x, y, bw, bh, st
     };
     if searching {
         ui.text(x, row(7) + 2.0 * s, &alloc::format!("SPEAK NOW: LISTENING TO EVERY MICROPHONE... {}", (voice.detect_left() + 0.999) as i32), ui::ACCENT);
-    } else if !voice.detect_note.is_empty() && voice.testing {
+    } else if !voice.detect_note.is_empty() && !voice.failed {
         ui.text(x, row(7) + 2.0 * s, &voice.detect_note.clone(), ui::DIM);
     } else if voice.testing && voice.failed {
         ui.text(x, row(7) + 2.0 * s, "THE MICROPHONE WOULD NOT OPEN.", ui::ACCENT);
@@ -151,6 +152,8 @@ mod tests {
             let got = 6.0206 * log2_guess(x);
             assert!((want - got).abs() < 1.5, "{x}: {want} {got}");
         }
+        assert_eq!(meter_pos(f32::NAN), 0.0);
+        assert_eq!(meter_pos(f32::INFINITY), 1.0);
         // The loudest threshold is still on the bar.
         assert!(meter_pos(codec::threshold(10)) < 1.0);
     }
