@@ -864,6 +864,13 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
 - **VOICE**: proximity voice chat on servers, see [Voice chat](#voice-chat).
 - **SKIN**: pick one of the built-in looks or choose your own 64 x 64 picture with the built-in file browser. See
   [MODDING.md](MODDING.md#player-skins).
+  **IMPORT FROM WEB ADDRESS...** opens a small panel: paste (Ctrl+V, Cmd+V on a Mac) a direct link to a
+  64 x 64 or 64 x 32 picture (an `http` or `https` address, such as a `.png` link or a
+  `textures.minecraft.net/texture/...` link; a web page that merely shows a skin is not a picture) and press
+  DOWNLOAD. It is fetched in the background with `curl` (at most 2 MB, 20 seconds) into `tmp/skins/` in the data
+  folder, checked, and imported like a file from the browser. The panel says `DOWNLOADING...`, `IMPORTED`,
+  `COULD NOT DOWNLOAD`, `NOT A SKIN PICTURE` or `TOO BIG`. The build for old Macs (`macos-legacy`) cannot open
+  `https` addresses and says so. You can also drop a picture file on the window while the SKIN tab is open.
 - **MODS**: a switch for every mod, and UPDATE THE GAME AUTOMATICALLY. See
   [Mods](#mods) and [Updating](#updating).
 
