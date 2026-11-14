@@ -91,7 +91,7 @@ impl App {
         for (x, y, hp, max, shrink) in self.tag_hearts.borrow().iter() {
             crate::client::playerlist::small_hearts(r, *x, *y + 12.0 * s * shrink, *hp, *max, s * shrink * 0.5);
         }
-        if self.screen == Screen::Game && self.keys[43] && g.net.is_some() {
+        if self.screen == Screen::Game && (self.keys[43] || self.show_tablist) && g.net.is_some() {
             crate::client::playerlist::tab_list(r, g, &self.settings.player_name, w, s);
         }
         // Voice chat: your microphone, and who is talking.

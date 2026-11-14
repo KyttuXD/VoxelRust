@@ -364,6 +364,8 @@ struct App {
     skin_slim: bool,
     /// For pictures (`--show eat:F`): hold the hand at this point of eating.
     show_eat: Option<f32>,
+    /// `--show tablist`: the player list is drawn as if Tab were held.
+    show_tablist: bool,
     skin_sent: bool,
     /// Pack files read at start-up, for reading again on request.
     pack_paths: Vec<String>,
@@ -1261,6 +1263,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         at_oven: false,
         show_walking: opts.show.contains("walking"),
         // "eat:F": the first-person hand held F (0 to 1) of the way through eating, for pictures.
+        show_tablist: opts.show.split(',').any(|w| w == "tablist"),
         show_eat: opts.show.split(',').find_map(|w| w.strip_prefix("eat:")).and_then(|f| f.parse::<f32>().ok()).map(|f| f.clamp(0.0, 1.0)),
         show_looks: opts.show.split(',').find_map(|w| w.strip_prefix("looks:")).map(String::from),
         mods_scroll: 0,

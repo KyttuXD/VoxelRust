@@ -74,7 +74,12 @@ pub fn tab_list(r: &mut Renderer, g: &Session, own: &str, w: f32, s: f32) {
     rows.extend(others);
     let more = rows.len().saturating_sub(MAX_ROWS);
     rows.truncate(MAX_ROWS);
-    let (row_h, panel_w) = (11.0 * s, 190.0 * s);
+    // Columns: the name (as wide as the longest), the health bar, its numbers, the ping: each
+    // as wide as the most it can need, so nothing runs into the next.
+    let name_w = rows.iter().map(|r| Renderer::text_width(&r.name, s)).fold(Renderer::text_width("PLAYERS (00)", s), |a, b| if b > a { b } else { a });
+    let (bar_w, nums_w, ping_w) = (40.0 * s, Renderer::text_width("100/100", s), Renderer::text_width("9999MS", s));
+    let row_h = 11.0 * s;
+    let panel_w = 4.0 * s + name_w + 8.0 * s + bar_w + 3.0 * s + nums_w + 8.0 * s + ping_w + 4.0 * s;
     let x0 = (w - panel_w) * 0.5;
     let y0 = 14.0 * s;
     let height = (rows.len() as f32 + 1.0) * row_h + 6.0 * s + if more > 0 { row_h } else { 0.0 };
@@ -85,8 +90,8 @@ pub fn tab_list(r: &mut Renderer, g: &Session, own: &str, w: f32, s: f32) {
         r.label(x0 + 4.0 * s, y, s, &row.name, WHITE);
         if let Some(v) = row.vitals {
             // A bar of how much health of the most, and the numbers.
-            let bar = 40.0 * s;
-            let bx = x0 + 96.0 * s;
+            let bar = bar_w;
+            let bx = x0 + 4.0 * s + name_w + 8.0 * s;
             r.rect(bx, y + s, bar, 6.0 * s, [40, 16, 18, 230]);
             let frac = if v.max == 0 { 0.0 } else { (v.hp as f32 / v.max as f32).clamp(0.0, 1.0) };
             r.rect(bx, y + s, bar * frac, 6.0 * s, if v.hp == 0 { [90, 90, 90, 255] } else { [226, 44, 52, 255] });
