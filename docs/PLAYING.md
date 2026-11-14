@@ -535,6 +535,26 @@ Minecraft but with the hand shown:
   use things: a tool winds up, strikes and recovers, anything else twists
   in and back (the timings are LastRoute's).
 
+### Fighting other players
+
+On a multiplayer server you can hit other players in survival mode: aim at
+one within reach and press the attack button. The hit does what the item in
+hand does (a bare hand 1, swords as in the table below), less what the
+other player's armour takes off, and throws them back; they see a red flash
+and their hearts drop. Nobody can be hurt in the first 5 seconds after joining
+or respawning, creative players cannot be hurt and cannot hurt anyone, and
+there are no teams: friendly fire is on. If you are killed by a player, the
+server says "NAME was slain by NAME". `/kills` shows your kills since the
+server started.
+
+Operators turn fighting off or on with `/pvp off` and `/pvp on` (the server's
+`pvp=on|off` setting is where it starts), forbid it to one player with
+`/perm NAME -pvp`, and set the protection with `spawn_protection_seconds=5`
+in the server's `settings.txt`. Older games cannot fight (they take no damage).
+
+Clicking the attack button with nothing in reach swings your arm anyway;
+other players see the swing.
+
 ### Swords
 
 A sword is 2 of the material and 1 stick at a crafting table. A bare hand (or

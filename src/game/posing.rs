@@ -189,7 +189,7 @@ impl crate::session::Session {
     /// What the arms are doing now, from the bow, the food and the blows.
     pub fn activity(&self) -> Activity {
         let id = self.held().map_or(u16::MAX, |h| h.0 as u16);
-        Activity::of(self.bow.shown(id), self.eating.shown(id), self.cooldown[0], self.cooldown[1])
+        Activity::of(self.bow.shown(id), self.eating.shown(id), self.blow_left(), self.cooldown[1])
     }
 
     /// Once a frame: settle the posture, run the emote, and tell the others of both.

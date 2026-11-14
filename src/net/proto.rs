@@ -31,6 +31,8 @@ pub const PERM_COMMANDS: u8 = 4;
 pub const PERM_CREATIVE: u8 = 8;
 /// May talk over proximity voice chat (allowed by default).
 pub const PERM_VOICE: u8 = 16;
+/// May fight other players, and be fought (allowed by default; see `net/pvp`).
+pub const PERM_PVP: u8 = 32;
 /// Largest voice frame, in bytes (a 20 ms frame is about 163).
 pub const MAX_VOICE_FRAME: usize = 200;
 /// [`Msg::VoiceState`] flags: this client wants to hear others / may talk.
@@ -70,6 +72,16 @@ pub mod channel {
     pub const MODMSG: u8 = 5;
     /// From the server to a joining player: where they were when they left (`x y z yaw pitch`).
     pub const PLAYER: u8 = 6;
+    /// Player against player (`net/pvp`, no protocol change: older games ignore these).
+    /// "I hit player N": from the attacker to the server only.
+    pub const PVP_HIT: u8 = 7;
+    /// "You were hit": from the server (id 0) to the one who was hit.
+    pub const PVP_HURT: u8 = 8;
+    /// "Player N was hit by M": from the server (id 0) to those nearby, for the flash.
+    pub const PVP_SEEN: u8 = 9;
+    /// "My armour, and whether I am alive": from a client to the server only; a
+    /// game that sends it can be fought.
+    pub const PVP_GEAR: u8 = 10;
     /// From here up: the mods' own code, one channel each (see
     /// `Session::send_ext`).
     pub const NATIVE: u8 = 32;

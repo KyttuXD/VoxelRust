@@ -133,7 +133,9 @@ impl App {
                     Some(t) => *t,
                     None => r.entity_texture(&crate::pack_entities::skin_picture(crate::pack_entities::default_skin_for(&p.name))),
                 };
-                r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                // A player who was just hit glows red (see game/pvp.rs).
+                let tint = if p.hurt > 0.0 { [255, l / 3, l / 3] } else { [l, l, l] };
+                r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, tint);
                 // What they hold, out to the right of the body (not while sitting, lying or emoting: the hand is elsewhere).
                 let busy = drawn.pose.body.walk_weight() < 0.5 || drawn.pose.body.emote != 0;
                 let held = if p.held == 0 || busy { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(Some(p.held as usize - 1)) };

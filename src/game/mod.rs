@@ -33,6 +33,7 @@ pub mod hooks;
 pub mod effects;
 pub mod crafting;
 pub mod posing;
+pub mod pvp;
 pub mod ambience_probe;
 pub mod gear;
 pub mod creature_size;
