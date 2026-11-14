@@ -294,6 +294,8 @@ enum Screen {
     EditWorld,
     /// The file browser (see `client::picker`), opened from the settings.
     Picker,
+    /// The emote wheel (see `client::emote_wheel`), over the game.
+    Emote,
 }
 
 /// Which build this is: the name its download carries. An update must
@@ -442,6 +444,8 @@ struct App {
     help_timer: f32,
     /// When the world started waiting for its first chunks (0 once playable).
     loading_since: f64,
+    /// The emote wheel's pointer and state.
+    wheel: crate::client::emote_wheel::Wheel,
     /// Camera behind the player instead of in their head.
     third_person: bool,
     /// In the third-person view, from the front (the camera faces the player).
@@ -570,7 +574,7 @@ impl App {
         self.rebinding = None;
         self.buttons = [false; 4];
         if !self.scripted {
-            unsafe { (sdl::sdl().SDL_SetRelativeMouseMode)((screen == Screen::Game) as c_int) };
+            unsafe { (sdl::sdl().SDL_SetRelativeMouseMode)((screen == Screen::Game || screen == Screen::Emote) as c_int) };
         }
     }
 
@@ -828,6 +832,9 @@ impl App {
                     self.swallow_text = true;
                 } else if sc == k_fly {
                     self.leave = true;
+                } else if sc == self.settings.key(Action::Emote) && !typing && self.session.as_ref().map_or(false, |g| !g.dead) {
+                    self.wheel.open();
+                    self.set_screen(Screen::Emote);
                 } else if sc == key::F5 {
                     // F5 cycles: first person, behind, in front.
                     if !self.third_person {
@@ -1053,7 +1060,7 @@ impl App {
         self.ui_clock += real_dt;
         // In multiplayer the world never stops.
         let online = self.session.as_ref().map_or(false, |g| g.net.is_some());
-        let playing = online || matches!(self.screen, Screen::Game | Screen::Inventory | Screen::Dead | Screen::Chat | Screen::Map | Screen::FullMap | Screen::Craft | Screen::Chest);
+        let playing = online || matches!(self.screen, Screen::Game | Screen::Inventory | Screen::Dead | Screen::Chat | Screen::Map | Screen::FullMap | Screen::Craft | Screen::Chest | Screen::Emote);
         let in_game = self.screen == Screen::Game;
         let k = |a: Action| in_game && self.keys[(self.settings.key(a) as usize).min(511)];
         let controls = Controls {
@@ -1208,7 +1215,12 @@ impl App {
         let mut new_tags = Vec::new();
         if let Some(g) = &self.session {
             let mut eye = g.player.eye();
-            if self.settings.view_bobbing && g.player.on_ground && !g.player.flying {
+            // Asleep: the view is from the eyes of the body lying in the bed, looking up.
+            let lying = g.posing.lying.filter(|_| g.sleeping);
+            if let Some(l) = lying {
+                eye = crate::content::pose::sleep::eye_at(l.middle, l.yaw);
+            }
+            if self.settings.view_bobbing && g.player.on_ground && !g.player.flying && lying.is_none() {
                 let speed = g.player.vel[0] * g.player.vel[0] + g.player.vel[2] * g.player.vel[2];
                 if speed > 1.0 {
                     eye[1] += (sinf(g.clock * 11.0) * 0.035) as f64;
@@ -1226,7 +1238,13 @@ impl App {
                 eye = [eye[0] + (back.x * room) as f64, eye[1] + (back.y * room) as f64, eye[2] + (back.z * room) as f64];
             }
             // From the front the camera turns round to face the player.
-            let (cam_yaw, cam_pitch) = if self.third_person && self.third_front { (g.player.yaw + PI, -g.player.pitch) } else { (g.player.yaw, g.player.pitch) };
+            let (cam_yaw, cam_pitch) = if self.third_person && self.third_front {
+                (g.player.yaw + PI, -g.player.pitch)
+            } else if let (Some(l), false) = (lying, self.third_person) {
+                (l.yaw, crate::content::pose::sleep::LOOK_UP)
+            } else {
+                (g.player.yaw, g.player.pitch)
+            };
             let cam = Camera { pos: eye, yaw: cam_yaw, pitch: cam_pitch, fov: self.settings.fov as f32 };
             let head = g.world.get(floord(eye[0]), floord(eye[1]), floord(eye[2]));
             underwater = crate::block::is_water(head);
@@ -1265,12 +1283,19 @@ impl App {
             }
             r.finish_world(&cam, &env);
             // The hand and what it holds, in their own close-up pass.
-            if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried {
+            // (While emoting only the arm shows, and only for emotes that move it; the item is put away.)
+            let emoting = g.posing.emote.is_some();
+            let emote_arm = !emoting || crate::content::pose::emote::shows_arm(&g.posing.body(g.activity()));
+            if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried && lying.is_none() && emote_arm {
                 if let Some(hand) = reg().models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).1) {
                     let v = g.player.vel;
                     let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
-                    let held = crate::client::hand::held_of(g.held().map(|h| h.0));
-                    let view = hand_view_of(g, held, speed);
+                    let held = if emoting { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(g.held().map(|h| h.0)) };
+                    let mut view = hand_view_of(g, held, speed);
+                    if let Some((_, t)) = g.posing.emote {
+                        // A wave: the hand swings to and fro.
+                        view.swing = (0.4 + 0.35 * sinf(t * 9.0)).max(0.001);
+                    }
                     let mut items = Vec::new();
                     crate::client::hand::first_person_view(held, &view, &mut items);
                     let to_view = |p: [f32; 3]| crate::client::hand::arm_point_view(p, &view, held);
@@ -1353,6 +1378,7 @@ impl App {
                 Screen::AddServer => self.screen_add_server(&mut ui),
                 Screen::Chat => self.screen_chat(&mut ui),
                 Screen::Picker => self.screen_picker(&mut ui),
+                Screen::Emote => self.screen_emote(&mut ui),
             }
             clicked = ui.clicked_any;
         }
@@ -1400,9 +1426,16 @@ impl App {
             if m.hurt > 0.0 {
                 tint = [255, tint[1] / 3, tint[2] / 3];
             }
-            let pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, ..Default::default() };
+            let mut pose = crate::model::Pose { phase: m.phase, stride: m.stride, anim: d.x.anim, clock: m.clock, ..Default::default() };
+            // A person standing still on a seat sits; in a bed, sleeps.
+            let kind = crate::client::pose_view::creature_posture(&|x, y, z| g.world.get(x, y, z), m.body.pos, m.stride);
+            let mut at = p;
+            if kind != crate::content::pose::Kind::Stand {
+                pose.body = crate::content::pose::Body::steady(kind);
+                at = rel(crate::client::pose_view::creature_at(kind, m.body.pos, m.body.yaw));
+            }
             r.tex_override = r.entity_texture(m.tex());
-            r.draw_model(model, &pose, p, m.body.yaw, height, tint);
+            r.draw_model(model, &pose, at, m.body.yaw, height, tint);
         }
         // Props: blocks that are models (furniture, statues, plants). Only
         // those near enough to matter, and not the ones behind the camera.
@@ -1471,15 +1504,16 @@ impl App {
                     None => continue,
                 };
                 let l = (light_at(p.pos) * 255.0) as u8;
-                let pose = crate::model::Pose { phase: p.phase, stride: p.stride, head_pitch: -p.pitch * 180.0 / PI, head_yaw: 0.0, ..Default::default() };
+                let drawn = crate::client::pose_view::remote(p, g.clock);
                 // A player whose skin has not arrived wears the built-in one their name picks.
                 r.tex_override = match self.remote_skins.get(id) {
                     Some(t) => *t,
                     None => r.entity_texture(&crate::pack_entities::skin_picture(crate::pack_entities::default_skin_for(&p.name))),
                 };
-                r.draw_model(model, &pose, at, p.yaw, crate::player::HEIGHT as f32, [l, l, l]);
-                // What they hold, out to the right of the body.
-                let held = if p.held == 0 { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(Some(p.held as usize - 1)) };
+                r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                // What they hold, out to the right of the body (not while sitting, lying or emoting: the hand is elsewhere).
+                let busy = drawn.pose.body.walk_weight() < 0.5 || drawn.pose.body.emote != 0;
+                let held = if p.held == 0 || busy { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(Some(p.held as usize - 1)) };
                 let mut held_quads = Vec::new();
                 crate::client::hand::on_body(held, crate::client::hand::white_tile(), 0.0, at, p.yaw, crate::player::HEIGHT as f32, &mut held_quads);
                 r.draw_quads(&held_quads, None);
@@ -1490,19 +1524,12 @@ impl App {
         }
         if self.third_person {
             if let Some(model) = reg.models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).0) {
-                let v = g.player.vel;
-                let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
-                let pose = crate::model::Pose {
-                    phase: g.clock * 9.0,
-                    stride: if g.player.on_ground { (speed / 4.4).min(1.0) } else { 0.2 },
-                    head_pitch: -g.player.pitch * 180.0 / PI,
-                    head_yaw: 0.0,
-                    ..Default::default()
-                };
+                let drawn = crate::client::pose_view::local(g);
                 let l = (light_at(g.player.pos) * 255.0) as u8;
                 r.tex_override = self.skin_tex;
-                r.draw_model(model, &pose, rel(g.player.pos), g.player.yaw, crate::player::HEIGHT as f32, [l, l, l]);
-                let held = crate::client::hand::held_of(g.held().map(|h| h.0));
+                r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                let busy = drawn.pose.body.walk_weight() < 0.5 || drawn.pose.body.emote != 0;
+                let held = if busy { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(g.held().map(|h| h.0)) };
                 let mut held_quads = Vec::new();
                 crate::client::hand::on_body(held, crate::client::hand::white_tile(), hand_swing(g), rel(g.player.pos), g.player.yaw, crate::player::HEIGHT as f32, &mut held_quads);
                 r.draw_quads(&held_quads, None);
@@ -2091,7 +2118,7 @@ impl App {
                             self.rebinding = Some(i);
                         }
                     }
-                    if ui.button(x, row(8), bw, bh, "RESET KEYS") {
+                    if ui.button(x, row(9), bw, bh, "RESET KEYS") {
                         st.keys = Settings::default().keys;
                     }
                 }
@@ -2581,6 +2608,23 @@ impl App {
         };
         if !stay {
             self.set_screen(Screen::Game);
+        }
+    }
+
+    /// The emote wheel: let go of the key or click to play the emote the pointer is on.
+    fn screen_emote(&mut self, ui: &mut Ui) {
+        let names: Vec<String> = reg().emotes.list.iter().map(|e| e.name.to_ascii_uppercase()).collect();
+        let key = (self.settings.key(Action::Emote) as usize).min(511);
+        let (held, pressed) = (self.keys[key], ui.inp.pressed(key as i32));
+        match self.wheel.show(ui, &names, held, pressed) {
+            crate::client::emote_wheel::Outcome::Open => {}
+            crate::client::emote_wheel::Outcome::Cancel => self.set_screen(Screen::Game),
+            crate::client::emote_wheel::Outcome::Play(i) => {
+                if let Some(g) = self.session.as_mut() {
+                    g.play_emote(i);
+                }
+                self.set_screen(Screen::Game);
+            }
         }
     }
 
@@ -3440,6 +3484,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         show_debug: opts.show.contains("debug"),
         help_timer: 0.0,
         loading_since: 0.0,
+        wheel: Default::default(),
         third_person: opts.show.contains("third") || opts.show.contains("front"),
         third_front: opts.show.contains("front"),
         swallow_text: false,

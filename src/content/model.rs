@@ -5,6 +5,7 @@
 //! textured quads.
 
 use crate::bbmodel::{self, Model};
+use crate::content::pose::{self, Role, Walk};
 use crate::math::{cosf, sinf, PI};
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -85,6 +86,11 @@ pub struct ModelDef {
     pub id: String,
     pub model: Model,
     swing: Vec<Swing>,
+    /// What each bone is to a posed body, its lower-case name (for emotes),
+    /// and what the model is built like (see content/pose).
+    roles: Vec<Role>,
+    names: Vec<String>,
+    rig: pose::Rig,
     /// OpenGL texture, set by the renderer (0 = plain white).
     pub tex: u32,
 }
@@ -103,6 +109,8 @@ pub struct Pose {
     pub anim: crate::block::Anim,
     /// Seconds it has been alive: tails wag and ears twitch on their own.
     pub clock: f32,
+    /// Its posture, what it does with its arms, the emote it plays (content/pose).
+    pub body: pose::Body,
 }
 
 fn classify(name: &str) -> Swing {
@@ -167,7 +175,11 @@ impl ModelDef {
             return Err(String::from("the model has no cubes"));
         }
         let swing = model.bones.iter().map(|b| classify(&b.name)).collect();
-        Ok(ModelDef { id: String::from(id), model, swing, tex: 0 })
+        let roles: Vec<Role> = model.bones.iter().map(|b| pose::classify(&b.name)).collect();
+        let names = model.bones.iter().map(|b| b.name.to_ascii_lowercase()).collect();
+        let hips: Vec<f32> = model.bones.iter().zip(&roles).filter(|(_, r)| matches!(r, Role::Thigh(_))).map(|(b, _)| b.origin[1] - model.min[1]).collect();
+        let rig = pose::rig_of(&roles, &hips, (model.max[1] - model.min[1]).max(0.001));
+        Ok(ModelDef { id: String::from(id), model, swing, roles, names, rig, tex: 0 })
     }
 
     /// Height of the model in its own units.
@@ -193,7 +205,25 @@ impl ModelDef {
         ];
         use crate::block::Anim;
         let a = pose.anim;
-        let (st, ph, ck) = (pose.stride, pose.phase, pose.clock);
+        // Humanoids may sit, lie, swim...: the still postures replace their walk.
+        let body = pose.body;
+        let humanoid = self.rig.humanoid;
+        let st = if humanoid { pose.stride * body.walk_weight() } else { pose.stride };
+        let (ph, ck) = (pose.phase, pose.clock);
+        let walk = Walk { phase: ph, stride: st, clock: ck };
+        // The whole body, turned and lowered for lying, swimming, sitting...
+        let base = if humanoid {
+            let r = pose::root(&body, &self.rig);
+            if r.turn != 0.0 || r.shift != [0.0; 3] {
+                let turned = rotate_about([ox, m.min[1] + self.rig.hip, oz], [r.turn, 0.0, 0.0]);
+                let moved: M34 = [[1.0, 0.0, 0.0, r.shift[0]], [0.0, 1.0, 0.0, r.shift[1]], [0.0, 0.0, 1.0, r.shift[2]]];
+                mul(&root, &mul(&moved, &turned))
+            } else {
+                root
+            }
+        } else {
+            root
+        };
         let reach = match a {
             Anim::Walk => 38.0,
             Anim::Hop => 34.0,
@@ -251,10 +281,16 @@ impl ModelDef {
                 }
                 Swing::None => {}
             }
+            if humanoid {
+                pose::apply(self.roles[i], self.swing[i] != Swing::None, &body, &walk, &mut rot);
+            }
+            if body.emote != 0 {
+                pose::emote::add(&self.names[i], &body, &mut rot);
+            }
             let local = rotate_about(b.origin, rot);
             let parent = match b.parent {
                 Some(p) if p < bone_m.len() => bone_m[p],
-                _ => root,
+                _ => base,
             };
             bone_m.push(mul(&parent, &local));
         }
@@ -374,12 +410,44 @@ mod tests {
         let (a, b) = (bounds(&still), bounds(&turned));
         assert!(((a.1[0] - a.0[0]) - (b.1[2] - b.0[2])).abs() < 1e-3);
         // Walking swings the legs forward and back: the model gets deeper,
-        // but the head stays where it was.
+        // and the head stays about where it was (the torso only sways a little).
         let (w, s) = (bounds(&walking), bounds(&still));
         assert!(w.1[2] - w.0[2] > (s.1[2] - s.0[2]) + 0.2, "legs did not swing");
-        assert!((w.1[1] - s.1[1]).abs() < 1e-3);
+        assert!((w.1[1] - s.1[1]).abs() < 0.03);
         // The two legs move in opposite directions.
         assert!(w.0[2] < s.0[2] - 0.1 && w.1[2] > s.1[2] + 0.1);
+    }
+
+    #[test]
+    fn postures_change_the_shape_of_the_player() {
+        use crate::content::pose::{Body, Kind};
+        let m = ModelDef::from_bbmodel("player", PLAYER).unwrap();
+        assert!(m.rig.humanoid && m.rig.hip > 40.0 && m.rig.hip < 45.0);
+        let draw = |body: Body| {
+            let mut v = Vec::new();
+            m.quads(&Pose { body, ..Default::default() }, [0.0; 3], 0.0, 1.8, false, &mut v);
+            assert!(v.iter().all(|p| p.pos.iter().all(|c| c.is_finite())));
+            bounds(&v)
+        };
+        let stand = draw(Body::default());
+        // Sitting: lower, with the thighs out in front.
+        let sit = draw(Body::steady(Kind::Sit));
+        assert!(sit.1[1] < stand.1[1] - 0.4 && sit.1[1] > 1.0, "{sit:?}");
+        assert!(sit.0[2] < stand.0[2] - 0.12, "{sit:?}");
+        // Lying: flat on the bed, as long as the body is tall.
+        let lie = draw(Body::steady(Kind::Sleep));
+        assert!(lie.1[1] < 0.6 && lie.0[1] > -0.1, "{lie:?}");
+        assert!(lie.1[2] - lie.0[2] > 1.5, "{lie:?}");
+        // Crouching: lower than standing.
+        let crouch = draw(Body::steady(Kind::Crouch));
+        assert!(crouch.1[1] < stand.1[1] - 0.15, "{crouch:?}");
+        // Swimming: horizontal too.
+        let swim = draw(Body::steady(Kind::Swim));
+        assert!(swim.1[2] - swim.0[2] > 1.2 && swim.1[1] - swim.0[1] < 1.3, "{swim:?}");
+        // A creature that is not built like a person does not take the poses.
+        let cow_text = String::from_utf8_lossy(crate::block::embedded::file("models/cow.bbmodel").expect("cow model")).into_owned();
+        let cow = ModelDef::from_bbmodel("cow", &cow_text).unwrap();
+        assert!(!cow.rig.humanoid);
     }
 
     #[test]

@@ -40,7 +40,7 @@ struct Conn {
     name: String,
     joined: bool,
     /// Where this player last said they were, for telling newcomers.
-    last_move: Option<([f64; 3], f32, f32, u16)>,
+    last_move: Option<([f64; 3], f32, f32, u16, u8)>,
     skin: Vec<u8>,
     skin_slim: bool,
     /// What this player's voice chat is set to (`VOICE_` flags); 0 until they say.
@@ -530,8 +530,8 @@ impl Server {
                             if !other.skin.is_empty() {
                                 out.extend(Msg::Skin { id: other.id, png: other.skin.clone(), slim: other.skin_slim }.encode());
                             }
-                            if let Some((pos, yaw, pitch, held)) = other.last_move {
-                                out.extend(Msg::Move { id: other.id, pos, yaw, pitch, held }.encode());
+                            if let Some((pos, yaw, pitch, held, pose)) = other.last_move {
+                                out.extend(Msg::Move { id: other.id, pos, yaw, pitch, held, pose }.encode());
                             }
                         }
                         let all: Vec<(i32, i32, i32, u16)> = self.edits.iter().map(|(k, &b)| (k.0, k.1, k.2, b)).collect();
@@ -552,10 +552,12 @@ impl Server {
                         log.push(alloc::format!("{} joined ({} online)", name, self.players()));
                         self.broadcast(&Msg::Join { id, name }, id);
                     }
-                    Msg::Move { pos, yaw, pitch, held, .. } if joined => {
-                        self.conns[i].last_move = Some((pos, yaw, pitch, held));
-                        self.broadcast(&Msg::Move { id, pos, yaw, pitch, held }, id);
+                    Msg::Move { pos, yaw, pitch, held, pose, .. } if joined => {
+                        self.conns[i].last_move = Some((pos, yaw, pitch, held, pose));
+                        self.broadcast(&Msg::Move { id, pos, yaw, pitch, held, pose }, id);
                     }
+                    // An emote the player plays (or stops): everyone else sees it.
+                    Msg::Emote { emote, .. } if joined => self.broadcast(&Msg::Emote { id, emote }, id),
                     Msg::SetBlock { x, y, z, block } if joined => {
                         let may = self.flags_for(&self.conns[i].name) & crate::proto::PERM_BUILD != 0;
                         if may && (0..CH).contains(&y) && block < self.cfg.states {

@@ -53,7 +53,7 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | W A S D * | move |
 | Mouse | look |
 | Space * | jump; fly up when flying; in creative, press twice quickly to start or stop flying; get up from a seat |
-| Left Shift * | fly down when flying |
+| Left Shift * | fly down when flying; crouch on the ground (hunched, slower, eyes lower, no sprinting) |
 | Left Ctrl * | sprint |
 | F * | get out of a vehicle; get off a creature; get up from a seat |
 | (chat) /passenger | ride along in a nearby vehicle with a free seat (buses, ferries, jeeps...) |
@@ -67,12 +67,29 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | N | The world map with waypoints, on every world |
 | T * | chat |
 | V * | push to talk (voice chat on a server, with the microphone turned on in SETTINGS > VOICE) |
+| B * | the emote wheel: hold it, push the mouse toward an emote and let go (or click) to play it; Esc closes it. A quick tap leaves it open until you click. The mouse wheel turns the pages when there are more than eight |
 | Esc | menu / close a screen |
 | F1 | hide or show the HUD |
 | F2 | save a screenshot (`screenshot-<number>.bmp` in the data folder) |
 | F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts |
 | F5 | third-person view |
 | F11 | full screen |
+
+**Posture.** Your body shows what you are doing, to you in the third-person
+view (F5) and to everyone else on a server: sitting on a chair (thighs
+forward, hands on the knees, eyes lowered to a seated person's), lying in a
+bed (flat on your back; the view is from the pillow, looking up), crouching,
+swimming (face down, arms stroking), climbing (hand over hand, on blocks that
+have the tag `climb`, such as the glow vine: jump to go up, Left Shift to go
+down), falling, riding, drawing a bow, eating, striking. Villagers and other
+people-shaped creatures sit down when they stand still on a seat and lie down
+in a bed. Walking and running flex the elbows, knees and ankles and twist the
+body a little against the hips.
+
+**Emotes.** The game comes with one, WAVE; packs and mods add more (see
+[DATA.md](DATA.md#emotes)). An emote plays on your body and stops when you
+move, are hurt, or it ends. Other players on a server see it. In the first
+person only an emote that moves an arm shows (the arm, with the item put away).
 
 Flying is creative only and has no key of its own: press jump twice
 quickly to take off, and twice again to land. Nothing on screen lists the

@@ -19,6 +19,12 @@ pub struct Remote {
     pub stride: f32,
     /// False until their first position arrives.
     pub seen: bool,
+    /// Their pose byte (see `content::pose::unpack`), the posture they are
+    /// easing into, and the emote they are playing (a code, 0 = none) and for how long.
+    pub pose: u8,
+    pub body: crate::content::pose::Smoother,
+    pub emote: u16,
+    pub emote_t: f32,
 }
 
 pub enum Event {
@@ -40,6 +46,8 @@ pub enum Event {
     Joined(String),
     /// Another player left.
     Left(String),
+    /// Another player started (code above 0) or stopped (0) an emote: who and which.
+    Emote(u16, u16),
 }
 
 pub struct Welcome {
@@ -56,7 +64,9 @@ pub struct Client {
     send_timer: f32,
     /// Time since a position was last sent at all.
     refresh_timer: f32,
-    last_sent: ([f64; 3], f32, f32, u16),
+    last_sent: ([f64; 3], f32, f32, u16, u8),
+    /// The pose byte to send with the next position (set by the session).
+    pub pose: u8,
     pub alive: bool,
     /// Voice frames that have arrived and not yet been played: who, sequence
     /// number, loudness (0..=255), the ADPCM frame. Taken by `client::voice`;
@@ -92,7 +102,7 @@ impl Client {
         for _ in 0..80 {
             match inbox.next() {
                 Next::Msg(Msg::Welcome { id, seed, time, kind }) => {
-                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0), alive: true, voice_in: Vec::new() };
+                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new() };
                     return Ok((c, Welcome { seed, time, kind }));
                 }
                 Next::Msg(Msg::Refuse { reason }) => return Err(reason.to_ascii_uppercase()),
@@ -141,7 +151,7 @@ impl Client {
                     Msg::Join { id, name } => {
                         events.push(Event::Chat(alloc::format!("{} JOINED", name.to_ascii_uppercase())));
                         events.push(Event::Joined(name.clone()));
-                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, seen: false });
+                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0 });
                     }
                     Msg::Leave { id } => {
                         if let Some(p) = self.players.remove(&id) {
@@ -149,9 +159,10 @@ impl Client {
                             events.push(Event::Left(p.name.clone()));
                         }
                     }
-                    Msg::Move { id, pos, yaw, pitch, held } => {
+                    Msg::Move { id, pos, yaw, pitch, held, pose } => {
                         if let Some(p) = self.players.get_mut(&id) {
                             p.held = held;
+                            p.pose = pose;
                             let (dx, dz) = ((pos[0] - p.pos[0]) as f32, (pos[2] - p.pos[2]) as f32);
                             let step = crate::math::sqrtf(dx * dx + dz * dz);
                             if p.seen {
@@ -162,6 +173,13 @@ impl Client {
                             p.yaw = yaw;
                             p.pitch = pitch;
                             p.seen = true;
+                        }
+                    }
+                    Msg::Emote { id, emote } => {
+                        if let Some(p) = self.players.get_mut(&id) {
+                            p.emote = emote;
+                            p.emote_t = 0.0;
+                            events.push(Event::Emote(id, emote));
                         }
                     }
                     Msg::SetBlock { x, y, z, block } => events.push(Event::Block(x, y, z, block)),
@@ -195,6 +213,14 @@ impl Client {
         // Players who stop moving stop walking.
         for p in self.players.values_mut() {
             p.stride *= 1.0 - (dt * 3.0).min(1.0);
+            p.body.update(crate::content::pose::unpack(p.pose).0, dt);
+            // An emote runs on while they stand still, and stops when they move off.
+            if p.emote != 0 {
+                p.emote_t += dt;
+                if p.stride > 0.3 {
+                    p.emote = 0;
+                }
+            }
         }
         if !self.alive {
             events.push(Event::Lost);
@@ -207,15 +233,22 @@ impl Client {
     pub fn send_move(&mut self, dt: f32, pos: [f64; 3], yaw: f32, pitch: f32, held: u16) {
         self.send_timer += dt;
         self.refresh_timer += dt;
-        let changed = self.last_sent != (pos, yaw, pitch, held);
+        let changed = self.last_sent != (pos, yaw, pitch, held, self.pose);
         if self.send_timer < 0.1 || (!changed && self.refresh_timer < 2.0) {
             return;
         }
         self.send_timer = 0.0;
         self.refresh_timer = 0.0;
-        self.last_sent = (pos, yaw, pitch, held);
+        self.last_sent = (pos, yaw, pitch, held, self.pose);
         let id = self.id;
-        self.send(&Msg::Move { id, pos, yaw, pitch, held });
+        let pose = self.pose;
+        self.send(&Msg::Move { id, pos, yaw, pitch, held, pose });
+    }
+
+    /// Tell the others which emote this player is playing (0 = stopped).
+    pub fn send_emote(&mut self, emote: u16) {
+        let id = self.id;
+        self.send(&Msg::Emote { id, emote });
     }
 
     pub fn send_block(&mut self, x: i32, y: i32, z: i32, block: u16) {
@@ -339,6 +372,42 @@ mod tests {
         pump(&mut bob, 60);
         let ea = pump(&mut ann, 100);
         assert!(ea.iter().any(|e| matches!(e, Event::Block(2, 70, 2, _))), "no such event");
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn poses_and_emotes_reach_the_other_players() {
+        use crate::content::pose::{pack, unpack, Kind, SWING};
+        let (port, stop, handle) = start_server(8);
+        let (mut a, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
+        let (mut b, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
+        pump(&mut a, 80);
+        pump(&mut b, 80);
+        // Ann sits, swinging an arm.
+        a.pose = pack(Kind::Sit, SWING);
+        a.send_move(1.0, [3.5, 70.0, 9.5], 0.25, 0.0, 0);
+        pump(&mut a, 40);
+        pump(&mut b, 100);
+        let seen = b.players.values().find(|p| p.name == "Ann").expect("Ann is there");
+        assert_eq!(unpack(seen.pose), (Kind::Sit, SWING));
+        // A change of pose alone is sent, even though she did not move.
+        a.pose = pack(Kind::Stand, 0);
+        a.send_move(1.0, [3.5, 70.0, 9.5], 0.25, 0.0, 0);
+        pump(&mut b, 100);
+        assert_eq!(unpack(b.players.values().find(|p| p.name == "Ann").unwrap().pose).0, Kind::Stand);
+        // Her emote is relayed with her id, and stopping it too.
+        a.send_emote(2);
+        pump(&mut a, 40);
+        let eb = pump(&mut b, 100);
+        assert!(eb.iter().any(|e| matches!(e, Event::Emote(_, 2))), "no emote event");
+        assert_eq!(b.players.values().find(|p| p.name == "Ann").unwrap().emote, 2);
+        a.send_emote(0);
+        pump(&mut b, 100);
+        assert_eq!(b.players.values().find(|p| p.name == "Ann").unwrap().emote, 0);
+        // The sender does not hear herself.
+        let ea = pump(&mut a, 40);
+        assert!(!ea.iter().any(|e| matches!(e, Event::Emote(..))));
         stop.store(true, Ordering::Relaxed);
         handle.join().unwrap();
     }

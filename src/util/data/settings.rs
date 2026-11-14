@@ -22,15 +22,17 @@ pub enum Action {
     Drop,
     /// Push to talk (proximity voice chat).
     Voice,
+    /// Hold to open the emote wheel.
+    Emote,
 }
 
-pub const ACTIONS: [(Action, &str, &str, i32); 14] = [
+pub const ACTIONS: [(Action, &str, &str, i32); 15] = [
     (Action::Forward, "forward", "MOVE FORWARD", 26),
     (Action::Back, "back", "MOVE BACK", 22),
     (Action::Left, "left", "MOVE LEFT", 4),
     (Action::Right, "right", "MOVE RIGHT", 7),
     (Action::Jump, "jump", "JUMP / FLY UP", 44),
-    (Action::Descend, "descend", "FLY DOWN", 225),
+    (Action::Descend, "descend", "FLY DOWN / CROUCH", 225),
     (Action::Sprint, "sprint", "SPRINT", 224),
     (Action::Fly, "leave", "GET OFF / GET OUT", 9),
     (Action::Inventory, "inventory", "INVENTORY", 8),
@@ -39,6 +41,7 @@ pub const ACTIONS: [(Action, &str, &str, i32); 14] = [
     (Action::Chat, "chat", "CHAT", 23),
     (Action::Drop, "drop", "DROP THE HELD ITEM", 20),
     (Action::Voice, "voice", "PUSH TO TALK", 25),
+    (Action::Emote, "emote", "EMOTE WHEEL", 5),
 ];
 
 /// Built-in skins by name (the pictures are `skin_<name>` in `data/textures/entity`,
@@ -415,6 +418,7 @@ mod tests {
         let d = Settings::default();
         assert!(d.voice_hear && !d.voice_mic && !d.voice_activation);
         assert_eq!(d.key(Action::Voice), 25);
+        assert_eq!(d.key(Action::Emote), 5);
         let mut s = Settings::default();
         s.voice_mic = true;
         s.voice_hear = false;

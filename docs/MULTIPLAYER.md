@@ -84,14 +84,18 @@ empty name becomes `Player`. If someone on the server already has it, a
 number is added (`Bob` becomes `Bob2`).
 
 The server refuses a player whose game speaks a different version of the
-network protocol (currently version 8), and anyone beyond the player limit.
+network protocol (currently version 9), and anyone beyond the player limit.
 Everyone should run the same version of the game.
 
 ## What is shared, and what is not
 
 Shared between everyone on a server:
 
-- **Players**: position, the direction they look, name tags, and skins.
+- **Players**: position, the direction they look, name tags, and skins; what
+  their body is doing (a pose byte with every position: standing, crouching,
+  sitting, lying, swimming, climbing, falling, riding, and whether they are
+  drawing a bow, eating or striking), and the **emote** they are playing
+  (`Msg::Emote`, the number of the emote in the server's pack; 0 stops it).
 - **Block edits**: every block placed or broken, including everything built
   before you joined.
 - **Chat**.

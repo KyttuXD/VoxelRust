@@ -147,6 +147,8 @@ pub struct Session {
     call_timer: f32,
     /// The seat the player is sitting on.
     pub sitting: Option<[i32; 3]>,
+    /// Posture, emote and the bed the player lies in (game/posing.rs).
+    pub posing: crate::game::posing::Posing,
     /// The creature being ridden (its id).
     pub riding_mob: Option<u32>,
     /// Numbers that pack scripts keep (`/var`), saved with the world.
@@ -515,6 +517,7 @@ impl Session {
             started: false,
             call_timer: 3.0,
             sitting: None,
+            posing: Default::default(),
             riding_mob: None,
             vars: sys::read_file(&alloc::format!("{}{}.vars.txt", world_dir(base), name))
                 .map(|b| String::from_utf8_lossy(&b).lines().filter_map(|l| l.split_once('=').and_then(|(k, v)| Some((String::from(k), v.parse::<i64>().ok()?)))).collect())
@@ -1721,6 +1724,8 @@ impl Session {
                 crate::netplay::Event::Lost => self.lost = true,
                 crate::netplay::Event::Joined(who) => self.fire(crate::game::events::JOIN, &who.to_ascii_lowercase()),
                 crate::netplay::Event::Left(who) => self.fire(crate::game::events::LEAVE, &who.to_ascii_lowercase()),
+                // (Remote players keep their emote on their own record in `net.players`.)
+                crate::netplay::Event::Emote(..) => {}
                 crate::netplay::Event::Skin(id, png, slim) => self.skin_events.push((id, png, slim)),
                 crate::netplay::Event::State(_, channel, key, data) => {
                     use crate::proto::channel as ch;
@@ -1895,6 +1900,8 @@ impl Session {
         if night && self.net.is_none() {
             // Sleep until morning: the night passes at forty times the speed.
             self.sleeping = true;
+            // Lying on the bed, feet the way the player faced.
+            self.posing.lying = Some(crate::game::posing::Lying { middle: [cell[0] as f64 + 0.5, cell[1] as f64 + 0.56, cell[2] as f64 + 0.5], yaw: self.player.yaw });
             self.say("ZZZ...  MOVE TO WAKE UP");
         } else {
             self.say(if night { "YOU WILL WAKE UP HERE" } else { "YOU CAN SLEEP WHEN IT IS DARK" });
@@ -2072,6 +2079,8 @@ impl Session {
         });
         let seat = self.seat;
         self.carried = seat.is_some();
+        self.posing.climbing = false;
+        self.player.climb = None;
         // On a creature's back: carried along until getting off (the
         // leave key), or until it is gone.
         if let Some(id) = self.riding_mob {
@@ -2104,8 +2113,8 @@ impl Session {
             // (Placed above; nothing more to move.)
         } else if let Some(at) = self.sitting {
             let seat_height = block::def(self.world.get(at[0], at[1], at[2])).x.seat as f64 / 16.0;
-            // Eyes about 0.75 above the seat.
-            self.player.pos = [at[0] as f64 + 0.5, at[1] as f64 + seat_height + 0.75 - crate::player::EYE, at[2] as f64 + 0.5];
+            // Eyes at the height of a seated body's (content/pose/sit.rs).
+            self.player.pos = [at[0] as f64 + 0.5, at[1] as f64 + seat_height + crate::content::pose::sit::eye_above_seat() - crate::player::EYE, at[2] as f64 + 0.5];
             self.player.vel = [0.0; 3];
             self.player.on_ground = true;
             self.peak_y = self.player.pos[1];
@@ -2120,6 +2129,9 @@ impl Session {
             let world = &self.world;
             let before = self.player.pos;
             let was_in_water = self.player.in_water;
+            // Holding on to something climbable: up and down at a steady pace.
+            self.posing.climbing = crate::content::pose::climb::climbing(&|x, y, z| world.get(x, y, z), self.player.pos, self.player.flying);
+            self.player.climb = if self.posing.climbing { Some(crate::content::pose::climb::speed(c.input.jump, c.input.descend)) } else { None };
             self.player.unstick(&|x, y, z| world.get(x, y, z));
             self.player.update(dt, &c.input, &|x, y, z| world.get_for_physics(x, y, z));
             let (dx, dz) = ((self.player.pos[0] - before[0]) as f32, (self.player.pos[2] - before[2]) as f32);
@@ -2135,6 +2147,7 @@ impl Session {
             }
             self.survival_rules(dt, audio);
         }
+        self.update_posing(dt, c);
         // Creatures. Hunters only come for players in survival mode.
         let hunted = self.mode == GameMode::Survival && !self.dead;
         let held_item = self.held().map(|h| h.0);
@@ -2275,7 +2288,7 @@ impl Session {
         }
         // Falling: measured from the highest point since leaving the ground.
         let (y, on_ground) = (self.player.pos[1], self.player.on_ground);
-        let airborne = !on_ground && !self.player.flying && !self.player.in_water;
+        let airborne = !on_ground && !self.player.flying && !self.player.in_water && self.player.climb.is_none();
         if airborne {
             self.peak_y = if self.was_airborne { y.max(self.peak_y) } else { y };
         } else {

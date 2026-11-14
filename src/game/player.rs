@@ -41,6 +41,12 @@ pub struct Player {
     pub speed_scale: f32,
     /// Multiplies the speed of a jump (a jump boost effect).
     pub jump_scale: f32,
+    /// How far down in a crouch (0..1): holding the descend key on the
+    /// ground. Lowers the eyes and slows the walk (content/pose/crouch.rs).
+    pub crouch: f32,
+    /// Set while holding on to something climbable: the vertical speed
+    /// (no gravity, no jumping). The session sets it each frame.
+    pub climb: Option<f32>,
 }
 
 impl Player {
@@ -62,11 +68,13 @@ impl Player {
             height,
             speed_scale: 1.0,
             jump_scale: 1.0,
+            crouch: 0.0,
+            climb: None,
         }
     }
 
     pub fn eye(&self) -> [f64; 3] {
-        [self.pos[0], self.pos[1] + EYE, self.pos[2]]
+        [self.pos[0], self.pos[1] + EYE - crate::content::pose::crouch::EYE_DROP * self.crouch as f64, self.pos[2]]
     }
 
     fn bounds(&self, pos: [f64; 3]) -> ([f64; 3], [f64; 3]) {
@@ -103,6 +111,8 @@ impl Player {
         let feet = get(floord(self.pos[0]), floord(self.pos[1] + 0.4), floord(self.pos[2]));
         // Water and lava both hold you up, and swimming is the same in either.
         self.in_water = crate::block::fluid_of(feet).is_some();
+        let crouching = inp.descend && self.on_ground && !self.flying && !self.in_water;
+        self.crouch = crate::content::pose::crouch::approach(self.crouch, crouching, dt);
 
         // The direction the player wants to go, on the ground plane.
         let (s, c) = (sinf(self.yaw), cosf(self.yaw));
@@ -132,13 +142,19 @@ impl Player {
                 self.vel[1] = (self.vel[1] + 22.0 * dt).min(3.6);
             }
         } else {
-            let speed = (if inp.sprint { 6.9 } else { 4.8 }) * self.speed_scale;
+            // A crouch walks slowly, and does not sprint.
+            let pace = if self.crouch > 0.0 { 4.8 * (1.0 - (1.0 - crate::content::pose::crouch::SPEED) * self.crouch) } else if inp.sprint { 6.9 } else { 4.8 };
+            let speed = pace * self.speed_scale;
             let k = ((if self.on_ground { 14.0 } else { 3.5 }) * dt).min(1.0);
             self.vel[0] += (wx * speed - self.vel[0]) * k;
             self.vel[2] += (wz * speed - self.vel[2]) * k;
-            self.vel[1] = (self.vel[1] - 30.0 * dt).max(-60.0);
-            if inp.jump && self.on_ground {
-                self.vel[1] = 8.8 * self.jump_scale;
+            if let Some(up) = self.climb {
+                self.vel[1] = up;
+            } else {
+                self.vel[1] = (self.vel[1] - 30.0 * dt).max(-60.0);
+                if inp.jump && self.on_ground {
+                    self.vel[1] = 8.8 * self.jump_scale;
+                }
             }
         }
 
@@ -369,6 +385,26 @@ mod tests {
         run(&mut p, out, 4.0, &w);
         assert!(p.pos[0] > 10.0, "still in the pool at x = {}", p.pos[0]);
         assert!(p.pos[1] >= 11.0 - 1e-3, "not up on the shore: y = {}", p.pos[1]);
+    }
+
+    #[test]
+    fn crouching_lowers_the_eyes_and_slows_the_walk() {
+        let w = world(&[]);
+        let mut walker = Player::new([0.5, 10.0, 0.5]);
+        let mut crouched = Player::new([0.5, 10.0, 0.5]);
+        // (The world is flat stone below y = 10.)
+        run(&mut walker, Input::default(), 0.5, &w);
+        run(&mut crouched, Input::default(), 0.5, &w);
+        let standing_eye = crouched.eye()[1];
+        run(&mut walker, Input { forward: 1.0, ..Default::default() }, 1.0, &w);
+        run(&mut crouched, Input { forward: 1.0, descend: true, ..Default::default() }, 1.0, &w);
+        assert!(crouched.crouch > 0.99);
+        assert!(crouched.eye()[1] < standing_eye - 0.2, "eyes {} vs {}", crouched.eye()[1], standing_eye);
+        let (a, b) = ((0.5 - walker.pos[2]).abs(), (0.5 - crouched.pos[2]).abs());
+        assert!(b < a * 0.6 && b > 0.5, "walked {a} blocks, crouched {b}");
+        // Let go and the eyes come back up.
+        run(&mut crouched, Input::default(), 0.5, &w);
+        assert!(crouched.crouch < 0.01);
     }
 
     #[test]
