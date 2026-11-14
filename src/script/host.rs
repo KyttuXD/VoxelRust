@@ -370,7 +370,14 @@ impl Host for SessionHost<'_> {
         if !self.may_change_world() || x.abs() > EDGE || z.abs() > EDGE || !(0..crate::chunk::CH as i64).contains(&y) {
             return false;
         }
-        self.g.world.set_block(x as i32, y as i32, z as i32, b)
+        // `on_chunk_generated` may write only so many blocks in one call.
+        if let Some(left) = self.g.ev.block_budget {
+            if left == 0 {
+                return false;
+            }
+            self.g.ev.block_budget = Some(left - 1);
+        }
+        self.g.world.set_block_cause(crate::terrain::world_log::cause::SCRIPT, x as i32, y as i32, z as i32, b)
     }
 
     fn get_block(&mut self, x: i64, y: i64, z: i64) -> String {

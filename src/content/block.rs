@@ -412,6 +412,9 @@ pub struct EntityExtra {
     /// player, and when within range for the whole fuse it blows up (see
     /// `entity_explode`).
     pub explodes: Option<(f32, f32, f32)>,
+    /// `reach <blocks>`: how far from the player a melee creature bites (0 =
+    /// worked out from its size, see `game/mob_hooks.rs`).
+    pub reach: f32,
 }
 
 /// A part of a pack kept as written, for a mod's own code to read: a
@@ -1508,7 +1511,7 @@ impl Parser<'_> {
                     Some(&"villager") => e.behavior = Behavior::Villager,
                     _ => bad = Some("behavior must be wander, npc, hostile, swim, fly or villager"),
                 },
-                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" | "explodes" | "loot" => {
+                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" | "explodes" | "loot" | "reach" => {
                     e.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "tint" => {
@@ -2219,6 +2222,11 @@ impl Registry {
                                     x.hunts.extend(a.iter().cloned());
                                     x.traits |= traits::HUNTER;
                                 }
+                                // reach <blocks>: how far a melee creature bites (default from its width).
+                                "reach" => match word(0).parse::<f32>() {
+                                    Ok(v) if v.is_finite() && v > 0.0 => x.reach = v.clamp(0.5, 16.0),
+                                    _ => ok = false,
+                                },
                                 // explodes <power> <fuse seconds> <trigger range>
                                 "explodes" => {
                                     let f = |k: usize| word(k).parse::<f32>().ok().filter(|v| v.is_finite());

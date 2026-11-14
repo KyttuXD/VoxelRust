@@ -209,6 +209,12 @@ not call scripts again.
 | `fn on_entity_spawn(kind: String) -> bool` | a creature appeared (`kind` is its id) | `false` takes it away |
 | `fn on_entity_death(kind: String, x: f64, y: f64, z: f64)` | a creature died, whatever the cause | |
 | `fn on_entity_hit(id: i64, kind: String, x: f64, y: f64, z: f64)` | the player hit a creature (it may have died of it): its id (the one `mob_info` and the other creature calls take), its kind and where it was | |
+| `fn on_chunk_generated(cx: i64, cz: i64, seed: i64)` | a chunk was just generated (never for one loaded from a save), on the main thread and a couple of chunks a frame: place structures with `set_block` in it and in its neighbours that are already loaded (see [Structures](#structures-as-the-world-is-generated)) | |
+| `fn on_block_placed(x: i64, y: i64, z: i64, id: String, cause: String)` | a block was placed, whatever the cause: `player`, `script` (a `set_block`), `remote` (another player on a server), `fall` (a falling block landed), `fluid` (water or lava flowed in), or `other` (crops growing, villagers building, commands). Air (a block taken away) does not count; `on_block_break` is the one for the player breaking. Called a frame after the placement | |
+| `fn on_creature_death(id: i64, kind: String, x: f64, y: f64, z: f64, killer: String)` | a creature died: its id (the one `mob_info` takes), its kind, where it was and who killed it: the player's name (`player`), the id of the creature that did it, or a cause: `lava`, `script` (`mob_hurt`), `other`. Comes with `on_entity_death` (which has no id or killer) | |
+| `fn on_creature_removed(id: i64, kind: String, reason: String)` | a creature left the world: `killed` (its health ran out; `on_creature_death` came first), `despawned` (too far from the player, fallen out of the world, caught by the morning, blown up), `unloaded` (left behind where the world is no longer loaded) or `scripted` (`mob_remove`) | |
+| `fn on_creature_interact(id: i64, kind: String, item: String) -> bool` | the player right-clicked a creature; `item` is what they hold (empty if nothing) | `false` cancels the game's own handling (taming, riding, trading, milking...) |
+| `fn on_creature_sunburn(id: i64, kind: String) -> bool` | a night creature would be taken away by the morning (`night` creatures in daylight, not cave dwellers) | `false` lets it live; it is asked again after 20 seconds |
 | `fn on_player_hurt(amount: i64, cause: String) -> i64` | the player is about to take damage (`fall`, `drown`, `hunger`, `block`, `arrow`, `explosion`, `effect` for poison, fire and the like, `command`, `other`, or the id of the creature that bit; armour has already taken its share of a creature's blow, an `arrow` or an `explosion`) | the amount to take instead; `0` or `false` cancels. The first script to answer decides |
 | `fn on_chat(text: String) -> bool` | the player typed a line (commands too, with their `/`) | `false` swallows it |
 | `fn on_item_use(item: String) -> bool` | the player pressed use holding an item (once per press) | `false` stops it |
@@ -232,6 +238,13 @@ not call scripts again.
 | `fn on_ui_click(id: String)` | a button of the mod's own screen was pressed | |
 | `fn on_ui_change(id: String, value: bool)` | a toggle (`bool`), stepper (a number), input (the text) or list (the line's number) of the screen changed | |
 | `fn on_ui_close(name: String)` | the mod's screen closed (the player closed it, or the mod did) | |
+
+A hook that places blocks does not call itself for ever: a block placed by
+code running inside `on_block_placed` raises the hook once more, one level
+deeper, and a block placed by *that* call raises nothing (the chain is two
+hooks deep at most). At most 128 placements a frame are passed on, and the
+game keeps at most 2048 waiting, so a flood of water never stalls a frame
+(the rest are dropped).
 
 Ids (`kind`, `item`, `id`) are the ids from the data files (`zombie`,
 `diamond`, `stone`). Where more than one script is asked, the first to
@@ -334,8 +347,8 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 | `mob_set_pos(id: i64, x: f64, y: f64, z: f64)` | put a creature somewhere and stop it |
 | `mob_set_yaw(id: i64, yaw: f64)` | turn a creature (yaw 0 faces -z; its forward is (-sin yaw, -cos yaw)) |
 | `mob_set_size(id: i64, width: f64, height: f64)` | change the box a creature collides with (0.1 to 8 blocks); what it is drawn as does not change (`set_creature_size` changes both, and goes further, see "Giants, model control and state") |
-| `mob_remove(id: i64)` | make a creature vanish at once: nothing drops, no `on_entity_death` |
-| `mob_hurt(id: i64, n: i64)` | hurt a creature as the player's blow would (drops and `on_entity_death` follow if it dies) |
+| `mob_remove(id: i64)` | make a creature vanish at once: nothing drops, no `on_entity_death` or `on_creature_death` (`on_creature_removed` hears it, with the reason `scripted`) |
+| `mob_hurt(id: i64, n: i64)` | hurt a creature as the player's blow would (drops and `on_entity_death` follow if it dies; `on_creature_death` names `script` as the killer) |
 | `mob_in_view(max: f64) -> i64` | the id of the first creature on the player's look ray within `max` blocks (at most 100) with no block in the way, or -1 |
 
 ### Giants, model control and state
@@ -581,6 +594,54 @@ fn on_armor_change(slot: i64) {
 }
 ```
 
+### Structures as the world is generated
+
+| Function | What it does |
+| --- | --- |
+| `rand_chunk(cx: i64, cz: i64, salt: i64) -> i64` | a whole number from 0 to 2147483647 that depends only on the world's seed, the chunk (`cx`, `cz`: block position divided by 16, rounded down) and the salt: the same every time it is asked, in every copy of the world, so a structure can start in the same chunks again (`rand_chunk(cx, cz, 7) % 100 < 3`). A different salt for each kind of structure keeps them apart |
+| `world_seed() -> i64` | the world's seed |
+
+`on_chunk_generated(cx, cz, seed)` runs on the main thread right after a new
+chunk was generated. It is **not** called for a chunk that was loaded from a
+save, so a structure is placed once, and it is the same one every time since
+`rand_chunk` does not change; a chunk of terrain that was never changed is
+generated again (and its hook runs again) when the player comes back, a chunk
+that holds a structure was changed by it and is saved. Rules:
+
+- Place blocks with `set_block`, in the chunk and in the neighbours that are
+  already loaded. `set_block` answers `false` for a place that is not loaded:
+  a structure that spills into a chunk not generated yet has to be finished
+  when that chunk's own hook runs (ask `rand_chunk` for the neighbours too, and
+  place the part that falls in this chunk).
+- At most **4096** `set_block` calls count in one call of the hook; after that
+  `set_block` answers `false`. The hook also has the usual step allowance of
+  one call (200 000 steps), and an error switches the script off as always.
+- The work is queued: at most **2** chunks a frame get their hook, oldest
+  first, so a whole view of new chunks never stalls a frame (structures appear
+  a few moments after the terrain, nearest-first is not promised).
+- Only whoever runs the world calls it (a single-player game, or the host of a
+  shared one); the blocks reach the others as ordinary changes.
+- Blocks written here do not raise `on_block_placed` (they are generation, not
+  building).
+- Creature, item and other calls work as in any hook, but keep it light.
+
+```rust
+// Small stone obelisks in about one chunk in forty.
+fn on_chunk_generated(cx: i64, cz: i64, seed: i64) {
+    if rand_chunk(cx, cz, 91) % 40 != 0 {
+        return;
+    }
+    let x = cx * 16 + 8;
+    let z = cz * 16 + 8;
+    let base = surface_y(x, z);
+    let mut dy = 0;
+    while dy < 5 {
+        set_block(x, base + dy, z, "stone");
+        dy += 1;
+    }
+}
+```
+
 ### Attributes, and asking about effects
 
 The player's most health is 20 (ten hearts) unless an attribute changes it. An
@@ -628,6 +689,16 @@ fn on_update(dt: f32) {
     }
 }
 ```
+
+### Opening the game's screens
+
+| Function | What it does |
+| --- | --- |
+| `open_crafting(size: i64)` | open the crafting screen with a grid of 3, 5 or 7 squares a side (the table, the bench, the workshop) as if a bench had been used, without placing one; any other size is an error. The screen opens on the next frame, and only if the player is in the game with no other screen open (nothing happens from a menu, the chat or another mod's screen) |
+| `open_inventory()` | open the pack screen (the creative item list in creative mode), under the same conditions |
+
+Both only ask: a script cannot open more than one screen a frame (the last
+call wins), and a shared game's server has no screens to open.
 
 ### Lines and sections for scripts
 

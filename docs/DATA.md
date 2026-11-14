@@ -859,6 +859,7 @@ entity <id>
   job <word>                what a villager does
   glow <0..15>              not dimmed by the dark
   explodes <power> <seconds> <range>   it blows up when a player stays within range for that long
+  reach <blocks>            how far from a player a melee creature bites (0.5 to 16); left out, it is its half width plus one block
 ```
 
 Behaviours:
@@ -866,7 +867,9 @@ Behaviours:
 - `wander`: strolls about. The default.
 - `npc`: strolls, and walks along with a nearby player.
 - `hostile`: hunts survival players and hits them. Appears only when the
-  player is in survival mode.
+  player is in survival mode. It closes in to its `reach` (about 1.3 blocks
+  for an ordinary creature; a creature 3 blocks wide reaches 2.5) and bites
+  from there, so a big creature does not stop short of the player.
 - `swim`: lives in open water and stays there. Only `swim` creatures appear
   in water and they never appear on land.
 - `fly`: flutters about above the ground, steering round obstacles.

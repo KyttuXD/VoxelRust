@@ -198,6 +198,29 @@ pub struct Native {
     pub on_entity_spawn: Option<fn(g: &mut Session, kind: usize) -> bool>,
     /// A creature died, from any cause.
     pub on_entity_death: Option<fn(g: &mut Session, kind: usize, at: [f64; 3])>,
+    /// A chunk was just generated (not loaded from a save), on the main
+    /// thread, a few chunks a frame: place structures with
+    /// `g.world.set_block` in it and in its neighbours that are already
+    /// loaded (at most 4096 writes are kept per call, see
+    /// `script::ext::structures::MAX_WRITES`; `crate::script::ext::structures::chunk_hash`
+    /// gives the same number for the same chunk every time). Only called
+    /// for whoever runs the world.
+    pub chunk_generated: Option<fn(g: &mut Session, cx: i32, cz: i32, seed: u32)>,
+    /// A block was placed, by whatever cause: `player`, `script`, `remote`,
+    /// `fall`, `fluid` or `other`. Called a frame later, not for air, and not
+    /// for blocks a hook itself placed two hooks deep.
+    pub on_block_placed: Option<fn(g: &mut Session, cell: [i32; 3], block: Block, cause: &str)>,
+    /// A creature died: its stable id, kind and place, and who killed it (the
+    /// player's name, a creature's id or a cause: `lava`, `script`, `other`).
+    pub on_creature_death: Option<fn(g: &mut Session, id: u32, kind: usize, at: [f64; 3], killer: &str)>,
+    /// A creature left the world: `killed`, `despawned`, `unloaded` or `scripted`.
+    pub on_creature_removed: Option<fn(g: &mut Session, id: u32, kind: usize, reason: &str)>,
+    /// The player right-clicked a creature holding `item` (if anything).
+    /// `false` cancels the game's own handling of the click.
+    pub on_creature_interact: Option<fn(g: &mut Session, id: u32, kind: usize, item: Option<usize>) -> bool>,
+    /// A night creature would burn in daylight: `false` lets it live (it is
+    /// asked again after twenty seconds).
+    pub on_creature_sunburn: Option<fn(g: &mut Session, id: u32, kind: usize) -> bool>,
     /// The player is about to take damage in survival. The hook may change
     /// `amount`; `cause` is `fall`, `drown`, `hunger`, `block`, `arrow`,
     /// `command`, `other` or the id of the creature that bit. `false` (or an
@@ -311,6 +334,12 @@ impl Native {
         on_block_place: None,
         on_entity_spawn: None,
         on_entity_death: None,
+        chunk_generated: None,
+        on_block_placed: None,
+        on_creature_death: None,
+        on_creature_removed: None,
+        on_creature_interact: None,
+        on_creature_sunburn: None,
         on_player_hurt: None,
         on_armor_change: None,
         on_chat: None,

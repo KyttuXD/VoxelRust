@@ -35,6 +35,12 @@ pub fn has_any(n: &Native) -> bool {
         || n.on_block_place.is_some()
         || n.on_entity_spawn.is_some()
         || n.on_entity_death.is_some()
+        || n.chunk_generated.is_some()
+        || n.on_block_placed.is_some()
+        || n.on_creature_death.is_some()
+        || n.on_creature_removed.is_some()
+        || n.on_creature_interact.is_some()
+        || n.on_creature_sunburn.is_some()
         || n.on_player_hurt.is_some()
         || n.on_chat.is_some()
         || n.on_item_use.is_some()
@@ -81,6 +87,75 @@ pub fn entity_death(g: &mut Session, kind: usize, at: [f64; 3]) {
         f(g, kind, at);
     }
     crate::script::bridge::entity_death(g, kind, at);
+}
+
+/// A chunk was just generated: the mods may place structures in it. At most
+/// `structures::MAX_WRITES` block writes are kept per call.
+pub fn chunk_generated(g: &mut Session, cx: i32, cz: i32) {
+    if !g.ev.hooks_live {
+        return;
+    }
+    let seed = g.world.seed;
+    g.ev.block_budget = Some(crate::script::ext::structures::MAX_WRITES);
+    // Blocks of world generation are not "placed" for `on_block_placed`.
+    let tracking = core::mem::replace(&mut g.world.log.track_placed, false);
+    for f in crate::native::active().filter_map(|(_, n)| n.chunk_generated) {
+        f(g, cx, cz, seed);
+        // Each mod's code has the whole allowance to itself.
+        g.ev.block_budget = Some(crate::script::ext::structures::MAX_WRITES);
+    }
+    crate::script::bridge::chunk_generated(g, cx, cz, seed);
+    g.world.log.track_placed = tracking;
+    g.ev.block_budget = None;
+}
+
+/// A block was placed at `cell` by `cause`.
+pub fn block_placed(g: &mut Session, cell: [i32; 3], b: Block, cause: &str) {
+    if !g.ev.hooks_live {
+        return;
+    }
+    for f in crate::native::active().filter_map(|(_, n)| n.on_block_placed) {
+        f(g, cell, b, cause);
+    }
+    crate::script::bridge::block_placed(g, cell, b, cause);
+}
+
+/// A creature died; `killer` is a player's name, a creature's id or a cause.
+pub fn creature_death(g: &mut Session, id: u32, kind: usize, at: [f64; 3], killer: &str) {
+    if !g.ev.hooks_live {
+        return;
+    }
+    for f in crate::native::active().filter_map(|(_, n)| n.on_creature_death) {
+        f(g, id, kind, at, killer);
+    }
+    crate::script::bridge::creature_death(g, id, kind, at, killer);
+}
+
+/// A creature left the world (`mob_hooks::reason`).
+pub fn creature_removed(g: &mut Session, id: u32, kind: usize, reason: &str) {
+    if !g.ev.hooks_live {
+        return;
+    }
+    for f in crate::native::active().filter_map(|(_, n)| n.on_creature_removed) {
+        f(g, id, kind, reason);
+    }
+    crate::script::bridge::creature_removed(g, id, kind, reason);
+}
+
+/// The player right-clicked a creature; `false` cancels the game's own handling.
+pub fn creature_interact(g: &mut Session, id: u32, kind: usize, item: Option<usize>) -> bool {
+    if !g.ev.hooks_live {
+        return true;
+    }
+    allow(crate::native::active().filter_map(|(_, n)| n.on_creature_interact), |f| f(g, id, kind, item)) && crate::script::bridge::creature_interact(g, id, kind, item)
+}
+
+/// A night creature would burn in daylight; `false` spares it.
+pub fn creature_sunburn(g: &mut Session, id: u32, kind: usize) -> bool {
+    if !g.ev.hooks_live {
+        return true;
+    }
+    allow(crate::native::active().filter_map(|(_, n)| n.on_creature_sunburn), |f| f(g, id, kind)) && crate::script::bridge::creature_sunburn(g, id, kind)
 }
 
 /// The player is about to take `amount` damage from `cause`. The mods may
@@ -263,6 +338,20 @@ mod tests {
     #[test]
     fn an_empty_table_has_no_hooks() {
         assert!(!has_any(&Native::NONE));
+        let mut n = Native::NONE;
+        fn placed(_: &mut Session, _: [i32; 3], _: Block, _: &str) {}
+        n.on_block_placed = Some(placed);
+        assert!(has_any(&n));
+        let mut n = Native::NONE;
+        fn chunk(_: &mut Session, _: i32, _: i32, _: u32) {}
+        n.chunk_generated = Some(chunk);
+        assert!(has_any(&n));
+        let mut n = Native::NONE;
+        fn sun(_: &mut Session, _: u32, _: usize) -> bool {
+            true
+        }
+        n.on_creature_sunburn = Some(sun);
+        assert!(has_any(&n));
         let mut n = Native::NONE;
         fn tick(_: &mut Session, _: f32) {}
         n.on_tick = Some(tick);

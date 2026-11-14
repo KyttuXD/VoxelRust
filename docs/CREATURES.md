@@ -314,6 +314,18 @@ itself is `explodes 2.0 1.5 3.0` in `mods/wildlife/pack.txt`. In the
 [creature line-up](#seeing-them-all) and the [spawn eggs](#spawn-eggs) they
 are there like any other.
 
+### How close they bite
+
+A creature that bites (a hostile one, an angry territorial or pack animal)
+walks up to the player until it is within its **reach**, and bites from
+there. The reach comes from its size: half its width plus one block, so an
+ordinary 0.6 block wide creature reaches 1.3 blocks, as it always did, and
+a big creature reaches further (3 blocks wide: 2.5 blocks), instead of
+standing a few blocks away unable to touch the player. A pack can say
+otherwise with `reach <blocks>` (0.5 to 16; see [DATA.md](DATA.md#creatures)).
+A tall creature may also bite a player standing higher than its own height
+above its feet.
+
 ## Night monsters
 
 These appear on the surface after dark, hunt survival players, and are gone

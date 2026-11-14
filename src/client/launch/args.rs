@@ -134,7 +134,7 @@ pub(super) struct Opts {
     pub(super) time: Option<f32>,
     /// `--wait-frames N`: with `--screenshot`, wait N more frames after the world settles (for remeshing).
     pub(super) wait_frames: u32,
-    /// `--step SECONDS`: in a scripted run, how much game time each frame lasts (default none: the game stands still).
+    /// `--step [SECONDS]`: in a scripted run, how much game time each frame lasts (default none: the game stands still; `--step` alone is 1/60).
     pub(super) step: Option<f32>,
     pub(super) hidden: bool,
     pub(super) showcase: bool,
@@ -250,7 +250,14 @@ pub(super) fn parse_args(args: &[String]) -> Result<Opts, String> {
             }
             "--time" => o.time = Some(real::<f32>(&next(&mut i, a)?, a)?.clamp(0.0, 1.0)),
             "--wait-frames" => o.wait_frames = num::<u32>(&next(&mut i, a)?, a)?,
-            "--step" => o.step = Some(real::<f32>(&next(&mut i, a)?, a)?.clamp(0.0, 0.1)),
+            "--step" => {
+                // With no number after it: a sixtieth of a second (see launch/step.rs).
+                let (v, used) = super::scripted_step::parse(args.get(i + 1).map(|s| s.as_str()))?;
+                if used {
+                    i += 1;
+                }
+                o.step = Some(v);
+            }
             // Finder on old Mac OS X adds a process serial number when an
             // app is double-clicked; it is not for us.
             _ if a.starts_with("-psn_") => {}

@@ -74,11 +74,16 @@ has for it (the host calls marked *new* were added in this round for them and fo
 
 | Feature | Engine |
 | --- | --- |
-| orespawn: the ORESPAWN world kind, the land of five dimensions (`terrain_*`, `dimension_terrain`) | **missing** (compiled `Source` only) |
+| orespawn: the ORESPAWN world kind, the land of five dimensions (`terrain_*`, `dimension_terrain`) | **missing** (compiled `Source` only; its structures are covered by `on_chunk_generated` above) |
 | orespawn: creature abilities each frame (eating blocks, teleporting to the player, blowing up, tearing through blocks, the Molenoid) | `on_update`, `mobs_near`, `mob_set_pos`, `mob_remove`, `mob_hurt`, `set_block`, `explode` |
 | orespawn: armour, poison, fire, slowness from blows; the King's and Queen's rage | `on_player_hurt` (the cause is the creature's id), `effect`, `on_entity_hit` (new), `mob_info` (new) |
 | orespawn: Kraken from a slain Sea Squid, the Kraken carrying the player off, summons | `on_entity_death`, `spawn_mob` (new), `hold_player` and `place_player` (new) |
 | orespawn: tree seeds, `/dungeon` | `on_item_use` with `aim()`, `on_command`, `set_block` |
+| orespawn: structures placed as chunks are generated (villages, dungeons, ruins; ore and plant clusters near them) | `on_chunk_generated` (*new*: a couple of chunks a frame, 4096 writes a call), `rand_chunk` and `world_seed` (*new*: the same value for the same chunk every time), `surface_y`, `biome_at`, `set_block` |
+| orespawn: reacting to every block placed, to a creature's death and removal, to a right click on a creature, keeping night creatures alive by day | `on_block_placed` (*new*: causes `player`, `script`, `remote`, `fall`, `fluid`, `other`), `on_creature_death` and `on_creature_removed` (*new*), `on_creature_interact` (*new*, can cancel), `on_creature_sunburn` (*new*, can veto) |
+| orespawn: hostile creatures that bite from their own reach (big ones) | the creature step closes to a reach derived from the creature's width (`reach` in the pack to set it): no host call needed |
+| orespawn, witherstorm: opening the crafting grid or the pack from a key or an item | `open_crafting(3, 5 or 7)` and `open_inventory()` (*new*) |
+| scripted runs (`--screenshot`/`--bench` with `--run`) moving mod timers and creatures | `--step` (seconds a frame, alone 1/60): the same `dt` for the clock, `on_tick` and the creatures; without it a scripted frame passes no time, as before |
 | orespawn: bespoke targeting and pets | **missing**: no way to give a creature a goal or a target (only to move it by hand each frame) |
 | witherstorm: the storm's body with one proxy creature to hit | `spawn_mob`, `set_creature_size` (up to 32 x 64 blocks, drawn and colliding at that size; `mob_set_size` only changes the box), `set_creature_health` (up to 1,000,000), `mob_set_pos`, `mob_hurt`, `mob_in_view`, `on_entity_hit` (new) |
 | orespawn, witherstorm: giants (a creature taller than 6 or wider than 3 blocks, more than 1000 health) in a shared game | `height` up to 64, `width` up to 32 and `health` up to 1,000,000 in the data; `set_creature_size`, `set_creature_health`; the host's snapshot carries size, health limit, tilt, bones and state to the other players (**closed**) |
@@ -112,9 +117,10 @@ person and in the inventory), and a creature's own most health
 
 Missing host calls, in the order they would unblock the most:
 
-1. **World generation hooks** (a world kind and per-dimension terrain): needed by orespawn and by Earth.
-   Not a host call but a different design: a data-driven land (noise parameters in the pack) would be
-   the safe way, since a script cannot be asked for every column of a chunk.
+1. **A world kind and per-dimension terrain** (the land itself, not what stands on it): needed by
+   orespawn and by Earth. *Structures* on generated terrain are now covered (`on_chunk_generated`,
+   `rand_chunk`). The terrain is not a host call but a different design: a data-driven land (noise
+   parameters in the pack) would be the safe way, since a script cannot be asked for every column of a chunk.
 2. **A goal for a creature** (`mob_goto(id, x, y, z)` / `mob_target(id, ...)`), so a script steers
    creatures with the game's own path finding and AI instead of moving them by hand: orespawn's targeting,
    pets and the bosses' phases.

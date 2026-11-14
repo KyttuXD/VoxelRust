@@ -85,6 +85,8 @@ pub struct ScriptData {
     pub msg_bucket: crate::net::modmsg::Bucket,
     /// `set_bone` calls made this frame (at most [`MAX_BONE_CALLS`]).
     pub bone_calls: u32,
+    /// A screen a script asked to open (`open_crafting`, `open_inventory`).
+    pub screen: Option<super::screens::ScreenRequest>,
 }
 
 /// Most `set_bone` calls a frame, over all mods.
