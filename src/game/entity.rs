@@ -188,6 +188,9 @@ fn crop_start(b: Block) -> Block {
     start
 }
 
+/// The smallest size, in blocks, of what a swing or a shot can hit.
+const MIN_TARGET: f64 = 0.6;
+
 impl Mobs {
     pub fn new(seed: u32) -> Mobs {
         Mobs { list: Vec::new(), actions: Vec::new(), rider: None, last_biter: None, born: Vec::new(), died: Vec::new(), spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
@@ -1031,11 +1034,21 @@ impl Mobs {
     }
 
     /// The creature a ray hits first, and how far along the ray.
+    /// (Targets are never smaller than `MIN_TARGET` blocks.)
     pub fn hit_test(&self, origin: [f64; 3], dir: Vec3, reach: f32) -> Option<(usize, f32)> {
         let d = [dir.x as f64, dir.y as f64, dir.z as f64];
         let mut best: Option<(usize, f32)> = None;
         for (i, m) in self.list.iter().enumerate() {
-            let (lo, hi) = m.body.aabb();
+            let (mut lo, mut hi) = m.body.aabb();
+            // Tiny creatures (butterflies, bees, bats) are hard to aim at: the
+            // target is at least this big on every side, around their middle.
+            for a in 0..3 {
+                let missing = MIN_TARGET - (hi[a] - lo[a]);
+                if missing > 0.0 {
+                    lo[a] -= missing * 0.5;
+                    hi[a] += missing * 0.5;
+                }
+            }
             let (mut t0, mut t1) = (0.0f64, reach as f64);
             let mut hit = true;
             for a in 0..3 {

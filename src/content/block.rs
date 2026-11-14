@@ -2741,3 +2741,18 @@ mod tests {
         assert!(r.warnings.iter().any(|w| w.contains("explodes 2")), "{:?}", r.warnings);
     }
 }
+
+#[cfg(test)]
+mod player_redefinition_tests {
+    use super::*;
+
+    #[test]
+    fn a_later_model_line_replaces_the_built_in_player() {
+        let pack = "model player builtin player_slim\n";
+        let r = Registry::from_sources(&[("base.txt", BASE_DATA), ("x/pack.txt", pack)], &mut |_| None);
+        let i = r.model("player").expect("player is a model");
+        let slim = r.model("player_slim").expect("player_slim is a model");
+        assert_eq!(r.models[i].text, r.models[slim].text, "the pack's player is the slim body");
+    }
+}
+
