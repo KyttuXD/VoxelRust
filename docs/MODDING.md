@@ -849,7 +849,7 @@ also passed to the mod's `on_event` hook.
 | (saving) | the world was saved | | `on_world_save` after the files are written | `fn(&mut Session)` |
 | (each frame) | the HUD is drawn in play | | `on_draw_hud` | `fn(&Session, &mut dyn HudSink)` |
 | `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itempickup`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
-| explosions | see TNT | | | |
+| `explode`, `blockexploded`, `tntprimed` | an explosion happens, breaks blocks, or TNT is lit | see [Explosions](#explosions) | `before_explode`: `false` cancels; `after_explode` and `on_prime` after | `fn(&mut Session, &mut ExplosionInfo) -> bool` |
 | status effects | see status effects | | | |
 
 Older hooks (`update`, `interact`, `killed`, `hit`, `hurt`, `open`, `save` and so
