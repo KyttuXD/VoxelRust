@@ -24,7 +24,7 @@ pub fn absf(x: f32) -> f32 {
 pub fn floori(x: f32) -> i32 {
     let i = x as i32;
     if (i as f32) > x {
-        i - 1
+        i.saturating_sub(1)
     } else {
         i
     }
@@ -34,7 +34,7 @@ pub fn floori(x: f32) -> i32 {
 pub fn floord(x: f64) -> i32 {
     let i = x as i32;
     if (i as f64) > x {
-        i - 1
+        i.saturating_sub(1)
     } else {
         i
     }
