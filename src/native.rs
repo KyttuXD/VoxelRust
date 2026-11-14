@@ -30,6 +30,23 @@ pub struct View<'a> {
     pub light: &'a dyn Fn([f64; 3]) -> f32,
 }
 
+/// A mod's own folder for what it keeps for good (its saves and settings):
+/// `<data folder>/mods-data/<mod>/`. Made if it is missing. Mods keep nothing
+/// loose in the data folder itself.
+pub fn mod_data_dir(base: &str, name: &str) -> String {
+    let dir = alloc::format!("{}mods-data/{}/", base, name);
+    crate::sys::make_dirs(&dir);
+    dir
+}
+
+/// A mod's folder for what can be fetched or made again (caches, downloads):
+/// `<data folder>/tmp/<mod>/`. Made if it is missing.
+pub fn mod_tmp_dir(base: &str, name: &str) -> String {
+    let dir = alloc::format!("{}tmp/{}/", base, name);
+    crate::sys::make_dirs(&dir);
+    dir
+}
+
 pub struct Native {
     /// The `feature` name that switches this code on.
     pub name: &'static str,

@@ -595,6 +595,20 @@ pub fn read_file(path: &str) -> Option<Vec<u8>> {
 }
 
 /// Make a folder, if it is not there already. `true` if it is there now.
+/// Make a folder and every folder above it that is missing (`a/b/c/`).
+pub fn make_dirs(path: &str) -> bool {
+    let mut ok = true;
+    for (i, c) in path.char_indices() {
+        if (c == '/' || c == '\\') && i > 0 {
+            ok = make_dir(&path[..i]);
+        }
+    }
+    if !path.ends_with('/') && !path.ends_with('\\') {
+        ok = make_dir(path);
+    }
+    ok
+}
+
 pub fn make_dir(path: &str) -> bool {
     let p = cstr(path);
     #[cfg(unix)]

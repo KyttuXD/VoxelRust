@@ -259,8 +259,19 @@ pub fn watch(build: &str, folder: &str, install: bool) {
     }
 }
 
+/// Where the updater keeps what it fetches and notes: `tmp/update/` in the
+/// data folder, so the data folder itself is not cluttered.
+fn tmp_folder(folder: &str) -> String {
+    alloc::format!("{}tmp/update/", folder)
+}
+
 fn run_inner(build: &str, folder: &str, install: bool) {
     set_state(CHECKING);
+    let own = tmp_folder(folder);
+    sys::make_dirs(&own);
+    // Earlier versions kept the list loose in the data folder.
+    sys::remove_file(&alloc::format!("{}nightly.txt", folder));
+    let folder = own.as_str();
     let list = match fetch(&alloc::format!("{}nightly.txt", RELEASE), &alloc::format!("{}nightly.txt", folder), 15) {
         Some(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         None => {
@@ -358,7 +369,8 @@ pub fn restart(exe: &str, folder: &str) {
         return;
     }
     // Written before the new copy starts, so the copy cannot miss it.
-    let marker = alloc::format!("{}update.txt", folder);
+    sys::make_dirs(&tmp_folder(folder));
+    let marker = alloc::format!("{}update.txt", tmp_folder(folder));
     let seq = INSTALLED_SEQ.load(Ordering::Acquire);
     if !sys::write_file(&marker, alloc::format!("relaunch {}\n", seq).as_bytes()) {
         log("could not note the restart; the new version starts at the next start");
@@ -382,7 +394,7 @@ pub fn restart(exe: &str, folder: &str) {
 /// does not restart in turn. Returns whether it was.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn consume_restart_marker(folder: &str) -> bool {
-    let marker = alloc::format!("{}update.txt", folder);
+    let marker = alloc::format!("{}update.txt", tmp_folder(folder));
     if sys::read_file(&marker).is_none() {
         return false;
     }

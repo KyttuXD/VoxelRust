@@ -11,6 +11,7 @@ mod map;
 pub use map::*;
 
 use crate::audio::Audio;
+use crate::sys;
 use crate::native::Native;
 use crate::session::{Controls, Session};
 use crate::settings::Settings;
@@ -221,7 +222,19 @@ fn option_kind() -> Option<String> {
 }
 
 fn start(base: &str, settings: &Settings) {
-    configure(base, settings.extra("relay"));
+    // Map tiles and place names are a cache: they live in tmp/earth/, not loose in the data folder.
+    let cache = crate::native::mod_tmp_dir(base, "earth");
+    // Earlier versions left them in the data folder itself: bring them over.
+    for f in sys::list_dir(base) {
+        if (f.starts_with("tile-") && f.ends_with(".png")) || f == "place.json" {
+            if let Some(bytes) = sys::read_file(&alloc::format!("{}{}", base, f)) {
+                if sys::write_file(&alloc::format!("{}{}", cache, f), &bytes) {
+                    sys::remove_file(&alloc::format!("{}{}", base, f));
+                }
+            }
+        }
+    }
+    configure(&cache, settings.extra("relay"));
     state().level = settings.extra("place_notices").parse::<i32>().unwrap_or(1).clamp(0, 3);
 }
 

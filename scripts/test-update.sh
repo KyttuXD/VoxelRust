@@ -46,7 +46,7 @@ echo "ok: the old program installed release 2"
 # 2. The started copy notes the update, and does not restart again.
 for _ in 1 2 3 4 5 6 7 8 9 10; do [ -f "$work/data/update-child.txt" ] && break; sleep 1; done
 [ -f "$work/data/update-child.txt" ] || fail "the new program was not started by the update"
-[ ! -f "$work/data/update.txt" ] || fail "the restart marker was not consumed"
+[ ! -f "$work/data/tmp/update/update.txt" ] || fail "the restart marker was not consumed"
 gets="$(grep -c 'GET /voxelrust-linux-x86_64.bin' "$work/http.log" || true)"
 [ "$gets" = 1 ] || fail "the program was downloaded $gets times (expected once)"
 echo "ok: the started copy ran once, and nothing restarted again"

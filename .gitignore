@@ -17,3 +17,17 @@
 /vendor/*
 !/vendor/README.md
 .claude/
+
+# macOS, Windows and editor junk
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+*.swp
+*~
+.idea/
+.vscode/
