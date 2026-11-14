@@ -108,6 +108,7 @@ impl Player {
     /// If the player is inside something solid (spawned in a tree, or the
     /// terrain changed), rise until free.
     pub fn unstick(&mut self, get: &dyn Fn(i32, i32, i32) -> Block) {
+        self.sanitize();
         for _ in 0..(crate::chunk::CH + 2) {
             let (mn, mx) = self.bounds(self.pos);
             match touching(get, mn, mx, 1) {
@@ -117,7 +118,25 @@ impl Player {
         }
     }
 
+    /// Put right a body whose numbers went wrong (NaN or infinity from a bad
+    /// hook, a hostile server or a damaged save): such a position would make
+    /// every cell lookup nonsense and never recover.
+    pub fn sanitize(&mut self) {
+        for v in self.vel.iter_mut() {
+            if !v.is_finite() {
+                *v = 0.0;
+            }
+        }
+        for (a, p) in self.pos.iter_mut().enumerate() {
+            if !p.is_finite() {
+                *p = if a == 1 { 150.0 } else { 0.0 };
+            }
+        }
+    }
+
     pub fn update(&mut self, dt: f32, inp: &Input, get: &dyn Fn(i32, i32, i32) -> Block) {
+        self.sanitize();
+        let dt = if dt.is_finite() && dt > 0.0 { dt } else { 0.0 };
         let feet = get(floord(self.pos[0]), floord(self.pos[1] + 0.4), floord(self.pos[2]));
         // Water and lava both hold you up, and swimming is the same in either.
         self.in_water = crate::block::fluid_of(feet).is_some();
@@ -397,6 +416,16 @@ mod tests {
         let mut p = Player::new([0.5, 10.0, 0.5]);
         run(&mut p, Input { forward: 1.0, ..Default::default() }, 0.8, &w);
         assert!((p.pos[1] - 11.0).abs() < 1e-2, "stairs: y = {} z = {}", p.pos[1], p.pos[2]);
+    }
+
+    #[test]
+    fn a_body_with_nan_numbers_is_put_right() {
+        let w = world(&[]);
+        let mut p = Player::new([f64::NAN, f64::INFINITY, 0.5]);
+        p.vel = [f32::NAN, f32::NEG_INFINITY, 1.0];
+        p.update(f32::NAN, &Input::default(), &w);
+        assert!(p.pos.iter().all(|v| v.is_finite()), "{:?}", p.pos);
+        assert!(p.vel.iter().all(|v| v.is_finite()), "{:?}", p.vel);
     }
 
     #[test]

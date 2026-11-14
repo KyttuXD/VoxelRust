@@ -614,6 +614,8 @@ or `@name`, any item of the group `name`, and may end in `*N` to ask for N
 of it in its one cell: `shaped heavy_door 1 DD DD with D iron_ingot*5`.
 Counts are 1..999, but nothing can ask for more than one stack holds.
 
+A recipe never makes more than a stack of its item holds: a bigger count is cut down to the stack size, with a warning.
+
 `craft` lines count units: `craft rail 16 iron_ore 3 stick 2` is five
 cells, three with ore and two with sticks.
 

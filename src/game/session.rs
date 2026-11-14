@@ -402,10 +402,18 @@ pub fn world_exists(base: &str, name: &str) -> bool {
 /// the sleeper is still asleep.
 pub fn tick_clock(time: f32, dt: f32, sleeping: bool) -> (f32, bool) {
     // (No `%` on floats: that would need the C math library.)
-    let mut t = time + dt * if sleeping { 40.0 } else { 1.0 } / 1200.0;
+    // A time that is not a time (a hostile server's, a damaged file's) must not
+    // poison the sky for good: start the day over.
+    let time = if time.is_finite() && time >= 0.0 { time } else { 0.0 };
+    let step = dt * if sleeping { 40.0 } else { 1.0 } / 1200.0;
+    let mut t = time + if step.is_finite() && step > 0.0 { step } else { 0.0 };
     let wrapped = t >= 1.0;
     if wrapped {
         t -= 1.0;
+        // (Still not a day of 0..1: a time of 5.0 would never come back.)
+        if !(t < 1.0) {
+            t = 0.0;
+        }
     }
     (t, sleeping && !wrapped)
 }
@@ -611,7 +619,7 @@ impl Session {
         // A name no saved world can have, so nothing on disk is touched.
         let mut s = Session::open(base, "~multiplayer", &new, threads);
         s.world.log_edits = true;
-        s.time = welcome.time;
+        s.time = if welcome.time.is_finite() { welcome.time.clamp(0.0, 0.999) } else { 0.0 };
         s.net = Some(client);
         s.mod_sync = Some(crate::net::modsync::client::ClientSync::new(base, &host, port));
         s.push_chat(alloc::format!("CONNECTED TO {}", address.to_ascii_uppercase()));
@@ -901,7 +909,7 @@ impl Session {
             }
             // /repeat N COMMAND
             "/repeat" if depth < 6 => {
-                let n = arg(1).parse::<u32>().unwrap_or(1).min(64);
+                let n = arg(1).parse::<u32>().unwrap_or(1).min(crate::game::cmd_limits::repeat_cap(depth as u32));
                 let what = words[2.min(words.len())..].join(" ");
                 for _ in 0..n {
                     self.run(&what, depth + 1);
@@ -1507,7 +1515,7 @@ impl Session {
                 } else if !d.x.on.is_empty() && !d.x.on.contains(&block::def(under).first) {
                     interact::remove(&mut self.world, cell);
                     if let (GameMode::Survival, Some(drop)) = (self.mode, d.drop) {
-                        self.inv.add(drop as u16, 1);
+                        self.give_or_drop(drop as u16, 1);
                     }
                 }
             }
@@ -1917,6 +1925,15 @@ impl Session {
         self.hunger = MAX_HUNGER;
         self.air = MAX_AIR;
         self.dead = false;
+        // Nothing of the old life carries on: not the bed, the chair, the
+        // saddle, the food half eaten or the bow half drawn.
+        self.sleeping = false;
+        self.sitting = None;
+        self.riding_mob = None;
+        self.mobs.rider = None;
+        self.eating.reset();
+        self.bow.reset();
+        self.pending_hurt = 0;
         self.fire(crate::game::events::RESPAWN, "");
         crate::game::effects::apply::clear_all(self);
     }
@@ -2025,11 +2042,23 @@ impl Session {
             let near = (d.pos[0] - px) * (d.pos[0] - px) + (d.pos[2] - pz) * (d.pos[2] - pz) < 1.6 && d.pos[1] > py - 1.0 && d.pos[1] < py + 2.2;
             if d.age > 300.0 || d.pos[1] < -8.0 {
                 self.drops.swap_remove(k);
-            } else if near && d.age > 1.2 && !self.dead && self.inv.add(d.item, d.count) == 0 {
-                let item = d.item as usize;
+            } else if near && d.age > 1.2 && !self.dead && d.count > 0 {
+                // A partly fitting stack gives what fits and keeps lying
+                // there with the rest (it must not be taken whole as well).
+                let (item, before) = (d.item, d.count);
+                let left = self.inv.add(item, before);
+                if left < before {
+                    audio.play(Sound::Pop, 0.6);
+                    crate::game::events::item_picked(self, item as usize);
+                }
+                if left == 0 {
+                    self.drops.swap_remove(k);
+                } else {
+                    self.drops[k].count = left;
+                    k += 1;
+                }
+            } else if d.count == 0 {
                 self.drops.swap_remove(k);
-                audio.play(Sound::Pop, 0.6);
-                crate::game::events::item_picked(self, item);
             } else {
                 k += 1;
             }
@@ -2513,7 +2542,7 @@ impl Session {
                     let inv = &self.inv;
                     match self.mobs.interact(i, held.map(|h| h.0), &|item| inv.count(item as u16)) {
                         Interaction::Give(item, n) => {
-                            self.inv.add(item as u16, n);
+                            self.give_or_drop(item as u16, n);
                             audio.play(Sound::Pop, 0.8);
                             let name = reg().items[item].name.to_ascii_uppercase();
                             self.say(&alloc::format!("GOT {}", name));
@@ -2521,7 +2550,7 @@ impl Session {
                         }
                         Interaction::Trade((want, n), (give, count)) => {
                             if self.inv.remove(want as u16, n) {
-                                self.inv.add(give as u16, count);
+                                self.give_or_drop(give as u16, count);
                                 audio.play(Sound::Pop, 0.8);
                                 let name = reg().items[give].name.to_ascii_uppercase();
                                 self.say(&alloc::format!("TRADED FOR {} {}", count, name));
@@ -2577,7 +2606,7 @@ impl Session {
                     self.fire("hit", &reg().entities[kind].id);
                     // A guest of someone else's world is handed the drop at once.
                     if let (true, false, false, Some((drop, n))) = (killed, creative, self.runs_the_world(), reg().entities[kind].drop) {
-                        self.inv.add(drop as u16, n);
+                        self.give_or_drop(drop as u16, n);
                     }
                     if killed {
                         self.fire("kill", &reg().entities[kind].id);
@@ -2636,13 +2665,13 @@ impl Session {
                             // A broken chest hands over what was inside.
                             if let Some(inside) = self.chests.remove(&cell) {
                                 for s in inside.slots.iter().flatten() {
-                                    self.inv.add(s.item, s.count);
+                                    self.give_or_drop(s.item, s.count);
                                 }
                             }
                             self.rng = self.rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
                             if let Some((extra, chance, n)) = d.x.also {
                                 if (self.rng >> 8) % 100 < chance as u32 {
-                                    self.inv.add(extra as u16, n);
+                                    self.give_or_drop(extra as u16, n);
                                 }
                             }
                             let lucky = (self.rng >> 16) % 100 < d.drop_chance as u32;
@@ -2936,6 +2965,16 @@ mod clock_tests {
         assert!(!asleep, "the sleeper never woke");
         assert!((7.0..8.2).contains(&seconds), "{seconds}");
         assert!(time < 0.1, "it is morning: {time}");
+    }
+
+    #[test]
+    fn a_time_that_is_not_a_time_is_put_right() {
+        for bad in [f32::NAN, f32::INFINITY, -3.0, 7.5] {
+            let (t, _) = tick_clock(bad, 0.1, false);
+            assert!((0.0..1.0).contains(&t), "{bad} gave {t}");
+        }
+        let (t, _) = tick_clock(0.5, f32::NAN, false);
+        assert_eq!(t, 0.5);
     }
 
     #[test]

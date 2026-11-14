@@ -10,6 +10,7 @@
 //! The screen itself is in `client/screens/crafting.rs`.
 
 pub mod check;
+pub mod legacy;
 pub mod matcher;
 pub mod parse;
 pub mod recipe;

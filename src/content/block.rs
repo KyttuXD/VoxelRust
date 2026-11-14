@@ -1989,7 +1989,13 @@ impl Registry {
         for (at, words) in &raw_recipes {
             if words[0] != "bake" && words[0] != "smelt" {
                 match crate::crafting::parse::resolve(words, &lookup) {
-                    Ok(rc) => {
+                    Ok(mut rc) => {
+                        // More made than a stack holds would put an over-full stack on the mouse (a tool that does not stack, made two at a time).
+                        let limit = items[rc.out.0 as usize].stack.max(1);
+                        if rc.out.1 > limit {
+                            warnings.push(alloc::format!("{}: recipe makes {} but a stack holds {}; making {}", at, rc.out.1, limit, limit));
+                            rc.out.1 = limit;
+                        }
                         // An ingredient that more is wanted of than a stack holds can never be made.
                         let too_much = rc.ingredients().iter().any(|ing| ing.items.iter().all(|&i| items[i as usize].stack.max(1) < ing.need));
                         if too_much {

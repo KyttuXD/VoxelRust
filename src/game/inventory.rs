@@ -35,7 +35,8 @@ pub fn click_slot(here: &mut Slot, cursor: &mut Slot, right: bool) {
             *here = None;
         }
         (None, Some(s), true) => {
-            let take = (s.count + 1) / 2;
+            // (Not `(count + 1) / 2`: that overflows a u16 at 65535.)
+            let take = s.count / 2 + s.count % 2;
             *cursor = Some(Stack { item: s.item, count: take });
             *here = if s.count > take { Some(Stack { item: s.item, count: s.count - take }) } else { None };
         }
@@ -74,6 +75,10 @@ impl Inventory {
     /// Add items, topping up existing stacks first and then filling empty
     /// slots from the hotbar onward. Returns how many did not fit.
     pub fn add(&mut self, item: u16, mut count: u16) -> u16 {
+        // Adding nothing must not leave an empty stack in a slot.
+        if count == 0 {
+            return 0;
+        }
         let limit = stack_limit(item);
         for s in self.slots.iter_mut().flatten() {
             if s.item == item && s.count < limit {
@@ -129,7 +134,7 @@ impl Inventory {
     pub fn take_one(&mut self, slot: usize) -> Option<u16> {
         let s = self.slots.get_mut(slot)?.as_mut()?;
         let item = s.item;
-        s.count -= 1;
+        s.count = s.count.saturating_sub(1);
         if s.count == 0 {
             self.slots[slot] = None;
         }
@@ -151,8 +156,9 @@ impl Inventory {
         let parts: alloc::vec::Vec<alloc::string::String> = self
             .slots
             .iter()
-            .map(|s| match s {
-                Some(s) => alloc::format!("{}:{}", items[s.item as usize].id, s.count),
+            .map(|s| match s.and_then(|s| items.get(s.item as usize).map(|it| (it, s.count))) {
+                Some((it, count)) => alloc::format!("{}:{}", it.id, count),
+                // Empty, or an item that is not in the registry any more.
                 None => alloc::string::String::from("-"),
             })
             .collect();
@@ -165,9 +171,9 @@ impl Inventory {
         let mut inv = Inventory::new();
         for (i, part) in text.split(' ').take(SLOTS).enumerate() {
             let mut p = part.splitn(2, ':');
-            let (id, n) = (p.next().unwrap_or(""), p.next().and_then(|n| n.parse::<u16>().ok()).unwrap_or(0));
+            let (id, n) = (p.next().unwrap_or(""), p.next().and_then(|n| n.parse::<u32>().ok()).unwrap_or(0));
             if let (Some(item), true) = (items.iter().position(|it| it.id == id), n > 0) {
-                inv.slots[i] = Some(Stack { item: item as u16, count: n.min(items[item].stack.max(1)) });
+                inv.slots[i] = Some(Stack { item: item as u16, count: n.min(items[item].stack.max(1) as u32) as u16 });
             }
         }
         inv
@@ -255,5 +261,43 @@ mod tests {
         let text = inv.save();
         assert_eq!(Inventory::load(&text), inv);
         assert_eq!(Inventory::load("no_such_item:5 - stone:0"), Inventory::new());
+    }
+
+    #[test]
+    fn adding_nothing_makes_no_empty_stack() {
+        let mut inv = Inventory::new();
+        assert_eq!(inv.add(item("stone"), 0), 0);
+        assert!(inv.slots.iter().all(|s| s.is_none()));
+    }
+
+    #[test]
+    fn using_one_of_an_empty_stack_does_not_underflow() {
+        let mut inv = Inventory::new();
+        inv.slots[0] = Some(Stack { item: item("sand"), count: 0 });
+        assert_eq!(inv.take_one(0), Some(item("sand")));
+        assert_eq!(inv.slots[0], None);
+    }
+
+    #[test]
+    fn halving_a_huge_stack_does_not_overflow() {
+        let mut here = Some(Stack { item: item("stone"), count: u16::MAX });
+        let mut cursor = None;
+        click_slot(&mut here, &mut cursor, true);
+        assert_eq!(cursor.unwrap().count, 32768);
+        assert_eq!(here.unwrap().count, 32767);
+    }
+
+    #[test]
+    fn a_big_saved_count_is_clamped_not_dropped() {
+        let inv = Inventory::load("stone:100000 dirt:70");
+        assert_eq!(inv.slots[0], Some(Stack { item: item("stone"), count: stack_limit(item("stone")) }));
+        assert_eq!(inv.slots[1].unwrap().count, 64);
+    }
+
+    #[test]
+    fn saving_skips_items_that_are_gone() {
+        let mut inv = Inventory::new();
+        inv.slots[0] = Some(Stack { item: u16::MAX, count: 3 });
+        assert!(inv.save().starts_with("- "));
     }
 }

@@ -172,6 +172,8 @@ pub struct Mobs {
 
 /// Most creatures alive at once near a player.
 pub const CAP: usize = 22;
+/// Most creatures a script may have in the world at once (`spawn` fails beyond it).
+pub const SCRIPT_CAP: usize = 200;
 
 fn is_night(time: f32) -> bool {
     sinf(time * TAU) < -0.05
