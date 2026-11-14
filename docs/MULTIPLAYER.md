@@ -97,7 +97,7 @@ empty name becomes `Player`. If someone on the server already has it, a
 number is added (`Bob` becomes `Bob2`).
 
 The server refuses a player whose game speaks a different version of the
-network protocol (currently version 10), and anyone beyond the player limit.
+network protocol (currently version 11), and anyone beyond the player limit.
 Everyone should run the same version of the game.
 
 ## What is shared, and what is not
@@ -295,7 +295,7 @@ the code of such a mod.
 (`content::mod_runtime`, see [MODDING.md](MODDING.md#scripts-that-mods-bring));
 without an engine they are kept and not run.
 
-(Version 9 added poses and emotes.) The protocol: version 10 adds `ModList` (server to client, after the pack),
+(Version 9 added poses and emotes.) The protocol: version 11 adds `Effects`: the status effects on a player (id, level and whole seconds left for each, 16 at most), sent by that player's game whenever the set changes, relayed with their id, and told to players who join later. It is for show (the name tag) and for mods; each game keeps its own effects. Version 10 adds `ModList` (server to client, after the pack),
 `ModsWant` (client to server) and `ModPart` (server to client, one mod's
 bundle in pieces of up to 40,000 bytes). A mod's bundle is the
 `save::bundle` format with the paths inside the mod as names.

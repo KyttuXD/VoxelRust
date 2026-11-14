@@ -557,6 +557,29 @@ fn host_functions_reach_the_host() {
 }
 
 #[test]
+fn effects_can_be_given_removed_and_asked_about_for_the_player_or_the_target() {
+    let mut h = MockHost::default();
+    let v = try_run_with(
+        "fn t() -> String { apply_effect(\"player\", \"poison\", 5.0, 2); apply_effect(\"target\", \"slowness\", 0.0, 1); remove_effect(\"player\", \"\"); format!(\"{} {} {} {}\", has_effect(\"player\", \"poison\"), has_effect(\"player\", \"burning\"), effect_level(\"player\", \"poison\"), effect_level(\"target\", \"poison\")) }",
+        &mut h,
+        Limits::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(v, text("true false 2 0"));
+    assert_eq!(h.calls, ["apply_effect player poison 5 2", "apply_effect target slowness 0 1", "remove_effect player "]);
+}
+
+#[test]
+fn the_effect_hooks_may_be_scripted() {
+    let mut h = hook_host("fn on_effect_start(id: String, level: i64) { say(id); }\nfn on_effect_tick(id: String, secs_left: f32, level: i64) { say(\"tick\"); }\nfn on_effect_end(id: String) { say(\"end\"); }");
+    let mut m = MockHost::default();
+    call(&mut h, &mut m, "on_effect_start", &[text("poison"), int(2)]);
+    call(&mut h, &mut m, "on_effect_tick", &[text("poison"), Value::Float(4.5), int(2)]);
+    call(&mut h, &mut m, "on_effect_end", &[text("poison")]);
+    assert_eq!(m.calls, ["say poison", "say tick", "say end"]);
+}
+
+#[test]
 fn host_functions_return_values() {
     let mut h = MockHost { pos: (1.5, 64.0, -3.0), time: 0.25, health: 12, ..MockHost::default() };
     h.items.push((String::from("coal"), 7));

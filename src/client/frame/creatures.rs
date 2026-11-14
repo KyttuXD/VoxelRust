@@ -129,7 +129,12 @@ impl App {
                 crate::client::hand::on_body(held, crate::client::hand::white_tile(), 0.0, at, p.yaw, crate::player::HEIGHT as f32, &mut held_quads);
                 r.draw_quads(&held_quads, None);
                 if let Some((sx, sy)) = r.project(cam, [at[0], at[1] + 2.15, at[2]]) {
-                    tags.push((sx, sy, p.name.to_ascii_uppercase()));
+                    // Their strongest news under the name: an effect they have (and how many more).
+                    let mut label = p.name.to_ascii_uppercase();
+                    if let Some(d) = p.effects.first().and_then(|e| reg.fx.get(&e.0)) {
+                        label.push_str(&alloc::format!(" ({}{})", d.name.to_ascii_uppercase(), if p.effects.len() > 1 { alloc::format!(" +{}", p.effects.len() - 1) } else { String::new() }));
+                    }
+                    tags.push((sx, sy, label));
                 }
             }
         }

@@ -163,6 +163,12 @@ pub struct Native {
     /// Every frame an effect of the player's is running: its id, seconds
     /// left, level, and the time that passed.
     pub effect_tick: Option<fn(g: &mut Session, id: &str, secs_left: f32, level: i32, dt: f32)>,
+    /// An effect started on the player (it was not active before): its id
+    /// and level. Not called again when it is only made longer or stronger.
+    pub effect_start: Option<fn(g: &mut Session, id: &str, level: i32)>,
+    /// An effect of the player's ended: ran out, was put out by water or
+    /// was cleared (death included).
+    pub effect_end: Option<fn(g: &mut Session, id: &str)>,
     /// A message another player's copy of this code sent with
     /// `Session::send_ext`.
     pub message: Option<fn(g: &mut Session, key: &str, text: &str)>,
@@ -278,6 +284,8 @@ impl Native {
         on_prime: None,
         effect_apply: None,
         effect_tick: None,
+        effect_start: None,
+        effect_end: None,
         message: None,
         share: None,
         storage: None,

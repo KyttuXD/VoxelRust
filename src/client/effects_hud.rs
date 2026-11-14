@@ -3,8 +3,12 @@
 //! absorption and a flame beside them when on fire) and the list of active
 //! effects, with their icons and the time left, at the top right.
 //!
-//! The pictures are the tiles `heart_*` and `effect_*` (painted by
-//! content/art/hud.rs, or the texture pack's own).
+//! The air meter of someone under water is here too: a row of bubbles
+//! above the hearts, which pop one a second (see game/effects/air.rs).
+//!
+//! The pictures are the tiles `heart_*`, `effect_*` and `hud_bubble*`
+//! (painted by content/art/hud.rs and content/art/status.rs, or the texture
+//! pack's own).
 
 use crate::block::reg;
 use crate::game::effects::apply;
@@ -50,6 +54,39 @@ pub fn hearts(r: &mut Renderer, g: &Session, x0: f32, y: f32, s: f32) -> bool {
         r.icon(x0 + (MAX_HEALTH / 2) as f32 * STEP * s + 2.0 * s - 3.0 * s, y - oy - wob, tile, flame, WHITE);
     }
     true
+}
+
+/// The air meter: a bubble for each unit of air left, from the right edge
+/// `right` going left, with the top at `y`. Shown only when some air is
+/// missing; with none left, the last place blinks as a popped bubble.
+pub fn bubbles(r: &mut Renderer, g: &Session, right: f32, y: f32, s: f32) {
+    use crate::game::effects::air;
+    if !air::shown(g.air) {
+        return;
+    }
+    let n = air::bubbles(g.air);
+    let t = &reg().fx.hud;
+    match (t.bubble, t.bubble_pop) {
+        (Some(full), Some(pop)) => {
+            // The picture is 9 x 9 from (3, 3) of its tile.
+            let (tile, off) = (16.0 * s, 3.0 * s);
+            for i in 0..air::MAX_AIR as i32 {
+                let x = right - 9.0 * s - i as f32 * STEP * s;
+                if i < n {
+                    r.icon(x - off, y - off, tile, full, WHITE);
+                } else if i == n && n < 10 && g.air <= 0.0 && (g.clock * 4.0) as i32 % 2 == 0 {
+                    r.icon(x - off, y - off, tile, pop, WHITE);
+                }
+            }
+        }
+        _ => {
+            for i in 0..n.clamp(0, 10) {
+                let x = right - (i + 1) as f32 * 9.0 * s;
+                r.rect(x + s, y + s, 6.0 * s, 6.0 * s, [120, 190, 255, 230]);
+                r.rect(x + 2.0 * s, y + 2.0 * s, 2.0 * s, 2.0 * s, [230, 245, 255, 255]);
+            }
+        }
+    }
 }
 
 /// The list of active effects, one row each, right-aligned with its right

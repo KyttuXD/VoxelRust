@@ -211,6 +211,18 @@ ten seconds. Their damage, healing and hunger, and the blocks and bites that sta
 | Saturation | fills your hunger bar, a point a second | `/effect give` |
 | Night Vision | the night and caves are drawn lighter | `/effect give` |
 | Jump Boost | jump 40% higher | `/effect give` |
+| Decay | half a point of health a second, and can kill; dark hearts | rotten flesh, now and then |
+| Haste, Mining Fatigue | blocks break 20% faster, or 30% slower | `/effect give` |
+| Levitation | you float upwards (about two blocks a second) until it ends | `/effect give` |
+| Blindness | the world goes dark and the fog closes in to a few blocks | `/effect give` |
+| Water Breathing | your air does not run out under water | `/effect give` |
+
+Freezing is the Frozen effect (`/effect give freezing` works). **Drowning**:
+when your head goes under water a row of bubbles appears above your
+hearts and one pops every second; with none left you take 2 points of damage
+a second until you surface, and your air comes back about four times as fast
+as it went. Water Breathing, or a mod's item that gives it, keeps the air
+full. Creatures that live on land drown too.
 
 Having an effect again keeps the stronger one: a higher level replaces it,
 the same level takes the longer time. Dying clears them all. Creatures can be
@@ -760,7 +772,7 @@ blocks from it.
 | `/feed [N]` | give yourself N hunger points (4 if left out) | works |
 | `/hurt [N]` | take N damage (1 if left out, 100 at most) | works |
 | `/effect give ID [SECONDS] [LEVEL]` | give yourself a status effect (see [Status effects](#status-effects)); the effect's own time and level 1 if left out. `/effect give` alone lists the ids | works |
-| `/effect clear [ID]` | take one effect away, or all of them | works |
+| `/effect clear [ID]` | take one effect away, or all of them (other names such as `freezing` work) | works |
 | `/effect list` | the effects you have, with level and time left | works |
 | `/effect mob ID [SECONDS] [LEVEL]` | give an effect to the creature you are looking at | works |
 | `/launch [UP] [FORWARD]` | throw yourself upward and the way you face, in blocks per second (8 and 0 if left out; -40 to 40) | works |

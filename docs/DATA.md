@@ -1113,6 +1113,12 @@ effect poison
 | `melee <percent>` | the same for the damage you deal with a left click (never below 1 point) |
 | `hunger <n>` | hunger points lost a second at level 1; negative feeds |
 | `absorb <n>` | health points of padding per level, taken before health when hurt; it fills when the effect starts and goes when it ends |
+| `mine <percent>` | change of how fast blocks break, per level: `20` is haste, `-30` mining fatigue. Never below 5% or above 600% |
+| `lift <n>` | blocks a second the body is lifted upwards, per level (levitation; 0 to 20, held at 12 in all). It overrides gravity until it ends |
+| `blind <percent>` | how much of the view is lost, per level; 100 or more sees nothing past a few blocks (the fog closes in and darkens) |
+| `breath` | the body breathes under water: the air meter never drops (water breathing) |
+| `tint <percent>` | the screen takes the effect's `colour` this strongly (0 to 100; the strongest of several wins and it is never quite opaque) |
+| `sound <id>` | a sound (a `sound` line's id) played when the effect starts |
 | `vision` | night vision: the night and dark places are drawn lighter |
 | `flame` | a flame is drawn beside the hearts while it lasts |
 | `extinguish` | being in water ends it (burning) |
@@ -1121,6 +1127,24 @@ effect poison
 | `secs <n>` | how long it lasts when a command or a source does not say (30 if left out) |
 | `icon <texture>` | the icon's picture (`effect_<id>` if left out; the base game paints `effect_poison` and the others itself) |
 | `from <what> <id> [seconds] [level] [chance]` | something that starts it (below) |
+
+The game ships these effects (the ids you can give with `/effect give`):
+`poison`, `burning`, `regeneration`, `slowness`, `speed`, `hunger`, `weakness`,
+`strength`, `wither`, `decay` (a slower wither: half a point a second, dark
+hearts), `absorption`, `frozen` (also typed as `freezing`: slow, blue hearts,
+a blue tint), `saturation`, `night_vision`, `jump_boost`, `haste`,
+`mining_fatigue`, `levitation`, `blindness` and `water_breathing`. A few other
+names find them too (`regen`, `fire`, `fatigue`, `blind`, `levitate`...).
+
+**Drowning** is not an effect but the air meter: ten bubbles above the
+hearts that appear when the head goes under water and lose one a second;
+with none left, 2 points of damage a second (cause `drown`, so
+`on_player_hurt` hears it) until the head is out, and the air refills four
+times as fast as it went. An effect with `breath` stops all of it, and so
+does anything a script or mod does with `effect("water_breathing", ...)`
+(for an item that lets you breathe, check what is worn in `on_tick` and keep
+giving it for a couple of seconds). Land creatures drown the same way;
+swimmers and fliers do not. Air is not saved: it starts full.
 
 Several effects at once add up. Giving an effect that is already active keeps
 the stronger: a higher level replaces it (and its time), the same level takes
@@ -1144,11 +1168,36 @@ carry effects too, given by `from hit` or `/effect mob`: poison, burning and
 wither take their health (they never drop or count as kills), regeneration
 heals them, slowness slows them, and water puts a fire out. Effects on the
 player are saved with the world (`effects=` and `absorb=` in its meta file);
-an effect a pack no longer defines is dropped when the world is opened.
+an effect a pack no longer defines is dropped when the world is opened. In a
+shared game each player's set of effects is told to the others (see
+[MULTIPLAYER.md](MULTIPLAYER.md)): their name tag shows the first one.
+
+A mod's effect needs no code. A pack block like the one below, in a mod's
+`pack.txt`, makes `/effect give gloom 30 2` work, shows its icon (`effect_gloom`
+or the `icon` line's texture) and level in the list with the time left, darkens
+the hearts and the screen, and plays its sound. Scripts and code can give it
+too, and hear it start, tick and end (see
+[SCRIPTING.md](SCRIPTING.md#effects) and [MODDING.md](MODDING.md)).
+
+```
+effect gloom
+  name Gloom
+  kind bad
+  damage 0.5
+  speed -10
+  mine -20
+  blind 20
+  tint 25
+  colour 30 10 60
+  heart wither
+  sound hiss
+  secs 30
+  from entity ghoul 10 1 40
+```
 
 The pictures for the hearts and icons are textures: `heart_empty`,
 `heart_full`, `heart_half`, `heart_<poison|wither|frozen|absorb|hardcore>_<full|half>`,
-and `effect_<id>`, `effect_flame` (see
+and `effect_<id>`, `effect_flame`, `hud_bubble`, `hud_bubble_pop` (see
 [TEXTURING.md](TEXTURING.md#hearts-and-effect-icons)). Events and conditions:
 `when effectstart poison do ...`, `/if effect poison [level] then ...`
 (see [MODDING.md](MODDING.md)).

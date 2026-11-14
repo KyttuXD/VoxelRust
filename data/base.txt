@@ -1026,7 +1026,15 @@ texture effect_frozen paint effect_frozen 0 0 0
 texture effect_saturation paint effect_saturation 0 0 0
 texture effect_night_vision paint effect_night_vision 0 0 0
 texture effect_jump_boost paint effect_jump_boost 0 0 0
+texture effect_decay paint effect_decay 0 0 0
+texture effect_haste paint effect_haste 0 0 0
+texture effect_mining_fatigue paint effect_mining_fatigue 0 0 0
+texture effect_levitation paint effect_levitation 0 0 0
+texture effect_blindness paint effect_blindness 0 0 0
+texture effect_water_breathing paint effect_water_breathing 0 0 0
 texture effect_flame paint effect_flame 0 0 0
+texture hud_bubble paint hud_bubble 0 0 0
+texture hud_bubble_pop paint hud_bubble_pop 0 0 0
 texture golden_apple paint fruit 240 196 52
 texture rotten_flesh paint meat 120 140 72
 item golden_apple

@@ -214,6 +214,9 @@ not call scripts again.
 | `fn on_item_use(item: String) -> bool` | the player pressed use holding an item (once per press) | `false` stops it |
 | `fn on_craft(item: String)` | the player crafted something | |
 | `fn on_event(name: String, what: String)` | any event pack scripts can answer with `when` (the table in [MODDING.md](MODDING.md#events)) | |
+| `fn on_effect_start(id: String, level: i64)` | a status effect started on the player (not when it is only made longer or stronger) | |
+| `fn on_effect_tick(id: String, secs_left: f32, level: i64)` | about once a second for each status effect the player has | |
+| `fn on_effect_end(id: String)` | an effect ran out, was put out by water or was cleared (death included) | |
 | `fn on_command(name: String, args: String) -> bool` | a `/command` the game does not know (`name` without the `/`, lower case; `args` the rest of the line) | `true` if it is yours; a string is shown as the reply |
 | `fn on_explode(x: f64, y: f64, z: f64, power: f64, source: String) -> bool` | an explosion is about to happen (`source` is `tnt`, `command`, a creature's id, or `mod<N>`) | `false` cancels; a number changes the power (0.5 to 8) |
 | `fn on_update(dt: f32)` | once a frame, after the game has moved the creatures and before the player moves: the place to move things, to carry the player (`hold_player`) and to ask for pictures | |
@@ -257,6 +260,10 @@ nothing) unless the player may run them there.
 | `set_time(t: f64)` | set the time of day |
 | `explode(x: f64, y: f64, z: f64, power: f64)` | set off an explosion (power 0.5 to 8); goes through `on_explode` of the other mods |
 | `effect(id: &str, secs: f64, level: i64) -> bool` | give the player a status effect |
+| `apply_effect(who: &str, id: &str, secs: f64, level: i64) -> bool` | give a status effect to `"player"` or `"target"` (the creature in the crosshair, up to 8 blocks); 0 seconds is the effect's own time; false if there is no such effect or target, or a mod refused it |
+| `remove_effect(who: &str, id: &str) -> bool` | take a status effect (all of them for an empty id) from `"player"` or `"target"`; false if it was not there |
+| `has_effect(who: &str, id: &str) -> bool` | whether `"player"` or `"target"` has that status effect |
+| `effect_level(who: &str, id: &str) -> i64` | the level of a status effect on `"player"` or `"target"`; 0 if it is not active |
 | `play_sound(id: &str)` | play a sound |
 | `run_command(text: &str) -> String` | carry out a chat command as the player (with or without the `/`); returns what it answers |
 | `rand(n: i64) -> i64` | a random whole number from 0 up to `n` (not including `n`) |
@@ -678,6 +685,36 @@ the default: a normal build has no compiled mod code at all. The opt-in
 scripts, which are left unread (the game logs that), so the two never do the same
 thing twice. `docs/SCRIPT-COMPAT.md` says which mods run as scripts and what is
 left that scripts cannot do.
+
+## Effects
+
+Effects are defined in a pack with `effect` lines ([DATA.md](DATA.md#effects):
+damage, healing, speed, mining speed, levitation, blindness, a screen tint,
+hearts, a sound...), and a script gives them out, asks about them and answers
+their start, tick and end. `effect(id, secs, level)` is the player-only short
+form of `apply_effect("player", ...)`. The tick hook is called about once a
+second, not each frame, so it is cheap.
+
+```rust
+fn on_effect_start(id: String, level: i64) {
+    if id == "gloom" {
+        say("THE LIGHT GOES OUT OF THE WORLD");
+    }
+}
+
+fn on_effect_tick(id: String, secs_left: f32, level: i64) {
+    // A lantern keeps the gloom off the player.
+    if id == "gloom" && held_item() == "lantern" {
+        remove_effect("player", "gloom");
+    }
+}
+
+fn on_effect_end(id: String) {
+    if id == "levitation" && !has_effect("player", "water_breathing") {
+        apply_effect("player", "water_breathing", 5.0, 1);
+    }
+}
+```
 
 ## Worked examples
 

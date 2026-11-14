@@ -889,7 +889,8 @@ a world being opened, saved or reloaded, each frame, clicks, chat commands,
 explosions (`before_explode`, `after_explode`) and TNT being lit (`on_prime`),
 status effects (`effect_apply` may change the seconds and level of an effect
 about to be given to the player, or refuse it; `effect_tick` is called every
-frame for each effect that is running),
+frame for each effect that is running; `effect_start` and `effect_end` when one
+starts or ends),
 the events of the [Hooks reference](#hooks-reference) (breaking and placing,
 creatures appearing and dying, chat, crafting, using items, the HUD),
 messages and state shared between players, drawing, the map,
@@ -902,7 +903,17 @@ The effect hooks, in full (see [DATA.md](DATA.md#effects) for what effects are):
 ```rust
 effect_apply: Some(|g, id, secs, level| { /* id: &str, secs: &mut f32, level: &mut i32 */ true }),
 effect_tick: Some(|g, id, secs_left, level, dt| { /* every frame, for each running effect */ }),
+effect_start: Some(|g, id, level| { /* it was not active before */ }),
+effect_end: Some(|g, id| { /* ran out, was put out, or was cleared */ }),
 ```
+
+`effect_start` is called when an effect starts (not when it is only made longer
+or stronger), `effect_end` when it ends, however it ends (death included).
+An effect needs no code when the `effect` lines of [DATA.md](DATA.md#effects)
+say what it does; the hooks are for what they cannot say. A script has the same
+three as `on_effect_start`, `on_effect_tick` (once a second) and `on_effect_end`,
+and `apply_effect`, `remove_effect`, `has_effect` and `effect_level` to work with
+effects: see [SCRIPTING.md](SCRIPTING.md#effects).
 
 `effect_apply` is asked before an effect is given to the player (by a source,
 `/effect give` or `game::effects::apply::give`); it may change `secs` and
@@ -994,7 +1005,7 @@ also passed to the mod's `on_event` hook.
 | (a mod's screen) | the player used a screen the mod opened | | `on_ui` | `fn(&mut Session, &mut ModApi, &UiEvent)` |
 | `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itempickup`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
 | `explode`, `blockexploded`, `tntprimed` | an explosion happens, breaks blocks, or TNT is lit | see [Explosions](#explosions) | `before_explode`: `false` cancels; `after_explode` and `on_prime` after | `fn(&mut Session, &mut ExplosionInfo) -> bool` |
-| `effectstart`, `effectend`, `wake` | a status effect starts or ends on the player; the player wakes | effect id | `effect_apply`: `false` refuses it; `effect_tick` every frame per running effect | `fn(&mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool` |
+| `effectstart`, `effectend`, `wake` | a status effect starts or ends on the player; the player wakes | effect id | `effect_apply`: `false` refuses it; `effect_tick` every frame per running effect; `effect_start`, `effect_end` when it starts and ends (scripts: `on_effect_start`, `on_effect_tick`, `on_effect_end`) | `fn(&mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool` |
 
 Older hooks (`update`, `interact`, `killed`, `hit`, `hurt`, `open`, `save` and so
 on) are described in `src/native.rs` and work as before. `open` and `save` also

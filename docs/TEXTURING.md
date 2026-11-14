@@ -86,6 +86,8 @@ a 16 x 16 tile, and 16 x 16 badges with a light picture on a flat colour.
 | `heart_absorb_full`, `heart_absorb_half` | the yellow hearts of absorption |
 | `heart_hardcore_full`, `heart_hardcore_half` | a deep red heart (not used by any mode yet) |
 | `effect_<id>` | the icon of an effect: poison, burning, regeneration, slowness, speed, hunger, weakness, strength, wither, absorption, frozen, saturation, night_vision, jump_boost |
+| `effect_decay`, `effect_haste`, `effect_mining_fatigue`, `effect_levitation`, `effect_blindness`, `effect_water_breathing` | the icons of the newer effects (painted by `src/content/art/status.rs`, which borrows the badge from `hud.rs`) |
+| `hud_bubble`, `hud_bubble_pop` | an air bubble of the air meter, 9 x 9 in the middle of its tile, and a burst one (it blinks when the air is out) |
 | `effect_flame` | the flame beside the hearts of someone who is burning |
 
 A texture pack replaces any of them by a picture of the same name; an effect

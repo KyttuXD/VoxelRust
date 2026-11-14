@@ -25,6 +25,8 @@ pub struct Remote {
     pub body: crate::content::pose::Smoother,
     pub emote: u16,
     pub emote_t: f32,
+    /// The status effects on them: id, level, seconds left when it was sent.
+    pub effects: Vec<(String, u8, u32)>,
 }
 
 pub enum Event {
@@ -155,7 +157,7 @@ impl Client {
                     Msg::Join { id, name } => {
                         events.push(Event::Chat(alloc::format!("{} JOINED", name.to_ascii_uppercase())));
                         events.push(Event::Joined(name.clone()));
-                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0 });
+                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new() });
                     }
                     Msg::Leave { id } => {
                         if let Some(p) = self.players.remove(&id) {
@@ -184,6 +186,12 @@ impl Client {
                             p.emote = emote;
                             p.emote_t = 0.0;
                             events.push(Event::Emote(id, emote));
+                        }
+                    }
+                    // Someone's effects: kept on their record (nothing for the game to do).
+                    Msg::Effects { id, list } => {
+                        if let Some(p) = self.players.get_mut(&id) {
+                            p.effects = crate::game::effects::sync::clean(list);
                         }
                     }
                     Msg::SetBlock { x, y, z, block } => events.push(Event::Block(x, y, z, block)),
@@ -255,6 +263,13 @@ impl Client {
     pub fn send_emote(&mut self, emote: u16) {
         let id = self.id;
         self.send(&Msg::Emote { id, emote });
+    }
+
+    /// Tell the others which status effects are on this player (see
+    /// `game::effects::sync`).
+    pub fn send_effects(&mut self, list: &[(String, u8, u32)]) {
+        let id = self.id;
+        self.send(&Msg::Effects { id, list: list.to_vec() });
     }
 
     pub fn send_block(&mut self, x: i32, y: i32, z: i32, block: u16) {
@@ -460,6 +475,31 @@ mod tests {
         // The sender does not hear herself.
         let ea = pump(&mut a, 40);
         assert!(!ea.iter().any(|e| matches!(e, Event::Emote(..))));
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn effects_are_relayed_with_the_senders_id_and_told_to_those_who_join_later() {
+        let (port, stop, handle) = start_server(8);
+        let (mut a, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
+        let (mut b, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
+        pump(&mut a, 40);
+        pump(&mut b, 100);
+        a.send_effects(&[(String::from("poison"), 2, 9), (String::from("Bad Id"), 1, 1)]);
+        pump(&mut a, 40);
+        pump(&mut b, 100);
+        // Only ids that could be typed are kept.
+        assert_eq!(b.players.values().find(|p| p.name == "Ann").unwrap().effects, [(String::from("poison"), 2, 9)]);
+        // The sender does not hear herself, and a newcomer is told.
+        assert!(a.players.values().all(|p| p.effects.is_empty()));
+        let (mut c, _) = Client::connect("127.0.0.1", port, "Cy").unwrap();
+        pump(&mut c, 100);
+        assert_eq!(c.players.values().find(|p| p.name == "Ann").unwrap().effects, [(String::from("poison"), 2, 9)]);
+        // Clearing them is told too.
+        a.send_effects(&[]);
+        pump(&mut b, 100);
+        assert!(b.players.values().find(|p| p.name == "Ann").unwrap().effects.is_empty());
         stop.store(true, Ordering::Relaxed);
         handle.join().unwrap();
     }

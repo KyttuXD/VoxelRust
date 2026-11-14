@@ -13,6 +13,10 @@ impl App {
         if g.hurt_flash > 0.0 {
             r.rect(0.0, 0.0, w, h, [200, 20, 20, (g.hurt_flash * 300.0).min(110.0) as u8]);
         }
+        // An effect that colours the screen (blindness, mods' own).
+        if let Some(t) = crate::game::effects::body::tint(&g.fx, &crate::game::effects::apply::lookup) {
+            r.rect(0.0, 0.0, w, h, t);
+        }
         if self.screen == Screen::Game {
             let c: Color = [255, 255, 255, 200];
             r.rect(w * 0.5 - 5.0 * s, h * 0.5 - 0.5 * s, 10.0 * s, s, c);
@@ -64,15 +68,7 @@ impl App {
                     r.rect(x + s, hy + s, if fill == 2 { 6.0 } else { 3.0 } * s, 5.0 * s, [214, 142, 62, 255]);
                 }
             }
-            if g.air < 9.9 {
-                let hy = hy - 9.0 * s;
-                let bubbles = (g.air + 0.99) as i32;
-                for i in 0..bubbles.clamp(0, 10) {
-                    let x = x0 + HOTBAR as f32 * slot - (i + 1) as f32 * 9.0 * s;
-                    r.rect(x + s, hy + s, 6.0 * s, 6.0 * s, [120, 190, 255, 230]);
-                    r.rect(x + 2.0 * s, hy + 2.0 * s, 2.0 * s, 2.0 * s, [230, 245, 255, 255]);
-                }
-            }
+            crate::client::effects_hud::bubbles(r, g, x0 + HOTBAR as f32 * slot, hy - 9.0 * s, s);
         }
         // What mods put on the HUD (their drawing commands, lines in the slots, toasts).
         crate::client::modui::hud_draw::draw(r, w, h, s, &crate::client::modui::hud::Geometry { hotbar_x: x0, hotbar_y: y0, survival });

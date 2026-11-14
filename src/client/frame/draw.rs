@@ -53,6 +53,7 @@ impl App {
                 rain: g.sky.rain,
                 flash: g.flash,
                 vision: crate::game::effects::apply::night_vision(&g.fx, &crate::game::effects::apply::lookup),
+                blind: crate::game::effects::body::blindness(&g.fx, &crate::game::effects::apply::lookup),
             };
             r.draw_world(&g.world, &cam, &env);
             let mut tags = Vec::new();
