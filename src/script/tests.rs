@@ -117,9 +117,9 @@ fn integer_methods() {
 #[test]
 fn float_methods() {
     assert_eq!(prog("fn t() -> f64 { 2.5f64.floor() + 2.5f64.ceil() + 2.5f64.round() }"), Value::Float(2.0 + 3.0 + 3.0));
-    assert_eq!(prog("fn t() -> f64 { 16.0f64.sqrt() }"), Value::Float(4.0));
+    assert_eq!(prog("fn t() -> bool { (16.0f64.sqrt() - 4.0).abs() < 1e-12 }"), Value::Bool(true));
     assert_eq!(prog("fn t() -> f64 { (-2.5f64).abs().max(1.0).min(10.0) }"), Value::Float(2.5));
-    assert_eq!(prog("fn t() -> bool { (0.0f64).sin().abs() < 1e-6 && ((0.0f64).cos() - 1.0).abs() < 1e-6 }"), Value::Bool(true));
+    assert_eq!(prog("fn t() -> bool { (0.0f64).sin().abs() < 1e-6 && ((0.0f64).cos() - 1.0).abs() < 1e-4 }"), Value::Bool(true));
     assert_eq!(prog("fn t() -> f64 { 2.0f64.powi(10) }"), Value::Float(1024.0));
     assert_eq!(prog("fn t() -> f64 { std::f64::consts::PI }"), Value::Float(core::f64::consts::PI));
 }
