@@ -1330,6 +1330,14 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let t = t.split(',').next().unwrap_or("").to_ascii_uppercase();
             app.tab = TABS.iter().position(|x| *x == t).unwrap_or(0);
         }
+        // "page" opens the sub-page of that tab (video: detail and distance;
+        // controls: key bindings); "bindscroll:N" scrolls the key bindings.
+        if opts.show.split(',').any(|w| w == "page") {
+            app.video_detail = 1;
+        }
+        if let Some(n) = opts.show.split(',').find_map(|w| w.strip_prefix("bindscroll:")).and_then(|n| n.parse::<i32>().ok()) {
+            crate::client::modui::with_ui(|u| u.scroll_binds = n);
+        }
         // "picker" or "picker:<folder>" opens the file browser (at that folder);
         // "pickfile" also selects the first file in it.
         if opts.show.contains("picker") {

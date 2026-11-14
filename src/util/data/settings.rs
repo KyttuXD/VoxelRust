@@ -32,7 +32,7 @@ pub const ACTIONS: [(Action, &str, &str, i32); 15] = [
     (Action::Left, "left", "MOVE LEFT", 4),
     (Action::Right, "right", "MOVE RIGHT", 7),
     (Action::Jump, "jump", "JUMP / FLY UP", 44),
-    (Action::Descend, "descend", "FLY DOWN / CROUCH", 225),
+    (Action::Descend, "descend", "DOWN / CROUCH", 225),
     (Action::Sprint, "sprint", "SPRINT", 224),
     (Action::Fly, "leave", "GET OFF / GET OUT", 9),
     (Action::Inventory, "inventory", "INVENTORY", 8),
