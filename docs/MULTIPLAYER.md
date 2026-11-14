@@ -308,7 +308,7 @@ lines). Files written before voice chat existed still allow it.
 ## Player versus player
 
 Players can hit each other. The server decides every hit; nothing about it
-changes the protocol (the messages are state messages on channels 7 to 10,
+changes the protocol (the messages are state messages on channels 8 to 11,
 which games from before it ignore).
 
 **How a hit goes.** The attacker's game finds the player under the crosshair

@@ -87,11 +87,15 @@ impl Server {
                 let mut v = c.sync.vitals.unwrap_or(Vitals { hp: 0, max: 20, food: 20, worn: [0; vitals::SLOTS], ping: 0 });
                 v.hp = 0;
                 c.sync.vitals = Some(v);
-                let line = vitals::death_line(&c.name, &vitals::clean_cause(data));
-                log.push(line.clone());
-                self.sync.history.push(&line);
+                let cause = vitals::clean_cause(data);
+                let line = vitals::death_line(&c.name, &cause);
                 self.broadcast(&Msg::State { id, channel: VITALS, keep: false, key: String::from(key::ME), data: v.encode(true) }, id);
-                self.broadcast(&Msg::Chat { id: 0, text: line }, u16::MAX);
+                // A death by a player's blow is announced by `net/pvp` ("A was slain by B"), not twice.
+                if cause != "pvp" {
+                    log.push(line.clone());
+                    self.sync.history.push(&line);
+                    self.broadcast(&Msg::Chat { id: 0, text: line }, u16::MAX);
+                }
             }
             key::PONG => {
                 let now = self.sync.clock;
