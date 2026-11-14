@@ -38,6 +38,27 @@ bench = false
 panic = "abort"
 opt-level = 1
 
+# `cargo test` builds with this profile (it inherits from dev). Line tables
+# keep panic backtraces readable and make the test program much quicker to
+# link than full debug information does.
+[profile.test]
+debug = "line-tables-only"
+
+# For quick edit-and-run builds: `cargo build --profile fastdev` (or the
+# alias `cargo fastdev`), program in target/fastdev/. A little optimised so
+# the game is playable, no debug information, incremental, no LTO and many
+# code generation units (so it compiles in parallel and an edit recompiles
+# only the units it touches). Never for a shipped program: that is
+# `--release`. See docs/BUILDING.md, "Faster builds".
+[profile.fastdev]
+inherits = "dev"
+opt-level = 1
+debug = 0
+incremental = true
+codegen-units = 256
+lto = false
+panic = "abort"
+
 [profile.release]
 panic = "abort"
 opt-level = 3

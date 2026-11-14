@@ -2,6 +2,26 @@
 //! supplies its own entry point and takes nothing from the toolchain's C
 //! runtime libraries (see src/sys/mod.rs).
 
+/// Write a generated file only when its text differs from what is there, so
+/// that an unchanged table keeps its modification time and nothing that
+/// includes it is compiled again for no reason.
+fn write_if_changed(path: &std::path::Path, text: &str) {
+    if std::fs::read(path).map_or(true, |old| old != text.as_bytes()) {
+        std::fs::write(path, text).unwrap();
+    }
+}
+
+/// Ask git for a path (`rev-parse --git-path` knows about worktrees, where
+/// `.git` is a file and not a folder), as an absolute path.
+fn git_path(what: &str) -> Option<std::path::PathBuf> {
+    let o = std::process::Command::new("git").args(["rev-parse", "--git-path", what]).output().ok().filter(|o| o.status.success())?;
+    let p = std::path::PathBuf::from(String::from_utf8_lossy(&o.stdout).trim());
+    if p.as_os_str().is_empty() {
+        return None;
+    }
+    Some(if p.is_absolute() { p } else { std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default()).join(p) })
+}
+
 /// Write a table of every file under data/ (except base.txt, which is
 /// included directly) so the game carries its models and extra data files
 /// inside the program and needs no data folder beside it.
@@ -33,7 +53,7 @@ fn embed_data() {
     }
     out.push_str("];\n");
     let dest = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("embedded.rs");
-    std::fs::write(dest, out).unwrap();
+    write_if_changed(&dest, &out);
 }
 
 /// Where the mods are built from (only with the `native-mods` feature): the folder named by VOXELRUST_MODS_DIR
@@ -59,7 +79,7 @@ fn embed_mods() {
     // no files, and the mods folder is not even looked at.
     if std::env::var_os("CARGO_FEATURE_NATIVE_MODS").is_none() {
         let none = "pub static NATIVES: &[&crate::native::Native] = &[];\n#[cfg(test)]\npub static SHIPPED: &[(&str, &[u8])] = &[];\n";
-        std::fs::write(dest, none).unwrap();
+        write_if_changed(&dest, none);
         return;
     }
     let root = mods_dir();
@@ -114,7 +134,7 @@ fn embed_mods() {
     if tests.is_file() {
         writeln!(out, "#[cfg(test)]\n#[path = {:?}]\nmod shipped_tests;", tests.display().to_string()).unwrap();
     }
-    std::fs::write(dest, out).unwrap();
+    write_if_changed(&dest, &out);
 }
 
 fn main() {
@@ -126,11 +146,23 @@ fn main() {
     // The release number, when the release script sets one (see client::update).
     println!("cargo:rerun-if-env-changed=VOXELRUST_SEQ");
     println!("cargo:rerun-if-env-changed=VOXELRUST_RELEASE");
-    // HEAD names the branch; the branch file is what moves with each commit.
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/refs/heads");
-    println!("cargo:rerun-if-changed=.git/packed-refs");
+    // The commit moves when HEAD or the file of the branch it names does. Only
+    // paths that exist are named: cargo runs a build script again on every
+    // build when a path it was told to watch is missing (as `.git/HEAD` is
+    // in a git worktree, where `.git` is a file), so the paths come from git
+    // itself.
     if std::env::var("VOXELRUST_COMMIT").is_err() {
+        let watch = |p: Option<std::path::PathBuf>| {
+            if let Some(p) = p.filter(|p| p.exists()) {
+                println!("cargo:rerun-if-changed={}", p.display());
+            }
+        };
+        watch(git_path("HEAD"));
+        watch(git_path("packed-refs"));
+        let branch = std::process::Command::new("git").args(["symbolic-ref", "-q", "HEAD"]).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+        if let Some(b) = branch.filter(|b| !b.is_empty()) {
+            watch(git_path(&b));
+        }
         let commit = std::process::Command::new("git").args(["rev-parse", "--short=12", "HEAD"]).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
         if let Some(c) = commit.filter(|c| !c.is_empty()) {
             println!("cargo:rustc-env=VOXELRUST_COMMIT={c}");

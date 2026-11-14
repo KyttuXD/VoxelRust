@@ -12,6 +12,8 @@
 # Result: dist/macos-legacy/voxelrust
 set -eu
 cd "$(dirname "$0")/.."
+# A shared target folder (CARGO_TARGET_DIR) keeps compiled code between checkouts and scripts.
+TARGET="${CARGO_TARGET_DIR:-target}"
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
 SDK="$PWD/target/macos-legacy-sdk"
@@ -42,10 +44,10 @@ SDKROOT="$SDK" MACOSX_DEPLOYMENT_TARGET=10.6 VOXELRUST_BUILD=macos-legacy-x86_64
 RUSTFLAGS="-C linker=rust-lld -C linker-flavor=ld64.lld -C target-cpu=core2 \
   -C link-arg=-e -C link-arg=_voxelrust_start \
   -C link-arg=-headerpad -C link-arg=0x400 -C link-arg=-no_pie" \
-  $CARGO build --release --target x86_64-apple-darwin --target-dir target/macos-legacy
+  $CARGO build --release --target x86_64-apple-darwin --target-dir "$TARGET"/macos-legacy
 
 python3 scripts/macho_legacy.py \
-  target/macos-legacy/x86_64-apple-darwin/release/voxelrust "$OUT/voxelrust"
+  "$TARGET"/macos-legacy/x86_64-apple-darwin/release/voxelrust "$OUT/voxelrust"
 chmod +x "$OUT/voxelrust"
 echo "built $OUT/voxelrust"
 
@@ -55,8 +57,8 @@ echo "built $OUT/voxelrust"
 mkdir -p "$PWD/dist/macos"
 SDKROOT="$SDK" MACOSX_DEPLOYMENT_TARGET=10.12 VOXELRUST_BUILD=macos-x86_64 \
 RUSTFLAGS="-C linker=rust-lld -C linker-flavor=ld64.lld" \
-  $CARGO build --release --target x86_64-apple-darwin --target-dir target/macos-modern
-cp target/macos-modern/x86_64-apple-darwin/release/voxelrust "$PWD/dist/macos/voxelrust"
+  $CARGO build --release --target x86_64-apple-darwin --target-dir "$TARGET"/macos-modern
+cp "$TARGET"/macos-modern/x86_64-apple-darwin/release/voxelrust "$PWD/dist/macos/voxelrust"
 echo "built $PWD/dist/macos/voxelrust"
 echo "Copy it to the Mac together with an SDL2 built for 10.6 (libSDL2-2.0.0.dylib"
 echo "next to it, or SDL2.framework in /Library/Frameworks). See docs/PORTING.md."

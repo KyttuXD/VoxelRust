@@ -14,6 +14,8 @@
 # system's copy. The server never opens a window, so SDL2 only has to load.
 set -eu
 cd "$(dirname "$0")/.."
+# A shared target folder (CARGO_TARGET_DIR) keeps compiled code between checkouts and scripts.
+TARGET="${CARGO_TARGET_DIR:-target}"
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
 COMMIT="${VOXELRUST_COMMIT:-$(git rev-parse --short=12 HEAD)}"
@@ -30,7 +32,7 @@ out="$PWD/dist/server"
 stage="$out/voxelrust-server"
 rm -rf "$stage"
 mkdir -p "$stage/lib"
-cp target/release/voxelrust "$stage/voxelrust"
+cp "$TARGET"/release/voxelrust "$stage/voxelrust"
 cp -L "$sdl" "$stage/lib/libSDL2-2.0.so.0"
 
 cat > "$stage/run.sh" <<'RUN'
