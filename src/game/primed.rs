@@ -375,7 +375,7 @@ mod tests {
         for id in ["gunpowder", "flint_and_steel", "tnt"] {
             assert!(r.items.iter().any(|i| i.id == id), "no item {id}");
         }
-        assert!(r.recipes.iter().any(|rc| r.items[rc.out.0].id == "tnt"), "no recipe for tnt");
+        assert!(r.grid_recipes.iter().any(|rc| r.items[rc.out.0 as usize].id == "tnt"), "no recipe for tnt");
     }
 
     #[test]

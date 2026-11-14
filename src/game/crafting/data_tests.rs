@@ -81,8 +81,13 @@ fn a_pick_is_made_from_its_shape_and_only_there() {
     axe[7] = cell(stick);
     let (found, _) = matcher::find(&r.grid_recipes, 3, 3, &axe).expect("no axe");
     assert_eq!(r.grid_recipes[found].out, (id("iron_axe"), 1));
-    // The pick with one head missing is nothing.
+    // The pick with one head missing is not a pick (it is a hoe now).
     cells[2] = None;
+    let missing = matcher::find(&r.grid_recipes, 3, 3, &cells).map(|(i, _)| r.grid_recipes[i].out.0);
+    assert_ne!(missing, Some(id("iron_pick")));
+    // Nor is the pick with a handle missing.
+    cells[2] = cell(iron);
+    cells[7] = None;
     assert!(matcher::find(&r.grid_recipes, 3, 3, &cells).is_none());
 }
 
