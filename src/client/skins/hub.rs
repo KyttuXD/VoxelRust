@@ -417,8 +417,12 @@ mod tests {
             hub.on_skin(id, skin(128));
         }
         // Player 1 is far (60 blocks, still a middle-tier skin of 128); 2 and 3 are near.
-        hub.plan(1.0, &dists(&[(1, 60.0), (2, 10.0), (3, 10.0)]), &mut gpu, &mut tex);
-        hub.pump(&mut gpu, &mut tex);
+        // Two jobs run per plan (MAX_JOBS), nearest first, so the far player gets its job on the next plan.
+        for _ in 0..2 {
+            hub.plan(1.0, &dists(&[(1, 60.0), (2, 10.0), (3, 10.0)]), &mut gpu, &mut tex);
+            hub.pump(&mut gpu, &mut tex);
+        }
+        assert_eq!(hub.remote[&1].cur, 128, "the far player is on the card at its middle-tier size");
         assert_eq!(hub.remote[&1].last_near, 0);
         assert!(hub.remote[&2].last_near > 0 && hub.remote[&3].last_near > 0);
         let one = hub.kept_bytes() / 3;
