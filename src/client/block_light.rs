@@ -67,7 +67,7 @@ fn can_see(chunks: &[Slice], opaque: &[u8], from: [f64; 3], to: [i32; 3], start:
 /// emitter table `emit` (light by block state) and `opaque` (solid by block
 /// state), looking at the loaded `chunks`.
 pub fn level_at(chunks: &[Slice], emit: &[u8], opaque: &[u8], pos: [f64; 3]) -> u8 {
-    if !pos.iter().all(|v| v.is_finite() && v.abs() < 1.0e9) {
+    if !pos.iter().all(|v| v.is_finite() && *v > -1.0e9 && *v < 1.0e9) {
         return 0;
     }
     // The spot: the middle of the body, about half a block up.
@@ -149,7 +149,7 @@ impl LightCache {
 
 /// [`level_at`] on the world's loaded chunks.
 pub fn level_in_world(world: &crate::world::World, pos: [f64; 3]) -> u8 {
-    if !pos.iter().all(|v| v.is_finite() && v.abs() < 1.0e9) {
+    if !pos.iter().all(|v| v.is_finite() && *v > -1.0e9 && *v < 1.0e9) {
         return 0;
     }
     let r = crate::block::reg();
