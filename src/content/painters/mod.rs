@@ -57,7 +57,7 @@ pub const BUILTINS: &[&str] = &[
 /// Every `paint` style.
 pub const STYLES: &[&str] = &[
     "concrete", "wool", "terracotta", "glass", "rock", "polished", "bricks", "tiles", "planks", "bark", "rings", "leaves", "blossom", "stick", "pick", "axe", "shovel", "hoe", "sword", "gem", "meat", "fruit", "fishfood",
-    "rail", "machine", "hull", "wings", "chest", "workbench", "mushroom", "cluster", "icicle", "magma", "vine", "web", "glassdoor", "bow", "crossbow", "arrow", "ingot", "door", "farmland", "crop1", "crop2", "crop3",
+    "rail", "machine", "hull", "wings", "chest", "chest_front", "chest_side", "chest_top", "workbench", "mushroom", "cluster", "icicle", "magma", "vine", "web", "glassdoor", "bow", "crossbow", "arrow", "ingot", "door", "farmland", "crop1", "crop2", "crop3",
     "crop4", "seeds", "sheaf", "loaf", "pizza", "wedge", "root", "tuber", "jar", "egg", "sack", "cookie", "pie", "bowl", "ore", "ore_vein", "tnt_side", "tnt_top", "tnt_bottom", "powder",
     "flint_steel", "bench5", "bench7", "bench_side",
 ];

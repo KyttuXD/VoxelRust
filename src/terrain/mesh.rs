@@ -382,7 +382,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                         });
                         crate::block::shape(b, mask, &mut shape);
                         for bx in &shape {
-                            emit_box(&mut out.opaque, &reg_, &opaque, bx, &shape, d.tex, origin, [x, y, z], own);
+                            emit_box(&mut out.opaque, &reg_, &opaque, bx, &shape, (d.tex, d.front), origin, [x, y, z], own);
                         }
                     }
                 }
@@ -410,13 +410,18 @@ fn emit_box(
     opaque: &dyn Fn(Block) -> bool,
     bx: &Bx,
     all: &[Bx],
-    tex: [u16; 3],
+    (tex, front): ([u16; 3], Option<(u8, u16)>),
     origin: [i32; 3],
     cell: [i32; 3],
     own_light: u8,
 ) {
     let (mn, mx) = (bx.min.map(|v| v as i32), bx.max.map(|v| v as i32));
-    for f in &FACES {
+    for (face, f) in FACES.iter().enumerate() {
+        // A block's `front` picture goes on the face that looks its way.
+        let tile = match front {
+            Some((n, t)) if n as usize == face => t,
+            _ => tex[f.tex],
+        };
         let axis = if f.n[0] != 0 {
             0
         } else if f.n[1] != 0 {
@@ -478,7 +483,7 @@ fn emit_box(
             dst.push(Vertex {
                 pos: [(origin[0] + p[0]) as i16, (origin[1] + p[1]) as i16, (origin[2] + p[2]) as i16, 0],
                 col: [c, c, c, 255],
-                uv: tile_uv(tex[f.tex], along(&f.u), 16 - along(&f.v)),
+                uv: tile_uv(tile, along(&f.u), 16 - along(&f.v)),
                 luv,
             });
         }

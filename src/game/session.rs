@@ -165,6 +165,10 @@ pub struct Session {
     share_timer: f32,
     bite_timer: f32,
     open_chest: Option<[i32; 3]>,
+    /// The chest whose screen is open (set by the app each frame), and the
+    /// lids that are moving because of it (game/chest_anim.rs).
+    pub chest_view: Option<[i32; 3]>,
+    pub chest_anim: crate::chest_anim::ChestAnim,
     chest_sent: Option<([i32; 3], String)>,
     /// Which dimension of the world is being played (empty = the world itself).
     pub dim: String,
@@ -532,6 +536,8 @@ impl Session {
             share_timer: 0.0,
             bite_timer: 0.0,
             open_chest: None,
+            chest_view: None,
+            chest_anim: Default::default(),
             chest_sent: None,
             dim: String::new(),
             pending_dim: crate::settings::kv(&meta, "dim").filter(|d| !d.is_empty()).map(String::from),
@@ -1995,6 +2001,7 @@ impl Session {
         }
         // Lit TNT burns down, sparks fly.
         crate::primed::tick(self, dt);
+        crate::chest_anim::tick(self, dt, audio);
         // Creatures, sleep and weather for scripts, and the mods' tick hook.
         crate::game::events::poll(self, dt);
         // Scripts: once at the start, and those that run on a clock.

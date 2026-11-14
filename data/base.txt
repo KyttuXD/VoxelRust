@@ -187,30 +187,79 @@ texture dark_oak_side paint bark 58 40 24
 texture dark_oak_top paint rings 96 70 40
 texture dark_oak_planks paint planks 96 70 40
 texture dark_oak_leaves paint leaves 48 100 40
-texture oak_chest paint chest 176 136 84
-texture pine_chest paint chest 122 88 56
-texture birch_chest paint chest 214 196 150
-texture maple_chest paint chest 190 140 96
-texture palm_chest paint chest 196 170 120
-texture blossom_chest paint chest 214 150 150
-texture acacia_chest paint chest 196 140 100
-texture dark_oak_chest paint chest 96 70 40
-texture white_chest paint chest 236 238 238
-texture light_gray_chest paint chest 158 158 152
-texture gray_chest paint chest 78 82 86
-texture black_chest paint chest 26 26 32
-texture brown_chest paint chest 114 72 42
-texture red_chest paint chest 168 44 40
-texture orange_chest paint chest 236 118 20
-texture yellow_chest paint chest 246 200 42
-texture lime_chest paint chest 112 186 26
-texture green_chest paint chest 84 110 28
-texture cyan_chest paint chest 22 140 146
-texture light_blue_chest paint chest 62 176 220
-texture blue_chest paint chest 52 58 162
-texture purple_chest paint chest 124 44 174
-texture magenta_chest paint chest 192 72 184
-texture pink_chest paint chest 240 142 172
+texture oak_chest paint chest_front 176 136 84
+texture oak_chest_side paint chest_side 176 136 84
+texture oak_chest_top paint chest_top 176 136 84
+texture pine_chest paint chest_front 122 88 56
+texture pine_chest_side paint chest_side 122 88 56
+texture pine_chest_top paint chest_top 122 88 56
+texture birch_chest paint chest_front 214 196 150
+texture birch_chest_side paint chest_side 214 196 150
+texture birch_chest_top paint chest_top 214 196 150
+texture maple_chest paint chest_front 190 140 96
+texture maple_chest_side paint chest_side 190 140 96
+texture maple_chest_top paint chest_top 190 140 96
+texture palm_chest paint chest_front 196 170 120
+texture palm_chest_side paint chest_side 196 170 120
+texture palm_chest_top paint chest_top 196 170 120
+texture blossom_chest paint chest_front 214 150 150
+texture blossom_chest_side paint chest_side 214 150 150
+texture blossom_chest_top paint chest_top 214 150 150
+texture acacia_chest paint chest_front 196 140 100
+texture acacia_chest_side paint chest_side 196 140 100
+texture acacia_chest_top paint chest_top 196 140 100
+texture dark_oak_chest paint chest_front 96 70 40
+texture dark_oak_chest_side paint chest_side 96 70 40
+texture dark_oak_chest_top paint chest_top 96 70 40
+texture white_chest paint chest_front 236 238 238
+texture white_chest_side paint chest_side 236 238 238
+texture white_chest_top paint chest_top 236 238 238
+texture light_gray_chest paint chest_front 158 158 152
+texture light_gray_chest_side paint chest_side 158 158 152
+texture light_gray_chest_top paint chest_top 158 158 152
+texture gray_chest paint chest_front 78 82 86
+texture gray_chest_side paint chest_side 78 82 86
+texture gray_chest_top paint chest_top 78 82 86
+texture black_chest paint chest_front 26 26 32
+texture black_chest_side paint chest_side 26 26 32
+texture black_chest_top paint chest_top 26 26 32
+texture brown_chest paint chest_front 114 72 42
+texture brown_chest_side paint chest_side 114 72 42
+texture brown_chest_top paint chest_top 114 72 42
+texture red_chest paint chest_front 168 44 40
+texture red_chest_side paint chest_side 168 44 40
+texture red_chest_top paint chest_top 168 44 40
+texture orange_chest paint chest_front 236 118 20
+texture orange_chest_side paint chest_side 236 118 20
+texture orange_chest_top paint chest_top 236 118 20
+texture yellow_chest paint chest_front 246 200 42
+texture yellow_chest_side paint chest_side 246 200 42
+texture yellow_chest_top paint chest_top 246 200 42
+texture lime_chest paint chest_front 112 186 26
+texture lime_chest_side paint chest_side 112 186 26
+texture lime_chest_top paint chest_top 112 186 26
+texture green_chest paint chest_front 84 110 28
+texture green_chest_side paint chest_side 84 110 28
+texture green_chest_top paint chest_top 84 110 28
+texture cyan_chest paint chest_front 22 140 146
+texture cyan_chest_side paint chest_side 22 140 146
+texture cyan_chest_top paint chest_top 22 140 146
+texture light_blue_chest paint chest_front 62 176 220
+texture light_blue_chest_side paint chest_side 62 176 220
+texture light_blue_chest_top paint chest_top 62 176 220
+texture blue_chest paint chest_front 52 58 162
+texture blue_chest_side paint chest_side 52 58 162
+texture blue_chest_top paint chest_top 52 58 162
+texture purple_chest paint chest_front 124 44 174
+texture purple_chest_side paint chest_side 124 44 174
+texture purple_chest_top paint chest_top 124 44 174
+texture magenta_chest paint chest_front 192 72 184
+texture magenta_chest_side paint chest_side 192 72 184
+texture magenta_chest_top paint chest_top 192 72 184
+texture pink_chest paint chest_front 240 142 172
+texture pink_chest_side paint chest_side 240 142 172
+texture pink_chest_top paint chest_top 240 142 172
+texture cupboard paint chest 176 136 84
 
 # ---- Terrain ----
 block stone
@@ -1627,196 +1676,1420 @@ block crafting_table
   tool axe
 block oak_chest
   name Oak Chest
-  tex oak_chest
+  tex oak_chest_top oak_chest_side oak_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front oak_chest
+block oak_chest_lid1
+  name Oak Chest
+  tex oak_chest_top oak_chest_side oak_chest_top
+  hidden
+  drops oak_chest
+  rest oak_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front oak_chest
+block oak_chest_lid2
+  name Oak Chest
+  tex oak_chest_top oak_chest_side oak_chest_top
+  hidden
+  drops oak_chest
+  rest oak_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front oak_chest
+block oak_chest_lid3
+  name Oak Chest
+  tex oak_chest_top oak_chest_side oak_chest_top
+  hidden
+  drops oak_chest
+  rest oak_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front oak_chest
 block pine_chest
   name Pine Chest
-  tex pine_chest
+  tex pine_chest_top pine_chest_side pine_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front pine_chest
+block pine_chest_lid1
+  name Pine Chest
+  tex pine_chest_top pine_chest_side pine_chest_top
+  hidden
+  drops pine_chest
+  rest pine_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front pine_chest
+block pine_chest_lid2
+  name Pine Chest
+  tex pine_chest_top pine_chest_side pine_chest_top
+  hidden
+  drops pine_chest
+  rest pine_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front pine_chest
+block pine_chest_lid3
+  name Pine Chest
+  tex pine_chest_top pine_chest_side pine_chest_top
+  hidden
+  drops pine_chest
+  rest pine_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front pine_chest
 block birch_chest
   name Birch Chest
-  tex birch_chest
+  tex birch_chest_top birch_chest_side birch_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front birch_chest
+block birch_chest_lid1
+  name Birch Chest
+  tex birch_chest_top birch_chest_side birch_chest_top
+  hidden
+  drops birch_chest
+  rest birch_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front birch_chest
+block birch_chest_lid2
+  name Birch Chest
+  tex birch_chest_top birch_chest_side birch_chest_top
+  hidden
+  drops birch_chest
+  rest birch_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front birch_chest
+block birch_chest_lid3
+  name Birch Chest
+  tex birch_chest_top birch_chest_side birch_chest_top
+  hidden
+  drops birch_chest
+  rest birch_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front birch_chest
 block maple_chest
   name Maple Chest
-  tex maple_chest
+  tex maple_chest_top maple_chest_side maple_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front maple_chest
+block maple_chest_lid1
+  name Maple Chest
+  tex maple_chest_top maple_chest_side maple_chest_top
+  hidden
+  drops maple_chest
+  rest maple_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front maple_chest
+block maple_chest_lid2
+  name Maple Chest
+  tex maple_chest_top maple_chest_side maple_chest_top
+  hidden
+  drops maple_chest
+  rest maple_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front maple_chest
+block maple_chest_lid3
+  name Maple Chest
+  tex maple_chest_top maple_chest_side maple_chest_top
+  hidden
+  drops maple_chest
+  rest maple_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front maple_chest
 block palm_chest
   name Palm Chest
-  tex palm_chest
+  tex palm_chest_top palm_chest_side palm_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front palm_chest
+block palm_chest_lid1
+  name Palm Chest
+  tex palm_chest_top palm_chest_side palm_chest_top
+  hidden
+  drops palm_chest
+  rest palm_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front palm_chest
+block palm_chest_lid2
+  name Palm Chest
+  tex palm_chest_top palm_chest_side palm_chest_top
+  hidden
+  drops palm_chest
+  rest palm_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front palm_chest
+block palm_chest_lid3
+  name Palm Chest
+  tex palm_chest_top palm_chest_side palm_chest_top
+  hidden
+  drops palm_chest
+  rest palm_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front palm_chest
 block blossom_chest
   name Blossom Chest
-  tex blossom_chest
+  tex blossom_chest_top blossom_chest_side blossom_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front blossom_chest
+block blossom_chest_lid1
+  name Blossom Chest
+  tex blossom_chest_top blossom_chest_side blossom_chest_top
+  hidden
+  drops blossom_chest
+  rest blossom_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front blossom_chest
+block blossom_chest_lid2
+  name Blossom Chest
+  tex blossom_chest_top blossom_chest_side blossom_chest_top
+  hidden
+  drops blossom_chest
+  rest blossom_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front blossom_chest
+block blossom_chest_lid3
+  name Blossom Chest
+  tex blossom_chest_top blossom_chest_side blossom_chest_top
+  hidden
+  drops blossom_chest
+  rest blossom_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front blossom_chest
 block acacia_chest
   name Acacia Chest
-  tex acacia_chest
+  tex acacia_chest_top acacia_chest_side acacia_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front acacia_chest
+block acacia_chest_lid1
+  name Acacia Chest
+  tex acacia_chest_top acacia_chest_side acacia_chest_top
+  hidden
+  drops acacia_chest
+  rest acacia_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front acacia_chest
+block acacia_chest_lid2
+  name Acacia Chest
+  tex acacia_chest_top acacia_chest_side acacia_chest_top
+  hidden
+  drops acacia_chest
+  rest acacia_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front acacia_chest
+block acacia_chest_lid3
+  name Acacia Chest
+  tex acacia_chest_top acacia_chest_side acacia_chest_top
+  hidden
+  drops acacia_chest
+  rest acacia_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front acacia_chest
 block dark_oak_chest
   name Dark Oak Chest
-  tex dark_oak_chest
+  tex dark_oak_chest_top dark_oak_chest_side dark_oak_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front dark_oak_chest
+block dark_oak_chest_lid1
+  name Dark Oak Chest
+  tex dark_oak_chest_top dark_oak_chest_side dark_oak_chest_top
+  hidden
+  drops dark_oak_chest
+  rest dark_oak_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front dark_oak_chest
+block dark_oak_chest_lid2
+  name Dark Oak Chest
+  tex dark_oak_chest_top dark_oak_chest_side dark_oak_chest_top
+  hidden
+  drops dark_oak_chest
+  rest dark_oak_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front dark_oak_chest
+block dark_oak_chest_lid3
+  name Dark Oak Chest
+  tex dark_oak_chest_top dark_oak_chest_side dark_oak_chest_top
+  hidden
+  drops dark_oak_chest
+  rest dark_oak_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front dark_oak_chest
 block white_chest
   name White Chest
-  tex white_chest
+  tex white_chest_top white_chest_side white_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front white_chest
+block white_chest_lid1
+  name White Chest
+  tex white_chest_top white_chest_side white_chest_top
+  hidden
+  drops white_chest
+  rest white_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front white_chest
+block white_chest_lid2
+  name White Chest
+  tex white_chest_top white_chest_side white_chest_top
+  hidden
+  drops white_chest
+  rest white_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front white_chest
+block white_chest_lid3
+  name White Chest
+  tex white_chest_top white_chest_side white_chest_top
+  hidden
+  drops white_chest
+  rest white_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front white_chest
 block light_gray_chest
   name Light Gray Chest
-  tex light_gray_chest
+  tex light_gray_chest_top light_gray_chest_side light_gray_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front light_gray_chest
+block light_gray_chest_lid1
+  name Light Gray Chest
+  tex light_gray_chest_top light_gray_chest_side light_gray_chest_top
+  hidden
+  drops light_gray_chest
+  rest light_gray_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front light_gray_chest
+block light_gray_chest_lid2
+  name Light Gray Chest
+  tex light_gray_chest_top light_gray_chest_side light_gray_chest_top
+  hidden
+  drops light_gray_chest
+  rest light_gray_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front light_gray_chest
+block light_gray_chest_lid3
+  name Light Gray Chest
+  tex light_gray_chest_top light_gray_chest_side light_gray_chest_top
+  hidden
+  drops light_gray_chest
+  rest light_gray_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front light_gray_chest
 block gray_chest
   name Gray Chest
-  tex gray_chest
+  tex gray_chest_top gray_chest_side gray_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front gray_chest
+block gray_chest_lid1
+  name Gray Chest
+  tex gray_chest_top gray_chest_side gray_chest_top
+  hidden
+  drops gray_chest
+  rest gray_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front gray_chest
+block gray_chest_lid2
+  name Gray Chest
+  tex gray_chest_top gray_chest_side gray_chest_top
+  hidden
+  drops gray_chest
+  rest gray_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front gray_chest
+block gray_chest_lid3
+  name Gray Chest
+  tex gray_chest_top gray_chest_side gray_chest_top
+  hidden
+  drops gray_chest
+  rest gray_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front gray_chest
 block black_chest
   name Black Chest
-  tex black_chest
+  tex black_chest_top black_chest_side black_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front black_chest
+block black_chest_lid1
+  name Black Chest
+  tex black_chest_top black_chest_side black_chest_top
+  hidden
+  drops black_chest
+  rest black_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front black_chest
+block black_chest_lid2
+  name Black Chest
+  tex black_chest_top black_chest_side black_chest_top
+  hidden
+  drops black_chest
+  rest black_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front black_chest
+block black_chest_lid3
+  name Black Chest
+  tex black_chest_top black_chest_side black_chest_top
+  hidden
+  drops black_chest
+  rest black_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front black_chest
 block brown_chest
   name Brown Chest
-  tex brown_chest
+  tex brown_chest_top brown_chest_side brown_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front brown_chest
+block brown_chest_lid1
+  name Brown Chest
+  tex brown_chest_top brown_chest_side brown_chest_top
+  hidden
+  drops brown_chest
+  rest brown_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front brown_chest
+block brown_chest_lid2
+  name Brown Chest
+  tex brown_chest_top brown_chest_side brown_chest_top
+  hidden
+  drops brown_chest
+  rest brown_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front brown_chest
+block brown_chest_lid3
+  name Brown Chest
+  tex brown_chest_top brown_chest_side brown_chest_top
+  hidden
+  drops brown_chest
+  rest brown_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front brown_chest
 block red_chest
   name Red Chest
-  tex red_chest
+  tex red_chest_top red_chest_side red_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front red_chest
+block red_chest_lid1
+  name Red Chest
+  tex red_chest_top red_chest_side red_chest_top
+  hidden
+  drops red_chest
+  rest red_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front red_chest
+block red_chest_lid2
+  name Red Chest
+  tex red_chest_top red_chest_side red_chest_top
+  hidden
+  drops red_chest
+  rest red_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front red_chest
+block red_chest_lid3
+  name Red Chest
+  tex red_chest_top red_chest_side red_chest_top
+  hidden
+  drops red_chest
+  rest red_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front red_chest
 block orange_chest
   name Orange Chest
-  tex orange_chest
+  tex orange_chest_top orange_chest_side orange_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front orange_chest
+block orange_chest_lid1
+  name Orange Chest
+  tex orange_chest_top orange_chest_side orange_chest_top
+  hidden
+  drops orange_chest
+  rest orange_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front orange_chest
+block orange_chest_lid2
+  name Orange Chest
+  tex orange_chest_top orange_chest_side orange_chest_top
+  hidden
+  drops orange_chest
+  rest orange_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front orange_chest
+block orange_chest_lid3
+  name Orange Chest
+  tex orange_chest_top orange_chest_side orange_chest_top
+  hidden
+  drops orange_chest
+  rest orange_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front orange_chest
 block yellow_chest
   name Yellow Chest
-  tex yellow_chest
+  tex yellow_chest_top yellow_chest_side yellow_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front yellow_chest
+block yellow_chest_lid1
+  name Yellow Chest
+  tex yellow_chest_top yellow_chest_side yellow_chest_top
+  hidden
+  drops yellow_chest
+  rest yellow_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front yellow_chest
+block yellow_chest_lid2
+  name Yellow Chest
+  tex yellow_chest_top yellow_chest_side yellow_chest_top
+  hidden
+  drops yellow_chest
+  rest yellow_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front yellow_chest
+block yellow_chest_lid3
+  name Yellow Chest
+  tex yellow_chest_top yellow_chest_side yellow_chest_top
+  hidden
+  drops yellow_chest
+  rest yellow_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front yellow_chest
 block lime_chest
   name Lime Chest
-  tex lime_chest
+  tex lime_chest_top lime_chest_side lime_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front lime_chest
+block lime_chest_lid1
+  name Lime Chest
+  tex lime_chest_top lime_chest_side lime_chest_top
+  hidden
+  drops lime_chest
+  rest lime_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front lime_chest
+block lime_chest_lid2
+  name Lime Chest
+  tex lime_chest_top lime_chest_side lime_chest_top
+  hidden
+  drops lime_chest
+  rest lime_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front lime_chest
+block lime_chest_lid3
+  name Lime Chest
+  tex lime_chest_top lime_chest_side lime_chest_top
+  hidden
+  drops lime_chest
+  rest lime_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front lime_chest
 block green_chest
   name Green Chest
-  tex green_chest
+  tex green_chest_top green_chest_side green_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front green_chest
+block green_chest_lid1
+  name Green Chest
+  tex green_chest_top green_chest_side green_chest_top
+  hidden
+  drops green_chest
+  rest green_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front green_chest
+block green_chest_lid2
+  name Green Chest
+  tex green_chest_top green_chest_side green_chest_top
+  hidden
+  drops green_chest
+  rest green_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front green_chest
+block green_chest_lid3
+  name Green Chest
+  tex green_chest_top green_chest_side green_chest_top
+  hidden
+  drops green_chest
+  rest green_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front green_chest
 block cyan_chest
   name Cyan Chest
-  tex cyan_chest
+  tex cyan_chest_top cyan_chest_side cyan_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front cyan_chest
+block cyan_chest_lid1
+  name Cyan Chest
+  tex cyan_chest_top cyan_chest_side cyan_chest_top
+  hidden
+  drops cyan_chest
+  rest cyan_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front cyan_chest
+block cyan_chest_lid2
+  name Cyan Chest
+  tex cyan_chest_top cyan_chest_side cyan_chest_top
+  hidden
+  drops cyan_chest
+  rest cyan_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front cyan_chest
+block cyan_chest_lid3
+  name Cyan Chest
+  tex cyan_chest_top cyan_chest_side cyan_chest_top
+  hidden
+  drops cyan_chest
+  rest cyan_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front cyan_chest
 block light_blue_chest
   name Light Blue Chest
-  tex light_blue_chest
+  tex light_blue_chest_top light_blue_chest_side light_blue_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front light_blue_chest
+block light_blue_chest_lid1
+  name Light Blue Chest
+  tex light_blue_chest_top light_blue_chest_side light_blue_chest_top
+  hidden
+  drops light_blue_chest
+  rest light_blue_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front light_blue_chest
+block light_blue_chest_lid2
+  name Light Blue Chest
+  tex light_blue_chest_top light_blue_chest_side light_blue_chest_top
+  hidden
+  drops light_blue_chest
+  rest light_blue_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front light_blue_chest
+block light_blue_chest_lid3
+  name Light Blue Chest
+  tex light_blue_chest_top light_blue_chest_side light_blue_chest_top
+  hidden
+  drops light_blue_chest
+  rest light_blue_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front light_blue_chest
 block blue_chest
   name Blue Chest
-  tex blue_chest
+  tex blue_chest_top blue_chest_side blue_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front blue_chest
+block blue_chest_lid1
+  name Blue Chest
+  tex blue_chest_top blue_chest_side blue_chest_top
+  hidden
+  drops blue_chest
+  rest blue_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front blue_chest
+block blue_chest_lid2
+  name Blue Chest
+  tex blue_chest_top blue_chest_side blue_chest_top
+  hidden
+  drops blue_chest
+  rest blue_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front blue_chest
+block blue_chest_lid3
+  name Blue Chest
+  tex blue_chest_top blue_chest_side blue_chest_top
+  hidden
+  drops blue_chest
+  rest blue_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front blue_chest
 block purple_chest
   name Purple Chest
-  tex purple_chest
+  tex purple_chest_top purple_chest_side purple_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front purple_chest
+block purple_chest_lid1
+  name Purple Chest
+  tex purple_chest_top purple_chest_side purple_chest_top
+  hidden
+  drops purple_chest
+  rest purple_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front purple_chest
+block purple_chest_lid2
+  name Purple Chest
+  tex purple_chest_top purple_chest_side purple_chest_top
+  hidden
+  drops purple_chest
+  rest purple_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front purple_chest
+block purple_chest_lid3
+  name Purple Chest
+  tex purple_chest_top purple_chest_side purple_chest_top
+  hidden
+  drops purple_chest
+  rest purple_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front purple_chest
 block magenta_chest
   name Magenta Chest
-  tex magenta_chest
+  tex magenta_chest_top magenta_chest_side magenta_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front magenta_chest
+block magenta_chest_lid1
+  name Magenta Chest
+  tex magenta_chest_top magenta_chest_side magenta_chest_top
+  hidden
+  drops magenta_chest
+  rest magenta_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front magenta_chest
+block magenta_chest_lid2
+  name Magenta Chest
+  tex magenta_chest_top magenta_chest_side magenta_chest_top
+  hidden
+  drops magenta_chest
+  rest magenta_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front magenta_chest
+block magenta_chest_lid3
+  name Magenta Chest
+  tex magenta_chest_top magenta_chest_side magenta_chest_top
+  hidden
+  drops magenta_chest
+  rest magenta_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front magenta_chest
 block pink_chest
   name Pink Chest
-  tex pink_chest
+  tex pink_chest_top pink_chest_side pink_chest_top
   category Storage
+  box 1 0 1 15 7 15
+  box 1 7 1 15 10 15
   hardness 1.4
-  use chest
-  box 1 0 1 15 14 15
   tool axe
+  use chest
+  rotate
+  front pink_chest
+block pink_chest_lid1
+  name Pink Chest
+  tex pink_chest_top pink_chest_side pink_chest_top
+  hidden
+  drops pink_chest
+  rest pink_chest
+  tag chest_lid 1
+  box 1 0 1 15 7 15
+  box 1 7 0 15 11 6
+  box 1 7 4 15 12 11
+  box 1 8 9 15 13 15
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front pink_chest
+block pink_chest_lid2
+  name Pink Chest
+  tex pink_chest_top pink_chest_side pink_chest_top
+  hidden
+  drops pink_chest
+  rest pink_chest
+  tag chest_lid 2
+  box 1 0 1 15 7 15
+  box 1 7 0 15 12 6
+  box 1 8 4 15 14 10
+  box 1 10 8 15 16 14
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front pink_chest
+block pink_chest_lid3
+  name Pink Chest
+  tex pink_chest_top pink_chest_side pink_chest_top
+  hidden
+  drops pink_chest
+  rest pink_chest
+  tag chest_lid 3
+  box 1 0 1 15 7 15
+  box 1 7 0 15 13 5
+  box 1 9 3 15 15 9
+  box 1 12 6 15 16 13
+  hardness 1.4
+  tool axe
+  use chest
+  rotate
+  front pink_chest
 
 # ---- Crafting tiers ----
 # `use craft` is the crafting table's 3 x 3 grid; `use craft 5` a crafting
@@ -2516,6 +3789,8 @@ sound rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails
 sound whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh
 sound sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling
 sound explosion effects 1.10 1.00 90 30 0.06 1.00 Explosion
+sound chest_open effects 0.30 0.40 130 320 0.45 0.55 Chest opens
+sound chest_close effects 0.16 0.60 260 100 0.40 0.65 Chest closes
 
 # ---- Dimensions ----
 # Other worlds inside each world, with their own land and their own saved
@@ -5215,7 +6490,7 @@ block bookshelf
   tool axe
 block cupboard
   name Cupboard
-  tex oak_chest
+  tex cupboard
   category Furniture
   hardness 1.2
   tool axe

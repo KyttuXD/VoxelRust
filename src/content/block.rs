@@ -107,6 +107,10 @@ pub struct BlockDef {
     pub first: Block,
     pub rotations: u8,
     pub flips: bool,
+    /// `front <texture>` on a `rotate` block: the picture of the face that
+    /// looks the way the block was placed to face (a chest's latch side), as
+    /// the mesher's face number (0 +x, 1 -x, 4 +z, 5 -z) and tile.
+    pub front: Option<(u8, u16)>,
     /// Behaviour beyond shape and material.
     pub x: BlockExtra,
 }
@@ -229,6 +233,9 @@ pub struct BlockExtra {
     /// `react <next to> <becomes>`: turns into the second block when the first
     /// is next to it.
     pub reacts: Vec<(Block, Block)>,
+    /// `rest <block>`: when a saved world is loaded this state is read as
+    /// that block, facing the same way (an open chest is shut again).
+    pub rest: Option<Block>,
 }
 
 impl BlockExtra {
@@ -762,6 +769,18 @@ pub fn is_solid(b: Block) -> bool {
     def(b).solid
 }
 
+/// The mesher's face number of the front of a `front` block turned 0..3
+/// quarter turns: +z (toward a player who faces north), then +x, -z, -x.
+const FRONT_FACES: [u8; 4] = [4, 0, 5, 1];
+
+/// The state a saved block is read as when its world loads (see `rest`).
+pub fn at_rest(b: Block) -> Block {
+    match reg().blocks.get(b as usize) {
+        Some(d) => d.x.rest.map_or(b, |c| c + (b - d.first)),
+        None => b,
+    }
+}
+
 /// Whether a fence or wall `d` reaches toward a neighbouring block `nb`.
 pub fn connects(d: &BlockDef, nb: Block) -> bool {
     if d.connect_group == 0 || nb == AIR {
@@ -831,6 +850,8 @@ struct RawBlock {
     connect: String,
     join_cubes: bool,
     arms: Vec<Bx>,
+    /// `front <texture>`: the picture of a rotating block's front face.
+    front: String,
     /// Behaviour lines, resolved once every block and item is known.
     extra: Vec<(String, Vec<String>)>,
 }
@@ -980,6 +1001,7 @@ impl Parser<'_> {
                             connect: String::new(),
                             join_cubes: false,
                             arms: Vec::new(),
+                            front: String::new(),
                             extra: Vec::new(),
                         };
                         // Redefining an id replaces it in place, keeping its position.
@@ -1297,7 +1319,7 @@ impl Parser<'_> {
                     Some(t) => b.tool = t as u8,
                     None => bad = Some("tool must be none, pick, axe, shovel or hoe"),
                 },
-                "long" | "react" | "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "fluid" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
+                "long" | "react" | "rest" | "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "fluid" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
                     // Said twice, the later line wins; except marks, of
                     // which a block may carry several.
                     b.extra.retain(|e| e.0 != key || key == "react" || (key == "tag" && e.1.first().map(|x| x.as_str()) != a.first().copied()));
@@ -1324,6 +1346,11 @@ impl Parser<'_> {
                         b.join_cubes = a.get(1) == Some(&"cubes");
                     }
                     _ => bad = Some("connect needs a group name (letters, digits, _) and may add `cubes`"),
+                },
+                // front <texture>: the picture of the face a rotating block shows toward the player
+                "front" => match a.first() {
+                    Some(t) => b.front = t.to_string(),
+                    None => bad = Some("front needs a texture"),
                 },
                 // arm x0 y0 z0 x1 y1 z1: drawn toward a joined neighbour, written for the north (-z) side
                 "arm" => {
@@ -1535,6 +1562,7 @@ impl Registry {
             first: 0,
             rotations: 1,
             flips: false,
+            front: None,
             x: BlockExtra::default(),
         };
         let mut blocks = alloc::vec![air];
@@ -1610,6 +1638,7 @@ impl Registry {
             };
             let first = blocks.len() as Block;
             by_id.insert(rb.id.clone(), first);
+            let front_tile = if rb.front.is_empty() || kind != Kind::Boxes { None } else { Some(tile_of(&rb.front, &mut warnings, &what)) };
             for f in 0..(states / rotations as usize) {
                 for r in 0..rotations {
                     let mut bs = boxes.clone();
@@ -1647,6 +1676,7 @@ impl Registry {
                         first,
                         rotations,
                         flips: flip,
+                        front: front_tile.map(|t| (FRONT_FACES[r as usize % 4], t)),
                         x: BlockExtra::default(),
                     });
                 }
@@ -1666,7 +1696,7 @@ impl Registry {
                 items.push(ItemDef {
                     id: rb.id.clone(),
                     name: d.name.clone(),
-                    icon: d.tex[1],
+                    icon: d.front.map_or(d.tex[1], |f| f.1),
                     place: Some(first),
                     brush: 0,
                     reach: 0.0,
@@ -1785,6 +1815,10 @@ impl Registry {
                         (Some(next), Some(becomes)) if x.reacts.len() < 8 => x.reacts.push((next, becomes)),
                         _ => ok = false,
                     },
+                    "rest" => {
+                        x.rest = other(0).filter(|&r| r != first as Block);
+                        ok = x.rest.is_some();
+                    }
                     "toggle" => {
                         x.toggle = other(0);
                         ok = x.toggle.is_some();

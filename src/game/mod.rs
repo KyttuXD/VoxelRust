@@ -12,6 +12,7 @@ pub mod waypoints;
 pub mod fluid;
 pub mod bow;
 pub mod eating;
+pub mod chest_anim;
 pub mod explosion;
 pub mod primed;
 pub mod events;

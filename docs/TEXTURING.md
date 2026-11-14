@@ -104,7 +104,7 @@ metal, wood or stone recolours consistently.
 
 | File | Builtin names | Paint styles |
 | --- | --- | --- |
-| `blocks.rs` | `dirt sand gravel clay snow snow_side sandstone lamp` | `concrete wool terracotta farmland magma chest workbench` |
+| `blocks.rs` | `dirt sand gravel clay snow snow_side sandstone lamp` | `concrete wool terracotta farmland magma chest chest_front chest_side chest_top workbench` |
 | `benches.rs` | | `bench5 bench7 bench_side` |
 | `stone.rs` | `stone deepstone cobble brick stone_bricks` | `rock polished bricks tiles` |
 | `wood.rs` | `log_side pine_side log_top planks` | `planks bark rings door` |
@@ -135,6 +135,11 @@ What each one looks like:
   grid of two-pixel cells with a lit middle one, `bench7` a 7 x 7 grid of
   one-pixel cells, `bench_side` a plate with a rail along the top and the
   bottom and a rivet in each corner; three tones of one colour.
+- **Chest faces**: the chest block is 14 x 14 and 10 tall, so `chest_front`,
+  `chest_side` and `chest_top` draw their own dark outline inside the picture
+  (the pixels outside it are clear and never seen). `chest_front` has the lid line and
+  the latch across it (`accent`), `chest_side` the lid line only, `chest_top` the
+  lid's inset trim. The block takes the front through `front` (see DATA.md).
 - **Ores** (`ore`) are stone with four 2 x 2 blobs of the ore's colour, each with a
   lighter pixel on top (the shipped ruby ore uses a palette: base, a dark
   pixel at the bottom right, a light one on top); `ore_vein` crosses the stone with

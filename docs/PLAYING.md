@@ -316,6 +316,14 @@ Right click a chest to open its 27 slots. Each chest remembers its contents;
 breaking a chest in survival gives you what was inside. Chests come in six
 woods and sixteen colours; they all work the same.
 
+A chest turns its front, the side with the latch, toward you when you place
+it; its top is a plain lid. The lid lifts in a few quick steps while the chest
+screen is open and drops again, with a creak and a thump, when you close the
+screen, step more than eight blocks away or open another chest. In a shared
+game the lid is an ordinary block change, so everyone near sees it rise and
+fall. A chest that was left open (the game closed, or the connection lost
+while it was open) is shut again the next time the world loads.
+
 ### Sand and gravel
 
 Sand and gravel fall when nothing is under them, one block at a time, so
@@ -607,10 +615,27 @@ are the `tag track` and `tag station` numbers in the Trains pack (see
 | Depot Rail | the same, for 30 seconds |
 | Station Platform | a low stone block to stand on beside the track |
 | Buffer Stop | marks the end of a line |
+| Junction Rail | a T or four-way crossing, for branching lines |
 | Signal Post | a lit post |
 
 The platform, buffer stop and signal post are for looks: they do not control
 anything. A cart stops wherever the track ends.
+
+**Laying track.** Rails lie flat on the floor of their block (a bed two
+sixteenths thick). You only ever place "Rail"; for a moment after you place or
+break a piece, the pieces within ten blocks of you turn to meet each other:
+
+- a rail next to one rail runs along it; two rails on different sides make a
+  straight line or one of the four corners;
+- a rail with track one block higher on a side becomes a ramp rising toward it
+  (a cart rides up it smoothly), and goes flat again if that track is removed;
+- speed, slow, station and depot rails only run straight or climb: they never
+  bend;
+- a line does not join a rail that is already part of another line, so two
+  tracks can lie side by side. To branch, replace the piece where the lines
+  meet with a **Junction Rail**: it takes every side that has track beside it
+  and becomes a T or a crossing;
+- `/rails` looks at the track round you again at once.
 
 - **Trains.** A **Chain** joins rail carts. Hold it and right click the cart
   in front, then the cart to pull behind it; each chained cart follows the

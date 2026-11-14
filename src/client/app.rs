@@ -1187,6 +1187,11 @@ impl App {
             self.craft.table_side = what.craft_side().unwrap_or(3);
             self.set_screen(if what == block::Usable::Chest { Screen::Chest } else { Screen::Craft });
         }
+        // The chest being looked into has its lid up (game/chest_anim.rs).
+        let looking = if self.screen == Screen::Chest && self.chest_ext.is_none() { Some(self.chest_at) } else { None };
+        if let Some(g) = self.session.as_mut() {
+            g.chest_view = looking;
+        }
         if self.session.as_ref().map_or(false, |g| g.lost) {
             self.close_world(r);
             self.status = String::from("THE CONNECTION TO THE SERVER WAS LOST");

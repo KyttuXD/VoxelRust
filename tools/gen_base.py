@@ -6,6 +6,7 @@ is long and regular (sixteen colours times several materials, six woods,
 stairs and slabs of each). Edit the tables here and run it again, or edit
 base.txt by hand: both are fine.
 """
+import math
 import os
 import sys
 
@@ -150,8 +151,13 @@ for id, _, bark, wood, leaf in WOODS:
 
 CHESTS = [("oak", "Oak", (176, 136, 84))] + [(i, n, wd) for i, n, _, wd, _ in WOODS if i != "oak"] + \
          [(i, n, c) for i, n, c in COLOURS]
+# A chest block has a front (the latch, one face only, see `front` in docs/DATA.md), plain
+# sides and a lid top. `<id>_chest` is the front picture and the block's own id.
 for cid, _, (r, g, b) in CHESTS:
-    tex(f"{cid}_chest", f"paint chest {r} {g} {b}")
+    tex(f"{cid}_chest", f"paint chest_front {r} {g} {b}")
+    tex(f"{cid}_chest_side", f"paint chest_side {r} {g} {b}")
+    tex(f"{cid}_chest_top", f"paint chest_top {r} {g} {b}")
+tex("cupboard", "paint chest 176 136 84")
 
 w("\n# ---- Terrain ----")
 block("stone", "Stone", "stone", cat="Stone", hardness=2.0, drops="cobble")
@@ -238,9 +244,41 @@ for id, name, t in PLANKS:
 w("\n# ---- Furniture: a crafting table and chests ----")
 w("# `use craft` opens the full recipe list; `use chest` gives the block storage.")
 block("crafting_table", "Crafting Table", "workbench_top planks planks", cat="Shapes", hardness=1.4, use="craft")
+
+
+def chest_boxes(angle):
+    """The boxes of a chest (placed facing north, so its front is the +z side and the hinge the
+    -z side): a body 7 high and a lid 3 thick, raised `angle` degrees about the back edge. A tilted
+    lid is three steps (boxes cannot tilt), clamped to the block."""
+    body = "1 0 1 15 7 15"
+    if angle == 0:
+        return [body, "1 7 1 15 10 15"]
+    out = [body]
+    c, s_ = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+    for k in range(3):
+        zs, ys = [], []
+        for d in (14 * k / 3, 14 * (k + 1) / 3):
+            for t in (0, 3):
+                zs.append(1 + d * c - t * s_)
+                ys.append(7 + d * s_ + t * c)
+        z0, z1 = max(0, int(math.floor(min(zs)))), min(16, int(math.ceil(max(zs))))
+        y0, y1 = int(math.floor(min(ys))), min(16, int(math.ceil(max(ys))))
+        y0 = min(y0, y1 - 1)
+        out.append(f"1 {y0} {z0} 15 {y1} {max(z1, z0 + 1)}")
+    return out
+
+
+# The lid angles of a chest being opened: 0 is shut, the last is wide open. The three between
+# are what src/game/chest_anim.rs steps through. Each stage is a hidden block of its own that
+# is read back as the shut one when a world loads (`rest`).
+CHEST_ANGLES = [0, 12, 24, 36]
 for cid, cname, _ in CHESTS:
-    block(f"{cid}_chest", f"{cname} Chest", f"{cid}_chest", cat="Storage", hardness=1.4, use="chest",
-          box=["1 0 1 15 14 15"])
+    common = dict(hardness=1.4, tool="axe", use="chest", rotate=True, front=f"{cid}_chest")
+    tx = f"{cid}_chest_top {cid}_chest_side {cid}_chest_top"
+    block(f"{cid}_chest", f"{cname} Chest", tx, cat="Storage", box=chest_boxes(0), **common)
+    for n in (1, 2, 3):
+        block(f"{cid}_chest_lid{n}", f"{cname} Chest", tx, hidden=True, drops=f"{cid}_chest", rest=f"{cid}_chest",
+              tag=[f"chest_lid {n}"], box=chest_boxes(CHEST_ANGLES[n]), **common)
 
 w("""
 # ---- Crafting tiers ----
@@ -461,7 +499,8 @@ for line in ["step steps 0.09 0.95 90 60 0.10 0.55 Footsteps", "break effects 0.
              "rattle effects 0.30 0.85 900 700 0.85 0.45 Bones rattle", "roar effects 1.20 0.70 140 60 0.12 1.00 A roar",
              "chime effects 0.60 0.02 1200 1180 0.90 0.40 Chime", "rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails",
              "whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh", "sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling",
-             "explosion effects 1.10 1.00 90 30 0.06 1.00 Explosion"]:
+             "explosion effects 1.10 1.00 90 30 0.06 1.00 Explosion",
+             "chest_open effects 0.30 0.40 130 320 0.45 0.55 Chest opens", "chest_close effects 0.16 0.60 260 100 0.40 0.65 Chest closes"]:
     w("sound " + line)
 
 w("""
@@ -573,7 +612,7 @@ block("desk", "Desk", "planks", cat="Furniture", hardness=0.8, tool="axe", rotat
 block("shelf", "Shelf", "planks", cat="Furniture", hardness=0.6, tool="axe", rotate=True,
       box=["0 12 10 16 14 16", "0 4 10 16 6 16"])
 block("bookshelf", "Bookshelf", "planks books planks", cat="Furniture", hardness=1.2, tool="axe")
-block("cupboard", "Cupboard", "oak_chest", cat="Furniture", hardness=1.2, tool="axe", rotate=True, use="chest",
+block("cupboard", "Cupboard", "cupboard", cat="Furniture", hardness=1.2, tool="axe", rotate=True, use="chest",
       box=["0 0 4 16 16 16"])
 block("wardrobe", "Wardrobe", "oak_door", cat="Furniture", hardness=1.2, tool="axe", rotate=True, use="chest", tall=True,
       box=["0 0 4 16 16 16"])
