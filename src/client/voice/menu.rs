@@ -6,10 +6,25 @@ use crate::settings::Settings;
 use crate::ui::{self, Ui};
 use alloc::string::String;
 
-/// Where on the meter's bar (0 to 1) a loudness falls. Speech is mostly
-/// quiet, so the scale is a square root: the quiet end gets the room.
+/// A close guess at the base-2 logarithm of a positive number (within about 0.01).
+fn log2_guess(x: f32) -> f32 {
+    let bits = x.to_bits();
+    let exp = ((bits >> 23) & 0xFF) as i32 - 127;
+    let m = f32::from_bits((bits & 0x007F_FFFF) | 0x3F80_0000); // 1..2
+    // A cubic fitted to log2 on 1..2.
+    let l = -1.7417939 + (2.8212026 + (-1.4699568 + (0.44717955 - 0.056570851 * m) * m) * m) * m;
+    exp as f32 + l
+}
+
+/// Where on the meter's bar (0 to 1) a loudness falls: decibels, as every other meter shows
+/// them (a full-scale sound is the right end, 54 dB below it the left), so a microphone that
+/// is twice as loud moves the bar by the same amount wherever it starts.
 pub fn meter_pos(level: f32) -> f32 {
-    crate::math::sqrtf(level.max(0.0) / 0.3).clamp(0.0, 1.0)
+    if level <= 0.0 {
+        return 0.0;
+    }
+    let db = 6.0206 * log2_guess(level);
+    ((db + 54.0) / 54.0).clamp(0.0, 1.0)
 }
 
 /// What the tab asks the app to do besides changing settings.
@@ -47,9 +62,25 @@ pub fn draw(ui: &mut Ui, st: &mut Settings, voice: &mut Voice, (x, y, bw, bh, st
     // The microphone: 0 is the system's default, then each one found.
     let mut pick = voice.devices.iter().position(|d| *d == st.voice_device).map_or(0, |i| i as i32 + 1);
     let name: String = if pick == 0 { String::from("DEFAULT") } else { voice.devices[pick as usize - 1].to_ascii_uppercase().chars().take(24).collect() };
-    if ui.stepper_text(x, row(4), bw, bh, &alloc::format!("INPUT  < {} >", name), &mut pick, 0, voice.devices.len() as i32, 1) {
+    let auto_w = 44.0 * s;
+    if ui.stepper_text(x, row(4), bw - auto_w - 3.0 * s, bh, &alloc::format!("INPUT  < {} >", name), &mut pick, 0, voice.devices.len() as i32, 1) {
         st.voice_device = if pick == 0 { String::new() } else { voice.devices[pick as usize - 1].clone() };
         asks.changed = true;
+    }
+    // Find the microphone by listening: the player speaks and the one that hears it is chosen.
+    let searching = voice.detect_left() > 0.0;
+    if ui.button(x + bw - auto_w, row(4), auto_w, bh, if searching { "..." } else { "AUTO" }) && !searching {
+        voice.refresh_devices(ui.clock);
+        voice.start_detect();
+    }
+    if let Some(found) = voice.take_detected() {
+        if found.is_empty() {
+            voice.detect_note = String::from("NO MICROPHONE HEARD YOU. CHECK THAT IT IS ON.");
+        } else {
+            voice.detect_note = alloc::format!("USING: {}", found.to_ascii_uppercase().chars().take(26).collect::<String>());
+            st.voice_device = found;
+            asks.changed = true;
+        }
     }
     asks.changed |= ui.stepper(x, row(5), bw, bh, "VOICE VOLUME", &mut st.voice_volume, 0, 10, 1);
     // The test: the microphone is only listened to while this is on, and
@@ -82,7 +113,11 @@ pub fn draw(ui: &mut Ui, st: &mut Settings, voice: &mut Voice, (x, y, bw, bh, st
     } else {
         ""
     };
-    if voice.testing && voice.failed {
+    if searching {
+        ui.text(x, row(7) + 2.0 * s, &alloc::format!("SPEAK NOW: LISTENING TO EVERY MICROPHONE... {}", (voice.detect_left() + 0.999) as i32), ui::ACCENT);
+    } else if !voice.detect_note.is_empty() && voice.testing {
+        ui.text(x, row(7) + 2.0 * s, &voice.detect_note.clone(), ui::DIM);
+    } else if voice.testing && voice.failed {
         ui.text(x, row(7) + 2.0 * s, "THE MICROPHONE WOULD NOT OPEN.", ui::ACCENT);
     } else if !note.is_empty() {
         ui.text(x, row(7) + 2.0 * s, note, ui::ACCENT);
@@ -104,6 +139,18 @@ mod tests {
         assert_eq!(meter_pos(5.0), 1.0);
         assert!(meter_pos(0.01) > 0.15);
         assert!(meter_pos(0.01) < meter_pos(0.05));
+        // Decibels: full scale is the end, and every doubling is the same step.
+        assert!((meter_pos(1.0) - 1.0).abs() < 0.01);
+        let (a, b, c) = (meter_pos(0.01), meter_pos(0.02), meter_pos(0.04));
+        assert!(((b - a) - (c - b)).abs() < 0.01, "{a} {b} {c}");
+        assert!(((b - a) - 6.0206 / 54.0).abs() < 0.01, "a doubling is 6 dB");
+        // Speech (about 0.05) lands in the middle of the bar, not at its end.
+        assert!(meter_pos(0.05) > 0.45 && meter_pos(0.05) < 0.8);
+        for x in [0.003f32, 0.1, 0.7, 12.0, 0.0004] {
+            let want = 6.0206 * (x as f64).log2() as f32;
+            let got = 6.0206 * log2_guess(x);
+            assert!((want - got).abs() < 1.5, "{x}: {want} {got}");
+        }
         // The loudest threshold is still on the bar.
         assert!(meter_pos(codec::threshold(10)) < 1.0);
     }

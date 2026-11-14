@@ -141,7 +141,7 @@ pub fn message() -> &'static str {
     match state() {
         CHECKING => "CHECKING FOR A NEWER VERSION...",
         CURRENT => "THIS IS THE NEWEST VERSION",
-        UPDATED => "A NEWER VERSION IS INSTALLED - THE GAME RESTARTS WHEN YOU QUIT",
+        UPDATED => "A NEWER VERSION IS INSTALLED - THE GAME RESTARTS FOR IT SOON",
         SWAPPING => "INSTALLING A NEWER VERSION...",
         AVAILABLE => "A NEWER VERSION IS OUT (AUTOMATIC UPDATES ARE OFF)",
         REFUSED => "AN UPDATE WAS REFUSED: ITS SIGNATURE IS NOT VALID",
@@ -546,6 +546,12 @@ pub fn restart(exe: &str, folder: &str) {
         sys::remove_file(&marker);
         log("could not start the new version; it starts at the next start");
     }
+}
+
+/// Whether this copy may restart itself for an update (one that an update started may not).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn can_restart() -> bool {
+    !RESTART_CHILD.load(Ordering::Acquire)
 }
 
 /// At start-up: if the program was started by an update, note that, so it

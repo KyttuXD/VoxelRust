@@ -179,7 +179,7 @@ impl App {
                     }
                     let note = self.status.clone();
                     ui.text(x, row(8) + 2.0 * s, &note, ui::ACCENT);
-                    changed |= ui.toggle(x, row(9), bw, bh, "UPDATE THE GAME AUTOMATICALLY", &mut st.auto_update);
+                    changed |= ui.toggle(x, row(9), bw, bh, "UPDATE AND RESTART AUTOMATICALLY", &mut st.auto_update);
                 }
                 6 => {
                     let at = ACTIONS.iter().position(|a| a.0 == Action::Voice).unwrap_or(0);

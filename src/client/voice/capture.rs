@@ -48,6 +48,14 @@ pub struct Capture {
     ring: Arc<Ring>,
 }
 
+/// Whether a capture device is not a microphone but a tap on what the computer is playing
+/// (PulseAudio and PipeWire list "Monitor of ..." beside the real inputs): listening to
+/// it would show the game's own sound in the meter and send it to the others.
+pub fn is_monitor(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.starts_with("monitor of") || n.contains(".monitor") || n.contains("monitor of ")
+}
+
 /// The names of the machine's microphones (empty if none, or in a browser).
 pub fn devices() -> Vec<String> {
     if !crate::sys::sdl::loaded() {
@@ -62,7 +70,7 @@ pub fn devices() -> Vec<String> {
         let n = (api.SDL_GetNumAudioDevices)(1).clamp(0, 32);
         for i in 0..n {
             let name = crate::sys::from_cstr_utf8((api.SDL_GetAudioDeviceName)(i, 1));
-            if !name.is_empty() {
+            if !name.is_empty() && !is_monitor(&name) {
                 names.push(name);
             }
         }
@@ -138,5 +146,18 @@ impl Drop for Capture {
         // Closing the device waits for the callback to finish, after which
         // nothing touches the ring but us.
         unsafe { (sdl().SDL_CloseAudioDevice)(self.device) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_monitor;
+
+    #[test]
+    fn what_the_computer_plays_is_not_a_microphone() {
+        assert!(is_monitor("Monitor of Built-in Audio Analog Stereo"));
+        assert!(is_monitor("alsa_output.pci-0000_00_1f.3.analog-stereo.monitor"));
+        assert!(!is_monitor("Built-in Audio Analog Stereo"));
+        assert!(!is_monitor("Blue Yeti Stereo Microphone"));
     }
 }

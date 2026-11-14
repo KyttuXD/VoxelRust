@@ -83,6 +83,23 @@ pub struct Voice {
     /// Microphones found, and when (UI clock) the list was made.
     pub devices: Vec<String>,
     pub devices_at: f32,
+    /// FIND MY MICROPHONE: every microphone listened to at once while the player speaks.
+    detect: Option<Detect>,
+    /// What it found (the device's name, empty for none) until the settings screen takes it.
+    detected: Option<String>,
+    /// What the last search said, for the settings screen.
+    pub detect_note: String,
+}
+
+/// Seconds the search listens.
+pub const DETECT_SECONDS: f32 = 4.0;
+/// The quietest peak (see `codec::level`) that counts as someone speaking into a microphone.
+const DETECT_FLOOR: f32 = 0.006;
+
+struct Detect {
+    left: f32,
+    /// Each microphone, open, with the loudest moment it has heard.
+    mics: Vec<(String, capture::Capture, f32)>,
 }
 
 use capture::Capture;
@@ -115,6 +132,9 @@ impl Voice {
             testing: false,
             devices: Vec::new(),
             devices_at: -1000.0,
+            detect: None,
+            detected: None,
+            detect_note: String::new(),
         }
     }
 
@@ -122,6 +142,63 @@ impl Voice {
     pub fn refresh_devices(&mut self, now: f32) {
         self.devices = capture::devices();
         self.devices_at = now;
+    }
+
+    /// Start listening to every microphone at once: the one that hears the player speak is the
+    /// right one. Needs the list of devices (`refresh_devices`); at most 8 are tried.
+    pub fn start_detect(&mut self) {
+        self.capture = None;
+        self.testing = false;
+        let mut mics = Vec::new();
+        for name in self.devices.iter().take(8) {
+            if let Some(c) = capture::Capture::open(name) {
+                mics.push((name.clone(), c, 0.0f32));
+            }
+        }
+        self.detected = None;
+        self.detect = if mics.is_empty() { None } else { Some(Detect { left: DETECT_SECONDS, mics }) };
+        if self.detect.is_none() {
+            self.detected = Some(String::new());
+        }
+    }
+
+    /// Seconds the search has left (0 when none is running).
+    pub fn detect_left(&self) -> f32 {
+        self.detect.as_ref().map_or(0.0, |d| d.left)
+    }
+
+    /// The result of a finished search: `Some(name)`, or `Some("")` when nothing was heard.
+    pub fn take_detected(&mut self) -> Option<String> {
+        self.detected.take()
+    }
+
+    /// Listen for a frame: update each microphone's loudest moment, and finish when the time is up.
+    fn step_detect(&mut self, dt: f32) {
+        let Some(d) = self.detect.as_mut() else { return };
+        d.left -= dt;
+        let mut buf = [0i16; 1024];
+        for (_, cap, peak) in d.mics.iter_mut() {
+            loop {
+                let n = cap.read(&mut buf);
+                if n == 0 {
+                    break;
+                }
+                for chunk in buf[..n].chunks(codec::FRAME_SAMPLES) {
+                    *peak = peak.max(codec::level(chunk));
+                }
+                if n < buf.len() {
+                    break;
+                }
+            }
+        }
+        if d.left <= 0.0 {
+            let best = d.mics.iter().max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(core::cmp::Ordering::Equal)).map(|m| (m.0.clone(), m.2));
+            self.detected = Some(match best {
+                Some((name, peak)) if peak >= DETECT_FLOOR => name,
+                _ => String::new(),
+            });
+            self.detect = None;
+        }
     }
 
     /// The microphone is open (and so listening).
@@ -201,6 +278,7 @@ impl Voice {
             self.ptt_tail = (self.ptt_tail - dt).max(0.0);
             self.keep_open = (self.keep_open - dt).max(0.0);
         }
+        self.step_detect(dt);
         self.live_for = (self.live_for - dt).max(0.0);
         self.retry = (self.retry - dt).max(0.0);
 

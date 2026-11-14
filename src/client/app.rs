@@ -1496,12 +1496,29 @@ fn run(args: Vec<String>) -> Result<(), String> {
     // runs one frame and returns, and the page calls again for the next
     // (see the end of this function, and docs/WEB.md).
     let mut dt_smooth = 0.0f32;
+    // After an update is installed the game restarts itself: at once from a menu, after a
+    // warning (so the world is saved and nothing is lost) from a world.
+    let mut restart_plan = crate::client::server_update::restart::RestartPlan::default();
     let frames = move || -> Result<bool, String> {
     loop {
         let frame_start = sys::now();
         app.handle_events(&mut r, &mut inp);
         if app.quit {
             break;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if !scripted && !opts.server && app.settings.auto_update && !app.quit && crate::update::can_restart() {
+            use crate::client::server_update::restart::Step;
+            let in_world = app.session.is_some() && !matches!(app.screen, Screen::Title);
+            match restart_plan.step(crate::update::state() == crate::update::UPDATED, in_world as usize, sys::now()) {
+                Step::Say(text) => {
+                    if let Some(g) = app.session.as_mut() {
+                        g.push_chat(alloc::format!("{} (YOUR WORLD IS SAVED FIRST)", text));
+                    }
+                }
+                Step::Go => app.quit = true,
+                Step::Wait => {}
+            }
         }
         let now = sys::now();
         let real_dt = (now - last) as f32;
