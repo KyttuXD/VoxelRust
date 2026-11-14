@@ -13,8 +13,9 @@ const FLINT_LIT: [u8; 3] = [132, 138, 154];
 /// The striker's handle.
 const HANDLE: [u8; 3] = [118, 84, 52];
 
-pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
-    let (l, m, d) = (lift(rgb), rgb, dark(rgb));
+pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
+    let rgb = pal.at(x, y);
+    let (l, m, d) = (pal.light_of(rgb), rgb, pal.dark_of(rgb));
     Some(match style {
         // The side: red, with a white band across the middle (rows 5 to 10)
         // and dark marks on it for lettering. The frame stays unbroken.

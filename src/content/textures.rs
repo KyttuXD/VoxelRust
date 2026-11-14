@@ -40,6 +40,16 @@ pub fn painted(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
     crate::painters::paint(style, rgb, x, y)
 }
 
+/// [`painted`] with a palette (`texture <id> paint <style> palette ...`): the
+/// same patterns with several colours, roles and gradients.
+pub fn painted_pal(style: &str, pal: &crate::palette::Palette, x: i32, y: i32) -> Option<Px> {
+    // Bows and crossbows take the one colour of their wood (at this pixel, if there is a gradient).
+    if let Some(p) = crate::content::art::bow::painted(style, pal.at(x, y), x, y) {
+        return Some(p);
+    }
+    crate::painters::paint_pal(style, pal, x, y)
+}
+
 /// A plain colour as a block face: with a `noise` setting (the old grain,
 /// now ignored) it gets the one-pixel darker frame of the OCD style; with
 /// none it is a flat fill all over.
@@ -354,6 +364,14 @@ pub fn tile_pixels(i: usize, t: &TileDef) -> Vec<u8> {
             return px;
         }
     }
+    // A palette of one flat colour is the same thing; one with several colours is the game's own drawing.
+    if let TileSrc::Palette { style, pal } = &t.src {
+        if pal.is_plain() {
+            if let Some(px) = pack_tool(style, pal.base()) {
+                return px;
+            }
+        }
+    }
     described_pixels(i, t)
 }
 
@@ -462,6 +480,7 @@ pub fn described_pixels(_i: usize, t: &TileDef) -> Vec<u8> {
                 },
                 TileSrc::Flat { rgb, noise } => flat_px(*rgb, *noise, xi, yi),
                 TileSrc::Paint { style, rgb } => painted(style, *rgb, xi, yi).unwrap_or([230, 40, 220, 255]),
+                TileSrc::Palette { style, pal } => painted_pal(style, pal, xi, yi).unwrap_or([230, 40, 220, 255]),
                 TileSrc::Pixels(px) => {
                     let o = (y * TILE + x) * 4;
                     [px[o], px[o + 1], px[o + 2], px[o + 3]]

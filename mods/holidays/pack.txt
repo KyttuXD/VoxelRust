@@ -9,9 +9,9 @@ sound jingle effects 0.50 0.02 2100 1900 0.95 0.35 Bells jingle
 sound cackle effects 0.60 0.30 700 300 0.60 0.50 A cackle
 sound firework effects 0.90 0.80 900 200 0.50 0.80 A firework bursts
 
-texture gift_red paint chest 214 52 48
-texture gift_green paint chest 60 150 70
-texture gift_blue paint chest 60 110 210
+texture gift_red paint chest colors #d63430 accent=#f2e6a0
+texture gift_green paint chest colors #3c9646 accent=#f2e6a0
+texture gift_blue paint chest colors #3c6ed2 accent=#f2e6a0
 texture gift_gold paint chest 236 196 70
 texture fir_needles paint leaves 34 104 60
 texture bauble_fir paint blossom 220 60 60
