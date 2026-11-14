@@ -1274,6 +1274,14 @@ impl Session {
                 }
             }
             "/seed" => alloc::format!("SEED {}", self.base_seed),
+            // What block is at a place: for finding out what a world really holds there.
+            "/blockat" => match (arg(1).parse::<i32>(), arg(2).parse::<i32>(), arg(3).parse::<i32>()) {
+                (Ok(x), Ok(y), Ok(z)) => {
+                    let b = self.world.get(x, y, z);
+                    alloc::format!("BLOCK AT {} {} {}: {} (STATE {}, {} LOADED)", x, y, z, block::def(b).id.to_ascii_uppercase(), b, if self.world.is_loaded(x, z) { "CHUNK" } else { "NO CHUNK" })
+                }
+                _ => String::from("USE  /BLOCKAT X Y Z"),
+            },
             "/version" => crate::net::version::report(self.net.as_ref().and_then(|n| n.server_info.as_ref())),
             "/mode" if online => String::from("USE  /GAMEMODE CREATIVE  OR  /GAMEMODE SURVIVAL  (IF THE SERVER ALLOWS IT)"),
             "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" | "/blast" | "/episode" | "/strip" | "/flood" => String::from("NOT ON A SERVER"),
