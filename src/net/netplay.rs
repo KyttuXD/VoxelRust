@@ -98,6 +98,12 @@ pub struct Client {
     skin_in: crate::net::skinxfer::Transfers,
     /// Seconds before our own skin may be sent again (the server takes one in five).
     skin_cool: f32,
+    /// Our skin went as the 64 x 64 version because the server had not yet said whether it takes
+    /// big ones; the big one is sent again when it does (see [`Client::take_skin_resend`]).
+    skin_late: bool,
+    /// Our skin is to be sent again: the server refused it ([`Msg::SkinRefused`]), or said late
+    /// that it takes big ones. Taken by [`Client::take_skin_resend`].
+    skin_resend: bool,
     /// Seconds since connecting (the server's [`Msg::SkinCaps`] may still be on its way).
     age: f32,
     /// What this player's account is (see `net/accounts/client.rs`).
@@ -165,7 +171,7 @@ impl Client {
         for _ in 0..120 {
             match inbox.next() {
                 Next::Msg(Msg::Welcome { id, seed, time, kind }) => {
-                    let mut c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None, skin_caps: None, skin_in: Default::default(), skin_cool: 0.0, age: 0.0, acct: Default::default(), own_ping: 0, runner: None };
+                    let mut c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None, skin_caps: None, skin_in: Default::default(), skin_cool: 0.0, skin_late: false, skin_resend: false, age: 0.0, acct: Default::default(), own_ping: 0, runner: None };
                     c.acct.name = crate::settings::clean_name(name, 16).to_ascii_lowercase();
                     c.acct.at = auth.at.clone();
                     c.acct.remember = auth.remember;
@@ -311,7 +317,15 @@ impl Client {
                     m @ (Msg::AuthChallenge { .. } | Msg::AuthResult { .. } | Msg::Account { .. }) => self.on_account_message(m, &mut events),
                     // (A skin's header must say a size a skin may have: anything else is not decoded at all.)
                     Msg::Skin { id, png, slim } if crate::net::limits::skin_header_ok(&png) => events.push(Event::Skin(id, png, slim)),
-                    Msg::SkinCaps { max_side, max_bytes } => self.skin_caps = Some((max_side, max_bytes)),
+                    Msg::SkinCaps { max_side, max_bytes } => {
+                        self.skin_caps = Some((max_side, max_bytes));
+                        // Said after our 64 x 64 skin went: the big one follows.
+                        if core::mem::take(&mut self.skin_late) {
+                            self.skin_resend = true;
+                        }
+                    }
+                    // The server would not take our skin: it is sent again after the cooldown.
+                    Msg::SkinRefused => self.skin_resend = true,
                     // A big skin in pieces: only from players we know of, and each piece is checked on arrival.
                     Msg::SkinBegin { id, size, side, slim } => {
                         if self.players.contains_key(&id) {
@@ -415,10 +429,19 @@ impl Client {
             for m in crate::net::skinxfer::messages(id, hd, side, slim) {
                 self.send(&m);
             }
+            self.skin_late = false;
         } else if small.len() <= crate::proto::MAX_SKIN_MSG {
             self.send(&Msg::Skin { id, png: small.to_vec(), slim });
+            // Sent small only because the server had not said yet: the big one is sent when it says.
+            self.skin_late = side > 64 && self.skin_caps.is_none();
         }
         true
+    }
+
+    /// Whether our skin is to be sent again (the server refused it, or said late that it takes big
+    /// ones). Taken once: the caller sends the skin again (`send_skins` keeps to its cooldown).
+    pub fn take_skin_resend(&mut self) -> bool {
+        core::mem::take(&mut self.skin_resend)
     }
 
     /// Share a piece of state with the other players (see [`Msg::State`]).

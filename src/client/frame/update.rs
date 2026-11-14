@@ -117,6 +117,13 @@ impl App {
         if let Some(g) = self.session.as_mut() {
             // Our skin goes out once it is packed (a big one is packed on a worker) and the server
             // will take one (not within five seconds of the last); until then this is asked again every frame.
+            // The server refused our skin, or said late that it takes big ones: send it again (the
+            // netplay client keeps to its five-second cooldown).
+            if let Some(net) = g.net.as_mut() {
+                if net.take_skin_resend() {
+                    self.skin_sent = false;
+                }
+            }
             if let (Some(net), false) = (g.net.as_mut(), self.skin_sent) {
                 if !self.skin_png.is_empty() && net.send_skins(&self.skin_png, self.skin_side, &self.skin_small, self.settings.slim_arms || self.skin_slim) {
                     self.skin_sent = true;
@@ -169,8 +176,9 @@ impl App {
             self.skin_small = own.small;
             self.skin_sent = false;
         }
-        if self.session.is_none() && !self.remote_skins.is_empty() {
-            // The game was left: the other players' skins go back to the card.
+        if self.session.is_none() {
+            // No game: the other players' skins go back to the card (and the hub forgets them, so
+            // that a player of the next visit who has the same planned side is sent their skin again).
             self.skins.forget_all(r, &mut self.remote_skins);
             self.remote_slim.clear();
         }

@@ -6,8 +6,11 @@
 //! and at 64 x 64 beyond. All together the other players' skins may use
 //! [`GPU_BUDGET`] bytes of texture memory; when they would use more, the
 //! skins whose players were near least recently are made smaller first (a
-//! least-recently-near order), and they grow again when their player comes
-//! back. Plain functions, tested without a graphics card.
+//! least-recently-near order), and they grow again as their player comes near
+//! once more, for as long as the skin's picture is kept (see `hub.rs`, which
+//! drops the pictures of the least recently near skins past its limit; those
+//! stay at the size they have until their player sends the skin again).
+//! Plain functions, tested without a graphics card.
 
 use alloc::vec::Vec;
 
