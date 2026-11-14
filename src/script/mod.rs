@@ -10,7 +10,7 @@
 //! | `lexer.rs`, `parser.rs`, `ast.rs` | text to tree |
 //! | `value.rs`, `interp.rs`, `places.rs`, `ops.rs`, `numeric.rs`, `fmt.rs` | running the tree |
 //! | `builtins*.rs` | the library: numbers, strings, Vec, Option... |
-//! | `host.rs` | what scripts may do to the game (the sandbox's only door) |
+//! | `host.rs`, `host_ui.rs` | what scripts may do to the game (the sandbox's only door); `host_ui.rs`: controls, HUD and screens |
 //! | `limits.rs`, `error.rs`, `state.rs` | limits, `file:line` errors, saved state |
 //! | `bridge.rs` | the game's hooks (`game/hooks.rs`) calling into scripts |
 //!
@@ -33,6 +33,7 @@ pub mod error;
 pub mod ext;
 pub mod fmt;
 pub mod host;
+pub mod host_ui;
 pub mod interp;
 pub mod lexer;
 pub mod limits;
@@ -88,10 +89,17 @@ pub const HOOKS: &[HookDoc] = &[
     HookDoc { name: "on_event", params: &["name", "what"], what: "any event pack scripts can answer with `when` (see MODDING.md)" },
     HookDoc { name: "on_command", params: &["name", "args"], what: "a /command the game does not know; return true (or a reply string) if it is yours" },
     HookDoc { name: "on_explode", params: &["x", "y", "z", "power", "source"], what: "an explosion is about to happen; return false to cancel or a number to change its power" },
-    HookDoc { name: "on_update", params: &["dt"], what: "once a frame, before the player moves: the place to move things, carry the player (`hold_player`) and ask for pictures (`draw_model`, `hud_rect`)" },
+    HookDoc { name: "on_update", params: &["dt"], what: "once a frame, before the player moves: the place to move things, carry the player (`hold_player`) and ask for pictures (`draw_model`, `hud_frac_rect`)" },
     HookDoc { name: "on_interact", params: &["reach"], what: "the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is); return true if the click was used up" },
     HookDoc { name: "on_condition", params: &["name", "args"], what: "an `/if` condition the game does not know (`/if name args`); return true or false if it is yours, nothing if it is not" },
     HookDoc { name: "on_net", params: &["key", "text"], what: "another player's copy of this mod sent a message with `net_send`" },
+    HookDoc { name: "on_register", params: &[], what: "once when the script is read: declare key bindings and switches (bind_key, add_switch)" },
+    HookDoc { name: "on_key_down", params: &["id"], what: "a key binding of this mod was pressed (while playing)" },
+    HookDoc { name: "on_key_up", params: &["id"], what: "a key binding of this mod was let go" },
+    HookDoc { name: "on_hud", params: &["dt"], what: "once a frame while playing: draw on the HUD (hud_text, hud_rect...)" },
+    HookDoc { name: "on_ui_click", params: &["id"], what: "a button of the mod's screen was pressed" },
+    HookDoc { name: "on_ui_change", params: &["id", "value"], what: "a toggle, stepper, input or list of the mod's screen changed (value: bool, number, text, line number)" },
+    HookDoc { name: "on_ui_close", params: &["name"], what: "the mod's screen closed" },
 ];
 
 /// One script file, read and ready.
@@ -115,10 +123,17 @@ pub struct ModScripts {
     pub world: Option<String>,
 }
 
-/// A host that does nothing, for working out constants when a file is loaded.
-struct NullHost;
+/// A host that does nothing, for working out constants when a file is loaded
+/// and for running `on_register` (it keeps what the script declares in `ui`).
+#[derive(Default)]
+struct NullHost {
+    ui: crate::client::modui::ModUi,
+}
 
 impl Host for NullHost {
+    fn ui(&mut self) -> &mut crate::client::modui::ModUi {
+        &mut self.ui
+    }
     fn say(&mut self, _: &str) {}
     fn give(&mut self, _: &str, _: i64) -> bool {
         false
@@ -160,7 +175,7 @@ impl Script {
         let mut consts = Vec::new();
         {
             let mut state = ScriptState::default();
-            let mut host = NullHost;
+            let mut host = NullHost::default();
             let mut it = Interp::new(&prog, &mut consts, &mut host, &mut state, "", Limits::DEFAULT);
             it.init_consts()?;
         }
@@ -209,6 +224,8 @@ pub struct ScriptHost {
     pub local: Vec<String>,
     /// What went wrong, newest last.
     pub problems: Vec<String>,
+    /// The key bindings and switches the scripts declared in `on_register`.
+    pub decls: crate::client::modui::binds::Decls,
 }
 
 static HOST: AtomicPtr<ScriptHost> = AtomicPtr::new(core::ptr::null_mut());
@@ -250,7 +267,7 @@ fn global() -> *mut ScriptHost {
 
 impl ScriptHost {
     pub fn new() -> ScriptHost {
-        ScriptHost { mods: Vec::new(), rng: 0x2545_F491, data_dir: String::new(), local: Vec::new(), problems: Vec::new() }
+        ScriptHost { mods: Vec::new(), rng: 0x2545_F491, data_dir: String::new(), local: Vec::new(), problems: Vec::new(), decls: Default::default() }
     }
 
     // ---- the global host (what the rest of the game uses)
@@ -266,6 +283,7 @@ impl ScriptHost {
         match with_host(|h| {
             let problems = h.add_mod(name, files);
             refresh_live(h);
+            h.publish_decls();
             problems
         }) {
             Some(p) => p,
@@ -282,11 +300,15 @@ impl ScriptHost {
         with_host(|h| {
             let old = core::mem::take(&mut h.local);
             h.mods.retain(|m| !old.contains(&m.name));
+            for name in &old {
+                h.drop_ui(name);
+            }
             for (name, files) in mods {
                 h.add_mod(name, files);
                 h.local.push(name.clone());
             }
             refresh_live(h);
+            h.publish_decls();
         });
     }
 
@@ -294,15 +316,24 @@ impl ScriptHost {
     pub fn unload_mods(names: &[String]) {
         with_host(|h| {
             h.mods.retain(|m| !names.contains(&m.name));
+            for name in names {
+                h.drop_ui(name);
+            }
             refresh_live(h);
+            h.publish_decls();
         });
     }
 
     /// Forget every script (a mod was switched off, or the player left a server).
     pub fn unload_all() {
         with_host(|h| {
+            let names: Vec<String> = h.mods.iter().map(|m| m.name.clone()).collect();
             h.mods.clear();
+            for name in &names {
+                h.drop_ui(name);
+            }
             refresh_live(h);
+            h.publish_decls();
         });
     }
 
@@ -359,6 +390,23 @@ impl ScriptHost {
             }
         }
         self.mods.retain(|m| m.name != name);
+        self.decls.remove_mod(name);
+        // `on_register`: what the scripts declare (key bindings, switches).
+        for s in scripts.iter_mut() {
+            if s.prog.has_fn("on_register") {
+                let mut host = NullHost::default();
+                host.ui.registering = true;
+                let mut errors = Vec::new();
+                invoke(&mut host, name, &mut ScriptState::default(), s, "on_register", &[], &mut errors);
+                for b in core::mem::take(&mut host.ui.decls.binds) {
+                    let _ = self.decls.add_bind(name, &b.id, &b.label, &b.group, b.default_key);
+                }
+                for sw in core::mem::take(&mut host.ui.decls.switches) {
+                    let _ = self.decls.add_switch(name, &sw.id, &sw.label, sw.default);
+                }
+                problems.extend(errors);
+            }
+        }
         if !scripts.is_empty() {
             self.mods.push(ModScripts { name: String::from(name), state: ScriptState::default(), scripts, world: None });
         }
@@ -367,6 +415,17 @@ impl ScriptHost {
         }
         self.note(problems.iter().cloned());
         problems
+    }
+
+    /// Drop what a mod put on the interface (its HUD lines, its screen, its declarations).
+    fn drop_ui(&mut self, name: &str) {
+        self.decls.remove_mod(name);
+        crate::client::modui::dispatch::forget(name);
+    }
+
+    /// Tell the interface what the scripts declared (the switches' defaults).
+    fn publish_decls(&self) {
+        crate::client::modui::dispatch::publish_defaults(&self.decls.switches);
     }
 
     fn note(&mut self, new: impl Iterator<Item = String>) {
@@ -439,17 +498,18 @@ impl ScriptHost {
         self.call_hook_in(host, world, None, hook, args, on_result);
     }
 
-    /// As [`ScriptHost::call_hook`], for the scripts of one mod only (`only`)
-    /// or, with `None`, for all of them.
-    pub fn call_hook_in(&mut self, host: &mut dyn Host, world: &str, only: Option<&str>, hook: &str, args: &[Value], on_result: &mut dyn FnMut(&Value) -> bool) {
+    /// Like [`ScriptHost::call_hook`], but only the mods `only` accepts (by name) are asked.
+    pub fn call_hook_in(&mut self, host: &mut dyn Host, world: &str, only: Option<&dyn Fn(&str) -> bool>, hook: &str, args: &[Value], on_result: &mut dyn FnMut(&Value) -> bool) {
         self.prepare(host, world);
         if hook.is_empty() {
             return;
         }
         let mut errors = Vec::new();
         'mods: for m in self.mods.iter_mut() {
-            if only.map_or(false, |o| o != m.name) {
-                continue;
+            if let Some(accept) = only {
+                if !accept(&m.name) {
+                    continue;
+                }
             }
             host.set_mod(&m.name);
             let ModScripts { name, state, scripts, .. } = m;

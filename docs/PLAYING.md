@@ -852,9 +852,14 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   leave a world.
 - **CONTROLS**: mouse speed, invert mouse, and a KEY BINDINGS... page with
   every key marked * above and RESET KEYS. Click a binding, then press the new key (Esc cancels).
+  Mods can add keys of their own: they come after the game's, each mod under a
+  heading with its name, and the list scrolls (mouse wheel or the bar at its
+  side) when it is longer than the page. Two bindings on one key are outlined in
+  red: that is allowed, and both do their thing.
 - **GAME**: player name, autosave interval, GAME MODE while a world is open,
   and two pages: VIEW, WEATHER AND MAP... (view bobbing, weather, minimap) and
-  MOD SWITCHES AND RELOAD... (RELOAD MODS NOW and the switches mods add). Below those
+  MOD SWITCHES AND RELOAD... (RELOAD MODS NOW, the switches mods add, and
+  the on/off rows mods declare for themselves under their name; it scrolls). Below those
   come the switches the packs add (the first four are shown; NATURAL
   DISASTERS is one, from the Disasters mod, see
   [Weather and disasters](#weather-and-disasters)). Then, while the Earth

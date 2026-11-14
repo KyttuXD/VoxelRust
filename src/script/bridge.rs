@@ -30,7 +30,7 @@ fn run(g: &mut Session, hook: &str, args: Vec<Value>, mut on_result: impl FnMut(
 }
 
 /// As `run`, for one mod's scripts.
-fn run_in(g: &mut Session, only: &str, hook: &str, args: Vec<Value>, mut on_result: impl FnMut(&Value) -> bool) {
+fn run_in(g: &mut Session, only: &dyn Fn(&str) -> bool, hook: &str, args: Vec<Value>, mut on_result: impl FnMut(&Value) -> bool) {
     let world = g.name.clone();
     with_host(|h| {
         let mut host = SessionHost { g, rng: h.rng, mod_name: String::new(), data_dir: h.data_dir.clone() };
@@ -303,7 +303,7 @@ pub fn net_message(g: &mut Session, key: &str, text: &str) {
         return;
     }
     let Some((mod_name, key)) = key.split_once('\u{1f}') else { return };
-    run_in(g, mod_name, "on_net", alloc::vec![Value::str(key), Value::str(text)], |_| false);
+    run_in(g, &|m| m == mod_name, "on_net", alloc::vec![Value::str(key), Value::str(text)], |_| false);
 }
 
 /// An `/if` condition the game does not know: a script may answer it. `words`
@@ -324,4 +324,45 @@ pub fn condition(g: &mut Session, words: &[&str]) -> Option<bool> {
         _ => false,
     });
     answer
+}
+
+// ---- controls, HUD and screens (see script/host_ui.rs, client/modui)
+
+/// One of a mod's key bindings went down or up (`mod_name` is the cleaned
+/// name the bindings carry).
+pub fn key(g: &mut Session, mod_name: &str, id: &str, down: bool) {
+    if !live() {
+        return;
+    }
+    let hook = if down { "on_key_down" } else { "on_key_up" };
+    run_in(g, &|m| crate::client::modui::limits::clean_mod(m) == mod_name, hook, alloc::vec![Value::str(id)], |_| false);
+}
+
+/// Once a frame while playing: the scripts draw their HUD.
+pub fn hud(g: &mut Session, dt: f32) {
+    if !live() {
+        return;
+    }
+    run(g, "on_hud", alloc::vec![Value::Float(clean_f32(dt))], |_| false);
+}
+
+/// The player used a mod's screen: its scripts hear of it.
+pub fn ui_event(g: &mut Session, ev: &crate::client::modui::screens::UiEvent) {
+    use crate::client::modui::screens::{UiKind, UiValue};
+    if !live() {
+        return;
+    }
+    let (hook, args) = match &ev.kind {
+        UiKind::Click => ("on_ui_click", alloc::vec![Value::str(&ev.id)]),
+        UiKind::Change(v) => {
+            let value = match v {
+                UiValue::Bool(b) => Value::Bool(*b),
+                UiValue::Int(n) => Value::Int(*n),
+                UiValue::Text(t) => Value::str(t),
+            };
+            ("on_ui_change", alloc::vec![Value::str(&ev.id), value])
+        }
+        UiKind::Closed => ("on_ui_close", alloc::vec![Value::str(&ev.screen)]),
+    };
+    run_in(g, &|m| m == ev.mod_name, hook, args, |_| false);
 }

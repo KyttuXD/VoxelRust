@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 pub const FUNCTIONS: &[(&str, &str)] = &[
     ("is_loaded(x: i64, z: i64) -> bool", "whether the chunk column holding that place is loaded (`get_block` says \"air\" for places that are not)"),
     ("surface_y(x: i64, z: i64) -> i64", "the height a creature stands at on that column of the world's natural ground (one above its top block); works where nothing is loaded"),
-    ("biome(x: i64, z: i64) -> String", "the natural biome of that column, lower case (`plains`, `forest`, `desert`, `tundra`, `taiga`, `mountain`, `swamp`, `savanna`, `jungle`, `badlands`)"),
+    ("biome_at(x: i64, z: i64) -> String", "the natural biome of that column, lower case (`plains`, `forest`, `desert`, `tundra`, `taiga`, `mountain`, `swamp`, `savanna`, `jungle`, `badlands`)"),
     ("is_solid(x: i64, y: i64, z: i64) -> bool", "whether the block there stops a body"),
     ("block_tag(block_id: &str, tag: &str) -> f64", "the number after `tag <name>` in a block's pack lines (1 if none was given), or -1 if the block does not have the tag"),
     ("scan_blocks(x0: i64, y0: i64, z0: i64, x1: i64, y1: i64, z1: i64, prefix: &str) -> Vec<(i64, i64, i64, String)>", "every loaded block in the box whose id starts with `prefix` (empty: any but air), as (x, y, z, id), up to 2000 of them, in x then z then y order; the box may hold at most 40 000 cells"),
@@ -56,7 +56,7 @@ pub fn call(g: &mut Session, _ctx: &Ctx, name: &str, args: &[Value]) -> Result<V
             let col = crate::worldgen::column(g.world.seed, coord(name, args, 0)?, coord(name, args, 1)?);
             Ok(Value::Int(col.height as i64 + 1))
         }
-        "biome" => {
+        "biome_at" => {
             want(name, args, 2)?;
             let col = crate::worldgen::column(g.world.seed, coord(name, args, 0)?, coord(name, args, 1)?);
             Ok(Value::str(biome_name(col.biome)))

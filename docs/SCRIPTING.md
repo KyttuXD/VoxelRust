@@ -21,6 +21,7 @@ compiled code ([Code that mods bring](MODDING.md#code-that-mods-bring)).
 - [Hooks: what the game calls](#hooks-what-the-game-calls)
 - [The host API: what scripts may do](#the-host-api-what-scripts-may-do)
 - [More host calls](#more-host-calls)
+- [Controls, HUD and screens](#controls-hud-and-screens)
 - [Saved state](#saved-state)
 - [Limits, errors and safety](#limits-errors-and-safety)
 - [Checking a script](#checking-a-script)
@@ -219,6 +220,13 @@ not call scripts again.
 | `fn on_interact(reach: f64) -> bool` | the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is; `input()` says which buttons are down) | `true` if the click was used up |
 | `fn on_condition(name: String, args: String) -> bool` | an `/if` condition the game does not know | `true` or `false` if it is yours; return nothing if it is not |
 | `fn on_net(key: String, text: String)` | another player's copy of this mod sent a message with `net_send` | |
+| `fn on_register()` | once, when the script file is read (before any world): the place to declare key bindings and switches | |
+| `fn on_key_down(id: String)` | a key binding this mod declared was pressed (while playing, not in a menu or a text box) | |
+| `fn on_key_up(id: String)` | that key was let go | |
+| `fn on_hud(dt: f32)` | once a frame while playing: draw the HUD | |
+| `fn on_ui_click(id: String)` | a button of the mod's own screen was pressed | |
+| `fn on_ui_change(id: String, value: bool)` | a toggle (`bool`), stepper (a number), input (the text) or list (the line's number) of the screen changed | |
+| `fn on_ui_close(name: String)` | the mod's screen closed (the player closed it, or the mod did) | |
 
 Ids (`kind`, `item`, `id`) are the ids from the data files (`zombie`,
 `diamond`, `stone`). Where more than one script is asked, the first to
@@ -261,6 +269,9 @@ nothing) unless the player may run them there.
 | `state_set_int(key: &str, value: i64)` | save a whole number |
 | `mod_name() -> String` | the name of the mod this script belongs to |
 
+The calls for key bindings, the HUD and screens are in
+[Controls, HUD and screens](#controls-hud-and-screens).
+
 `run_command` is the way to everything the chat commands do (`/title`,
 `/weather`, `/shake`, `/launch`, `/after 5 ...`, `/var`...): see
 [MODDING.md](MODDING.md#pack-commands). It runs with exactly the player's rights.
@@ -277,7 +288,7 @@ in `src/script/ext/` (one file for each table below); a test keeps the files and
 this page in step.
 
 Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
-`hud_rect` and the like, and the game draws them every frame until the next
+`hud_frac_rect` and the like, and the game draws them every frame until the next
 `on_update` replaces them. What a script keeps from one call to the next goes in
 [saved state](#saved-state).
 
@@ -287,7 +298,7 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 | --- | --- |
 | `is_loaded(x: i64, z: i64) -> bool` | whether the chunk column holding that place is loaded (`get_block` says "air" for places that are not) |
 | `surface_y(x: i64, z: i64) -> i64` | the height a creature stands at on that column of the world's natural ground (one above its top block); works where nothing is loaded |
-| `biome(x: i64, z: i64) -> String` | the natural biome of that column, lower case (`plains`, `forest`, `desert`, `tundra`, `taiga`, `mountain`, `swamp`, `savanna`, `jungle`, `badlands`) |
+| `biome_at(x: i64, z: i64) -> String` | the natural biome of that column, lower case (`plains`, `forest`, `desert`, `tundra`, `taiga`, `mountain`, `swamp`, `savanna`, `jungle`, `badlands`) |
 | `is_solid(x: i64, y: i64, z: i64) -> bool` | whether the block there stops a body |
 | `block_tag(block_id: &str, tag: &str) -> f64` | the number after `tag <name>` in a block's pack lines (1 if none was given), or -1 if the block does not have the tag |
 | `scan_blocks(x0: i64, y0: i64, z0: i64, x1: i64, y1: i64, z1: i64, prefix: &str) -> Vec<(i64, i64, i64, String)>` | every loaded block in the box whose id starts with `prefix` (empty: any but air), as (x, y, z, id), up to 2000 of them, in x then z then y order; the box may hold at most 40 000 cells |
@@ -339,8 +350,8 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 
 | Function | What it does |
 | --- | --- |
-| `hud_rect(x: f64, y: f64, w: f64, h: f64, r: i64, g: i64, b: i64, a: i64)` | fill a rectangle of the HUD this frame; x, y, w and h are fractions of the screen (0 to 1), the colour and opacity 0 to 255; at most 64 a frame |
-| `hud_text(x: f64, y: f64, scale: f64, text: &str, r: i64, g: i64, b: i64)` | write text on the HUD this frame; x and y are fractions of the screen, `scale` times the size of the game's own interface (0.5 to 8); at most 32 a frame |
+| `hud_frac_rect(x: f64, y: f64, w: f64, h: f64, r: i64, g: i64, b: i64, a: i64)` | fill a rectangle of the HUD this frame; x, y, w and h are fractions of the screen (0 to 1), the colour and opacity 0 to 255; at most 64 a frame |
+| `hud_frac_text(x: f64, y: f64, scale: f64, text: &str, r: i64, g: i64, b: i64)` | write text on the HUD this frame; x and y are fractions of the screen, `scale` times the size of the game's own interface (0.5 to 8); at most 32 a frame |
 | `draw_model(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, tint: f64)` | draw a model (a model id, or the id of a creature to use its model) in the world this frame, `height` blocks tall; `phase` is the walk or wheel cycle in radians; `tint` is 0 to 1 for a fixed brightness, or -1 for the light of the place; at most 200 a frame |
 | `draw_model_own(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, tint: f64)` | as `draw_model`, for the thing the player sits in or wears: it is drawn only when the player sees themselves from outside (third person) |
 | `draw_model_posed(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, stride: f64, head_pitch: f64, head_yaw: f64, clock: f64, tint: f64)` | as `draw_model` with the pose of a creature: `stride` 0 (still) to 1 (full stride), where the head looks relative to the body in degrees, and `clock`, the seconds it has been alive (tails wag and ears twitch on their own) |
@@ -422,6 +433,180 @@ From then on, in every pack read in the same loading (whichever comes first),
 indented lines is a section the game keeps instead of warning about. A script
 reads them with `pack_lines("manfromthefog")` and `pack_sections("vehicle")`.
 The words the game itself reads (`block`, `item`, `texture`...) cannot be claimed.
+
+## Controls, HUD and screens
+
+A mod can have keys of its own, draw on the HUD and open its own screens.
+The same calls exist for native code ([MODDING.md](MODDING.md#controls-hud-and-screens));
+they share their limits.
+
+### Key bindings
+
+Declare them in `on_register`, which runs once when the script is read (the
+only place `bind_key` and `add_switch` work). Each gets an id, a label, a group
+and a default key. They appear in **Settings > Controls > Key bindings**, after
+the game's own, under a heading with the mod's name (and the group, if any);
+the player can rebind them, the choice is saved in `settings.txt`, and two
+bindings on one key are outlined in red but both still work.
+
+| Function | What it does |
+| --- | --- |
+| `bind_key(id: &str, label: &str, group: &str, key: i64) -> bool` | in `on_register` only: add a binding. `key` is a key code or a name such as `"g"`, `"f5"`, `"space"`, `"up"`, `"shift"` |
+| `add_switch(id: &str, label: &str, default: bool) -> bool` | in `on_register` only: add an on/off row to Settings > Game > Mod switches and reload |
+| `key_scancode(name: &str) -> i64` | the key code of a key name, 0 if it is not one |
+| `key_held(id: &str) -> bool` | whether the binding's key is down now |
+| `setting_on(id: &str) -> bool` | whether one of the mod's switches is on (its default until the player changes it) |
+
+`on_key_down(id)` and `on_key_up(id)` are called for the mod's own bindings
+only, not while typing, in a menu or on a mod screen; a key let go is always
+reported. A mod may declare 64 bindings and 16 switches; ids are letters,
+digits, `_` and `-` up to 32 characters, labels are cut at 40.
+
+### Drawing on the HUD
+
+Draw from `on_hud(dt)`: it runs once a frame, and what was drawn last frame is
+forgotten, so draw it all again. Every call returns `false` (and does nothing)
+when the frame's drawing commands are used up: **512 in all, 256 for one mod**.
+Text is cut to 120 characters; sizes and distances are in interface pixels (the
+game's pixels, scaled with the interface size setting); everything is clipped to
+the window, an icon is drawn only if it fits whole.
+
+An `anchor` is one of `"top-left"`, `"top"`, `"top-right"`, `"left"`,
+`"centre"`, `"right"`, `"bottom-left"`, `"bottom"`, `"bottom-right"`. The thing
+drawn is put so that its matching corner, edge or middle sits on that point of
+the screen, then moved `dx` right and `dy` down (so `hud_text("bottom-right",
+-4.0, -4.0, ...)` is a line four pixels in from the corner). A `colour` is
+`0xRRGGBB`, or `0xAARRGGBB` (a number above `0xFFFFFF` carries its own alpha).
+
+| Function | What it does |
+| --- | --- |
+| `hud_text(anchor: &str, dx: f64, dy: f64, scale: f64, text: &str, colour: i64) -> bool` | text, `scale` times the normal size (0.5 to 4) |
+| `hud_rect(anchor: &str, dx: f64, dy: f64, w: f64, h: f64, colour: i64) -> bool` | a filled rectangle |
+| `hud_outline(anchor: &str, dx: f64, dy: f64, w: f64, h: f64, thick: f64, colour: i64) -> bool` | a rectangle's outline, `thick` pixels thick (1 to 16) |
+| `hud_item(anchor: &str, dx: f64, dy: f64, size: f64, item_id: &str) -> bool` | an item's icon, `size` pixels square |
+| `hud_block(anchor: &str, dx: f64, dy: f64, size: f64, block_id: &str) -> bool` | a block's icon |
+| `hud_bar(anchor: &str, dx: f64, dy: f64, w: f64, h: f64, fraction: f64, colour: i64) -> bool` | a progress bar, `fraction` from 0 to 1 |
+
+A line that should stay (a status, a counter) can live in a **slot**, and is
+laid out for you next to the game's own HUD. It stays until the mod changes or
+removes it, so set it when something changes rather than every frame. A mod
+may keep 16 lines (64 in all).
+
+| Slot | Where |
+| --- | --- |
+| `"above_hotbar"` | centred above the hotbar, growing upward |
+| `"beside_hearts"` | to the left of the hearts, growing upward |
+| `"top_left_list"` | a list down the top left, under the frame rate |
+| `"under_crosshair"` | centred under the crosshair, growing downward |
+
+| Function | What it does |
+| --- | --- |
+| `hud_set(slot: &str, id: &str, text: &str, colour: i64) -> bool` | put a line in a slot, or change the line with this id |
+| `hud_set_icon(id: &str, item_id: &str) -> bool` | give that line an item icon in front (an empty id takes it away) |
+| `hud_remove(id: &str) -> bool` | take the line away |
+| `toast(text: &str, secs: f64) -> bool` | a boxed message at the top that fades after `secs` (0.5 to 30); up to 8 wait at once |
+| `action_bar(text: &str, secs: f64) -> bool` | one line above the hotbar, replaced by the next |
+
+What a HUD may read, besides `player_health()`, `player_pos()`, `held_item()`,
+`time()` and `dimension()`:
+
+| Function | What it gives |
+| --- | --- |
+| `hunger() -> i64` | the player's hunger (20 is full) |
+| `air() -> f64` | breath left (10 is full) |
+| `biome() -> String` | the biome under the player, lower case |
+| `selected_slot() -> i64` | the hotbar slot chosen, 0 to 8 |
+| `heading() -> f64` | the way the player faces in degrees: 0 north (toward -z), 90 east (+x), 180 south, 270 west |
+| `fps() -> f64` | frames a second |
+
+### Screens of your own
+
+A mod opens a screen (from a key binding, a command, anything), fills it row
+by row with the widgets the settings use, and hears about the player's clicks.
+One screen is open at a time; opening another closes the first. A screen takes
+up to 48 widgets and scrolls when it is taller than the window; Escape or CLOSE
+closes it. Widget ids are unique on a screen and follow the rules of key ids.
+
+| Function | What it does |
+| --- | --- |
+| `ui_open(name: &str, title: &str) -> bool` | open an empty screen called `name`; add the widgets after it |
+| `ui_close() -> bool` | close the mod's screen |
+| `ui_text(text: &str) -> bool` | a line of text |
+| `ui_button(id: &str, label: &str) -> bool` | a button: `on_ui_click(id)` |
+| `ui_toggle(id: &str, label: &str, on: bool) -> bool` | an on/off toggle: `on_ui_change(id, value)` with a `bool` |
+| `ui_stepper(id: &str, label: &str, value: i64, min: i64, max: i64) -> bool` | a number you step with the mouse: `on_ui_change` with the number |
+| `ui_input(id: &str, label: &str, value: &str) -> bool` | a text box (60 characters): `on_ui_change` with the text, as it is typed |
+| `ui_list(id: &str, items: &str, selected: i64) -> bool` | a scrolling list of 5 lines; `items` are separated by `\n` (up to 128): `on_ui_change` with the line's number |
+| `ui_set_text(id: &str, text: &str) -> bool` | change a button's, toggle's or stepper's label, an input's text, or a list's items |
+| `ui_set_line(n: i64, text: &str) -> bool` | change the text of the `n`th widget (counting from 0) if it is a text line |
+| `ui_set_value(id: &str, n: i64) -> bool` | change a toggle (0 or 1), a stepper or a list's chosen line (-1 for none) |
+| `ui_get_text(id: &str) -> String` | an input's text, or the text of a list's chosen line |
+| `ui_get_value(id: &str) -> i64` | a toggle's (0 or 1), stepper's or list's (-1 for none) value |
+
+`on_ui_click`, `on_ui_change` and `on_ui_close` are called after the frame the
+player used the screen in, for the mod that owns it. A mod can change what is
+shown at any time (from `on_tick` too) with `ui_set_text`, `ui_set_line` and
+`ui_set_value`.
+
+### Safety
+
+Everything above is bounded in the game, not by the script's good manners:
+drawing commands, key bindings, switches, HUD lines, toasts, widgets, list
+lines, text and ids all have caps (the numbers above), text is cut to
+printable ASCII and upper case, NaN and enormous numbers are brought into range
+and a window position off the screen draws nothing. The calls take a constant
+time, so a script cannot slow a frame by asking for too much; one that loops
+for ever is stopped by the step budget of the call (see
+[Limits](#limits-errors-and-safety)). An error in a script (a wrong anchor or
+slot name, `bind_key` outside `on_register`, a key name that is not one) switches that
+file off and nothing else, the same as any other error.
+
+### A worked example: a compass and a stats screen
+
+The scripting-demo mod has this: **G** switches a compass on the HUD, **H**
+opens a small screen of facts.
+
+```rust
+fn on_register() {
+    bind_key("compass", "Toggle compass", "Demo", "g");
+    bind_key("stats", "Open stats", "Demo", "h");
+    add_switch("compass_on_start", "Compass on at start", true);
+}
+
+fn compass_text(deg: f64) -> String {
+    let names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+    let i = ((deg + 22.5) / 45.0) as i64 % 8;
+    format!("{} {:.0}", names[i as usize], deg)
+}
+
+fn on_key_down(id: String) {
+    if id == "compass" {
+        let shown = state_get_int("compass", if setting_on("compass_on_start") { 1 } else { 0 }) == 0;
+        state_set_int("compass", if shown { 1 } else { 0 });
+        toast(if shown { "COMPASS ON" } else { "COMPASS OFF" }, 1.5);
+    } else if id == "stats" {
+        ui_open("stats", "Stats");
+        ui_text(&format!("HEALTH {}   HUNGER {}", player_health(), hunger()));
+        ui_text(&format!("BIOME {}", biome()));
+        ui_button("close", "Close");
+    }
+}
+
+fn on_ui_click(id: String) {
+    if id == "close" {
+        ui_close();
+    }
+}
+
+fn on_hud(dt: f32) {
+    if state_get_int("compass", if setting_on("compass_on_start") { 1 } else { 0 }) == 0 {
+        return;
+    }
+    let text = compass_text(heading());
+    hud_rect("top", 0.0, 4.0, 60.0, 12.0, 0xA0000000);
+    hud_text("top", 0.0, 7.0, 1.0, &text, 0xFFFFFF);
+}
+```
 
 ## Saved state
 
@@ -609,4 +794,11 @@ fn on_block_break(x: i64, y: i64, z: i64, id: String) {
   and a row to the table above (a test checks the docs list every hook).
 - To add a host function, add it to `Host` (`script/host.rs`), to
   `SessionHost`, to `call_host_fn`, to `HOST_FUNCTIONS` and to the table above (tests
-  check all four agree).
+  check all four agree). The functions for controls, the HUD and screens are in
+  `script/host_ui.rs` (`UI_FUNCTIONS`, one thin call each into `ModApi` of
+  `client/modui/api.rs`, which holds the limits); the state they change is a
+  `ModUi` that the host hands out with `Host::ui()`.
+- What a script declares in `on_register` (key bindings, switches) is kept in
+  `ScriptHost::decls`; the Settings pages read it, with the native mods' own
+  tables, through `client/modui/keys.rs`. Key presses reach a mod's scripts with
+  `ScriptHost::call_hook_in`, which asks only the mods it is told to.

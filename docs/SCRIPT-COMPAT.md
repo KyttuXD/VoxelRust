@@ -84,7 +84,7 @@ has for it (the host calls marked *new* were added in this round for them and fo
 | witherstorm: flight and aiming, tractor beams, skulls, bite, wither sickness | maths in the script; `shoot`, `push_player`, `hurt`, `effect`, `clear_effect` (new) |
 | witherstorm: eating terrain in clusters, queued explosions | `scan_blocks` (40 000 cells a call, 2 000 results), `set_block`, `explode` |
 | witherstorm: tainting blocks and creatures | `scan_blocks`, `set_block`, `mobs_near`, `mob_remove`, `spawn_mob`; the creature's look variant is not reachable |
-| witherstorm: the Formidibomb, Super TNT, blade, Eye, Phasometer, amulet, cure | `on_item_use`, `aim()`, `explode`, `hud_rect` and `hud_text`, `clear_effect`; lit TNT with a fuse is **missing** |
+| witherstorm: the Formidibomb, Super TNT, blade, Eye, Phasometer, amulet, cure | `on_item_use`, `aim()`, `explode`, `hud_frac_rect` and `hud_frac_text`, `clear_effect`; lit TNT with a fuse is **missing** |
 | witherstorm: the summoning ritual, the Super Beacon, `/witherstorm` | `on_block_place`, `scan_blocks`, `on_command` |
 | witherstorm: drawing the storm in pieces, heads, tentacles | `draw_model_posed` (new): one pose for a whole model; separate animation of parts is **missing** |
 | witherstorm: beams (`draw_quads`) | **missing** |

@@ -69,7 +69,7 @@ CAPS = [
     ("damage hooks", r"\bhurt:\s*Some|killed:\s*Some|\bhit:\s*Some|on_entity_death|on_player_hurt", ["on_player_hurt", "on_entity_death"]),
     ("explosions", r"before_explode|after_explode|explosion::explode", ["on_explode", "explode"]),
     ("conditions", r"condition:\s*Some", ["on_condition"]),
-    ("HUD", r"on_draw_hud", ["hud_rect", "hud_text"]),
+    ("HUD", r"on_draw_hud", ["hud_frac_rect", "hud_frac_text"]),
     ("world drawing", r"draw:\s*Some|draw_model|draw_sparks|draw_quads", ["draw_model", "draw_speck"]),
     ("sounds", r"sound_queue|play_named|audio\.", ["play_sound"]),
     ("saved state", r"\bsave:\s*Some|\bopen:\s*Some|on_world_(save|load)", ["state_get", "state_set"]),

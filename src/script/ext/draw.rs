@@ -17,8 +17,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 pub const FUNCTIONS: &[(&str, &str)] = &[
-    ("hud_rect(x: f64, y: f64, w: f64, h: f64, r: i64, g: i64, b: i64, a: i64)", "fill a rectangle of the HUD this frame; x, y, w and h are fractions of the screen (0 to 1), the colour and opacity 0 to 255; at most 64 a frame"),
-    ("hud_text(x: f64, y: f64, scale: f64, text: &str, r: i64, g: i64, b: i64)", "write text on the HUD this frame; x and y are fractions of the screen, `scale` times the size of the game's own interface (0.5 to 8); at most 32 a frame"),
+    ("hud_frac_rect(x: f64, y: f64, w: f64, h: f64, r: i64, g: i64, b: i64, a: i64)", "fill a rectangle of the HUD this frame; x, y, w and h are fractions of the screen (0 to 1), the colour and opacity 0 to 255; at most 64 a frame"),
+    ("hud_frac_text(x: f64, y: f64, scale: f64, text: &str, r: i64, g: i64, b: i64)", "write text on the HUD this frame; x and y are fractions of the screen, `scale` times the size of the game's own interface (0.5 to 8); at most 32 a frame"),
     ("draw_model(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, tint: f64)", "draw a model (a model id, or the id of a creature to use its model) in the world this frame, `height` blocks tall; `phase` is the walk or wheel cycle in radians; `tint` is 0 to 1 for a fixed brightness, or -1 for the light of the place; at most 200 a frame"),
     ("draw_model_own(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, tint: f64)", "as `draw_model`, for the thing the player sits in or wears: it is drawn only when the player sees themselves from outside (third person)"),
     ("draw_model_posed(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, stride: f64, head_pitch: f64, head_yaw: f64, clock: f64, tint: f64)", "as `draw_model` with the pose of a creature: `stride` 0 (still) to 1 (full stride), where the head looks relative to the body in degrees, and `clock`, the seconds it has been alive (tails wag and ears twitch on their own)"),
@@ -37,7 +37,7 @@ fn model_index(id: &str) -> Option<usize> {
 
 pub fn call(g: &mut Session, _ctx: &Ctx, name: &str, args: &[Value]) -> Result<Value, String> {
     match name {
-        "hud_rect" => {
+        "hud_frac_rect" => {
             want(name, args, 8)?;
             let rect = HudRect {
                 x: finite(name, args, 0)?.clamp(-1.0, 2.0) as f32,
@@ -52,7 +52,7 @@ pub fn call(g: &mut Session, _ctx: &Ctx, name: &str, args: &[Value]) -> Result<V
             }
             Ok(Value::Unit)
         }
-        "hud_text" => {
+        "hud_frac_text" => {
             want(name, args, 7)?;
             let t = HudText {
                 x: finite(name, args, 0)?.clamp(-1.0, 2.0) as f32,

@@ -46,7 +46,7 @@ fn arity_is_counted_from_the_signature() {
     assert_eq!(arity_of("a()"), 0);
     assert_eq!(arity_of("a(x: i64) -> bool"), 1);
     assert_eq!(arity_of("a(x: i64, y: &str, z: f64) -> (f64, f64)"), 3);
-    assert_eq!(arity_of("hud_text(x: f64, y: f64, scale: f64, text: &str, r: i64, g: i64, b: i64)"), 7);
+    assert_eq!(arity_of("hud_frac_text(x: f64, y: f64, scale: f64, text: &str, r: i64, g: i64, b: i64)"), 7);
     for (sig, _) in all_functions() {
         // The tuple in a return type must not be counted as parameters.
         let params = sig.split(')').next().unwrap();

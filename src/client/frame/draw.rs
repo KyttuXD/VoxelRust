@@ -155,6 +155,7 @@ impl App {
                 crate::client::mods::progress::draw(r, w, h, s, done, total, !g.playable);
             }
         }
+        self.mod_screens();
         let before = self.screen;
         let mut focus = self.focus;
         let mut selected = self.text_selected;
@@ -179,6 +180,7 @@ impl App {
                 Screen::Picker => self.screen_picker(&mut ui),
                 Screen::Emote => self.screen_emote(&mut ui),
                 Screen::SkinUrl => self.screen_skin_url(&mut ui),
+                Screen::ModUi => self.screen_mod_ui(&mut ui),
             }
             clicked = ui.clicked_any;
         }

@@ -99,6 +99,8 @@ enum Screen {
     Emote,
     /// Typing a web address to fetch a skin picture from (see `client::skinweb`).
     SkinUrl,
+    /// A screen a mod opened (see `client::modui`).
+    ModUi,
 }
 
 /// Which build this is: the name its download carries. An update must
@@ -378,6 +380,10 @@ impl App {
                     }
                 }
             }
+        }
+        // Leaving a mod's screen: its mod hears that it closed.
+        if self.screen == Screen::ModUi && screen != Screen::ModUi {
+            crate::client::modui::dispatch::closed_by_player();
         }
         // Whatever lies in the crafting grid goes back in too.
         if self.screen != screen {

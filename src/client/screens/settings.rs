@@ -83,25 +83,16 @@ impl App {
                     }
                 }
                 2 if self.video_detail == 1 => {
-                    let half = (bw - 4.0 * s) * 0.5;
-                    if ui.button(x, row(0), bw, bh, "< BACK TO CONTROLS") {
+                    // The game's keys, then each mod's under its name; it scrolls.
+                    let back = bw * 0.62;
+                    if ui.button(x, row(0), back, bh, "< BACK TO CONTROLS") {
                         self.video_detail = 0;
                     }
-                    for (i, a) in ACTIONS.iter().enumerate() {
-                        // Two columns of key bindings.
-                        let (cx, cy) = (x + (i % 2) as f32 * (half + 4.0 * s), row(1 + i / 2));
-                        let label = if self.rebinding == Some(i) {
-                            String::from("PRESS A KEY")
-                        } else {
-                            alloc::format!("{}: {}", a.2, key_name(st.keys[i]))
-                        };
-                        if ui.button(cx, cy, half, bh, &label) {
-                            self.rebinding = Some(i);
-                        }
+                    if ui.button(x + back + 4.0 * s, row(0), bw - back - 4.0 * s, bh, "RESET KEYS") {
+                        crate::client::modui::bind_page::reset(st);
                     }
-                    if ui.button(x, row(10), bw, bh, "RESET KEYS") {
-                        st.keys = Settings::default().keys;
-                    }
+                    let room = crate::client::modui::bind_page::Room { x, y: row(1), w: bw, bh, step, lines: 9 };
+                    crate::client::modui::bind_page::draw(ui, st, &mut self.rebinding, key_name, room);
                 }
                 2 => {
                     let half = (bw - 4.0 * s) * 0.5;
@@ -222,6 +213,9 @@ impl App {
                             changed |= touched;
                         }
                     }
+                    // ...and the switches the mods declared, in what room is left.
+                    let room = ((row(10) - at) / step + 0.01) as usize;
+                    changed |= crate::client::modui::switch_page::draw(ui, st, x, at, bw, bh, step, room);
                 }
                 _ => {
                     ui.text(x, row(0) + 4.0 * s, "PLAYER NAME", ui::DIM);
@@ -265,6 +259,27 @@ impl App {
         }
         if ui.button(x, row(10) + 4.0 * s, bw, bh, "DONE") {
             self.leave_settings();
+        }
+    }
+
+    /// Once a frame: what the player did on a mod's screen goes to the mod, and
+    /// a screen a mod opened (or closed) is switched to (or away from).
+    pub(super) fn mod_screens(&mut self) {
+        let Some(g) = self.session.as_mut() else { return };
+        crate::client::modui::dispatch::ui_events(g);
+        let open = crate::client::modui::dispatch::is_open();
+        if matches!(self.screen, Screen::Game | Screen::ModUi) && crate::client::modui::dispatch::take_opened() && open {
+            self.set_screen(Screen::ModUi);
+        } else if self.screen == Screen::ModUi && !open {
+            self.set_screen(Screen::Game);
+        }
+    }
+
+    /// A mod's own screen (see `client::modui::screen_draw`).
+    pub(super) fn screen_mod_ui(&mut self, ui: &mut Ui) {
+        let closed = crate::client::modui::with_ui(|u| crate::client::modui::screen_draw::draw(ui, &mut u.screens)).unwrap_or(false);
+        if closed {
+            self.set_screen(Screen::Game);
         }
     }
 

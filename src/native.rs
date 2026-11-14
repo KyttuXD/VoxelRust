@@ -12,6 +12,9 @@
 //! switching the mod off in Settings > MODS switches its code off too.
 
 use crate::audio::Audio;
+use crate::client::modui::binds::{KeyDecl, SwitchDecl};
+use crate::client::modui::screens::UiEvent;
+use crate::client::modui::ModApi;
 use crate::explosion::ExplosionInfo;
 use crate::block::Block;
 use crate::game::hooks::HudSink;
@@ -219,6 +222,21 @@ pub struct Native {
     /// Rows for Settings > GAME; returns (rows used, whether anything changed).
     pub settings: Option<fn(ui: &mut Ui, st: &mut Settings, x: f32, y: f32, w: f32, h: f32, step: f32) -> (f32, bool)>,
 
+    // ---- controls, HUD and screens (see client/modui and "Controls, HUD and screens" in docs/MODDING.md)
+    /// Key bindings this code listens to: they are listed in Settings >
+    /// Controls > Key bindings under the mod's name and can be rebound.
+    pub bindings: &'static [KeyDecl],
+    /// Rows this code adds to Settings > Game > Mod switches and reload
+    /// (kept as `flag_<mod>.<id>`; read with `modui::keys::switch_on`).
+    pub switches: &'static [SwitchDecl],
+    /// A key binding of this code went down or up (`down`), while playing.
+    pub on_key: Option<fn(g: &mut Session, id: &str, down: bool)>,
+    /// Once a frame while playing: draw on the HUD through the checked API
+    /// (`api.hud_text(...)`, `api.hud_set(...)`, `api.toast(...)`...).
+    pub on_hud: Option<fn(g: &Session, api: &mut ModApi)>,
+    /// The player used a screen this code opened (`api.ui_open(...)`).
+    pub on_ui: Option<fn(g: &mut Session, api: &mut ModApi, event: &UiEvent)>,
+
     // ---- a server
     /// A line a client sent that the server does not know: the bytes to
     /// answer with.
@@ -281,6 +299,11 @@ impl Native {
         map_open: None,
         map_screen: None,
         settings: None,
+        bindings: &[],
+        switches: &[],
+        on_key: None,
+        on_hud: None,
+        on_ui: None,
         serve: None,
     };
 }

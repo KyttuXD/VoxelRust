@@ -5,6 +5,7 @@ use super::*;
 
 impl App {
     pub(super) fn draw_hud(&mut self, r: &mut Renderer, w: f32, h: f32, s: f32) {
+        crate::client::modui::dispatch::set_fps(self.fps);
         let g = match &self.session {
             Some(g) => g,
             None => return,
@@ -73,6 +74,8 @@ impl App {
                 }
             }
         }
+        // What mods put on the HUD (their drawing commands, lines in the slots, toasts).
+        crate::client::modui::hud_draw::draw(r, w, h, s, &crate::client::modui::hud::Geometry { hotbar_x: x0, hotbar_y: y0, survival });
         // Active effects, with their icons and the time left, top right (under the minimap).
         if matches!(self.screen, Screen::Game | Screen::Chat) && !g.fx.list.is_empty() {
             let under_map = if self.settings.minimap && self.minimap.tex != 0 { 70.0 * s } else { 0.0 };

@@ -7,7 +7,7 @@ impl App {
     pub(super) fn key_down(&mut self, r: &Renderer, inp: &mut UiInput, sc: i32, repeat: bool) {
         if let Some(i) = self.rebinding.take() {
             if sc != key::ESCAPE {
-                self.settings.keys[i] = sc;
+                crate::client::modui::bind_page::rebind(&mut self.settings, i, sc);
             }
             return;
         }
@@ -38,6 +38,11 @@ impl App {
             _ => {}
         }
         let typing = self.focus != 0;
+        if self.screen == Screen::Game && !typing {
+            if let Some(g) = self.session.as_mut() {
+                crate::client::modui::keys::press(g, &self.settings, sc, true);
+            }
+        }
         let (k_inv, k_fly, k_map) = (self.settings.key(Action::Inventory), self.settings.key(Action::Fly), self.settings.key(Action::Map));
         let k_waypoints = self.settings.key(Action::Waypoints);
         let k_chat = self.settings.key(Action::Chat);
@@ -108,6 +113,7 @@ impl App {
             Screen::Join if sc == key::ESCAPE && !typing => self.set_screen(Screen::Title),
             Screen::EditWorld if sc == key::ESCAPE && !typing => self.set_screen(Screen::Worlds),
             Screen::SkinUrl if sc == key::ESCAPE => self.set_screen(Screen::Settings),
+            Screen::ModUi if sc == key::ESCAPE && !typing => self.set_screen(Screen::Game),
             Screen::Picker if sc == key::ESCAPE => {
                 self.close_picker(None);
             }
@@ -138,6 +144,9 @@ impl App {
                             self.set_screen(Screen::Pause);
                         }
                         self.keys = [false; 512];
+                        if let Some(g) = self.session.as_mut() {
+                            crate::client::modui::keys::release_all(g);
+                        }
                         self.unfocused = true;
                     }
                     sdl::WINEV_FOCUS_GAINED => self.unfocused = false,
@@ -156,6 +165,9 @@ impl App {
                     let sc = ev.i32_at(16);
                     if (0..512).contains(&sc) {
                         self.keys[sc as usize] = false;
+                        if let Some(g) = self.session.as_mut() {
+                            crate::client::modui::keys::press(g, &self.settings, sc, false);
+                        }
                     }
                 }
                 sdl::EV_DROPFILE => {
