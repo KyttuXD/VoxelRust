@@ -353,6 +353,62 @@ pub fn explode(g: &mut Session, info: &mut ExplosionInfo) -> bool {
     go
 }
 
+/// Whether any working script defines `explode_block` (so a blast need not
+/// ask when none does). False when the script host is busy.
+pub fn wants_block_calls() -> bool {
+    live() && with_host(|h| h.any_defines("explode_block")).unwrap_or(false)
+}
+
+/// An explosion is about to happen: `before_explode(x, y, z, radius, cause)`.
+/// A script cancels it by returning `false` or by `set_explosion_radius(0)`,
+/// and changes it with `set_explosion_radius(r)`. Returns the radius to go
+/// ahead with, or `None` when it is cancelled.
+pub fn before_explode(g: &mut Session, at: [f64; 3], radius: f32, cause: &str) -> Option<f32> {
+    if !live() {
+        return Some(radius);
+    }
+    let args = alloc::vec![Value::Float(at[0]), Value::Float(at[1]), Value::Float(at[2]), Value::Float(clean_f32(radius)), Value::str(cause)];
+    crate::explosion_hooks::state(g).pending = Some(radius);
+    let mut go = true;
+    run(g, "before_explode", args, |r| {
+        if is_no(r) {
+            go = false;
+        }
+        !go
+    });
+    let set = crate::explosion_hooks::state(g).pending.take().unwrap_or(radius);
+    if go && set > 0.0 {
+        Some(crate::explosion_hooks::clamp_radius(set))
+    } else {
+        None
+    }
+}
+
+/// A block is about to be destroyed by an explosion; `false` spares it.
+pub fn explode_block(g: &mut Session, cell: [i32; 3], b: Block) -> bool {
+    if !live() {
+        return true;
+    }
+    let args = alloc::vec![Value::Int(cell[0] as i64), Value::Int(cell[1] as i64), Value::Int(cell[2] as i64), Value::string(block::def(b).id.clone())];
+    let mut allow = true;
+    run(g, "explode_block", args, |r| {
+        if is_no(r) {
+            allow = false;
+        }
+        !allow
+    });
+    allow
+}
+
+/// An explosion is over: `after_explode(x, y, z, radius, destroyed, cause)`.
+pub fn after_explode(g: &mut Session, at: [f64; 3], radius: f32, destroyed: usize, cause: &str) {
+    if !live() {
+        return;
+    }
+    let args = alloc::vec![Value::Float(at[0]), Value::Float(at[1]), Value::Float(at[2]), Value::Float(clean_f32(radius)), Value::Int(destroyed as i64), Value::str(cause)];
+    run(g, "after_explode", args, |_| false);
+}
+
 /// Once a frame, right after the mods' native code has moved things and
 /// before the player moves: what the player presses is handed over, last
 /// frame's pictures are dropped, and `on_update` runs.

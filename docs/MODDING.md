@@ -421,20 +421,34 @@ when explode creeper do /title SSSSS...BOOM
 when blockexploded diamond_ore do /give ruby 1
 ```
 
-Mod code has three hooks for explosions (see
-[Code that mods bring](#code-that-mods-bring)):
+Mod code has hooks for explosions (see
+[Code that mods bring](#code-that-mods-bring)). They apply to every blast
+the game makes (TNT and lit blocks, a creature that blows up, `/blast`, a
+script's or another mod's `explode`), whatever its radius:
 
 | Hook | Called | May |
 | --- | --- | --- |
-| `before_explode(g, &mut ExplosionInfo) -> bool` | before an explosion breaks anything | change `at` and `power`, or return false to cancel it |
-| `after_explode(g, &ExplosionInfo, destroyed)` | when it is over; `destroyed` is how many blocks went | |
+| `before_explode(g, x, y, z, radius, cause) -> Option<f32>` | before an explosion breaks anything; `radius` is 0 to 16 blocks, `cause` is `tnt`, `creature`, `script`, `player` (the `/blast` command), `fire` or `other` | return `Some(r)` to go ahead with radius `r` (held to 0..16; 0 cancels), or `None` to cancel it |
+| `immune_blocks: &'static [&'static str]` | a list, not a call: block ids no blast destroys, any radius or cause; the engine skips them with a bit test | |
+| `explode_block(g, cell, block) -> bool` | for each block a blast would destroy that is not immune (the first 20 000 of a blast; later blocks are decided by the immune lists alone) | return false to spare the block |
+| `after_explode(g, &ExplosionInfo, destroyed)` | when it is over; `destroyed` is how many blocks went (immune and spared ones do not count) | |
 | `on_prime(g, cell) -> bool` | before a block of TNT is lit | return false to keep it from being lit |
 
 `ExplosionInfo` is `{ at: [f64; 3], power: f32, source: ExplosionSource }`
-and `ExplosionSource` is `Tnt`, `Creature(entity index)`, `Command` or
-`Mod(number)`. Mod code can set off its own explosion with
+(`power` is the radius over two) and `ExplosionSource` is `Tnt`,
+`Creature(entity index)`, `Command` or `Mod(number)`; `source.cause()` is the
+text `before_explode` gets. Mod code can set off its own explosion with
 `crate::explosion::explode(g, at, power, ExplosionSource::Mod(n))`; the power
 is at most 8.
+
+The scripts' `before_explode`, `explode_block` and `after_explode` run after
+the native ones (and `on_explode` between them; see SCRIPTING.md,
+"Explosions"). An explosion set off from inside a hook nests: from the third
+level on no hook is called and only the immune lists apply. TNT next to TNT is
+no nesting: each block that goes off calls `before_explode` on its own. The
+immune lists of scripts and native code are united, and a mod that clears
+blocks by itself for a big blast should leave the same ones standing with
+`crate::explosion_hooks::is_immune(g, block)` (plus `explosion::resists`).
 
 ### Episodes
 
@@ -1079,7 +1093,7 @@ also passed to the mod's `on_event` hook.
 | (each frame) | a frame of play | | `on_hud`: draw through the checked API | `fn(&Session, &mut ModApi)` |
 | (a mod's screen) | the player used a screen the mod opened | | `on_ui` | `fn(&mut Session, &mut ModApi, &UiEvent)` |
 | `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
-| `explode`, `blockexploded`, `tntprimed` | an explosion happens, breaks blocks, or TNT is lit | see [Explosions](#explosions) | `before_explode`: `false` cancels; `after_explode` and `on_prime` after | `fn(&mut Session, &mut ExplosionInfo) -> bool` |
+| `explode`, `blockexploded`, `tntprimed` | an explosion happens, breaks blocks, or TNT is lit | see [Explosions](#explosions) | `before_explode`: `None` cancels, `Some(radius)` goes ahead; `explode_block`, `after_explode` and `on_prime` | `fn(&mut Session, f64, f64, f64, f32, &str) -> Option<f32>` |
 | `effectstart`, `effectend`, `wake` | a status effect starts or ends on the player; the player wakes | effect id | `effect_apply`: `false` refuses it; `effect_tick` every frame per running effect; `effect_start`, `effect_end` when it starts and ends (scripts: `on_effect_start`, `on_effect_tick`, `on_effect_end`) | `fn(&mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool` |
 
 Older hooks (`update`, `interact`, `killed`, `hit`, `hurt`, `open`, `save` and so

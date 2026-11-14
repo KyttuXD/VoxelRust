@@ -53,7 +53,7 @@ def host_functions():
 def hooks():
     """The hooks a script may define."""
     text = open(os.path.join(ROOT, "src/script/mod.rs"), encoding="utf-8").read()
-    return re.findall(r'HookDoc \{ name: "(on_[a-z_]+)"', text)
+    return re.findall(r'HookDoc \{ name: "(on_[a-z_]+|before_explode|explode_block|after_explode)"', text)
 
 
 # What a mod can need, how to see it in compiled code, and which host calls / hooks give it to a script.
@@ -67,7 +67,7 @@ CAPS = [
     ("clicks", r"interact:\s*Some|on_item_use|on_creature_interact", ["on_interact", "on_item_use", "on_creature_interact"]),
     ("block hooks", r"on_block_(place|break|placed)", ["on_block_place", "on_block_break", "on_block_placed"]),
     ("damage hooks", r"\bhurt:\s*Some|killed:\s*Some|\bhit:\s*Some|on_entity_death|on_player_hurt|on_creature_(death|removed|sunburn)", ["on_player_hurt", "on_entity_death", "on_creature_death", "on_creature_removed", "on_creature_sunburn"]),
-    ("explosions", r"before_explode|after_explode|explosion::explode", ["on_explode", "explode"]),
+    ("explosions", r"before_explode|after_explode|explosion::explode", ["on_explode", "before_explode", "explode_block", "after_explode", "set_explosion_radius", "set_immune_blocks", "explode"]),
     ("conditions", r"condition:\s*Some", ["on_condition"]),
     ("HUD", r"on_draw_hud", ["hud_frac_rect", "hud_frac_text"]),
     ("world drawing", r"draw:\s*Some|draw_model|draw_sparks|draw_quads", ["draw_model", "draw_speck"]),

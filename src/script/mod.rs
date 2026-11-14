@@ -60,6 +60,8 @@ mod tests_qol;
 mod tests_audit;
 #[cfg(test)]
 mod tests_world_hooks;
+#[cfg(test)]
+mod tests_explosions;
 
 use crate::script::ast::{Name, Program};
 use crate::script::error::ScriptError;
@@ -111,6 +113,9 @@ pub const HOOKS: &[HookDoc] = &[
     HookDoc { name: "on_effect_end", params: &["id"], what: "a status effect ran out, was put out or was taken away" },
     HookDoc { name: "on_armor_change", params: &["slot"], what: "a worn armour piece was put on, taken off, set by a script or broke (slot 0 head, 1 chest, 2 legs, 3 feet)" },
     HookDoc { name: "on_explode",params: &["x", "y", "z", "power", "source"], what: "an explosion is about to happen; return false to cancel or a number to change its power" },
+    HookDoc { name: "before_explode", params: &["x", "y", "z", "radius", "cause"], what: "an explosion is about to happen (radius 0 to 16; cause `tnt`, `creature`, `script`, `player`, `fire` or `other`); return false to cancel it, or call `set_explosion_radius(r)` to change it" },
+    HookDoc { name: "explode_block", params: &["x", "y", "z", "block"], what: "an explosion is about to destroy a block (asked for the first 20000 blocks of a blast); return false to spare it" },
+    HookDoc { name: "after_explode", params: &["x", "y", "z", "radius", "destroyed", "cause"], what: "an explosion is over; `destroyed` is how many blocks it took" },
     HookDoc { name: "on_update", params: &["dt"], what: "once a frame, before the player moves: the place to move things, carry the player (`hold_player`) and ask for pictures (`draw_model`, `hud_frac_rect`)" },
     HookDoc { name: "on_interact", params: &["reach"], what: "the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is); return true if the click was used up" },
     HookDoc { name: "on_condition", params: &["name", "args"], what: "an `/if` condition the game does not know (`/if name args`); return true or false if it is yours, nothing if it is not" },
@@ -548,6 +553,11 @@ impl ScriptHost {
             }
         }
         self.finish_errors(errors);
+    }
+
+    /// Whether any working script defines the function `hook`.
+    pub fn any_defines(&self, hook: &str) -> bool {
+        self.mods.iter().any(|m| m.scripts.iter().any(|s| s.has_hook(hook)))
     }
 
     /// Write the state of every mod that changed it.
