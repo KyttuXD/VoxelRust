@@ -1010,21 +1010,36 @@ impl Renderer {
             let tile = 64.0 * 8.0; // one texture repeat, in blocks
             let frac = |v: f64| (v / tile as f64 - math::floord(v / tile as f64) as f64) as f32;
             let (u0, v0) = (frac(cam.pos[0] + env.clock as f64 * 1.5), frac(cam.pos[2]));
-            let half = (far * 1.3).max(160.0);
+            // The layer reaches out to the horizon, far past the view distance, and
+            // fades into the horizon's colour: clouds do not stop at the clear view.
+            let half = (far * 4.0).max(1800.0);
             let shade = (150.0 + 105.0 * day) as u8;
             let col = [shade, shade, shade, 230];
+            let aspect = self.w as f32 / self.h.max(1) as f32;
+            Self::load_matrices(&math::perspective(cam.fov, aspect, 2.0, half * 1.7), &view);
             unsafe {
                 (g.DepthMask)(0);
-                (g.Fogf)(gl::FOG_START, half * 0.5);
-                (g.Fogf)(gl::FOG_END, half * 1.0);
+                (g.Fogf)(gl::FOG_START, (far * 1.1).max(120.0));
+                (g.Fogf)(gl::FOG_END, half * 0.95);
             }
             self.set_tex(self.clouds, gl::QUADS);
-            let n = 8;
-            let step = half * 2.0 / n as f32;
-            for i in 0..n {
-                for j in 0..n {
-                    let (x0, z0) = (-half + i as f32 * step, -half + j as f32 * step);
-                    let (x1, z1) = (x0 + step, z0 + step);
+            // Fine squares near you, coarse ones far off: few quads either way.
+            let mut edges: Vec<f32> = Vec::new();
+            let mut x = 0.0f32;
+            let mut step = 120.0f32;
+            while x < half {
+                edges.push(x);
+                x += step;
+                if x > 480.0 {
+                    step = 360.0;
+                }
+            }
+            edges.push(half);
+            let mut cuts: Vec<f32> = edges.iter().rev().map(|e| -e).collect();
+            cuts.extend(edges.iter().skip(1));
+            for i in 0..cuts.len() - 1 {
+                for j in 0..cuts.len() - 1 {
+                    let (x0, z0, x1, z1) = (cuts[i], cuts[j], cuts[i + 1], cuts[j + 1]);
                     let uv = |x: f32, z: f32| [u0 + x / tile, v0 + z / tile];
                     self.quad([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], [uv(x0, z0), uv(x1, z0), uv(x1, z1), uv(x0, z1)], col);
                 }
