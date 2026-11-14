@@ -78,8 +78,24 @@ pub(super) fn server_loop(mut server: crate::server::Server, edits_path: String,
     use core::sync::atomic::Ordering;
     let mut last = sys::now();
     let mut save_timer = 0.0f32;
-    while !HOST_STOP.load(Ordering::Relaxed) && !update_ready_and_empty(&server) {
+    // A dedicated server warns its players and restarts into an installed
+    // update after 30 seconds (see `server_update::restart`); a game hosted
+    // from the menu only does so once nobody is connected.
+    let mut plan = crate::client::server_update::restart::RestartPlan::default();
+    let mut restart_now = false;
+    while !HOST_STOP.load(Ordering::Relaxed) && !restart_now && !(quiet && update_ready_and_empty(&server)) {
         let now = sys::now();
+        if !quiet {
+            use crate::client::server_update::restart::Step;
+            match plan.step(crate::update::state() == crate::update::UPDATED, server.players(), now) {
+                Step::Say(text) => {
+                    logf!("voxelrust: {}", text);
+                    server.announce(text);
+                }
+                Step::Go => restart_now = true,
+                Step::Wait => {}
+            }
+        }
         let dt = ((now - last) as f32).clamp(0.0, 1.0);
         last = now;
         let lines = server.tick(dt, &mut |line| {
@@ -118,7 +134,7 @@ pub(super) fn server_loop(mut server: crate::server::Server, edits_path: String,
     if server.dirty {
         sys::write_file_atomic(&edits_path, server.save_text().as_bytes());
     }
-    update_ready_and_empty(&server)
+    !HOST_STOP.load(Ordering::Relaxed) && (restart_now || update_ready_and_empty(&server))
 }
 
 /// An update is installed and no player is connected: time to restart.
@@ -144,22 +160,38 @@ pub(super) fn run_server(opts: &Opts, base: &str, pack_text: &[u8], pack_paths: 
     #[allow(unused_variables)] // the web build never restarts
     let restart_exe = sys::exe_path();
     #[cfg(not(target_arch = "wasm32"))]
-    let _ = crate::update::consume_restart_marker(base);
+    if crate::update::consume_restart_marker(base) {
+        // A server restarts again for the next update (a game does not).
+        crate::update::allow_restart_again();
+    }
+    // Under `scripts/server-supervisor.sh` the environment names the folder it
+    // keeps its notes in; the server then leaves with exit code 75 for an
+    // update and the script starts it again (and rolls back a bad update).
+    let supervisor = sys::env("VOXELRUST_SUPERVISED").filter(|d| !d.is_empty()).map(|d| if d.ends_with('/') { d } else { alloc::format!("{}/", d) });
     if !opts.no_update {
-        let (scratch, install) = (String::from(base), true);
-        // The mirror: `--update-mirror`, or the one in the data folder's settings.txt.
-        let mirror = opts.update_mirror.clone().unwrap_or_else(|| {
-            sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| Settings::parse(&String::from_utf8_lossy(&b)).update_mirror).unwrap_or_default()
-        });
-        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::watch(BUILD, &scratch, install, &mirror)));
+        let scratch = String::from(base);
+        // The mirror and the check interval: `--update-mirror`, or settings.txt in the data folder
+        // (`update_mirror`, `update_check_seconds`: 30 to 600, default 90).
+        let server_settings = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| Settings::parse(&String::from_utf8_lossy(&b))).unwrap_or_default();
+        let mirror = opts.update_mirror.clone().unwrap_or_else(|| server_settings.update_mirror.clone());
+        let interval = crate::client::server_update::schedule::clamp_interval(server_settings.extra("update_check_seconds"));
+        let state_dir = supervisor.clone().unwrap_or_default();
+        logf!("voxelrust: checking for a new release every {} seconds", interval);
+        sys::thread::spawn(alloc::boxed::Box::new(move || crate::client::server_update::watch::watch(BUILD, &scratch, &mirror, interval, &state_dir)));
     }
     let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, crate::client::mods::serving::served(pack_paths, mods_off, only.as_deref()), &Settings::default())?;
     let address = sys::net::local_address().unwrap_or_else(|| String::from("<this machine's address>"));
     logf!("voxelrust: players join with:  voxelrust --join {}:{}", address, server.port());
     if server_loop(server, edits_path, false) {
         logf!("voxelrust: restarting into the new version");
-        #[cfg(not(target_arch = "wasm32"))]
-        crate::update::restart(&restart_exe, base);
+        if let Some(dir) = &supervisor {
+            // Note which release this was, for a rollback, and ask the script to start it again.
+            sys::write_file(&alloc::format!("{}installed-seq", dir), alloc::format!("{}\n", crate::update::installed_seq()).as_bytes());
+            crate::client::server_update::restart::set_exit_code(crate::client::server_update::schedule::RESTART_EXIT_CODE);
+        } else {
+            #[cfg(not(target_arch = "wasm32"))]
+            crate::update::restart(&restart_exe, base);
+        }
     }
     Ok(())
 }

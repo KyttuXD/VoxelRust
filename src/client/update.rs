@@ -259,7 +259,7 @@ pub fn mirror_url(text: &str) -> Option<String> {
 
 /// Where to look, in order: the mirror, if there is one, then the project's
 /// release (not for a build that cannot make secure connections).
-fn sources(build: &str, mirror: &str) -> Vec<String> {
+pub(crate) fn sources(build: &str, mirror: &str) -> Vec<String> {
     let mut list = Vec::new();
     if let Some(m) = mirror_url(mirror) {
         list.push(m);
@@ -274,7 +274,7 @@ fn sources(build: &str, mirror: &str) -> Vec<String> {
 /// if the signature is right.
 /// Err(true) when a list was there but its signature is wrong, Err(false)
 /// when the files could not be read at all.
-fn fetch_signed_list(base: &str, folder: &str) -> Result<String, bool> {
+pub(crate) fn fetch_signed_list(base: &str, folder: &str) -> Result<String, bool> {
     let list_path = alloc::format!("{}nightly.txt", folder);
     let sig_path = alloc::format!("{}nightly.txt.sig", folder);
     sys::remove_file(&sig_path);
@@ -351,8 +351,10 @@ pub fn run(build: &str, folder: &str, install: bool, mirror: &str) {
     run_inner(build, folder, install, mirror);
 }
 
-/// For a program that stays up for days (a server): look again every ten
-/// minutes until a newer version is installed. Call it from a thread of its own.
+/// For a program that stays up for days: look again every ten minutes until a
+/// newer version is installed. (The dedicated server uses
+/// `server_update::watch` instead: faster, with back-off.) Call it from a
+/// thread of its own.
 pub fn watch(build: &str, folder: &str, install: bool, mirror: &str) {
     if sources(build, mirror).is_empty() {
         return;
@@ -367,6 +369,25 @@ pub fn watch(build: &str, folder: &str, install: bool, mirror: &str) {
             sys::sleep_real_ms(1000);
         }
     }
+}
+
+/// One look at the release and, if `install` and it is newer, the install
+/// (the same as one round of [`watch`]): for the server's own polling thread
+/// (`server_update::watch`). Blocks while it downloads.
+pub fn check_and_install(build: &str, folder: &str, install: bool, mirror: &str) {
+    run_inner(build, folder, install, mirror);
+}
+
+/// The release number of the program this run installed (0 if none).
+pub fn installed_seq() -> u32 {
+    INSTALLED_SEQ.load(Ordering::Acquire)
+}
+
+/// A server started by an update must be able to restart for the next one
+/// (the game must not, so that a bad update cannot loop; a server's updates
+/// only ever go to a larger release number, which cannot loop either).
+pub fn allow_restart_again() {
+    RESTART_CHILD.store(false, Ordering::Release);
 }
 
 /// Where the updater keeps what it fetches and notes: `tmp/update/` in the

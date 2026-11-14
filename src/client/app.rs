@@ -1557,7 +1557,7 @@ pub fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     }
     sys::heap::tune();
     match run(args) {
-        Ok(()) => 0,
+        Ok(()) => crate::client::server_update::restart::exit_code(),
         Err(msg) => {
             logf!("voxelrust: {}", msg);
             if sdl::loaded() {

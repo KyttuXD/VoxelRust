@@ -52,15 +52,21 @@ voxelrust --server --world myworld
 | `--data DIR` | where the server keeps its files |
 | `--log FILE` | also write the server's output to a file |
 | `--no-update` | do not keep the server up to date (see below) |
+| `update_check_seconds=N` (in `settings.txt` in `--data`) | how often the server looks for a new release: 90 by default, kept between 30 and 600 |
 | `--update-mirror URL` | fetch updates from this web folder over plain HTTP, tried before the release (or `update_mirror=URL` in `settings.txt` in `--data`) |
 
 The server prints who joins and leaves, chat, and relay requests. Stop it
 with Ctrl+C.
 
 A server keeps itself up to date with the same updater as the game (see
-[BUILDING.md](BUILDING.md#how-the-game-updates-itself)): every ten minutes it
-looks at the nightly release, and installs a newer program and restarts into
-it once nobody is connected. What it reads is signed: the list of programs
+[BUILDING.md](BUILDING.md#how-the-game-updates-itself)): every
+`update_check_seconds` (a setting in `settings.txt` in `--data`: default 90,
+30 to 600) it looks at the signed release list, and installs a newer program.
+It then warns the players in chat (RESTARTING FOR AN UPDATE IN 30 SECONDS),
+saves, and restarts into it (at once if nobody is connected); `run.sh` of the
+server package puts the old program back if the new one stops within 20
+seconds. How it is set up, and how releases are published, is in
+[DEPLOY.md](DEPLOY.md). What it reads is signed: the list of programs
 (`nightly.txt`) must carry a valid `nightly.txt.sig` made with the project's
 key, and each program must match its listed SHA-256, or nothing is installed
 (the server logs `update: the release list's signature is not valid`). A

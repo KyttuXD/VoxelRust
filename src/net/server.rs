@@ -363,6 +363,11 @@ impl Server {
         alloc::format!("{} is now in {} mode", name, mode)
     }
 
+    /// Say something to every player, as the server (a chat line from nobody).
+    pub fn announce(&mut self, text: &str) {
+        self.broadcast(&Msg::Chat { id: 0, text: String::from(text) }, u16::MAX);
+    }
+
     fn broadcast(&mut self, msg: &Msg, except: u16) {
         let bytes = msg.encode();
         for c in self.conns.iter_mut().filter(|c| c.joined && !c.gone && c.id != except) {
