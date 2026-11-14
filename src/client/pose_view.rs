@@ -42,8 +42,8 @@ pub fn local(g: &crate::session::Session) -> Drawn {
     let (phase, stride) = match g.posing.kind() {
         Kind::Swim => (g.posing.stroke, (speed / 2.4).min(1.0)),
         Kind::Climb => (g.posing.stroke, (sqrtf(v[1] * v[1]) / 3.0).min(1.0)),
-        Kind::Crouch => (g.clock * 9.0, if g.player.on_ground { (speed / 1.9).min(1.0) } else { 0.2 }),
-        _ => (g.clock * 9.0, if g.player.on_ground { (speed / 4.4).min(1.0) } else { 0.2 }),
+        Kind::Crouch => (g.posing.gait, if g.player.on_ground { (speed / 1.3).min(1.0) } else { 0.2 }),
+        _ => (g.posing.gait, if g.player.on_ground { (speed / 4.0).min(1.0) } else { 0.2 }),
     };
     // Looking up raises the head (positive turn); a sleeper stares at the ceiling whatever the mouse does.
     let head = if body.weight(Kind::Sleep) > 0.5 { 0.0 } else { g.player.pitch * 180.0 / PI };

@@ -25,6 +25,9 @@ pub struct Posing {
     pub carrying: bool,
     /// The stroke of swimming and climbing, which only runs while moving.
     pub stroke: f32,
+    /// The walking cycle: advances with the distance covered, so the feet
+    /// keep up with the ground whatever the speed.
+    pub gait: f32,
     health: i32,
     /// For scripted screenshots (`--show pose:NAME`, `--show emote:ID@SECONDS`): a posture
     /// held whatever the player does, and an emote kept at the time it was started at.
@@ -78,6 +81,11 @@ impl Posing {
         self.stroke += rate * i.dt;
         if self.stroke > 1000.0 {
             self.stroke -= 1000.0;
+        }
+        // About two radians of leg swing per block walked; a little drift in the air.
+        self.gait += (if i.on_ground { speed * 2.1 } else { 1.0 }) * i.dt;
+        if self.gait > 1000.0 {
+            self.gait -= 1000.0;
         }
         if !i.sleeping {
             self.lying = None;

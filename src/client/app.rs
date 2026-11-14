@@ -1376,7 +1376,7 @@ impl App {
             if self.settings.view_bobbing && g.player.on_ground && !g.player.flying && lying.is_none() {
                 let speed = g.player.vel[0] * g.player.vel[0] + g.player.vel[2] * g.player.vel[2];
                 if speed > 1.0 {
-                    eye[1] += (sinf(g.clock * 11.0) * 0.035) as f64;
+                    eye[1] += (sinf(g.posing.gait * 1.1) * 0.035) as f64;
                 }
             }
             if g.shake > 0.0 {
@@ -3273,7 +3273,7 @@ fn hand_view_of(g: &session::Session, held: crate::client::hand::Held, speed: f3
     let swing = if matches!(held, Held::Bow(_)) || eat > 0.0 { 0.0 } else { swing };
     crate::client::hand::View {
         swing,
-        bob: crate::client::hand::walk_bob(g.clock, speed, g.player.on_ground),
+        bob: crate::client::hand::walk_bob(g.posing.gait / 9.0, speed, g.player.on_ground),
         draw,
         eat,
         drink: index.map_or(false, |i| crate::game::eating::is_drink(&reg().items[i].id)),

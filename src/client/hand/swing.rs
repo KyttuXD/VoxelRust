@@ -121,7 +121,7 @@ pub fn draw_motion(draw: f32) -> Motion {
 /// game's `clock`, the player's speed over the ground, and whether they are
 /// on it. A step lifts the hand and a pair of steps sways it.
 pub fn walk_bob(clock: f32, speed: f32, on_ground: bool) -> [f32; 3] {
-    let k = if on_ground { (speed / 4.4).clamp(0.0, 1.0) } else { 0.0 };
+    let k = if on_ground { (speed / 4.0).clamp(0.0, 1.0) } else { 0.0 };
     let phase = clock * 9.0;
     let breathe = sinf(clock * 1.7) * 0.002;
     [cosf(phase * 0.5) * 0.012 * k, sinf(phase) * 0.014 * k + breathe, sinf(phase * 0.5) * 0.006 * k]
