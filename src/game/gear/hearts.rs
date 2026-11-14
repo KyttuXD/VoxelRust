@@ -31,15 +31,15 @@ pub fn rows(max_health: i32) -> usize {
 /// Every heart of the meter, left to right, bottom row first.
 pub fn layout(health: i32, max_health: i32) -> Vec<Cell> {
     (0..count(max_health))
-        .map(|i| Cell { col: (i % PER_ROW) as u8, row: (i / PER_ROW) as u8, fill: (health - i as i32 * 2).clamp(0, 2) as u8 })
+        .map(|i| Cell { col: (i % PER_ROW) as u8, row: (i / PER_ROW) as u8, fill: health.saturating_sub(i as i32 * 2).clamp(0, 2) as u8 })
         .collect()
 }
 
 /// The yellow hearts for `absorb` points: a single row above the `rows`
 /// rows of health, at most ten hearts. `fill` is 2 or 1 as for health.
 pub fn absorption(absorb: i32, rows: usize) -> Vec<Cell> {
-    let n = (((absorb.max(0) + 1) / 2) as usize).min(PER_ROW);
-    (0..n).map(|i| Cell { col: i as u8, row: rows as u8, fill: (absorb - i as i32 * 2).clamp(0, 2) as u8 }).collect()
+    let n = ((absorb.max(0).saturating_add(1) / 2) as usize).min(PER_ROW);
+    (0..n).map(|i| Cell { col: i as u8, row: rows as u8, fill: absorb.saturating_sub(i as i32 * 2).clamp(0, 2) as u8 }).collect()
 }
 
 #[cfg(test)]
@@ -86,5 +86,13 @@ mod tests {
         assert_eq!((a[0].fill, a[1].fill, a[2].fill), (2, 2, 1));
         assert_eq!(absorption(0, 1).len(), 0);
         assert_eq!(absorption(500, 1).len(), 10);
+    }
+
+    #[test]
+    fn extreme_numbers_from_a_mod_do_not_overflow() {
+        assert_eq!(layout(i32::MIN, 20).iter().filter(|c| c.fill != 0).count(), 0);
+        assert!(layout(i32::MAX, i32::MAX).iter().all(|c| c.fill == 2));
+        assert_eq!(absorption(i32::MAX, 1).len(), 10);
+        assert_eq!(absorption(i32::MIN, 1).len(), 0);
     }
 }

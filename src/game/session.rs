@@ -763,6 +763,12 @@ impl Session {
     /// packs. Returns what to tell the player; `None` if `line` is not a
     /// command this knows.
     pub fn command(&mut self, line: &str) -> Option<String> {
+        // The short game mode forms (`/gm c`) also work from scripts and `--run` lines.
+        let lower = line.to_ascii_lowercase();
+        let spelled = crate::game::aliases::expand(&lower, self.net.is_some());
+        if spelled != lower {
+            return self.run(&spelled, 0);
+        }
         self.run(line, 0)
     }
 
@@ -1837,7 +1843,8 @@ impl Session {
                     let host = self.runs_the_world();
                     match channel {
                         // The server sends back where we were, and how we were.
-                        ch::PLAYER if self.net.is_some() => match key.as_str() {
+                        // (Only the server's word, player number 0.)
+                        ch::PLAYER if self.net.is_some() && from == 0 => match key.as_str() {
                             "health" => self.restore_health(&text),
                             _ => self.go_to_spot(&text),
                         },

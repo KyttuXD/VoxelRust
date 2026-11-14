@@ -25,6 +25,7 @@ pub mod show_bends;
 pub mod emote_wheel;
 pub mod mods;
 pub mod memory;
+pub mod frame_smooth;
 pub mod pacing;
 /// The interface hooks of mods: key bindings, HUD drawing, their own screens.
 pub mod modui;

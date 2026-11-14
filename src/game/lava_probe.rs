@@ -24,7 +24,7 @@ pub fn lava_near(get: &dyn Fn(i32, i32, i32) -> Block, at: [i32; 3]) -> f32 {
         let mut dz = -OUT;
         while dz <= OUT {
             for dy in -3..=1i32 {
-                let b = get(at[0] + dx, at[1] + dy, at[2] + dz);
+                let b = get(at[0].saturating_add(dx), at[1].saturating_add(dy), at[2].saturating_add(dz));
                 if b == AIR {
                     continue;
                 }
@@ -48,6 +48,13 @@ mod tests {
     fn lava_at(cells: &'static [(i32, i32, i32)]) -> impl Fn(i32, i32, i32) -> Block {
         let lava = reg().wk.lava;
         move |x, y, z| if cells.contains(&(x, y, z)) { lava } else { AIR }
+    }
+
+    #[test]
+    fn a_place_at_the_end_of_the_numbers_does_not_overflow() {
+        let none = |_: i32, _: i32, _: i32| AIR;
+        assert_eq!(lava_near(&none, [i32::MAX, i32::MAX, i32::MAX]), 0.0);
+        assert_eq!(lava_near(&none, [i32::MIN, i32::MIN, i32::MIN]), 0.0);
     }
 
     #[test]

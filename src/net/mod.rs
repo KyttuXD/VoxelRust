@@ -15,3 +15,4 @@ pub mod skinqueue;
 pub mod skinwork;
 pub mod sync;
 pub mod pvp;
+pub mod relay_rules;

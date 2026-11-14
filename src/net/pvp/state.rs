@@ -10,6 +10,9 @@ use alloc::string::String;
 /// Seconds after a hit in which, if the victim dies, the one who hit them gets the kill.
 pub const KILL_WINDOW: f64 = 15.0;
 
+/// Most killers whose kills are counted.
+pub const MAX_KILLERS: usize = 4096;
+
 /// What the server keeps for all.
 #[derive(Default)]
 pub struct Pvp {
