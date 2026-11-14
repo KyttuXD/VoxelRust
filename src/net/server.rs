@@ -50,9 +50,18 @@ struct Conn {
     voice_bucket: crate::net_voice::Bucket,
     /// Ticks since anything arrived; idle strangers are dropped.
     quiet: u32,
+    /// Seconds since anything arrived; players who say nothing for two
+    /// minutes (a client sends its position every couple of seconds) are
+    /// dropped, so a dead connection does not stay a player for ever.
+    idle: f32,
+    /// What this connection may still send (see `net::limits`).
+    throttle: crate::net::limits::Throttle,
     gone: bool,
-    /// Mod bundle pieces (encoded messages) waiting to be sent, a few per tick.
-    mod_out: alloc::collections::VecDeque<Vec<u8>>,
+    /// Mod bundles waiting to be sent: (place in the server's list, bytes
+    /// already sent), a few pieces per tick. (Only a place is kept: the
+    /// pieces are cut when sent, so a player asking for every mod does not
+    /// cost the server a second copy of them all.)
+    mod_out: alloc::collections::VecDeque<(usize, usize)>,
     /// This player has already asked for mods.
     mods_asked: bool,
     /// The status effects they last said they have, for telling newcomers.
@@ -72,6 +81,8 @@ pub struct Server {
     pub dirty: bool,
     /// The latest of each piece of kept state, for players who join later.
     kept: BTreeMap<(u8, String), Vec<u8>>,
+    /// Bytes of data in `kept`.
+    kept_bytes: usize,
     /// Names of the operators: players who may use the server's commands.
     /// The first player ever to join becomes one.
     pub ops: Vec<String>,
@@ -91,12 +102,59 @@ pub struct Server {
 
 const SEND_TIMEOUT: u32 = 3000;
 
+/// Most block changes the server keeps (a hostile player may not grow the
+/// list, and the memory behind it, for ever; changes to blocks already in it
+/// are still taken).
+pub const MAX_EDITS: usize = 600_000;
+/// Most bytes of kept shared state (chests and the like) in all.
+pub const MAX_KEPT_BYTES: usize = 8 << 20;
+/// Connections that have not said hello yet, at most.
+const MAX_STRANGERS: usize = 24;
+/// Seconds without a word from a player before they are dropped.
+const IDLE_SECONDS: f32 = 120.0;
+
 impl Server {
     pub fn bind(cfg: Config) -> Result<Server, NetError> {
         let listener = TcpListener::bind(cfg.port)?;
         Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
-            kept: BTreeMap::new(), ops: Vec::new(), banned: Vec::new(), ops_dirty: false,
+            kept: BTreeMap::new(), kept_bytes: 0, ops: Vec::new(), banned: Vec::new(), ops_dirty: false,
             default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE, perms: Vec::new(), creative: Vec::new(), voice: Default::default() })
+    }
+
+    /// A player number no one here has: never 0 (the server) or 65535 (what
+    /// "everyone" is told with), and not one still in use after the counter
+    /// has gone all the way round.
+    fn fresh_id(&mut self) -> u16 {
+        loop {
+            let id = self.next_id;
+            self.next_id = if id >= u16::MAX - 1 { 1 } else { id + 1 };
+            if id != 0 && id != u16::MAX && !self.conns.iter().any(|c| c.id == id && c.joined) {
+                return id;
+            }
+        }
+    }
+
+    /// Remember (or, with no data, forget) a piece of shared state for players
+    /// who join later, within [`MAX_KEPT_BYTES`] and 8192 pieces.
+    fn keep_state(&mut self, channel: u8, key: &str, data: &[u8]) {
+        let k = (channel, String::from(key));
+        let old = self.kept.get(&k).map_or(0, |d| d.len());
+        if data.is_empty() {
+            if self.kept.remove(&k).is_some() {
+                self.kept_bytes -= old;
+            }
+        } else if (old > 0 || self.kept.len() < 8192) && self.kept_bytes - old + data.len() <= MAX_KEPT_BYTES {
+            self.kept_bytes = self.kept_bytes - old + data.len();
+            self.kept.insert(k, data.to_vec());
+        }
+    }
+
+    /// Whether the connection `i` is the player who runs the creatures for
+    /// everybody: the one who came first of those here (the same rule as
+    /// `Client::runs_the_world`, which goes by the lowest number).
+    fn runs_the_world(&self, i: usize) -> bool {
+        let me = self.conns[i].id;
+        self.conns.iter().filter(|c| c.joined && !c.gone).all(|c| c.id >= me)
     }
 
     pub fn port(&self) -> u16 {
@@ -213,11 +271,15 @@ impl Server {
         let is_op = self.ops.iter().any(|o| o.eq_ignore_ascii_case(who));
         let online = |s: &Server, name: &str| s.conns.iter().position(|c| c.joined && !c.gone && c.name.eq_ignore_ascii_case(name));
         match arg(0).to_ascii_lowercase().as_str() {
+            "/version" => {
+                let me = crate::net::version::local();
+                alloc::format!("server: {} protocol {}", crate::net::version::describe(&me), VERSION)
+            }
             "/list" => {
                 let names: Vec<String> = self.conns.iter().filter(|c| c.joined && !c.gone).map(|c| if self.ops.iter().any(|o| o.eq_ignore_ascii_case(&c.name)) { alloc::format!("{}*", c.name) } else { c.name.clone() }).collect();
                 alloc::format!("online ({}): {}   (* = operator)", names.len(), names.join(", "))
             }
-            "/help" => String::from("server: /list /gamemode creative|survival (if allowed)   operators: /op /deop /kick /ban /pardon NAME  /say TEXT  /time 0..1  /perm NAME [+build -gamemode +commands +voice]  /default [+build ...]  /mute NAME  /unmute NAME  /voicerange BLOCKS  /gamemode NAME creative|survival"),
+            "/help" => String::from("server: /list /version /gamemode creative|survival (if allowed)   operators: /op /deop /kick /ban /pardon NAME  /say TEXT  /time 0..1  /perm NAME [+build -gamemode +commands +voice]  /default [+build ...]  /mute NAME  /unmute NAME  /voicerange BLOCKS  /gamemode NAME creative|survival"),
             "/gamemode" if arg(2).is_empty() || !is_op => {
                 // Your own game mode, if you may choose it.
                 let mode = if arg(2).is_empty() { arg(1) } else { arg(2) };
@@ -430,16 +492,25 @@ impl Server {
         }
         for c in self.conns.iter_mut() {
             c.voice_bucket.refill(dt);
+            c.throttle.refill(dt);
         }
         for _ in 0..8 {
             match self.listener.accept(0) {
                 Ok(Some(mut stream)) => {
+                    // Too many strangers at the door (or in all): the newcomer is
+                    // let go at once (dropping the stream closes it), so a flood of
+                    // silent connections cannot use up the machine's sockets and memory.
+                    let strangers = self.conns.iter().filter(|c| !c.joined && !c.gone).count();
+                    if strangers >= MAX_STRANGERS || self.conns.len() >= self.cfg.max_players.saturating_add(MAX_STRANGERS) {
+                        continue;
+                    }
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new() });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new() });
                 }
                 _ => break,
             }
         }
+        let mut relays = 0;
         let mut buf = [0u8; 4096];
         for i in 0..self.conns.len() {
             // Read whatever has arrived.
@@ -459,24 +530,31 @@ impl Server {
             }
             let c = &mut self.conns[i];
             c.quiet = if got_any { 0 } else { c.quiet + 1 };
+            c.idle = if got_any { 0.0 } else { c.idle + dt };
+            if c.idle > IDLE_SECONDS || (!c.joined && c.quiet > 4000) {
+                c.gone = true; // said nothing for ages (or never said hello)
+                continue;
+            }
             if !c.joined {
                 // A tile relay request is a plain text line, not a message.
                 let peek = c.inbox.peek();
                 if peek.starts_with(b"TILE ") || peek.starts_with(b"GEO ") {
-                    if let Some(end) = peek.iter().position(|&b| b == b'\n') {
+                    // A few a tick: answering one may mean fetching the tile.
+                    if relays >= 2 && peek.contains(&b'\n') {
+                        continue;
+                    }
+                    if let Some(end) = peek.iter().position(|&b| b == b'\n').filter(|&e| e <= 64) {
+                        relays += 1;
                         let line = String::from_utf8_lossy(&peek[..end]).into_owned();
                         let data = tile(&line).unwrap_or_default();
                         let _ = c.stream.send_all(&(data.len() as u32).to_le_bytes(), SEND_TIMEOUT);
                         let _ = c.stream.send_all(&data, 20_000);
                         log.push(alloc::format!("relay: {} -> {} bytes", line, data.len()));
                         c.gone = true;
-                    } else if peek.len() > 64 {
+                    } else if peek.len() > 64 || peek.contains(&b'\n') {
                         c.gone = true;
                     }
                     continue;
-                }
-                if c.quiet > 4000 {
-                    c.gone = true; // connected but never said hello
                 }
             }
             loop {
@@ -492,38 +570,64 @@ impl Server {
                     break;
                 }
                 let (id, joined) = (self.conns[i].id, self.conns[i].joined);
+                // Each kind of message has an allowance; what is over it is
+                // dropped, and a connection that keeps sending far too much is cut.
+                if joined {
+                    use crate::net::limits::Class;
+                    let class = match &msg {
+                        Msg::Move { .. } | Msg::Emote { .. } | Msg::Effects { .. } | Msg::VoiceState { .. } => Some(Class::Motion),
+                        Msg::SetBlock { .. } => Some(Class::Block),
+                        Msg::Chat { .. } => Some(Class::Chat),
+                        Msg::State { .. } => Some(Class::State),
+                        Msg::Skin { .. } => Some(Class::Skin),
+                        _ => None,
+                    };
+                    if let Some(class) = class {
+                        if !self.conns[i].throttle.allow(class) {
+                            if self.conns[i].throttle.abusive() {
+                                log.push(alloc::format!("{} was sending far too much and was dropped", self.conns[i].name));
+                                self.conns[i].gone = true;
+                                break;
+                            }
+                            continue;
+                        }
+                    }
+                }
                 match msg {
                     Msg::Hello { version, content, name } if !joined => {
                         // Content need not match: the server sends its own.
                         let _ = content;
-                        let refuse = if version != VERSION {
-                            Some("this server runs a different version of the game")
-                        } else if self.banned.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
-                            Some("you may not join this server")
-                        } else if self.players() >= self.cfg.max_players {
-                            Some("the server is full")
-                        } else {
-                            None
-                        };
-                        if let Some(reason) = refuse {
-                            let _ = self.conns[i].stream.send_all(&Msg::Refuse { reason: String::from(reason) }.encode(), SEND_TIMEOUT);
-                            self.conns[i].gone = true;
-                            break;
-                        }
+                        // The name as the server will know it: bans and the like are
+                        // checked against this, not against what was typed.
                         let mut name = crate::settings::clean_name(&name, 16);
                         if name.is_empty() {
                             name = String::from("Player");
                         }
-                        // Two players never share a name.
-                        let taken = |n: &str, conns: &[Conn]| conns.iter().any(|c| c.joined && !c.gone && c.name == n);
+                        let refuse = if version != VERSION {
+                            // Both versions, and who must update (the build name does not matter).
+                            Some(crate::net::version::mismatch_reason(version, VERSION, &crate::net::version::local()))
+                        } else if self.banned.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
+                            Some(String::from("you may not join this server"))
+                        } else if self.players() >= self.cfg.max_players {
+                            Some(String::from("the server is full"))
+                        } else {
+                            None
+                        };
+                        if let Some(reason) = refuse {
+                            let _ = self.conns[i].stream.send_all(&Msg::Refuse { reason }.encode(), SEND_TIMEOUT);
+                            self.conns[i].gone = true;
+                            break;
+                        }
+                        // Two players never share a name (capital letters do not
+                        // make a different one: permissions go by the name without them).
+                        let taken = |n: &str, conns: &[Conn]| conns.iter().any(|c| c.joined && !c.gone && c.name.eq_ignore_ascii_case(n));
                         let mut n = 2;
                         let base = name.clone();
                         while taken(&name, &self.conns) {
                             name = alloc::format!("{}{}", base, n);
                             n += 1;
                         }
-                        let id = self.next_id;
-                        self.next_id = self.next_id.wrapping_add(1).max(1);
+                        let id = self.fresh_id();
                         // Whoever is first through the door holds the keys.
                         if self.ops.is_empty() {
                             self.ops.push(name.clone());
@@ -531,6 +635,8 @@ impl Server {
                         }
                         // Tell the newcomer about the world and who is here.
                         let mut out = Msg::Welcome { id, seed: self.cfg.seed, time: self.time, kind: self.cfg.kind.clone() }.encode();
+                        let me = crate::net::version::local();
+                        out.extend(Msg::Info { build: me.build, release: me.release, commit: me.commit }.encode());
                         // The content pack first (even when empty), so the
                         // edits that follow are read with the right blocks.
                         let pack = &self.cfg.pack[..];
@@ -584,7 +690,9 @@ impl Server {
                     }
                     Msg::SetBlock { x, y, z, block } if joined => {
                         let may = self.flags_for(&self.conns[i].name) & crate::proto::PERM_BUILD != 0;
-                        if may && (0..CH).contains(&y) && block < self.cfg.states {
+                        // (New places stop being taken once the list is full.)
+                        let room = self.edits.len() < MAX_EDITS || self.edits.contains_key(&(x, y, z));
+                        if may && room && (0..CH).contains(&y) && block < self.cfg.states {
                             self.edits.insert((x, y, z), block);
                             self.dirty = true;
                             self.broadcast(&Msg::SetBlock { x, y, z, block }, id);
@@ -600,11 +708,7 @@ impl Server {
                             let found = self.cfg.mods.iter().position(|m| m.name == *want);
                             if let (Some(index), false) = (found, sent.contains(&want.as_str())) {
                                 sent.push(want);
-                                let data = &self.cfg.mods[index].data;
-                                let parts: Vec<&[u8]> = if data.is_empty() { alloc::vec![&data[..]] } else { data.chunks(crate::proto::MAX_PACK_PART).collect() };
-                                for (k, part) in parts.iter().enumerate() {
-                                    queued.push_back(Msg::ModPart { index: index as u16, last: k + 1 == parts.len(), data: part.to_vec() }.encode());
-                                }
+                                queued.push_back((index, 0usize));
                             }
                         }
                         if !queued.is_empty() {
@@ -617,14 +721,21 @@ impl Server {
                     }
                     Msg::Voice { seq, frame, .. } if joined => self.relay_voice(i, seq, &frame),
                     Msg::State { channel, keep, key, data, .. } if joined => {
-                        if keep {
-                            if data.is_empty() {
-                                self.kept.remove(&(channel, key.clone()));
-                            } else if self.kept.len() < 8192 || self.kept.contains_key(&(channel, key.clone())) {
-                                self.kept.insert((channel, key.clone()), data.clone());
+                        use crate::proto::channel as ch;
+                        let flags = self.flags_for(&self.conns[i].name);
+                        // The creatures are the business of the one player who runs
+                        // them; what is in a chest is for those who may build.
+                        let allowed = match channel {
+                            ch::MOBS => self.runs_the_world(i),
+                            ch::CHEST => flags & crate::proto::PERM_BUILD != 0,
+                            _ => true,
+                        };
+                        if allowed {
+                            if keep {
+                                self.keep_state(channel, &key, &data);
                             }
+                            self.broadcast(&Msg::State { id, channel, keep, key, data }, id);
                         }
-                        self.broadcast(&Msg::State { id, channel, keep, key, data }, id);
                     }
                     Msg::Skin { png, slim, .. } if joined => {
                         self.conns[i].skin = png.clone();
@@ -656,14 +767,19 @@ impl Server {
         // A few pieces of mods for whoever is downloading them.
         for c in self.conns.iter_mut().filter(|c| !c.gone) {
             for _ in 0..12 {
-                match c.mod_out.pop_front() {
-                    Some(bytes) => {
-                        if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
-                            c.gone = true;
-                            break;
-                        }
-                    }
-                    None => break,
+                let Some(&(index, at)) = c.mod_out.front() else { break };
+                let data = &self.cfg.mods[index].data;
+                let end = at.saturating_add(crate::proto::MAX_PACK_PART).min(data.len());
+                let last = end >= data.len();
+                let bytes = Msg::ModPart { index: index as u16, last, data: data[at.min(end)..end].to_vec() }.encode();
+                if last {
+                    c.mod_out.pop_front();
+                } else if let Some(front) = c.mod_out.front_mut() {
+                    front.1 = end;
+                }
+                if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+                    c.gone = true;
+                    break;
                 }
             }
         }
@@ -794,5 +910,45 @@ mod tests {
         assert!(old.load_perm_line("perm 1 eve"));
         assert_eq!(old.flags_for("Zed"), PERM_BUILD | PERM_VOICE);
         assert_eq!(old.flags_for("Eve"), PERM_BUILD | PERM_VOICE);
+    }
+
+    fn plain_config() -> Config {
+        Config { port: 0, seed: 1, kind: String::new(), max_players: 4, content: 0, states: 1, pack: Vec::new(), mods: Vec::new() }
+    }
+
+    #[test]
+    fn player_numbers_skip_zero_and_everybody_and_are_never_shared() {
+        let mut s = Server::bind(plain_config()).unwrap();
+        s.next_id = 65_533;
+        let ids: Vec<u16> = (0..5).map(|_| s.fresh_id()).collect();
+        assert_eq!(ids, [65_533, 65_534, 1, 2, 3], "65535 is what 'everyone' is, 0 is the server");
+        // One still in use after the counter went round is not given out again.
+        let mut s = Server::bind(plain_config()).unwrap();
+        let stream = crate::sys::net::TcpStream::connect("127.0.0.1", s.port(), 2000).unwrap();
+        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new() });
+        s.next_id = 6;
+        assert_eq!((s.fresh_id(), s.fresh_id()), (6, 8));
+    }
+
+    #[test]
+    fn kept_state_is_bounded_by_bytes_and_count_and_can_be_replaced_or_removed() {
+        let mut s = Server::bind(plain_config()).unwrap();
+        let big = alloc::vec![1u8; 3 << 20];
+        s.keep_state(3, "a", &big);
+        s.keep_state(3, "b", &big);
+        assert_eq!(s.kept_bytes, 6 << 20);
+        s.keep_state(3, "c", &big);
+        assert_eq!(s.kept.len(), 2, "the third would pass the limit");
+        // Replacing a piece counts only the difference.
+        s.keep_state(3, "a", &alloc::vec![2u8; 4 << 20]);
+        assert_eq!(s.kept_bytes, 7 << 20);
+        s.keep_state(3, "a", &[]);
+        s.keep_state(3, "b", &[]);
+        s.keep_state(3, "nothing", &[]);
+        assert_eq!((s.kept.len(), s.kept_bytes), (0, 0));
+        for i in 0..9000 {
+            s.keep_state(3, &alloc::format!("{i}"), b"x");
+        }
+        assert_eq!(s.kept.len(), 8192);
     }
 }

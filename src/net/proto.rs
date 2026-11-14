@@ -7,7 +7,10 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub const VERSION: u16 = 11;
+/// The protocol version: both sides must speak the same one (the build name
+/// and the release number do not matter for compatibility, see
+/// `net::version`). Version 12 added [`Msg::Info`].
+pub const VERSION: u16 = 12;
 
 /// What a player may do on a server (the flags of [`Msg::Perms`]).
 pub const PERM_BUILD: u8 = 1;
@@ -27,8 +30,11 @@ pub const DEFAULT_PORT: u16 = 25590;
 pub const MAX_PACK_PART: usize = 40_000;
 /// Largest skin image, in bytes of PNG.
 pub const MAX_SKIN: usize = 24_000;
-/// Most bytes of shared state in one message.
-pub const MAX_STATE: usize = 60_000;
+/// Most bytes of shared state in one message. A message body may be
+/// [`MAX_BODY`] long in all, and the header of a state message (id, channel,
+/// key of up to 64 bytes) takes about 75 of those: more than this would be
+/// refused by the receiver, which drops the connection.
+pub const MAX_STATE: usize = 59_000;
 /// Channels of [`Msg::State`].
 pub mod channel {
     /// Every creature, from the player who runs them.
@@ -130,6 +136,11 @@ pub enum Msg {
     /// what is in a chest. `channel` says which; `key` names the thing;
     /// with `keep` the server remembers the latest for players who join later.
     State { id: u16, channel: u8, keep: bool, key: String, data: Vec<u8> },
+    /// Which program the server is: its build name, release number (0 when
+    /// built by hand) and commit. Sent right after [`Msg::Welcome`]; only
+    /// for showing to the player (the protocol version decides whether a
+    /// client may join).
+    Info { build: String, release: u32, commit: String },
 }
 
 struct W(Vec<u8>);
@@ -154,7 +165,11 @@ impl W {
         self.0.extend_from_slice(&v.to_le_bytes());
     }
     fn str(&mut self, s: &str) {
-        let b = &s.as_bytes()[..s.len().min(200)];
+        self.str_n(s, 200);
+    }
+    /// A string cut to `max` bytes (at most 200).
+    fn str_n(&mut self, s: &str, max: usize) {
+        let b = &s.as_bytes()[..s.len().min(max.min(200))];
         self.u8(b.len() as u8);
         self.0.extend_from_slice(b);
     }
@@ -208,6 +223,13 @@ impl R<'_> {
         } else {
             None
         }
+    }
+    /// A state key: printable ASCII and the unit separator `\x1f` (the
+    /// script channel's keys are `mod\x1fkey`, and `str` would drop it).
+    fn key(&mut self) -> Option<String> {
+        let n = self.u8()? as usize;
+        let b = self.take(n)?;
+        Some(b.iter().filter(|c| (32..127).contains(*c) || **c == 0x1f).map(|&c| c as char).collect())
     }
     fn str(&mut self) -> Option<String> {
         let n = self.u8()? as usize;
@@ -280,7 +302,8 @@ impl Msg {
                 w.u16(*id);
                 w.u8(*channel);
                 w.u8(*keep as u8);
-                w.str(key);
+                // (The receiver refuses keys over 64 bytes.)
+                w.str_n(key, 64);
                 let n = data.len().min(MAX_STATE);
                 w.u16(n as u16);
                 w.0.extend_from_slice(&data[..n]);
@@ -365,6 +388,12 @@ impl Msg {
                 w.u8(17);
                 w.u8(*flags);
             }
+            Msg::Info { build, release, commit } => {
+                w.u8(22);
+                w.str(build);
+                w.u32(*release);
+                w.str(commit);
+            }
             Msg::Pack { last, data } => {
                 w.u8(16);
                 w.u8(*last as u8);
@@ -408,7 +437,7 @@ impl Msg {
                 Msg::Skin { id, png, slim: r.u8()? != 0 }
             }
             6 => {
-                let (id, channel, keep, key) = (r.u16()?, r.u8()?, r.u8()? != 0, r.str()?);
+                let (id, channel, keep, key) = (r.u16()?, r.u8()?, r.u8()? != 0, r.key()?);
                 let n = r.u16()? as usize;
                 if n > MAX_STATE || key.len() > 64 {
                     return None;
@@ -456,6 +485,7 @@ impl Msg {
                 }
                 Msg::ModPart { index, last, data: r.take(n)?.to_vec() }
             }
+            22 => Msg::Info { build: r.str()?, release: r.u32()?, commit: r.str()? },
             10 => Msg::Welcome { id: r.u16()?, seed: r.u32()?, time: r.f32()?, kind: r.str()? },
             11 => Msg::Refuse { reason: r.str()? },
             12 => Msg::Join { id: r.u16()?, name: r.str()? },
@@ -556,6 +586,9 @@ mod tests {
             Msg::Chat { id: 2, text: String::from("hello there") },
             Msg::Skin { id: 4, png: alloc::vec![1, 2, 3, 250], slim: true },
             Msg::State { id: 4, channel: 3, keep: true, key: String::from("1 2 3"), data: b"chest".to_vec() },
+            // The script channel's key has a separator in it, which must get through.
+            Msg::State { id: 4, channel: channel::SCRIPT, keep: false, key: String::from("mymod\u{1f}score"), data: b"7".to_vec() },
+            Msg::Info { build: String::from("linux-server-x86_64"), release: 321, commit: String::from("5d7c83d") },
             Msg::Welcome { id: 3, seed: 42, time: 0.25, kind: String::from("somewhere 46.8 -121.7 30 75") },
             Msg::Refuse { reason: String::from("server full") },
             Msg::Join { id: 9, name: String::from("Bob") },
@@ -582,6 +615,28 @@ mod tests {
             assert_eq!(inbox.next(), Next::Msg(m.clone()));
         }
         assert_eq!(inbox.next(), Next::Wait);
+    }
+
+    #[test]
+    fn the_biggest_state_message_is_not_over_the_body_limit() {
+        // A key as long as allowed and as much data as allowed must still be a message
+        // the receiver takes (it used to be 60 000 bytes of data, which it dropped).
+        let key = "k".repeat(64);
+        let m = Msg::State { id: 1, channel: 3, keep: true, key, data: alloc::vec![9; MAX_STATE + 5_000] };
+        let bytes = m.encode();
+        assert!(bytes.len() - 2 <= MAX_BODY, "{}", bytes.len());
+        let mut i = Inbox::default();
+        i.push(&bytes);
+        match i.next() {
+            Next::Msg(Msg::State { data, .. }) => assert_eq!(data.len(), MAX_STATE),
+            other => panic!("{other:?}"),
+        }
+        // A pack piece and a mod piece fit too.
+        for m in [Msg::Pack { last: false, data: alloc::vec![1; MAX_PACK_PART * 2] }, Msg::ModPart { index: 1, last: false, data: alloc::vec![1; MAX_PACK_PART * 2] }] {
+            let mut i = Inbox::default();
+            i.push(&m.encode());
+            assert!(matches!(i.next(), Next::Msg(_)));
+        }
     }
 
     #[test]

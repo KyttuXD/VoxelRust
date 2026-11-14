@@ -103,8 +103,16 @@ empty name becomes `Player`. If someone on the server already has it, a
 number is added (`Bob` becomes `Bob2`).
 
 The server refuses a player whose game speaks a different version of the
-network protocol (currently version 11), and anyone beyond the player limit.
-Everyone should run the same version of the game.
+network protocol (currently version 12), and anyone beyond the player limit.
+Only the protocol version decides: the build name (`linux-server-x86_64` for
+the public server, `linux-x86_64`, `windows-x86_64`, `macos-...` for games) and
+the release number do not, so a game and a server of different builds or
+nearby releases play together. A refused player is told both protocol versions
+and which side must update ("your game is too old: update it" or "this server
+is too old for your game: its owner must update it"). After joining, the
+server says which program it is (its release number, build name and commit),
+and the game adds a line when the two releases differ. `/version` shows both,
+in the game (your own and the server's) and as a server command anyone may use.
 
 ## What is shared, and what is not
 
@@ -301,7 +309,7 @@ the code of such a mod.
 (`content::mod_runtime`, see [MODDING.md](MODDING.md#scripts-that-mods-bring));
 without an engine they are kept and not run.
 
-(Version 9 added poses and emotes.) The protocol: version 11 adds `Effects`: the status effects on a player (id, level and whole seconds left for each, 16 at most), sent by that player's game whenever the set changes, relayed with their id, and told to players who join later. It is for show (the name tag) and for mods; each game keeps its own effects. Version 10 adds `ModList` (server to client, after the pack),
+(Version 9 added poses and emotes.) The protocol: version 12 adds `Info` (server to client, right after `Welcome`: build name, release number and commit, for showing only) and fixes `State` keys, which lost the separator of the script channel's `mod\x1fkey`; the biggest `State` is now 59 000 bytes (it was over the message limit). Version 11 adds `Effects`: the status effects on a player (id, level and whole seconds left for each, 16 at most), sent by that player's game whenever the set changes, relayed with their id, and told to players who join later. It is for show (the name tag) and for mods; each game keeps its own effects. Version 10 adds `ModList` (server to client, after the pack),
 `ModsWant` (client to server) and `ModPart` (server to client, one mod's
 bundle in pieces of up to 40,000 bytes). A mod's bundle is the
 `save::bundle` format with the paths inside the mod as names.
@@ -375,6 +383,7 @@ what the game itself does not know is passed to the server.
 | Command | Who | What it does |
 |---|---|---|
 | `/list` | anyone | who is online (operators are starred) |
+| `/version` | anyone | the release, build name and protocol version of the game and of the server |
 | `/help` | anyone | the server's commands |
 | `/op NAME`, `/deop NAME` | operators | make or unmake an operator (the last one cannot be removed) |
 | `/kick NAME` | operators | remove a player |
@@ -388,3 +397,25 @@ what the game itself does not know is passed to the server.
 Operators and bans are kept in `<world>.server-ops.txt` beside the world.
 Names are not protected by passwords: anyone can join under any free name,
 so treat this as housekeeping among friends, not security.
+
+
+## Limits a server keeps (for hosts)
+
+A server does not trust what it is sent. Per connection, messages over their
+allowance are dropped (and a connection that keeps sending far too much is
+cut): positions, emotes and effects 100 a second, block changes 1500 a second
+(6000 at once, for explosions), chat 2 a second (8 at once), shared state 300 a
+second, skins one every two seconds. Voice has its own limit. Also:
+
+- at most 24 connections that have not said hello yet, and nobody stays
+  connected without a word for two minutes;
+- the server keeps at most 600 000 changed blocks and 8 MB of kept state (chests);
+  a chest's contents are only taken from players who may build, and the
+  creature snapshots only from the player who runs the creatures;
+- player numbers are never reused while in use, and names that differ only in
+  capital letters count as the same name; a ban is checked against the name as
+  the server knows it;
+- a server's list of operators, bans and permissions, and its saved changes,
+  are written whole or not at all, and tried again if the disk is full;
+- mod files from a server may not be named like a Windows device (`con`,
+  `nul`, `com1`...), and a downloaded mod may not be called `mods` or `update`.

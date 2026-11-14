@@ -204,7 +204,8 @@ impl Pool {
                 out
             }
         };
-        self.in_flight -= results.len();
+        // (Never below zero: a count that wrapped would make the world wait for ever.)
+        self.in_flight = self.in_flight.saturating_sub(results.len());
         results
     }
 }

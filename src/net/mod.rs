@@ -5,3 +5,5 @@ pub mod server;
 pub mod netplay;
 pub mod voice;
 pub mod modsync;
+pub mod limits;
+pub mod version;

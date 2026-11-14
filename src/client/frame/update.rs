@@ -115,6 +115,11 @@ impl App {
                 }
             }
             for (id, png, slim) in g.skin_events.drain(..) {
+                // (A server could name a skin for every player number there is: a
+                // graphics card texture for each is not kept past a few hundred.)
+                if self.remote_skins.len() >= 256 && !self.remote_skins.contains_key(&id) {
+                    continue;
+                }
                 self.remote_slim.insert(id, slim);
                 if let Some(img) = crate::png::decode(&png).filter(|i| i.w == 64 && i.h == 64) {
                     // A player's new skin goes over their old picture on the card.

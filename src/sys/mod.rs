@@ -687,6 +687,20 @@ pub fn remove_file(path: &str) -> bool {
     }
 }
 
+/// Whether a file can be opened for reading (without reading it).
+pub fn file_exists(path: &str) -> bool {
+    let p = cstr(path);
+    let api = sdl::sdl();
+    unsafe {
+        let rw = (api.SDL_RWFromFile)(p.as_ptr() as *const c_char, b"rb\0".as_ptr() as *const c_char);
+        if rw.is_null() {
+            return false;
+        }
+        ((*rw).close)(rw);
+        true
+    }
+}
+
 pub fn write_file(path: &str, data: &[u8]) -> bool {
     let p = cstr(path);
     let api = sdl::sdl();
@@ -715,7 +729,8 @@ pub fn write_file_atomic(path: &str, data: &[u8]) -> bool {
     #[cfg(any(all(unix, not(target_arch = "wasm32")), windows))]
     {
         let tmp = alloc::format!("{}.tmp", path);
-        if write_file(&tmp, data) {
+        let wrote = write_file(&tmp, data);
+        if wrote {
             let (f, t) = (cstr(&tmp), cstr(path));
             #[cfg(all(unix, not(target_arch = "wasm32")))]
             let moved = unsafe { rename(f.as_ptr() as *const c_char, t.as_ptr() as *const c_char) == 0 };
@@ -727,6 +742,13 @@ pub fn write_file_atomic(path: &str, data: &[u8]) -> bool {
             }
         }
         remove_file(&tmp);
+        // The copy could not be written (a full disk, say). Writing in place
+        // would empty the old file first and, on a full disk, leave nothing:
+        // only a file that is not there yet is written that way. (A copy that
+        // was written but could not be moved fits, so it may be written in place.)
+        if !wrote && file_exists(path) {
+            return false;
+        }
     }
     write_file(path, data)
 }
