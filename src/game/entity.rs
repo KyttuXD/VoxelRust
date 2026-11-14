@@ -142,6 +142,11 @@ pub struct Mobs {
     /// mod code that wants to know who hurt the player (see `Native::hurt`).
     /// The session clears it before each step.
     pub last_biter: Option<usize>,
+    /// Creatures that appeared since the session last looked: id, kind and
+    /// where (for the `entityspawn` event). Kept short.
+    pub born: Vec<(u32, usize, [f64; 3])>,
+    /// Creatures that died the same way (health ran out).
+    pub died: Vec<(u32, usize, [f64; 3])>,
     spawn_timer: f32,
     rng: u32,
     next_id: u32,
@@ -169,7 +174,7 @@ fn crop_start(b: Block) -> Block {
 
 impl Mobs {
     pub fn new(seed: u32) -> Mobs {
-        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, last_biter: None, spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
+        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, last_biter: None, born: Vec::new(), died: Vec::new(), spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
     }
 
     fn rand(&mut self) -> u32 {
@@ -197,6 +202,9 @@ impl Mobs {
         let think = (self.rand() % 100) as f32 / 100.0;
         let give_timer = (self.rand() % 60) as f32;
         let health = spawn_health(d.health, self.rand());
+        if self.born.len() < 64 {
+            self.born.push((id, kind, pos));
+        }
         self.list.push(Mob {
             kind,
             body,
@@ -510,6 +518,9 @@ impl Mobs {
                     m.path.clear();
                 }
             } else if m.health <= 0 || dist > 96.0 || m.body.pos[1] < -8.0 || burned || (d.behavior == Behavior::Hostile && !hostile_ok) {
+                if m.health <= 0 && self.died.len() < 64 {
+                    self.died.push((m.id, m.kind, m.body.pos));
+                }
                 self.list.swap_remove(i);
                 continue;
             }
@@ -892,6 +903,8 @@ impl Mobs {
             seen.push(id);
         }
         self.list.retain(|m| seen.contains(&m.id));
+        // What a snapshot brings is not a birth (the host raises those).
+        self.born.clear();
     }
 
     /// Move creatures run by another player toward where they were last

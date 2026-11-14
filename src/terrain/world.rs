@@ -59,6 +59,7 @@ pub struct Chunk {
     modified: bool,
 }
 
+#[derive(Clone, Copy)]
 pub struct Hit {
     /// The block that was hit.
     pub cell: [i32; 3],

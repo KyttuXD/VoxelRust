@@ -1947,7 +1947,7 @@ impl Registry {
                 // when <event> [<what>] do <chat commands separated by ;>
                 "when" => match w.iter().position(|x| x == "do") {
                     Some(d) if d >= 2 && d + 1 < w.len() => scripts.push(Script {
-                        event: w[1].to_ascii_lowercase(),
+                        event: crate::game::events::canonical(&w[1].to_ascii_lowercase()).into(),
                         what: w[2..d].join(" ").to_ascii_lowercase(),
                         actions: split_actions(&w[d + 1..].join(" ")),
                     }),

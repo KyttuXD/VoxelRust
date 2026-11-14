@@ -36,6 +36,10 @@ pub enum Event {
     State(u16, u8, String, Vec<u8>),
     /// The connection is gone.
     Lost,
+    /// Another player joined (their name), for `join` scripts.
+    Joined(String),
+    /// Another player left.
+    Left(String),
 }
 
 pub struct Welcome {
@@ -129,11 +133,13 @@ impl Client {
                 Next::Msg(m) => match m {
                     Msg::Join { id, name } => {
                         events.push(Event::Chat(alloc::format!("{} JOINED", name.to_ascii_uppercase())));
+                        events.push(Event::Joined(name.clone()));
                         self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, seen: false });
                     }
                     Msg::Leave { id } => {
                         if let Some(p) = self.players.remove(&id) {
                             events.push(Event::Chat(alloc::format!("{} LEFT", p.name.to_ascii_uppercase())));
+                            events.push(Event::Left(p.name.clone()));
                         }
                     }
                     Msg::Move { id, pos, yaw, pitch, held } => {

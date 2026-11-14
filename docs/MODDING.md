@@ -188,6 +188,34 @@ command <name> <commands separated by ;>
 | `blockexploded <block>` | an explosion has broken blocks: once for each kind of block it took, after it is over | block id |
 | *any name* | a pack raises it with `/fire <event> [what]` | whatever it sends |
 
+The newer events, which fire in the same way:
+
+| Event | Happens when | `what` |
+| --- | --- | --- |
+| `entityspawn` | a creature appears (by itself, from an egg, from breeding) | entity id |
+| `entitydeath` | a creature dies, whatever the cause | entity id |
+| `entityhurt` | you strike a creature (it may die of it) | entity id |
+| `playerhurt` | you take damage in survival, after armour and mods | the cause: `fall`, `drown`, `hunger`, `block`, `arrow`, `command`, `other`, or the id of the creature that bit |
+| `respawn` | you come back after dying | none |
+| `chat` | you say something (a line not starting with `/`) | its first word |
+| `command` | you type a `/command` | its name without the `/` |
+| `itempickup` | you pick an item up off the ground | item id |
+| `itemdrop` | you drop an item | item id |
+| `craft` | you craft something at a table or oven | the output item id |
+| `sleep` | you lie down to sleep | none |
+| `wake` | you wake | none |
+| `weather` | the weather where you are changes | `clear`, `rain`, `snow` or `storm` |
+| `join` | another player joins a shared game | their name |
+| `leave` | another player leaves a shared game | their name |
+
+Some events have a second name, and a pack may write either:
+`blockbreak` = `break`, `blockplace` = `place`, `playerdeath` = `death`,
+`nightfall` = `night`, `daybreak` = `day`, `itemuse` = `useitem`.
+Creature events are raised by whoever runs the world: in a shared game, the
+host (the other players hear `entityhurt` for their own blows only). A mod's
+native code can also hear and cancel many of these before they happen (see
+[Hooks reference](#hooks-reference)).
+
 A pack hooks into another by raising an event with `/fire`, and the other
 answers with its own `when`. `/fire` can be used within a `when` too, but a
 chain of events is cut off after four levels, so two packs cannot loop.
@@ -774,6 +802,8 @@ a world being opened, saved or reloaded, each frame, clicks, chat commands,
 `/if` conditions, the player killing a creature (`killed`) and being hurt
 (`hurt`, which may lessen or cancel the blow and says which creature bit),
 explosions (`before_explode`, `after_explode`) and TNT being lit (`on_prime`),
+the events of the [Hooks reference](#hooks-reference) (breaking and placing,
+creatures appearing and dying, chat, crafting, using items, the HUD),
 messages and state shared between players, drawing, the map,
 rows in SETTINGS > GAME, and answers to a server. A mod claims pack lines and
 indented sections by name; the game keeps those word for word for the code to
@@ -792,6 +822,83 @@ the packs are sent to players and the code is not.
 `mods/SHIPPED` lists the mods that come with the game, one folder name a line.
 The release scripts and the tests use it, and `mods/tests.rs` holds the tests
 for those mods.
+
+## Hooks reference
+
+Two layers react to what happens in the game. **Scripts** are `when` lines in
+a pack's text (see [Events](#events)): they run after the thing happened and
+cannot stop it. **Native hooks** are optional functions in a mod's Rust code
+(the `on_...` fields of `struct Native` in [src/native.rs](../src/native.rs)):
+they run before the thing happens where it makes sense, and may cancel or
+change it. The game raises both from the same places, and every script event is
+also passed to the mod's `on_event` hook.
+
+| Event (script) | Fires when | `what` | Native hook that can cancel it | Native signature |
+| --- | --- | --- | --- | --- |
+| `break` (`blockbreak`) | the player breaks a block | block id | `on_block_break`: `false` keeps the block | `fn(&mut Session, cell: [i32; 3], Block) -> bool` |
+| `place` (`blockplace`) | the player places a block | block id | `on_block_place`: `false` stops it | `fn(&mut Session, cell: [i32; 3], Block) -> bool` |
+| `entityspawn` | a creature appears | entity id | `on_entity_spawn`: `false` removes it again | `fn(&mut Session, kind: usize) -> bool` |
+| `entitydeath` | a creature dies | entity id | no, `on_entity_death` after | `fn(&mut Session, kind: usize, at: [f64; 3])` |
+| `playerhurt` | the player takes damage | cause | `on_player_hurt`: may change `amount`; `false` or 0 cancels | `fn(&mut Session, amount: &mut i32, cause: &str) -> bool` |
+| `chat`, `command` | the player types a line | first word / command name | `on_chat`: `false` swallows the line (commands too) | `fn(&mut Session, line: &str) -> bool` |
+| `useitem` (`itemuse`) | the player right clicks with an item that has a script | item id | `on_item_use`: asked for any held item, once per press; `false` stops the use | `fn(&mut Session, item: usize) -> bool` |
+| `craft` | the player crafts | output item id | no, `on_craft` after | `fn(&mut Session, out: usize)` |
+| `every N` | every N seconds | seconds | no, `on_tick` runs every frame | `fn(&mut Session, dt: f32)` |
+| (every event) | any event above or `/fire` | the event's | `on_event` hears it, cannot cancel | `fn(&mut Session, name: &str, what: &str)` |
+| `start` | a world is opened | none | `on_world_load` once the world is open | `fn(&mut Session)` |
+| (saving) | the world was saved | | `on_world_save` after the files are written | `fn(&mut Session)` |
+| (each frame) | the HUD is drawn in play | | `on_draw_hud` | `fn(&Session, &mut dyn HudSink)` |
+| `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itempickup`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
+| explosions | see TNT | | | |
+| status effects | see status effects | | | |
+
+Older hooks (`update`, `interact`, `killed`, `hit`, `hurt`, `open`, `save` and so
+on) are described in `src/native.rs` and work as before. `open` and `save` also
+run for each dimension; `on_world_load` and `on_world_save` run once per world.
+
+How cancelling works: the mods whose code is switched on are asked in the
+order of the mods list; the first to return `false` cancels, and the ones
+after it are not asked. A hook that is `None` costs nothing; and when no mod
+has any of these hooks, each call site costs one test of a flag. Hooks that
+cannot cancel are told after the fact. A hook may call anything on `Session`;
+events it raises with `fire` are not passed back to its own `on_event`. A
+cancelled break or place leaves the world as it was (digging starts over);
+the script event is then not fired.
+
+`on_draw_hud` gets a `HudSink` with `size()`, `scale()`, `rect(x, y, w, h,
+colour)`, `text(x, y, scale, text, colour)` and `text_width(text, scale)`.
+Positions are screen pixels; multiply sizes by `scale()`.
+
+A mod's code states which interface it was written for with
+`api: API_VERSION` in its `Native`.
+
+### Stability
+
+`native::API_VERSION` (now 1) is the version of the hook interface. New hooks
+and new events do not change it: a mod written for version 1 keeps working
+when the game gains more. It goes up when a hook is removed, renamed or its
+signature or meaning changes, and the notes for that release say what to do.
+Code that says `api` higher than the game's is switched off (not called),
+rather than called with the wrong idea of a hook. The interface is young:
+until version 2, treat the signatures of the newer `on_...` hooks as likely to
+grow by an argument, and prefer `..Native::NONE` so that new fields do not
+break your code. Event names in scripts are kept for good: an event is never
+renamed without leaving the old name as an alias.
+
+### Example
+
+[examples/hooks](../examples/hooks) is a small mod that protects a block with
+`on_block_break`, softens falls with `on_player_hurt` and draws the player's
+health with `on_draw_hud`, plus a few `when` scripts for the new events.
+Copy it to `mods/hooksdemo/` and rebuild.
+
+### Adding an event or a hook
+
+A new event is one row in `REGISTRY` in
+[src/game/events.rs](../src/game/events.rs), one `Session::fire` call at the
+right place, and one row in the tables above. A new cancelling hook is a
+field in `Native` (and in `Native::NONE` and `hooks::has_any`) and a small
+dispatcher in [src/game/hooks.rs](../src/game/hooks.rs) built on `hooks::allow`.
 
 ## What mods cannot replace
 

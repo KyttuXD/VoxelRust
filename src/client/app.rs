@@ -1490,6 +1490,7 @@ impl App {
                 r.rect(w * 0.5 - bw * 0.5 - s, h * 0.5 + 11.0 * s, bw + 2.0 * s, 5.0 * s, [0, 0, 0, 150]);
                 r.rect(w * 0.5 - bw * 0.5, h * 0.5 + 12.0 * s, bw * p.clamp(0.0, 1.0), 3.0 * s, [250, 250, 250, 230]);
             }
+            crate::game::hooks::draw_hud(g, r, w, h, s);
         }
         // A bow being drawn shows its drawn picture in the hotbar and the inventory too.
         {
@@ -2415,8 +2416,12 @@ impl App {
                     g.push_chat(String::from("/VAR NAME = N   /IF COND THEN CMD [ELSE CMD]   /AFTER SECS CMD   /REPEAT N CMD   /TAKE ITEM [N]   /TITLE TEXT   /BLAST R"));
                 }
             } else if let Some(g) = self.session.as_mut() {
+                // Scripts hear `chat` and `command` first, and a mod's
+                // `on_chat` may swallow the line (game/events.rs).
+                let go_on = crate::game::events::chat_line(g, &text);
                 // Commands are typed in lower case ids; anything else is talk.
-                match if command.starts_with('/') { g.command(&command) } else { None } {
+                match if go_on && command.starts_with('/') { g.command(&command) } else { None } {
+                    _ if !go_on => {}
                     Some(reply) if reply.is_empty() => {}
                     Some(reply) => g.push_chat(reply),
                     // On a server, what the game does not know the server may
@@ -2700,6 +2705,7 @@ impl App {
                 if g.inv.add(rc.out.0 as u16, rc.out.1) > 0 {
                     g.say("INVENTORY FULL");
                 }
+                crate::game::events::crafted(g, rc.out.0);
                 ui.clicked_any = true;
             }
         }
