@@ -20,6 +20,7 @@ pub mod climb;
 pub mod crouch;
 pub mod emote;
 pub mod fall;
+pub mod gait;
 pub mod ride;
 pub mod sit;
 pub mod sleep;
@@ -87,6 +88,8 @@ pub struct Body {
     /// The emote being played, as its place in the registry plus one (0 = none), and for how long.
     pub emote: u16,
     pub emote_t: f32,
+    /// How much of a run (0..1, see `gait::run_amount`): leaning, high knees, folded elbows.
+    pub run: f32,
 }
 
 impl Default for Body {
@@ -97,7 +100,7 @@ impl Default for Body {
 
 impl Body {
     pub fn steady(kind: Kind) -> Body {
-        Body { kind, from: kind, mix: 1.0, flags: 0, swing: 0.0, draw: 0.0, emote: 0, emote_t: 0.0 }
+        Body { kind, from: kind, mix: 1.0, flags: 0, swing: 0.0, draw: 0.0, emote: 0, emote_t: 0.0, run: 0.0 }
     }
 
     /// How much of `k` the body is in at the moment (0..1).
@@ -356,6 +359,9 @@ pub fn apply(role: Role, handled: bool, b: &Body, w: &Walk, rot: &mut [f32; 3]) 
     }
     add(&mut o, posture(b.kind, role, handled, &walk), if b.mix < 1.0 { b.mix } else { 1.0 });
     activity::add(role, b, &walk, &mut o);
+    if b.run > 0.0 {
+        add(&mut o, gait::offsets(role, b, &walk), 1.0);
+    }
     for i in 0..3 {
         rot[i] += o[i];
     }

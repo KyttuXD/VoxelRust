@@ -1174,7 +1174,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         help_timer: 0.0,
         loading_since: 0.0,
         wheel: Default::default(),
-        third_person: opts.show.contains("third") || opts.show.contains("front"),
+        third_person: opts.show.contains("third") || opts.show.contains("front") || opts.show.contains("bends:"),
         third_front: opts.show.contains("front"),
         swallow_text: false,
         hud_hidden: false,
@@ -1336,6 +1336,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         // "emote:ID" or "emote:ID@SECONDS" plays that emote and keeps it at that moment (default 0.5 s).
         // Both are for pictures taken with "third" or "front".
         if let Some(g) = app.session.as_mut() {
+            // "bends:NAME[@PHASE]": one posture and gait (idle walk sprint crouchwalk swim climb sit sleep fall ride), third person.
+            crate::client::show_bends::apply(&opts.show, &mut g.posing);
             if let Some(name) = opts.show.split(',').find_map(|w| w.strip_prefix("pose:")) {
                 g.posing.forced = crate::content::pose::KINDS.iter().copied().find(|k| alloc::format!("{:?}", k).eq_ignore_ascii_case(name));
             }

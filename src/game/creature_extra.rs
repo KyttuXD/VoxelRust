@@ -28,6 +28,7 @@ pub mod field {
     pub const ORIENT: u8 = 4;
     pub const BONES: u8 = 8;
     pub const STATE: u8 = 16;
+    pub const LOOK: u8 = 32;
 }
 
 #[derive(Clone, Debug)]
@@ -41,6 +42,8 @@ pub struct Extra {
     /// Tilt of the whole model, tenths of a degree.
     pub pitch: i16,
     pub roll: i16,
+    /// Where a script forces the head to look (yaw, pitch; tenths of a degree, relative to the body).
+    pub look: Option<(i16, i16)>,
     /// What the mod wants shown or remembered about this creature.
     pub state: String,
     /// Which fields came from another player's snapshot (`field::*`).
@@ -55,7 +58,7 @@ pub struct Extra {
 
 impl Extra {
     pub fn new() -> Extra {
-        Extra { size: None, max_hp: None, bones: BoneTable::default(), pitch: 0, roll: 0, state: String::new(), remote: 0, rev: 1, sent_rev: 0, wire: String::new(), wire_rev: 0 }
+        Extra { size: None, max_hp: None, bones: BoneTable::default(), pitch: 0, roll: 0, look: None, state: String::new(), remote: 0, rev: 1, sent_rev: 0, wire: String::new(), wire_rev: 0 }
     }
 
     /// Something changed: the next snapshot sends it.
@@ -65,7 +68,7 @@ impl Extra {
 
     /// Nothing is set: the creature does not need an `Extra` at all.
     pub fn is_plain(&self) -> bool {
-        self.size.is_none() && self.max_hp.is_none() && self.bones.is_empty() && self.pitch == 0 && self.roll == 0 && self.state.is_empty()
+        self.size.is_none() && self.max_hp.is_none() && self.bones.is_empty() && self.pitch == 0 && self.roll == 0 && self.look.is_none() && self.state.is_empty()
     }
 
     /// (pitch, roll) in degrees, when the model is tilted.
@@ -75,6 +78,11 @@ impl Extra {
         } else {
             Some((self.pitch as f32 / 10.0, self.roll as f32 / 10.0))
         }
+    }
+
+    /// The forced head look in degrees (yaw, pitch), if a script set one.
+    pub fn look_deg(&self) -> Option<(f32, f32)> {
+        self.look.map(|(y, p)| (y as f32 / 10.0, p as f32 / 10.0))
     }
 
     /// The snapshot text of this extra (see `creature_wire::encode`), made

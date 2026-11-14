@@ -22,6 +22,10 @@ use core::ffi::c_void;
 pub mod armor;
 // Particles and translucent quads of mods (game/fx).
 mod fx;
+// Soft round particles of mods (game/fx/soft.rs).
+mod soft_fx;
+// A mod's pictures on the HUD (client/modui/hud_image.rs).
+mod hud_pic;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -62,6 +66,8 @@ pub struct Env {
     pub vision: f32,
     /// 0..1: how much of the view a blindness effect takes (fog closes in).
     pub blind: f32,
+    /// A fog a mod holds over this one (`set_fog`, see game/fx/fog.rs).
+    pub fog_override: Option<crate::game::fx::fog::Blend>,
     /// What the dimension's sky is like (`content/dim_sky.rs`): fixed colours, no stars...
     pub sky: crate::dim_sky::DimSky,
 }
@@ -465,6 +471,10 @@ impl Renderer {
             let k = 1.0 - 0.85 * env.blind.min(1.0);
             fog = [fog[0] * k, fog[1] * k, fog[2] * k];
         }
+        // A mod's own fog is mixed in (not under water or lava: they have their own).
+        if let (Some(b), false) = (env.fog_override, env.underwater) {
+            fog = b.colour(fog);
+        }
         self.update_light_map(day, env.vision);
         let aspect = self.w as f32 / self.h.max(1) as f32;
         let view = math::view_rotation(cam.yaw, cam.pitch);
@@ -613,6 +623,10 @@ impl Renderer {
         // A dimension may pull the fog in or push it out (never past what is loaded).
         let (fog_start, fog_end) = if env.underwater || env.sky.fog_scale == 1.0 { (fog_start, fog_end) } else { (fog_start * env.sky.fog_scale, (fog_end * env.sky.fog_scale).min(far * 1.5 + 90.0)) };
         let (fog_start, fog_end) = crate::game::effects::body::fog_range(fog_start, fog_end, env.blind);
+        let (fog_start, fog_end) = match (env.fog_override, env.underwater) {
+            (Some(b), false) => b.range(fog_start, fog_end),
+            _ => (fog_start, fog_end),
+        };
         unsafe {
             (g.Enable)(gl::FOG);
             (g.Fogf)(gl::FOG_START, fog_start);

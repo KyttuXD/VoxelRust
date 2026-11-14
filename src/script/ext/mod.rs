@@ -23,6 +23,8 @@
 //! | `structures.rs` | `rand_chunk` and `world_seed`, for structures placed as chunks are generated |
 //! | `screens.rs` | opening the crafting grid and the inventory |
 //! | `fx.rs` | dropped items, explosions with flags, flying blocks, particles, translucent quads, the sky of a dimension |
+//! | `atmosphere.rs` | a fog over the world, soft translucent specks, a tint over the screen |
+//! | `creature_look.rs` | where a creature's head looks |
 //! | `sound.rs` | sounds in the world with handles, loops, and one channel of music |
 //! | `data.rs` | what the session keeps for all of this |
 //!
@@ -30,8 +32,10 @@
 //! docs/SCRIPTING.md; a test keeps the two in step.
 
 pub mod args;
+pub mod atmosphere;
 pub mod attrs;
 pub mod bodies;
+pub mod creature_look;
 pub mod data;
 pub mod draw;
 pub mod effects;
@@ -67,7 +71,7 @@ pub struct Ctx {
 }
 
 /// Every function of every file, in the order the docs list them.
-pub const MODULES: &[&[(&str, &str)]] = &[world::FUNCTIONS, mobs::FUNCTIONS, player::FUNCTIONS, draw::FUNCTIONS, bodies::FUNCTIONS, storage::FUNCTIONS, pack::FUNCTIONS, files::FUNCTIONS, net::FUNCTIONS, effects::FUNCTIONS, gear::FUNCTIONS, attrs::FUNCTIONS, mobs_model::FUNCTIONS, modmsg::FUNCTIONS, structures::FUNCTIONS, screens::FUNCTIONS, fx::FUNCTIONS, sound::FUNCTIONS];
+pub const MODULES: &[&[(&str, &str)]] = &[world::FUNCTIONS, mobs::FUNCTIONS, player::FUNCTIONS, draw::FUNCTIONS, bodies::FUNCTIONS, storage::FUNCTIONS, pack::FUNCTIONS, files::FUNCTIONS, net::FUNCTIONS, effects::FUNCTIONS, gear::FUNCTIONS, attrs::FUNCTIONS, mobs_model::FUNCTIONS, modmsg::FUNCTIONS, structures::FUNCTIONS, screens::FUNCTIONS, fx::FUNCTIONS, atmosphere::FUNCTIONS, creature_look::FUNCTIONS, sound::FUNCTIONS];
 
 /// All the (signature, what it does) rows.
 pub fn all_functions() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
@@ -116,6 +120,8 @@ pub(crate) fn call(it: &mut Interp, name: &str, args: &[Value]) -> Option<Res> {
             14 => structures::call(g, &ctx, name, args),
             15 => screens::call(g, &ctx, name, args),
             16 => fx::call(g, &ctx, name, args),
+            17 => atmosphere::call(g, &ctx, name, args),
+            18 => creature_look::call(g, &ctx, name, args),
             _ => sound::call(g, &ctx, name, args),
         },
     };

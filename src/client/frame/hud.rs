@@ -17,6 +17,8 @@ impl App {
         if let Some(t) = crate::game::effects::body::tint(&g.fx, &crate::game::effects::apply::lookup) {
             r.rect(0.0, 0.0, w, h, t);
         }
+        // A colour a mod's script laid over the screen (`hud_tint`).
+        crate::script::ext::atmosphere::draw_tint(g, r, w, h);
         if self.screen == Screen::Game {
             let c: Color = [255, 255, 255, 200];
             r.rect(w * 0.5 - 5.0 * s, h * 0.5 - 0.5 * s, 10.0 * s, s, c);

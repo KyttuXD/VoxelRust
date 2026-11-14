@@ -66,7 +66,7 @@ impl MemWatch {
         self.audio_bytes = audio.clip_bytes();
         b.set(Cat::Audio, self.audio_bytes);
         b.set(Cat::Meshes, r.vbo_bytes);
-        b.set(Cat::Textures, ATLAS_BYTES + UI_TEXTURE_BYTES + r.model_tex_bytes);
+        b.set(Cat::Textures, ATLAS_BYTES + UI_TEXTURE_BYTES + r.model_tex_bytes + crate::client::modui::with_ui(|u| u.images.bytes()).unwrap_or(0));
         b.set(Cat::Models, r.model_bytes());
         b.set(Cat::Other, BASE_BYTES);
         match g {

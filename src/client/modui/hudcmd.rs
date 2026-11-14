@@ -77,6 +77,11 @@ pub enum Cmd {
     Item { at: Anchor, dx: f32, dy: f32, size: f32, id: String },
     Block { at: Anchor, dx: f32, dy: f32, size: f32, id: String },
     Bar { at: Anchor, dx: f32, dy: f32, w: f32, h: f32, frac: f32, col: Color },
+    /// A mod's picture (or part of it, `uv` = u0, v0, u1, v1) with a tint and opacity in `col`;
+    /// `img` is its number in `hud_image::Images`.
+    Image { at: Anchor, dx: f32, dy: f32, w: f32, h: f32, uv: [f32; 4], col: Color, img: u32 },
+    /// A mod's picture fitted to the whole screen.
+    Fit { img: u32, iw: u32, ih: u32, fit: crate::client::modui::hud_image::Fit, col: Color },
 }
 
 /// What is left to paint, in screen pixels.
@@ -87,6 +92,8 @@ pub enum Prim {
     Text { x: f32, y: f32, scale: f32, text: String, col: Color },
     Item { x: f32, y: f32, size: f32, id: String },
     Block { x: f32, y: f32, size: f32, id: String },
+    /// A part (`uv`) of a mod's picture `img` in a rectangle, tinted by `col`.
+    Image { x: f32, y: f32, w: f32, h: f32, uv: [f32; 4], col: Color, img: u32 },
 }
 
 /// The commands of one frame, with the cap.
@@ -231,6 +238,7 @@ pub fn place(cmd: &Cmd, f: &Frame, out: &mut Vec<Prim>) {
                 out.push(Prim::Block { x, y, size, id: id.clone() });
             }
         }
+        Cmd::Image { .. } | Cmd::Fit { .. } => crate::client::modui::hud_image::place(cmd, f, out),
         Cmd::Bar { at, dx, dy, w, h, frac, col } => {
             let (w, h) = (w.clamp(0.0, 4096.0) * f.s, h.clamp(0.0, 4096.0) * f.s);
             let (x, y) = origin(f, *at, *dx, *dy, w, h);

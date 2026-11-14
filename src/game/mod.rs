@@ -39,6 +39,7 @@ pub mod creature_size;
 pub mod creature_extra;
 pub mod creature_wire;
 pub mod creature_api;
+pub mod creature_look;
 pub mod mod_message;
 pub mod fx;
 pub mod mod_sound;

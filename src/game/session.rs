@@ -2121,6 +2121,8 @@ impl Session {
         crate::primed::tick(self, dt);
         // Blocks a mod threw, its quads, the counts of this frame (game/fx).
         crate::game::fx::tick(self, dt);
+        // The heads of creatures turn toward the players.
+        crate::game::creature_look::tick(self, dt);
         crate::chest_anim::tick(self, dt, audio);
         // Creatures, sleep and weather for scripts, and the mods' tick hook.
         crate::game::events::poll(self, dt);

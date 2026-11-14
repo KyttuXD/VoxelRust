@@ -17,6 +17,8 @@ pub struct Remote {
     /// Walk animation, driven by how far they move between updates.
     pub phase: f32,
     pub stride: f32,
+    /// Blocks a second they covered lately (from their position changes: tells a run from a walk).
+    pub pace: f32,
     /// False until their first position arrives.
     pub seen: bool,
     /// Their pose byte (see `content::pose::unpack`), the posture they are
@@ -179,7 +181,7 @@ impl Client {
                     Msg::Join { id, name } => {
                         events.push(Event::Chat(alloc::format!("{} JOINED", name.to_ascii_uppercase())));
                         events.push(Event::Joined(name.clone()));
-                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new() });
+                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, pace: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new() });
                     }
                     Msg::Leave { id } => {
                         if let Some(p) = self.players.remove(&id) {
@@ -196,6 +198,8 @@ impl Client {
                             if p.seen {
                                 p.phase += step * 3.2;
                                 p.stride = (step * 2.5).min(1.0);
+                                // (positions come ten times a second)
+                                p.pace += (step * 10.0 - p.pace) * 0.5;
                             }
                             p.pos = pos;
                             p.yaw = yaw;
@@ -258,6 +262,7 @@ impl Client {
         // Players who stop moving stop walking.
         for p in self.players.values_mut() {
             p.stride *= 1.0 - (dt * 3.0).min(1.0);
+            p.pace *= 1.0 - (dt * 0.5).min(1.0);
             p.body.update(crate::content::pose::unpack(p.pose).0, dt);
             // An emote runs on while they stand still, and stops when they move off.
             if p.emote != 0 {

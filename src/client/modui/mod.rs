@@ -9,6 +9,7 @@
 //! | `binds.rs` | key bindings and switches a mod declares; keys, conflicts, list lines |
 //! | `scroll.rs` | the arithmetic of scrolling lists |
 //! | `hudcmd.rs` | the per-frame drawing commands, the cap, placing and clipping |
+//! | `hud_image.rs` | a mod's pictures on the HUD: the cache and its limits, anchoring, `cover` and `contain` |
 //! | `hud.rs` | HUD slots, toasts, the action bar, and their layout |
 //! | `screens.rs` | a mod's own screen: widgets and the events they make |
 //! | `info.rs` | what a mod may read about the player |
@@ -26,6 +27,7 @@ pub mod binds;
 pub mod dispatch;
 pub mod hud;
 pub mod hud_draw;
+pub mod hud_image;
 pub mod hudcmd;
 pub mod info;
 pub mod keys;
@@ -46,6 +48,8 @@ use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 #[derive(Debug, Default)]
 pub struct ModUi {
     pub hud: hud::Hud,
+    /// The pictures mods draw on the HUD (read when first named, freed with their mod).
+    pub images: hud_image::Images,
     pub screens: screens::Screens,
     /// What a script declares while its `on_register` runs.
     pub decls: binds::Decls,
@@ -86,6 +90,7 @@ impl ModUi {
     /// Forget everything a mod put on the interface (it was switched off or reloaded).
     pub fn forget_mod(&mut self, mod_name: &str) {
         self.hud.remove_mod(mod_name);
+        self.images.drop_mod(mod_name);
         self.screens.drop_mod(mod_name);
         self.held.retain(|h| h.0 != mod_name);
     }
