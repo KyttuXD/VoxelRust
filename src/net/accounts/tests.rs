@@ -8,7 +8,7 @@ use super::state::Bucket;
 use super::store::{Account, KIND_PIN};
 use super::strikes::Strikes;
 use crate::netplay::{Client, Event, Welcome};
-use crate::proto::{Inbox, Msg, Next, PERM_BUILD, PERM_COMMANDS, PERM_GAMEMODE, PERM_VOICE};
+use crate::proto::{Inbox, Msg, Next, PERM_BUILD, PERM_COMMANDS, PERM_GAMEMODE, PERM_PVP, PERM_VOICE};
 use crate::server::{Config, Server};
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -320,12 +320,12 @@ fn nobody_can_register_a_reserved_name_and_the_administrator_logs_in_with_every_
     let (mut guest, _) = h.join("Bob", None).ok().unwrap();
     let events = pump(&mut guest, 200);
     let perms: Vec<u8> = events.iter().filter_map(|e| if let Event::Perms(f) = e { Some(*f) } else { None }).collect();
-    assert_eq!(perms.last(), Some(&(PERM_BUILD | PERM_VOICE)));
+    assert_eq!(perms.last(), Some(&(PERM_BUILD | PERM_VOICE | PERM_PVP)));
     // The administrator: all of it, a star in the list, and the commands.
     let (mut admin, _) = h.join("kyttu", Some("482915")).ok().expect("administrator login");
     let events = pump(&mut admin, 300);
     let perms: Vec<u8> = events.iter().filter_map(|e| if let Event::Perms(f) = e { Some(*f) } else { None }).collect();
-    assert_eq!(perms.last(), Some(&(PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE)));
+    assert_eq!(perms.last(), Some(&(PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE | PERM_PVP)));
     assert!(chats(&events).iter().any(|l| l.contains("ADMINISTRATOR")), "{:?}", chats(&events));
     admin.send_chat("/list");
     let events = pump(&mut admin, 300);
@@ -347,6 +347,9 @@ fn nobody_can_register_a_reserved_name_and_the_administrator_logs_in_with_every_
     assert!(new_pin.chars().all(|c| c.is_ascii_digit()), "{reply}");
     assert!(note_of(h.join("ann", Some("4821"))).starts_with("WRONG PIN"));
     assert!(h.join("ann", Some(&new_pin)).is_ok());
+    // An administrator's own PIN is out of /resetpin's reach (also for themselves).
+    admin.send_chat("/resetpin kyttu 937156");
+    assert!(chats(&pump(&mut admin, 400)).iter().any(|l| l.contains("CANNOT BE RESET FROM THE GAME")));
     // The administrator can ban and kick like any operator.
     admin.send_chat("/ban bob");
     assert!(chats(&pump(&mut admin, 300)).iter().any(|l| l.contains("BOB WAS REMOVED")));

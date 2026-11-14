@@ -55,6 +55,17 @@ pub fn set_max_texture(n: usize) {
     MAX_TEXTURE.store(n.clamp(256, 16384), Ordering::Relaxed);
 }
 
+/// What to plan with for the card's answer to "how big may a texture be": the answer
+/// itself, or 2048 (what every card since the first 3D ones takes) when the card, or the
+/// web shim in front of it, gave none (0 or less).
+pub fn texture_limit_from_query(answer: i32) -> usize {
+    if answer > 0 {
+        answer as usize
+    } else {
+        2048
+    }
+}
+
 /// The side of the biggest page: the card's limit, but never over 4096.
 pub fn max_texture() -> usize {
     MAX_TEXTURE.load(Ordering::Relaxed).min(4096)
@@ -103,6 +114,18 @@ pub fn limit_picture(img: crate::image::png::Image) -> crate::image::png::Image 
 mod tests {
     use super::*;
     use crate::image::png::Image;
+
+    #[test]
+    fn a_card_that_does_not_answer_is_planned_for_2048() {
+        assert_eq!(texture_limit_from_query(0), 2048);
+        assert_eq!(texture_limit_from_query(-1), 2048);
+        assert_eq!(texture_limit_from_query(8192), 8192);
+        // Planned for 2048, no page is bigger.
+        let natural = alloc::vec![512usize; 40];
+        let p = plan::plan(&natural, 512, texture_limit_from_query(0), plan::DEFAULT_BYTE_LIMIT);
+        assert!(p.pages.iter().all(|g| g.w <= 2048 && g.h <= 2048));
+        assert!(p.tiles() > 0);
+    }
 
     #[test]
     fn creature_pictures_are_limited_by_the_size_and_the_cap_but_not_below_64() {

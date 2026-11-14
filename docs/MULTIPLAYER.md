@@ -53,6 +53,7 @@ voxelrust --server --world myworld
 | `--log FILE` | also write the server's output to a file |
 | `--no-update` | do not keep the server up to date (see below) |
 | `update_check_seconds=N` (in `settings.txt` in `--data`) | how often the server looks for a new release: 90 by default, kept between 30 and 600 |
+| `pvp=on\|off` and `spawn_protection_seconds=N` (in `settings.txt` in `--data`) | whether players may hurt each other (on by default; `/pvp` overrides it once used) and the seconds of protection after joining or respawning (5 by default, 0 to 60); see [Player versus player](#player-versus-player) |
 | `--update-mirror URL` | fetch updates from this web folder over plain HTTP, tried before the release (or `update_mirror=URL` in `settings.txt` in `--data`) |
 
 The server prints who joins and leaves, chat, and relay requests. Stop it
@@ -127,7 +128,8 @@ Shared between everyone on a server:
   (`Msg::Emote`, the number of the emote in the server's pack; 0 stops it).
 - **Block edits**: every block placed or broken, including everything built
   before you joined.
-- **Chat**.
+- **Chat**, and the last ten lines of it for anyone who joins.
+- **Health, hunger, armour and ping** of every player (next section).
 - **Time of day**, and with it the weather (which is worked out from the
   seed, place and time, so everyone sees the same sky).
 - **Content**: the server's packs (next section).
@@ -140,9 +142,11 @@ Shared between everyone on a server:
 
 The server does not run creatures or vehicles itself: it only passes
 messages on. Instead **one player's game runs them for everybody**: the
-player with the lowest player number of those present (normally whoever
-joined first). When that player
-leaves, the next lowest takes over. Vehicles are run by the code of the
+player who came first of those present. The server names them to everybody
+when someone joins or leaves; when that player leaves, the next to have come
+takes over (the game that takes over carries on with the creatures it had
+been shown). A server that names nobody (an older one) is taken to mean the
+lowest player number. Vehicles are run by the code of the
 Vehicles mod, so they are shared only while that mod is on.
 
 - That game moves the creatures and the vehicles nobody is riding, and
@@ -176,11 +180,70 @@ passes these on like everything else and keeps a message only when the mod
 asks it to. A game acts on them only while that mod is on; the others
 ignore them.
 
+### Health, armour, the player list and what the server remembers
+
+Every player's game tells the server how it is: health and most health (up
+to 100, in half hearts), hunger, and the item in each of the four armour
+slots, at most four times a second and every two seconds even when nothing
+changed. The server checks the numbers (a most health from 1 to 100, health
+not above it, hunger 0 to 20; anything else is ignored), adds the player's
+ping and passes it on. Games keep the latest of each player and show it:
+
+- **Hearts under the name tag** of players within 24 blocks: ten small hearts
+  to a row, more rows below for more than 20 health.
+- **The armour** other players wear is drawn on their models.
+- **The player list**: hold **Tab** in the game (a shared game only) for a list
+  of the players with a health bar, health and ping in milliseconds. The
+  server asks every five seconds and the game answers at once; a game that
+  does not know this is not asked and shows no ping.
+
+Health belongs to each game, as before: the server does not heal or hurt
+anyone and does not check how fast health rises. Two things are the
+server's: **a death** (the dying game sends "I died" with its cause; the
+server says `NAME died` / `NAME fell from a high place` / ... in chat once,
+until that player is well again), and **memory**: the server writes the last
+health, most health and hunger of each player (by account, or by name for a
+guest) next to the place they left, in the `.server-spots.txt` file
+(`name x y z yaw pitch health max hunger`; older lines with no health still
+load). When the player joins again their game is given that health and
+hunger. A player who left dead comes back at the world's spawn at full
+health instead, like after a respawn.
+
+All of this is one state channel (7, `channel::VITALS` in `src/net/proto.rs`;
+the code is in `src/net/sync/`), so the protocol version did not change: an
+older game ignores the messages, and an older server just passes them on.
+
+### Joining, leaving and joining again
+
+What a server tells a player who joins, in this order: the world (seed, time of day), the
+program's version, the content pack, the mod list, the last ten lines of chat,
+who runs the creatures, then each player here with their skin, position and
+pose, status effects, health and armour, and the emote they are playing, then
+every block change, the kept chest contents, and, for a player who has been
+here before, where they were and how they were. Time of day is sent again every five seconds
+and the weather follows from the seed and the time, so everyone has the same
+sky. The skin is sent again on every join, and the skins of players who
+left are forgotten.
+
+- **Coming back before the old connection has timed out.** A player who
+  joins again under the same account replaces their old connection. A guest
+  (no account) who joins again from the same address under the same name,
+  when their old connection has said nothing for 2.5 seconds, replaces it
+  too: they keep their name (it does not become `Bob2`) and their place on a
+  full server. From another address, or while the old connection is still
+  talking, the name is taken as before and the newcomer gets a number added.
+  The server looks again at the player limit once the old connection has
+  made way.
+- **A player who says nothing for 60 seconds is dropped** (a game says
+  something at least every two seconds, also while it loads the world).
+- **Two players changing the same block within a moment**: the one who came
+  last wins on the server, and both are told, so that nobody is left with the
+  other's block.
+
 ### Not shared
 
-- **Inventories, health and hunger.** These are per player and are not kept
-  by the server. You join in creative mode with the creative starting items,
-  and nothing you carry is saved when you leave.
+- **Inventories.** These are per player and are not kept
+  by the server. You join with the starting items, and nothing you carry is saved when you leave.
 - **Villagers' work.** Villagers are shared like other creatures, but their
   farming and building is not applied to a shared world.
 - **Pets** are not saved on a server.
@@ -241,6 +304,69 @@ player when they join.
 The permissions and mutes are kept with the operators in the server's
 permissions file (`voicerange N` and `mute NAME` lines beside the `perm`
 lines). Files written before voice chat existed still allow it.
+
+## Player versus player
+
+Players can hit each other. The server decides every hit; nothing about it
+changes the protocol (the messages are state messages on channels 8 to 11,
+which games from before it ignore).
+
+**How a hit goes.** The attacker's game finds the player under the crosshair
+(a ray against the other players' boxes, 0.6 wide and 1.8 tall, within the
+reach of the item in hand, at most 4.5 blocks; a block in front stops it) and
+swings at once, with the hit sound. It sends the server "I hit player N" with
+the item in hand and the blow it worked out: the same blow as against a
+creature (the item's damage, 1 for a bare hand, then strength or weakness and
+the `damage` attribute), at most one hit every 0.35 seconds. The server then
+checks:
+
+- the switch is on (`pvp=on`, the default; `/pvp off` turns it off for everyone
+  and takes `pvp` out of every player's permissions) and both players have the
+  `pvp` permission (`/perm NAME -pvp`; allowed by default; a player without it
+  can neither hit nor be hit);
+- both are in survival mode (creative players are immune and never hit
+  anyone) and alive;
+- the target is another player who has joined, whose game takes part (see
+  below);
+- the target has no **spawn protection**: nobody can be hurt in the first 5
+  seconds after joining or respawning (`spawn_protection_seconds` in
+  `settings.txt`, 0 to 60);
+- from the attacker's eyes to the target's body is at most **5.2 blocks**
+  (reach plus room for lag), by the last positions each sent;
+- the attacker's last hit that counted was at least 0.35 seconds ago (0.04 is
+  forgiven, for messages that come in a bunch).
+
+A hit that fails any of these does nothing, silently. A hit that passes is
+cut to what the weapon allows (at most four times its damage plus 4, never
+over 40: a changed game cannot claim more), and the **target's armour** is
+taken off it with the game's own armour maths (`Armour and wear` in
+PLAYING.md). The target's game tells the server its defense points and toughness
+(clamped to 20 and 8 here) and whether it is alive in a gear message whenever
+they change, at most four times a second and at least every 10 seconds, so that
+armour cannot be claimed for more than the most a player can wear.
+
+The server then tells the target "you were hit for N by NAME" (and which way
+to be thrown, away from the attacker) and tells everyone within 64 blocks, the
+attacker included, who was hit (the red flash of the model for 0.35 seconds
+and the hurt sound). The target's game takes the damage from its own health (a
+player owns their health: the server never changes it), with the red screen
+vignette and the hearts as for any blow, throws the player back, and wears
+the armour. Friendly fire is on: there are no teams.
+
+**Deaths.** When a player's game says it has died and it was hit by another
+player in the last 15 seconds, the server tells everyone "A was slain by B"
+and counts a kill for B (`/kills`). Other deaths say nothing here.
+
+**Older games** (protocol 13, or 14 games from before fighting) never send
+the gear message, so they are not fighting players: they can hit no one
+and take **no damage** from anyone. A server that only has such games never sees
+a fight.
+
+**The swing.** Clicking the attack button with nothing in reach swings the arm
+too (a quarter of a second between swings; it never delays mining). Other
+players see your arm swing, 0.3 seconds, whenever the pose byte of your
+position messages has its swing flag: right arm back, then forward and up,
+the forearm following.
 
 ## Server-hosted packs
 
@@ -392,9 +518,11 @@ what the game itself does not know is passed to the server.
 | `/ban NAME`, `/pardon NAME` | operators | keep a name out, or let it back |
 | `/say TEXT` | operators | a message from the server to everyone |
 | `/time 0..1` | operators | set the time of day (0.25 is noon) |
-| `/perm NAME [+build -build +gamemode -gamemode +commands -commands +voice -voice]` | operators | show or change what one player may do; `/default [...]` sets it for everyone without an entry of their own |
+| `/perm NAME [+build -build +gamemode -gamemode +commands -commands +voice -voice +pvp -pvp]` | operators | show or change what one player may do; `/default [...]` sets it for everyone without an entry of their own |
 | `/mute NAME`, `/unmute NAME` | operators | take away or give back a player's voice chat (kept in the permissions file) |
 | `/voicerange BLOCKS` | operators | how far a voice carries (2 to 128, 24 by default); with no number, shows it |
+| `/pvp on`, `/pvp off` | operators | allow or stop fighting between players (kept in the permissions file); `/pvp` alone, for anyone, shows it |
+| `/kills [NAME]` | anyone | the kills of a player since the server started (not kept) |
 
 Operators and bans are kept in `<world>.server-ops.txt` beside the world.
 A name is free for anyone unless it has an account: a name can be protected by
@@ -426,7 +554,7 @@ skin 30 a second. Voice has its own limit. Also:
   for 20 seconds is dropped);
 
 - at most 24 connections that have not said hello yet, and nobody stays
-  connected without a word for two minutes;
+  connected without a word for a minute;
 - the server keeps at most 600 000 changed blocks and 8 MB of kept state (chests);
   a chest's contents are only taken from players who may build, and the
   creature snapshots only from the player who runs the creatures;

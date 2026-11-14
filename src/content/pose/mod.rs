@@ -25,6 +25,7 @@ pub mod ride;
 pub mod sit;
 pub mod sleep;
 pub mod swim;
+pub mod swing;
 
 /// The posture of a body. The numbers are what multiplayer sends.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]

@@ -16,11 +16,11 @@ fn average(rgba: &[u8], w: usize, h: usize, side: usize) -> Vec<u8> {
         let (y0, y1) = (y * h / side, ((y + 1) * h / side).max(y * h / side + 1).min(h));
         for x in 0..side {
             let (x0, x1) = (x * w / side, ((x + 1) * w / side).max(x * w / side + 1).min(w));
-            let (mut sum, mut a_sum, mut n) = ([0u32; 3], 0u32, 0u32);
+            let (mut sum, mut a_sum, mut n) = ([0u64; 3], 0u64, 0u64);
             for sy in y0..y1 {
                 for p in rgba[(sy * w + x0) * 4..(sy * w + x1) * 4].chunks_exact(4) {
-                    let a = p[3] as u32;
-                    sum = [sum[0] + p[0] as u32 * a, sum[1] + p[1] as u32 * a, sum[2] + p[2] as u32 * a];
+                    let a = p[3] as u64;
+                    sum = [sum[0] + p[0] as u64 * a, sum[1] + p[1] as u64 * a, sum[2] + p[2] as u64 * a];
                     a_sum += a;
                     n += 1;
                 }
@@ -106,6 +106,22 @@ mod tests {
         assert_eq!(&small[(63 * 64 + 63) * 4..][..4], &[0, 0, 255, 255]);
         assert_eq!(&small[(10 * 64 + 31) * 4..][..4], &[255, 0, 0, 255]);
         assert_eq!(&small[(10 * 64 + 32) * 4..][..4], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn averaging_a_huge_box_does_not_overflow() {
+        // 1024 x 1024 opaque white down to one pixel: the sums pass what a u32 holds.
+        let rgba = alloc::vec![255u8; 1024 * 1024 * 4];
+        let one = downscale_square(&rgba, 1024, 1);
+        assert_eq!(one, [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn non_square_pictures_average_to_the_requested_side() {
+        let rgba = alloc::vec![80u8; 100 * 7 * 4];
+        let s = downscale(&Image { w: 100, h: 7, rgba }, 5);
+        assert_eq!((s.w, s.h, s.rgba.len()), (5, 5, 100));
+        assert!(s.rgba.iter().all(|&v| v == 80));
     }
 
     #[test]

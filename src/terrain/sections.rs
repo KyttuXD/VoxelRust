@@ -282,6 +282,62 @@ mod tests {
     }
 
     #[test]
+    fn cells_touching_only_at_an_edge_or_corner_do_not_join() {
+        // Two halves of a tunnel that meet along an edge only: no path for sight.
+        let mut open = [0u8; 4096];
+        for x in 0..8 {
+            open[cell(x, 5, 5)] = 1;
+        }
+        for x in 8..16 {
+            open[cell(x, 6, 6)] = 1;
+        }
+        assert_eq!(connectivity(&open), 0);
+        // And a corner-only meeting.
+        let mut open = [0u8; 4096];
+        for x in 0..8 {
+            open[cell(x, 5, 5)] = 1;
+        }
+        open[cell(8, 6, 6)] = 1;
+        for x in 9..16 {
+            open[cell(x, 6, 6)] = 1;
+        }
+        assert_eq!(connectivity(&open), 0);
+        // One shared face makes the path.
+        let mut open = [0u8; 4096];
+        for x in 0..16 {
+            open[cell(x, 5, 5)] = 1;
+        }
+        open[cell(15, 6, 5)] = 1;
+        assert_eq!(connectivity(&open), pair_bit(FACE_NX, FACE_PX));
+    }
+
+    #[test]
+    fn single_cell_tunnels_along_each_axis_join_their_two_ends() {
+        for (axis, a, b) in [(0, FACE_NX, FACE_PX), (1, FACE_NY, FACE_PY), (2, FACE_NZ, FACE_PZ)] {
+            let mut open = [0u8; 4096];
+            for i in 0..16 {
+                let (x, y, z) = match axis {
+                    0 => (i, 9, 2),
+                    1 => (3, i, 12),
+                    _ => (5, 7, i),
+                };
+                open[cell(x, y, z)] = 1;
+            }
+            assert_eq!(connectivity(&open), pair_bit(a, b), "axis {}", axis);
+        }
+    }
+
+    #[test]
+    fn a_one_cell_plug_closes_a_tunnel() {
+        let mut open = [0u8; 4096];
+        for x in 0..16 {
+            open[cell(x, 5, 7)] = 1;
+        }
+        open[cell(9, 5, 7)] = 0;
+        assert_eq!(connectivity(&open), 0);
+    }
+
+    #[test]
     fn separate_pockets_do_not_join() {
         // Two pockets, one touching only -x and one only +x.
         let mut open = [0u8; 4096];

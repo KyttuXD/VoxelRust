@@ -46,11 +46,27 @@ pub fn apply(show: &str, posing: &mut crate::game::posing::Posing) {
             None => crate::logf!("voxelrust: --show bends:{}: no such pose (idle walk sprint crouchwalk swim climb sit sleep fall ride)", spec),
         }
     }
+    // "swing:F": the arm F (0 to 1) of the way through a punch, as another player's is seen.
+    if let Some(f) = show.split(',').find_map(|w| w.strip_prefix("swing:")).and_then(|f| f.parse::<f32>().ok()) {
+        posing.shown_swing = Some(if f.is_finite() { f.clamp(0.001, 1.0) } else { 0.5 });
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_swing_for_a_picture_is_kept_inside_its_range() {
+        let mut p = crate::game::posing::Posing::default();
+        apply("third,swing:0.4", &mut p);
+        assert_eq!(p.shown_swing, Some(0.4));
+        apply("swing:7", &mut p);
+        assert_eq!(p.shown_swing, Some(1.0));
+        let mut q = crate::game::posing::Posing::default();
+        apply("third", &mut q);
+        assert_eq!(q.shown_swing, None);
+    }
 
     #[test]
     fn names_give_postures_and_gaits() {

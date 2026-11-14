@@ -22,6 +22,14 @@ use alloc::vec::Vec;
 #[path = "accounts/server_side.rs"]
 mod accounts_flow;
 use self::accounts_flow::Gate;
+/// The server's half of player versus player (see `net/pvp`).
+#[path = "pvp/server_side.rs"]
+mod pvp_flow;
+
+/// The server's half of the sync of shared games (health, pings, who runs the creatures, a
+/// guest who comes back too soon): also a child module, for the same reason.
+#[path = "sync/server_side.rs"]
+mod sync_flow;
 
 pub struct Config {
     pub port: u16,
@@ -51,6 +59,8 @@ struct Conn {
     last_move: Option<([f64; 3], f32, f32, u16, u8)>,
     /// This player's skin as the server keeps it (see `net::skinslot`).
     skin: crate::net::skinslot::SkinSlot,
+    /// Skins of other players waiting to be sent to this one, a few pieces a tick.
+    skin_out: crate::net::skinqueue::SkinQueue,
     /// The protocol version their game said it speaks.
     proto: u16,
     /// What this player's voice chat is set to (`VOICE_` flags); 0 until they say.
@@ -58,8 +68,8 @@ struct Conn {
     voice_bucket: crate::net_voice::Bucket,
     /// Ticks since anything arrived; idle strangers are dropped.
     quiet: u32,
-    /// Seconds since anything arrived; players who say nothing for two
-    /// minutes (a client sends its position every couple of seconds) are
+    /// Seconds since anything arrived; players who say nothing for a
+    /// minute (a client sends its position every couple of seconds) are
     /// dropped, so a dead connection does not stay a player for ever.
     idle: f32,
     /// What this connection may still send (see `net::limits`).
@@ -77,6 +87,10 @@ struct Conn {
     /// Which protocol they speak, whether they are logged in to an account, and the login
     /// challenge they owe an answer to (see `net/accounts`).
     acct: crate::net::accounts::state::ConnAuth,
+    /// Their health, death, emote, ping and place in the order of arrival (see `net/sync`).
+    sync: crate::net::sync::state::ConnSync,
+    /// Player versus player: their gear, last hit, spawn protection (see `net/pvp`).
+    pvp: crate::net::pvp::state::ConnPvp,
 }
 
 pub struct Server {
@@ -115,9 +129,15 @@ pub struct Server {
     pub voice: crate::net_voice::Rules,
     /// Accounts: the settings, the accounts, the limits on logins (see `net/accounts`).
     pub acct: crate::net::accounts::state::AccountState,
+    /// The chat history, remembered health and the like (see `net/sync`).
+    sync: crate::net::sync::state::ServerSync,
+    /// Player versus player: the switches, the clock and the kills (see `net/pvp`).
+    pub pvp: crate::net::pvp::state::Pvp,
 }
 
 const SEND_TIMEOUT: u32 = 3000;
+/// Mark on a permission line of the permissions file: written since fighting between players had a flag.
+const FILE_HAS_PVP: u8 = 64;
 
 /// Most block changes the server keeps (a hostile player may not grow the
 /// list, and the memory behind it, for ever; changes to blocks already in it
@@ -128,14 +148,14 @@ pub const MAX_KEPT_BYTES: usize = 8 << 20;
 /// Connections that have not said hello yet, at most.
 const MAX_STRANGERS: usize = 24;
 /// Seconds without a word from a player before they are dropped.
-const IDLE_SECONDS: f32 = 120.0;
+const IDLE_SECONDS: f32 = 60.0;
 
 impl Server {
     pub fn bind(cfg: Config) -> Result<Server, NetError> {
         let listener = TcpListener::bind(cfg.port)?;
         Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
             kept: BTreeMap::new(), kept_bytes: 0, ops: Vec::new(), banned: Vec::new(), ops_dirty: false, spots: BTreeMap::new(), spots_dirty: false,
-            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE, perms: Vec::new(), creative: Vec::new(), voice: Default::default(), acct: Default::default() })
+            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE | crate::proto::PERM_PVP, perms: Vec::new(), creative: Vec::new(), voice: Default::default(), acct: Default::default(), pvp: Default::default(), sync: Default::default() })
     }
 
     /// A player number no one here has: never 0 (the server) or 65535 (what
@@ -167,11 +187,11 @@ impl Server {
     }
 
     /// Whether the connection `i` is the player who runs the creatures for
-    /// everybody: the one who came first of those here (the same rule as
-    /// `Client::runs_the_world`, which goes by the lowest number).
+    /// everybody: the one who came first of those here (the clients are told
+    /// who that is, see `net/sync`).
     fn runs_the_world(&self, i: usize) -> bool {
-        let me = self.conns[i].id;
-        self.conns.iter().filter(|c| c.joined && !c.gone).all(|c| c.id >= me)
+        let me = self.conns[i].sync.order;
+        self.conns.iter().filter(|c| c.joined && !c.gone).all(|c| c.sync.order >= me)
     }
 
     pub fn port(&self) -> u16 {
@@ -188,12 +208,16 @@ impl Server {
         use crate::proto::*;
         let lower = who.to_ascii_lowercase();
         let mut f = if self.ops.iter().any(|o| o.eq_ignore_ascii_case(who)) || self.is_admin(who) {
-            PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE
+            PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE | PERM_PVP
         } else {
             self.perms.iter().find(|p| p.0 == lower).map_or(self.default_perms, |p| p.1)
         };
         if self.creative.contains(&lower) {
             f |= PERM_CREATIVE;
+        }
+        // Fighting is off for everybody when the server says so.
+        if !self.pvp.rules.on {
+            f &= !PERM_PVP;
         }
         f
     }
@@ -215,13 +239,14 @@ impl Server {
     pub fn perm_text(&self) -> String {
         // Flag 128 marks lines written since voice chat existed: older files
         // have no voice bit, and voice is allowed unless a line says otherwise.
-        let mut t = alloc::format!("default {}\n", self.default_perms | 128);
+        let mut t = alloc::format!("default {}\n", self.default_perms | 128 | FILE_HAS_PVP);
         for (n, f) in &self.perms {
-            t.push_str(&alloc::format!("perm {} {}\n", f | 128, n));
+            t.push_str(&alloc::format!("perm {} {}\n", f | 128 | FILE_HAS_PVP, n));
         }
         for n in &self.creative {
             t.push_str(&alloc::format!("creative {}\n", n));
         }
+        t.push_str(&self.pvp_text());
         t.push_str(&self.voice.text());
         t
     }
@@ -229,7 +254,9 @@ impl Server {
     /// Flags as written to the permissions file: files from before voice chat
     /// (no 128 mark) allow voice.
     fn read_flags(f: u8) -> u8 {
-        let kept = f & (crate::proto::PERM_BUILD | crate::proto::PERM_GAMEMODE | crate::proto::PERM_COMMANDS | crate::proto::PERM_VOICE);
+        let kept = f & (crate::proto::PERM_BUILD | crate::proto::PERM_GAMEMODE | crate::proto::PERM_COMMANDS | crate::proto::PERM_VOICE | crate::proto::PERM_PVP);
+        // (Files from before player versus player have no 64 mark: fighting is allowed.)
+        let kept = if f & FILE_HAS_PVP == 0 { kept | crate::proto::PERM_PVP } else { kept };
         if f & 128 == 0 { kept | crate::proto::PERM_VOICE } else { kept }
     }
 
@@ -243,6 +270,7 @@ impl Server {
                 }
             }
             Some(("creative", n)) => self.creative.push(n.to_ascii_lowercase()),
+            Some(("pvp", v)) => return self.pvp_load_line(v),
             _ => return self.voice.load_line(line),
         }
         true
@@ -262,6 +290,7 @@ impl Server {
                 "gamemode" => PERM_GAMEMODE,
                 "commands" => PERM_COMMANDS,
                 "voice" => PERM_VOICE,
+                "pvp" => PERM_PVP,
                 _ => return None,
             };
             flags = if on { flags | bit } else { flags & !bit };
@@ -272,7 +301,7 @@ impl Server {
     fn describe(flags: u8) -> String {
         use crate::proto::*;
         let mut v: Vec<&str> = Vec::new();
-        for (bit, n) in [(PERM_BUILD, "build"), (PERM_GAMEMODE, "gamemode"), (PERM_COMMANDS, "commands"), (PERM_VOICE, "voice")] {
+        for (bit, n) in [(PERM_BUILD, "build"), (PERM_GAMEMODE, "gamemode"), (PERM_COMMANDS, "commands"), (PERM_VOICE, "voice"), (PERM_PVP, "pvp")] {
             if flags & bit != 0 {
                 v.push(n);
             }
@@ -297,9 +326,10 @@ impl Server {
                 alloc::format!("online ({}): {}   (* = operator or administrator)", names.len(), names.join(", "))
             }
             "/help" if arg(1) == "accounts" => String::from("accounts: /register PIN PIN (protect your name; 4 or 6 digits)  /pin OLD NEW  /forgetpin (the game, not the server).  administrators: /resetpin NAME [PIN]  /accounts"),
+            "/pvp" | "/kills" => self.pvp_command(who, &w, is_op).unwrap_or_default(),
             "/register" | "/pin" | "/login" => self.plain_account_command(),
             "/resetpin" | "/accounts" => self.admin_command(who, &w),
-            "/help" => String::from("server: /list /version /gamemode creative|survival (if allowed)   operators: /op /deop /kick /ban /pardon NAME  /say TEXT  /time 0..1  /perm NAME [+build -gamemode +commands +voice]  /default [+build ...]  /mute NAME  /unmute NAME  /voicerange BLOCKS  /gamemode NAME creative|survival"),
+            "/help" => String::from("server: /list /version /gamemode creative|survival (if allowed)   operators: /op /deop /kick /ban /pardon NAME  /say TEXT  /time 0..1  /perm NAME [+build -gamemode +commands +voice +pvp]  /default [+build ...]  /mute NAME  /unmute NAME  /voicerange BLOCKS  /gamemode NAME creative|survival  /pvp on|off.  anyone: /pvp  /kills [NAME]"),
             "/gamemode" if arg(2).is_empty() || !is_op => {
                 // Your own game mode, if you may choose it.
                 let mode = if arg(2).is_empty() { arg(1) } else { arg(2) };
@@ -334,7 +364,7 @@ impl Server {
                         self.send_perms(None);
                         alloc::format!("{} may now: {}", arg(1), Self::describe(f))
                     }
-                    None => String::from("use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice"),
+                    None => String::from("use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice +pvp -pvp"),
                 }
             }
             "/mute" | "/unmute" if !arg(1).is_empty() => {
@@ -370,7 +400,7 @@ impl Server {
                         self.send_perms(None);
                         alloc::format!("players may now by default: {}", Self::describe(f))
                     }
-                    None => String::from("use /default +build -build +gamemode -gamemode +commands -commands +voice -voice"),
+                    None => String::from("use /default +build -build +gamemode -gamemode +commands -commands +voice -voice +pvp -pvp"),
                 }
             }
             "/op" if !arg(1).is_empty() => {
@@ -464,14 +494,17 @@ impl Server {
     /// original to clients that take it and the 64 x 64 one to the others.
     fn relay_skin(&mut self, from: usize) {
         let id = self.conns[from].id;
-        let new = self.conns[from].skin.wire_for(id, crate::net::skinslot::HD_PROTOCOL);
-        let old = self.conns[from].skin.wire_for(id, 0);
+        let new: crate::net::skinqueue::Batch = alloc::sync::Arc::new(self.conns[from].skin.messages_for(id, crate::net::skinslot::HD_PROTOCOL));
+        let old: crate::net::skinqueue::Batch = alloc::sync::Arc::new(self.conns[from].skin.messages_for(id, 0));
+        // The pieces are not sent here: they wait in each connection's queue and
+        // go a few to a tick (a big skin must not hold up the server).
         for (k, c) in self.conns.iter_mut().enumerate() {
             if k == from || !c.joined || c.gone {
                 continue;
             }
-            let bytes = if c.proto >= crate::net::skinslot::HD_PROTOCOL { &new } else { &old };
-            if !bytes.is_empty() && c.stream.send_all(bytes, SEND_TIMEOUT).is_err() {
+            let batch = if c.proto >= crate::net::skinslot::HD_PROTOCOL { &new } else { &old };
+            if !c.skin_out.push(batch.clone()) {
+                // Far behind with skins already: let it go rather than grow without end.
                 c.gone = true;
             }
         }
@@ -527,6 +560,7 @@ impl Server {
     /// for a relay request line. Returns lines for the server's log.
     pub fn tick(&mut self, dt: f32, tile: &mut dyn FnMut(&str) -> Option<Vec<u8>>) -> Vec<String> {
         let mut log = Vec::new();
+        self.pvp.now += dt as f64;
         self.time += dt / 1200.0;
         if self.time >= 1.0 {
             self.time -= 1.0;
@@ -543,6 +577,7 @@ impl Server {
             c.skin.tick(dt);
         }
         self.account_tick(dt);
+        self.sync_tick(dt);
         for _ in 0..8 {
             match self.listener.accept(0) {
                 Ok(Some(mut stream)) => {
@@ -554,7 +589,7 @@ impl Server {
                         continue;
                     }
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default() });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: crate::net::skinslot::SkinSlot::deferred(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default() });
                 }
                 _ => break,
             }
@@ -659,7 +694,9 @@ impl Server {
                             Some(crate::net::version::mismatch_reason(version, VERSION, &crate::net::version::local()))
                         } else if self.banned.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
                             Some(String::from("you may not join this server"))
-                        } else if self.players() >= self.cfg.max_players {
+                        } else if self.players() >= self.cfg.max_players && !self.name_is_here(&name) {
+                            // (A player of the same name may be their own old connection, which
+                            // makes way when they are let in: `admit` looks again.)
                             Some(String::from("the server is full"))
                         } else {
                             // A name with an account is logged in to first (see net/accounts).
@@ -685,11 +722,21 @@ impl Server {
                         }
                     }
                     Msg::Move { pos, yaw, pitch, held, pose, .. } if joined => {
+                        // An emote ends when they walk off it.
+                        if let Some((old, ..)) = self.conns[i].last_move {
+                            let (dx, dz) = (old[0] - pos[0], old[2] - pos[2]);
+                            if dx * dx + dz * dz > 0.25 {
+                                self.conns[i].sync.emote = 0;
+                            }
+                        }
                         self.conns[i].last_move = Some((pos, yaw, pitch, held, pose));
                         self.broadcast(&Msg::Move { id, pos, yaw, pitch, held, pose }, id);
                     }
                     // An emote the player plays (or stops): everyone else sees it.
-                    Msg::Emote { emote, .. } if joined => self.broadcast(&Msg::Emote { id, emote }, id),
+                    Msg::Emote { emote, .. } if joined => {
+                        self.conns[i].sync.emote = emote;
+                        self.broadcast(&Msg::Emote { id, emote }, id);
+                    }
                     // Their status effects: kept for newcomers and shown to everyone else.
                     Msg::Effects { list, .. } if joined => {
                         let list = crate::game::effects::sync::clean(list);
@@ -704,6 +751,11 @@ impl Server {
                             self.edits.insert((x, y, z), block);
                             self.dirty = true;
                             self.broadcast(&Msg::SetBlock { x, y, z, block }, id);
+                            // Two players changing one block at once would each be left with the
+                            // other's: the one who came last (the server's copy) is told to both.
+                            if self.sync.block_conflict((x, y, z), id) {
+                                self.send_to(id, &Msg::SetBlock { x, y, z, block });
+                            }
                         }
                     }
                     Msg::ModsWant { names } if joined && !self.conns[i].mods_asked => {
@@ -730,6 +782,11 @@ impl Server {
                     Msg::Voice { seq, frame, .. } if joined => self.relay_voice(i, seq, &frame),
                     Msg::State { channel, keep, key, data, .. } if joined => {
                         use crate::proto::channel as ch;
+                        if channel == ch::VITALS {
+                            // Health, a death, the answer to a ping (see net/sync).
+                            self.on_vitals(i, &key, &data, &mut log);
+                            continue;
+                        }
                         if channel == ch::MODMSG {
                             // A mod's message: only a sound one is passed on, never kept, to the
                             // one player it is for (not back to the sender) or to all the others.
@@ -742,6 +799,16 @@ impl Server {
                                     self.send_to(to, &msg);
                                 }
                             }
+                            continue;
+                        }
+                        // Fights: a hit and the gear are the server's to read, and the news of a hit
+                        // is the server's alone to give (never passed on from a player).
+                        match channel {
+                            ch::PVP_HIT => self.pvp_hit(i, &data),
+                            ch::PVP_GEAR => self.pvp_gear(i, &data, &mut log),
+                            _ => {}
+                        }
+                        if (ch::PVP_HIT..=ch::PVP_GEAR).contains(&channel) {
                             continue;
                         }
                         let flags = self.flags_for(&self.conns[i].name);
@@ -786,6 +853,7 @@ impl Server {
                     Msg::Chat { text, .. } if joined => {
                         let text: String = text.chars().take(120).collect();
                         log.push(alloc::format!("<{}> {}", self.conns[i].name, text));
+                        self.sync.history.push(&alloc::format!("<{}> {}", self.conns[i].name, text));
                         self.broadcast(&Msg::Chat { id, text }, id);
                     }
                     // Anything else from a client is not allowed.
@@ -793,6 +861,32 @@ impl Server {
                         self.conns[i].gone = true;
                         break;
                     }
+                }
+            }
+        }
+        // Big skins that came in are unpacked by the worker, not here; the ones it has
+        // finished are passed on.
+        for c in self.conns.iter_mut().filter(|c| !c.gone) {
+            if let Some(pending) = c.skin.take_job() {
+                let _ = crate::net::skinwork::submit(crate::net::skinwork::Job { id: c.id, pending });
+            }
+        }
+        for d in crate::net::skinwork::take_done() {
+            if let Some(k) = self.conns.iter().position(|c| c.id == d.id && c.joined && !c.gone) {
+                if self.conns[k].skin.finish(d.pending, d.legacy) {
+                    self.relay_skin(k);
+                }
+            }
+        }
+        // A few pieces of skins for whoever is waiting for them.
+        for c in self.conns.iter_mut().filter(|c| !c.gone && !c.skin_out.is_empty()) {
+            let mut batch = Vec::new();
+            c.skin_out.take(crate::net::skinqueue::PER_TICK, &mut batch);
+            for bytes in batch {
+                if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+                    c.gone = true;
+                    c.skin_out.clear();
+                    break;
                 }
             }
         }
@@ -821,11 +915,9 @@ impl Server {
             if self.conns[k].gone {
                 let c = self.conns.swap_remove(k);
                 if c.joined {
-                    if let Some((pos, yaw, pitch, ..)) = c.last_move {
-                        // (An account's place is kept under its name, a guest's under theirs.)
-                        let key = c.acct.account.clone().unwrap_or_else(|| c.name.clone());
-                        self.remember_spot(&key, [pos[0], pos[1], pos[2], yaw as f64, pitch as f64]);
-                    }
+                    // (An account's place and health are kept under its name, a guest's under theirs.)
+                    let notes = Self::leave_notes(&c);
+                    self.apply_notes(notes);
                     log.push(alloc::format!("{} left ({} online)", c.name, self.players()));
                     self.broadcast(&Msg::Leave { id: c.id }, c.id);
                 }
@@ -833,6 +925,7 @@ impl Server {
                 k += 1;
             }
         }
+        self.announce_runner();
         log
     }
 
@@ -859,24 +952,38 @@ impl Server {
     /// Note where everyone who is here stands now (done every few seconds and as the server stops,
     /// so a restart or a crash costs little).
     pub fn snapshot_spots(&mut self) {
-        let here: Vec<(String, [f64; 5])> = self.conns.iter().filter(|c| c.joined && !c.gone).filter_map(|c| c.last_move.map(|m| (c.acct.account.clone().unwrap_or_else(|| c.name.clone()), [m.0[0], m.0[1], m.0[2], m.1 as f64, m.2 as f64]))).collect();
-        for (n, s) in here {
-            self.remember_spot(&n, s);
+        let here: Vec<sync_flow::Notes> = self.conns.iter().filter(|c| c.joined && !c.gone).map(Self::leave_notes).collect();
+        for n in here {
+            self.apply_notes(n);
         }
     }
 
     /// The remembered places, one `name x y z yaw pitch` line each.
     pub fn spots_text(&self) -> String {
-        self.spots.iter().map(|(n, s)| alloc::format!("{} {} {} {} {} {}\n", n, s[0], s[1], s[2], s[3], s[4])).collect()
+        self.spots
+            .iter()
+            .map(|(n, s)| {
+                // (Their health follows when it is known: health, most health, hunger.)
+                let health = self.sync.health.get(n).map_or(String::new(), |h| alloc::format!(" {} {} {}", h[0], h[1], h[2]));
+                alloc::format!("{} {} {} {} {} {}{}\n", n, s[0], s[1], s[2], s[3], s[4], health)
+            })
+            .collect()
     }
 
     /// Read what [`Server::spots_text`] wrote.
     pub fn load_spots(&mut self, text: &str) {
         for line in text.lines() {
             let w: Vec<&str> = line.split(' ').collect();
-            if let [name, a, b, c, d, e] = w[..] {
-                if let (Ok(a), Ok(b), Ok(c), Ok(d), Ok(e)) = (a.parse::<f64>(), b.parse::<f64>(), c.parse::<f64>(), d.parse::<f64>(), e.parse::<f64>()) {
-                    self.remember_spot(name, [a, b, c, d, e]);
+            if w.len() == 6 || w.len() == 9 {
+                let n: Vec<Option<f64>> = w[1..6].iter().map(|v| v.parse::<f64>().ok()).collect();
+                if let [Some(a), Some(b), Some(c), Some(d), Some(e)] = n[..] {
+                    self.remember_spot(w[0], [a, b, c, d, e]);
+                    if w.len() == 9 {
+                        let h: Vec<Option<u8>> = w[6..9].iter().map(|v| v.parse::<u8>().ok()).collect();
+                        if let [Some(a), Some(b), Some(c)] = h[..] {
+                            self.remember_health(w[0], [a, b, c]);
+                        }
+                    }
                 }
             }
         }
@@ -911,29 +1018,29 @@ mod tests {
         let mut s = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new(), mods: Vec::new() }).unwrap();
         s.ops.push(String::from("Ann"));
         // By default players build, and nothing else; operators do everything.
-        assert_eq!(s.flags_for("Bob"), PERM_BUILD | PERM_VOICE);
-        assert_eq!(s.flags_for("ann"), PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE);
+        assert_eq!(s.flags_for("Bob"), PERM_BUILD | PERM_VOICE | PERM_PVP);
+        assert_eq!(s.flags_for("ann"), PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE | PERM_PVP);
         // Bob may not choose his game mode until he is allowed to.
         assert_eq!(s.command("Bob", "/gamemode creative"), "you may not change your game mode here");
         assert_eq!(s.command("Bob", "/perm Bob +gamemode"), "only operators may do that");
-        assert_eq!(s.command("Ann", "/perm Bob +gamemode -build"), "Bob may now: gamemode voice");
-        assert_eq!(s.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE);
+        assert_eq!(s.command("Ann", "/perm Bob +gamemode -build"), "Bob may now: gamemode voice pvp");
+        assert_eq!(s.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE | PERM_PVP);
         assert_eq!(s.command("Bob", "/gamemode creative"), "Bob is now in creative mode");
-        assert_eq!(s.flags_for("Bob"), PERM_GAMEMODE | PERM_VOICE | PERM_CREATIVE);
+        assert_eq!(s.flags_for("Bob"), PERM_GAMEMODE | PERM_VOICE | PERM_PVP | PERM_CREATIVE);
         assert_eq!(s.command("Bob", "/gamemode Ann survival"), "only operators may change someone else's game mode");
         // The default for everyone else.
-        assert_eq!(s.command("Ann", "/default -build"), "players may now by default: voice");
-        assert_eq!(s.flags_for("Cy"), PERM_VOICE);
-        assert_eq!(s.command("Ann", "/default +build +commands"), "players may now by default: build commands voice");
-        assert_eq!(s.command("Ann", "/perm Bob +fly"), "use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice");
+        assert_eq!(s.command("Ann", "/default -build"), "players may now by default: voice pvp");
+        assert_eq!(s.flags_for("Cy"), PERM_VOICE | PERM_PVP);
+        assert_eq!(s.command("Ann", "/default +build +commands"), "players may now by default: build commands voice pvp");
+        assert_eq!(s.command("Ann", "/perm Bob +fly"), "use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice +pvp -pvp");
         // It is all kept.
         let text = s.perm_text();
         let mut t = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new(), mods: Vec::new() }).unwrap();
         for line in text.lines() {
             assert!(t.load_perm_line(line), "{line}");
         }
-        assert_eq!(t.default_perms, PERM_BUILD | PERM_COMMANDS | PERM_VOICE);
-        assert_eq!(t.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE | PERM_CREATIVE);
+        assert_eq!(t.default_perms, PERM_BUILD | PERM_COMMANDS | PERM_VOICE | PERM_PVP);
+        assert_eq!(t.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE | PERM_PVP | PERM_CREATIVE);
     }
 
     #[test]
@@ -974,7 +1081,7 @@ mod tests {
         assert_eq!(s.command("Ann", "/voicerange 40"), "voices now carry 40 blocks");
         assert!(s.command("Ann", "/voicerange far").starts_with("use /voicerange"));
         assert_eq!(s.command("Ann", "/voicerange"), "voices carry 40 blocks");
-        assert_eq!(s.command("Ann", "/perm Bob -voice"), "Bob may now: build");
+        assert_eq!(s.command("Ann", "/perm Bob -voice"), "Bob may now: build pvp");
         assert_eq!(s.flags_for("Bob") & PERM_VOICE, 0);
         // All of it is kept, and files from before voice chat still allow voice.
         let mut t = Server::bind(cfg()).unwrap();
@@ -987,8 +1094,8 @@ mod tests {
         let mut old = Server::bind(cfg()).unwrap();
         assert!(old.load_perm_line("default 1"));
         assert!(old.load_perm_line("perm 1 eve"));
-        assert_eq!(old.flags_for("Zed"), PERM_BUILD | PERM_VOICE);
-        assert_eq!(old.flags_for("Eve"), PERM_BUILD | PERM_VOICE);
+        assert_eq!(old.flags_for("Zed"), PERM_BUILD | PERM_VOICE | PERM_PVP);
+        assert_eq!(old.flags_for("Eve"), PERM_BUILD | PERM_VOICE | PERM_PVP);
     }
 
     fn plain_config() -> Config {
@@ -1004,7 +1111,7 @@ mod tests {
         // One still in use after the counter went round is not given out again.
         let mut s = Server::bind(plain_config()).unwrap();
         let stream = crate::sys::net::TcpStream::connect("127.0.0.1", s.port(), 2000).unwrap();
-        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default() });
+        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default() });
         s.next_id = 6;
         assert_eq!((s.fresh_id(), s.fresh_id()), (6, 8));
     }

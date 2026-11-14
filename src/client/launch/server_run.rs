@@ -44,6 +44,10 @@ pub(super) fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String
         mods,
     };
     let mut server = Server::bind(cfg).map_err(|e| alloc::format!("could not listen on port {}: {:?}", port, e))?;
+    // Fighting between players: `pvp` and `spawn_protection_seconds` of settings.txt (the /pvp command, kept below, wins).
+    if let Some(text) = sys::read_file(&alloc::format!("{}settings.txt", base)) {
+        server.pvp.rules = crate::net::pvp::rules::Rules::from_text(&String::from_utf8_lossy(&text));
+    }
     // Operators and bans are kept beside the world: "op NAME" / "ban NAME".
     if let Some(text) = sys::read_file(&alloc::format!("{}{}.server-ops.txt", crate::session::world_dir(base), name)) {
         for line in String::from_utf8_lossy(&text).lines() {

@@ -256,7 +256,8 @@ impl ModelDef {
         let body = pose.body;
         let humanoid = self.rig.humanoid;
         let st = if humanoid { pose.stride * body.walk_weight() } else { pose.stride };
-        let (ph, ck) = (pose.phase, pose.clock);
+        // (Bodies come from data, other players and mods: nothing here is trusted to be tidy.)
+        let (ph, st, ck) = pose::gait::sane(pose.phase, st, pose.clock);
         let walk = Walk { phase: ph, stride: st, clock: ck };
         // The whole body, turned and lowered for lying, swimming, sitting...
         let base = if humanoid {

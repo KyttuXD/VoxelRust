@@ -13,7 +13,7 @@ const GDRIP: [i32; 16] = [3, 4, 3, 5, 4, 3, 4, 4, 5, 3, 4, 3, 5, 4, 3, 4];
 /// of see-through slits (two pixels wide, one tall, where `(x / 2) * 3 + y * 5`
 /// is a multiple of 7). Clumps of the second tone are `other` (the darker
 /// green, or blossom pink).
-fn leaves(x: i32, y: i32, tone: [u8; 3], other: [u8; 3]) -> Px {
+pub fn leaves(x: i32, y: i32, tone: [u8; 3], other: [u8; 3]) -> Px {
     if ((x / 2) * 3 + y * 5) % 7 == 0 {
         CLEAR
     } else if (x / 3 + y / 2) % 2 == 1 {

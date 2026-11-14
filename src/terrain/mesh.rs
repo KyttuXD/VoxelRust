@@ -318,6 +318,8 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                                 }
                                 let occ = o1 as usize + o2 as usize + o3 as usize;
                                 let c = (f.shade * AO[occ] / 256).min(255) as u8;
+                                // Lava is always full-bright (no side shade, no corner darkening), with a hot tint.
+                                let (c, tint) = crate::lava_look::vertex_look(r.fluid.get(b as usize).copied().flatten(), r.emit[b as usize], c);
                                 let mut p = [
                                     origin[0] + (f.o[0] + f.u[0] * cu + f.v[0] * cv) * 16,
                                     origin[1] + (f.o[1] + f.u[1] * cu + f.v[1] * cv) * 16,
@@ -329,7 +331,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                                 }
                                 quad[k] = Vertex {
                                     pos: [p[0] as i16, p[1] as i16, p[2] as i16, 0],
-                                    col: [c, c, c, 255],
+                                    col: [tint[0], tint[1], tint[2], 255],
                                     uv: tile_uv(d.tex[f.tex], cu * 16, (1 - cv) * 16),
                                     luv: [(blo * 16 / cnt + 8) as i16, (sky * 16 / cnt + 8) as i16],
                                 };
@@ -662,6 +664,44 @@ mod tests {
         for s in 5..16 {
             assert_eq!(t.conn[s], crate::sections::CONN_ALL);
         }
+    }
+
+    #[test]
+    fn walls_of_glass_leaves_and_water_do_not_block_sight() {
+        use crate::sections::{connected, FACE_NX, FACE_PX};
+        let wk = &reg().wk;
+        let e = ChunkData::new();
+        let stone_section = |c: &mut ChunkData| {
+            for x in 0..16 {
+                for z in 0..16 {
+                    for y in 64..80 {
+                        c.set(x, y, z, wk.stone);
+                    }
+                }
+            }
+        };
+        let glass = reg().block("glass").unwrap();
+        // (Ice is a plain opaque cube in the base pack, so it is not in this list.)
+        for wall in [glass, wk.leaves, wk.water] {
+            let mut c = ChunkData::new();
+            stone_section(&mut c);
+            // A one-cell tunnel through the rock, closed in the middle by the block under test.
+            for x in 0..16 {
+                c.set(x, 70, 5, AIR);
+            }
+            c.set(8, 70, 5, wall);
+            let t = hood(&c, &e).sections;
+            assert!(connected(t.conn[4], FACE_NX, FACE_PX), "block {} stops sight", wall);
+        }
+        // The control: a stone plug in the tunnel does.
+        let mut c = ChunkData::new();
+        stone_section(&mut c);
+        for x in 0..16 {
+            c.set(x, 70, 5, AIR);
+        }
+        c.set(8, 70, 5, wk.stone);
+        let t = hood(&c, &e).sections;
+        assert!(!connected(t.conn[4], FACE_NX, FACE_PX));
     }
 
     #[test]

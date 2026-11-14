@@ -23,9 +23,8 @@ impl Renderer {
         let g = gl();
         let mut max = 0i32;
         unsafe { (g.GetIntegerv)(gl::MAX_TEXTURE_SIZE, &mut max) };
-        if max > 0 {
-            crate::hd::set_max_texture(max as usize);
-        }
+        // (No answer, as from a web shim that has none: plan for 2048.)
+        crate::hd::set_max_texture(crate::hd::texture_limit_from_query(max));
     }
 
     /// Upload the pages of a built HD atlas, in place of the ones before (which are given back).

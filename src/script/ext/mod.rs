@@ -25,6 +25,7 @@
 //! | `fx.rs` | dropped items, explosions with flags, flying blocks, particles, translucent quads, the sky of a dimension |
 //! | `atmosphere.rs` | a fog over the world, soft translucent specks, a tint over the screen |
 //! | `creature_look.rs` | where a creature's head looks |
+//! | `explosions.rs` | the radius of a blast in `before_explode`, blocks no explosion destroys |
 //! | `sound.rs` | sounds in the world with handles, loops, and one channel of music |
 //! | `data.rs` | what the session keeps for all of this |
 //!
@@ -39,6 +40,7 @@ pub mod creature_look;
 pub mod data;
 pub mod draw;
 pub mod effects;
+pub mod explosions;
 pub mod files;
 pub mod gear;
 pub mod fx;
@@ -71,7 +73,7 @@ pub struct Ctx {
 }
 
 /// Every function of every file, in the order the docs list them.
-pub const MODULES: &[&[(&str, &str)]] = &[world::FUNCTIONS, mobs::FUNCTIONS, player::FUNCTIONS, draw::FUNCTIONS, bodies::FUNCTIONS, storage::FUNCTIONS, pack::FUNCTIONS, files::FUNCTIONS, net::FUNCTIONS, effects::FUNCTIONS, gear::FUNCTIONS, attrs::FUNCTIONS, mobs_model::FUNCTIONS, modmsg::FUNCTIONS, structures::FUNCTIONS, screens::FUNCTIONS, fx::FUNCTIONS, atmosphere::FUNCTIONS, creature_look::FUNCTIONS, sound::FUNCTIONS];
+pub const MODULES: &[&[(&str, &str)]] = &[world::FUNCTIONS, mobs::FUNCTIONS, player::FUNCTIONS, draw::FUNCTIONS, bodies::FUNCTIONS, storage::FUNCTIONS, pack::FUNCTIONS, files::FUNCTIONS, net::FUNCTIONS, effects::FUNCTIONS, gear::FUNCTIONS, attrs::FUNCTIONS, mobs_model::FUNCTIONS, modmsg::FUNCTIONS, structures::FUNCTIONS, screens::FUNCTIONS, fx::FUNCTIONS, atmosphere::FUNCTIONS, creature_look::FUNCTIONS, explosions::FUNCTIONS, sound::FUNCTIONS];
 
 /// All the (signature, what it does) rows.
 pub fn all_functions() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
@@ -122,6 +124,7 @@ pub(crate) fn call(it: &mut Interp, name: &str, args: &[Value]) -> Option<Res> {
             16 => fx::call(g, &ctx, name, args),
             17 => atmosphere::call(g, &ctx, name, args),
             18 => creature_look::call(g, &ctx, name, args),
+            19 => explosions::call(g, &ctx, name, args),
             _ => sound::call(g, &ctx, name, args),
         },
     };

@@ -177,7 +177,9 @@ pub fn wire(id: u16, png: &[u8], side: usize, slim: bool) -> Vec<u8> {
 /// The 64 x 64 picture of a skin `side` wide, as a PNG, for those who know
 /// only that size (older clients); None if `png` is not a skin of that side.
 pub fn legacy_version(png: &[u8], side: usize) -> Option<Vec<u8>> {
-    if side == 64 {
+    // (A 64 skin that came in pieces may be bigger than one plain message holds:
+    // that one is packed again, or its viewers would be sent it cut short.)
+    if side == 64 && png.len() <= crate::proto::MAX_SKIN_MSG {
         return Some(png.to_vec());
     }
     let img = crate::png::decode(png)?;
@@ -185,7 +187,11 @@ pub fn legacy_version(png: &[u8], side: usize) -> Option<Vec<u8>> {
         return None;
     }
     let small = crate::image::resize::downscale_square(&img.rgba, side, 64);
-    Some(crate::png::encode(64, 64, &small))
+    let out = crate::png::encode(64, 64, &small);
+    if out.len() > crate::proto::MAX_SKIN_MSG {
+        return None;
+    }
+    Some(out)
 }
 
 /// The skins a client is receiving, by the player they are from.

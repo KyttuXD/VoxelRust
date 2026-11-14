@@ -359,9 +359,24 @@ impl Server {
             // and has not timed out yet) makes way.
             for k in 0..self.conns.len() {
                 if k != i && self.conns[k].joined && !self.conns[k].gone && self.conns[k].name.eq_ignore_ascii_case(&name) {
+                    // (Where it was and how it was are noted now, for the newcomer to be sent back to.)
+                    let notes = Self::leave_notes(&self.conns[k]);
+                    self.apply_notes(notes);
                     self.refuse_conn(k, "you logged in from another place");
                 }
             }
+        } else if let Some(k) = self.stale_twin(i, &name) {
+            // A guest who comes again from the same address before their old connection has
+            // timed out (a crash, a dropped wifi): the old one makes way, and they keep their name.
+            let notes = Self::leave_notes(&self.conns[k]);
+            self.apply_notes(notes);
+            self.refuse_conn(k, "you joined again from this address");
+            log.push(alloc::format!("{} came back; the old connection was replaced", name));
+        }
+        // (Looked at again here, with a player who makes way no longer counted.)
+        if self.players() >= self.cfg.max_players {
+            self.refuse_conn(i, "the server is full");
+            return false;
         }
         // Two players never share a name (capital letters do not
         // make a different one: permissions go by the name without them). A guest also
@@ -399,6 +414,8 @@ impl Server {
         }
         // Then what mods can be downloaded (even if none).
         out.extend(Msg::ModList { mods: self.cfg.mods.iter().map(|m| m.info()).collect() }.encode());
+        // Who runs the creatures and the last lines of chat (see net/sync).
+        out.extend(self.sync_intro());
         for other in self.conns.iter().filter(|c| c.joined && !c.gone) {
             out.extend(Msg::Join { id: other.id, name: other.name.clone() }.encode());
             out.extend(other.skin.wire_for(other.id, version));
@@ -408,6 +425,8 @@ impl Server {
             if !other.effects.is_empty() {
                 out.extend(Msg::Effects { id: other.id, list: other.effects.clone() }.encode());
             }
+            // Their health and armour, and the emote they are playing.
+            out.extend(Self::player_intro(other));
         }
         let all: Vec<(i32, i32, i32, u16)> = self.edits.iter().map(|(k, &b)| (k.0, k.1, k.2, b)).collect();
         for part in all.chunks(4000) {
@@ -418,9 +437,12 @@ impl Server {
         }
         // Back where they left off (an account's place is kept under its name, a guest's under theirs).
         let spot_key = self.conns[i].acct.account.clone().unwrap_or_else(|| name.to_ascii_lowercase());
-        if let Some(s) = self.spots.get(&spot_key) {
+        // And as well as they were, unless they died there: then they start again at the spawn, at full health.
+        let (health, died) = self.health_intro(&spot_key);
+        if let (Some(s), false) = (self.spots.get(&spot_key), died) {
             out.extend(Msg::State { id: 0, channel: crate::proto::channel::PLAYER, keep: false, key: String::from("you"), data: spot_text(s).into_bytes() }.encode());
         }
+        out.extend(health);
         if self.conns[i].stream.send_all(&out, 4_000).is_err() {
             self.conns[i].gone = true;
             return false;
@@ -429,6 +451,9 @@ impl Server {
         self.conns[i].proto = version;
         self.conns[i].name = name.clone();
         self.conns[i].joined = true;
+        self.sync.joined += 1;
+        self.conns[i].sync.order = self.sync.joined;
+        self.pvp_admitted(i);
         // (A player who has just joined may ask for a challenge at once.)
         self.conns[i].acct.ask_gap = 5.0;
         self.send_perms(Some(i));
@@ -490,6 +515,12 @@ impl Server {
                 let Some(name) = account_name(arg(1)) else { return String::from("use /resetpin NAME [PIN]") };
                 if self.acct.accounts.get(&name).is_none() {
                     return alloc::format!("{} has no account", name);
+                }
+                // An administrator's PIN is not reset from the game, not even by another administrator
+                // (nor by themselves): whoever got hold of one session would keep the account for good. Its
+                // owner changes it with /pin OLD NEW, and the machine's owner with --set-pin.
+                if self.acct.cfg.is_admin_name(&name) {
+                    return String::from("an administrator's PIN cannot be reset from the game: its owner uses /pin OLD NEW, or the server's owner runs --set-pin");
                 }
                 let new_pin = if arg(2).is_empty() { self.random_pin() } else { String::from(arg(2)) };
                 if let Err(e) = pin::check(&new_pin, self.acct.cfg.allow_weak_pins) {

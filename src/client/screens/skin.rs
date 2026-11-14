@@ -11,7 +11,21 @@ impl App {
     pub(super) fn load_skin(&mut self, r: &mut Renderer) {
         self.skin_for = self.settings.player_name.clone();
         let who = crate::settings::clean_name(&self.settings.player_name, 16);
-        let (side, px) = match skin_pixels(&self.base, &self.settings.skin, &who) {
+        // Any custom skin still being unpacked from before is forgotten.
+        self.skins.cancel_load();
+        // A big custom skin is unpacked on a worker (a 4096 one takes about 0.4 s: the first
+        // frame must not wait for it); the built-in skin is shown until it is ready.
+        let mut wait_for_custom = false;
+        if self.settings.skin == "custom" {
+            if let Some(bytes) = sys::read_file_limit(&alloc::format!("{}skin.png", self.base), crate::image::MAX_BYTES) {
+                let side = crate::image::header::header(&bytes).map_or(0, |h| h.w as usize);
+                if side > crate::client::skins::work::INLINE_SIDE {
+                    self.skins.load_custom(side, bytes);
+                    wait_for_custom = true;
+                }
+            }
+        }
+        let (side, px) = match if wait_for_custom { skin_pixels(&self.base, "default", &who) } else { skin_pixels(&self.base, &self.settings.skin, &who) } {
             Some(found) => found,
             None => {
                 self.status = String::from("NO USABLE SKIN.PNG (A SQUARE MULTIPLE OF 64, UP TO 4096) IN THE DATA FOLDER");
@@ -22,6 +36,24 @@ impl App {
                 }
             }
         };
+        self.show_skin(r, side, px);
+    }
+
+    /// The custom skin a worker unpacked (see `load_skin`), once it is: shown and packed for the network.
+    pub(super) fn take_loaded_skin(&mut self, r: &mut Renderer) {
+        match self.skins.take_loaded() {
+            Some(Some((side, px))) => self.show_skin(r, side, px),
+            Some(None) => {
+                self.status = String::from("NO USABLE SKIN.PNG (A SQUARE MULTIPLE OF 64, UP TO 4096) IN THE DATA FOLDER");
+                self.settings.skin = String::from("default");
+                self.load_skin(r);
+            }
+            None => {}
+        }
+    }
+
+    /// Put a skin on the card (over the one made before) and have it packed for sending.
+    fn show_skin(&mut self, r: &mut Renderer, side: usize, px: Vec<u8>) {
         // The texture made the last time is written over, not left on the card (a different size makes a new one).
         if self.skin_tex == 0 {
             self.skin_tex = r.add_skin_texture(side, &px);

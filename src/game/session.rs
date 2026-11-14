@@ -225,6 +225,10 @@ pub struct Session {
     /// Lines of text scripts put on the screen (host call `hud`).
     pub script_hud: crate::script::hud::HudLines,
     pub cooldown: [f32; 2],
+    /// Seconds left of the arm's swing for a click that hit nothing (see `game/pvp.rs`).
+    pub punch: f32,
+    /// What the game told the server about fights (see `game/pvp.rs`).
+    pub pvp: crate::game::pvp::Client,
     /// A bow being drawn (see game/bow.rs) and food being eaten (game/eating.rs).
     pub bow: crate::game::bow::Bow,
     pub eating: crate::game::eating::Eating,
@@ -237,6 +241,8 @@ pub struct Session {
     autosave: f32,
     /// The server's note of where we left off has been used (see `go_to_spot`).
     spot_applied: bool,
+    /// What is told to the others about our health (see `game/sync_vitals.rs`).
+    pub vsync: crate::game::sync_vitals::VitalsSync,
     meta_path: String,
     pub is_new: bool,
 }
@@ -605,6 +611,8 @@ impl Session {
             note: (String::new(), 0.0),
             script_hud: Default::default(),
             cooldown: [0.0; 2],
+            punch: 0.0,
+            pvp: Default::default(),
             bow: Default::default(),
             eating: Default::default(),
             was_airborne: false,
@@ -614,6 +622,7 @@ impl Session {
             drown: 0.0,
             autosave: 0.0,
             spot_applied: false,
+            vsync: Default::default(),
             meta_path: path,
             is_new,
         };
@@ -1622,6 +1631,8 @@ impl Session {
         if let Some(rain) = self.forced_sky {
             self.sky = weather::Sky { rain, snow: self.sky.snow, storm: rain > 0.9 };
         }
+        // Embers rise off the lava near the player.
+        crate::game::fx::lava_embers::tick(self, dt);
         self.flash = (self.flash - dt).max(0.0);
         self.shake = (self.shake - dt * 0.5).max(0.0);
         self.weather_tick += dt;
@@ -1766,6 +1777,7 @@ impl Session {
             c.1 -= dt;
         }
         let held = self.held().map_or(0, |h| h.0 as u16 + 1);
+        self.pvp_tick(dt);
         let polled = match self.net.as_mut() {
             Some(n) => {
                 n.send_move(dt, self.player.pos, self.player.yaw, self.player.pitch, held);
@@ -1816,7 +1828,11 @@ impl Session {
                     let text = String::from_utf8_lossy(&data).into_owned();
                     let host = self.runs_the_world();
                     match channel {
-                        ch::PLAYER if !host && self.net.is_some() => self.go_to_spot(&text),
+                        // The server sends back where we were, and how we were.
+                        ch::PLAYER if self.net.is_some() => match key.as_str() {
+                            "health" => self.restore_health(&text),
+                            _ => self.go_to_spot(&text),
+                        },
                         ch::MOBS if !host => self.mobs.apply_snapshot(&text),
                         ch::HIT if host => {
                             let mut w = text.split(' ');
@@ -1827,6 +1843,7 @@ impl Session {
                                 }
                             }
                         }
+                        ch::PVP_HURT | ch::PVP_SEEN => self.pvp_message(from, channel, &data),
                         ch::CHEST => {
                             let c: Vec<i32> = key.split(' ').filter_map(|v| v.parse().ok()).collect();
                             if let [x, y, z] = c[..] {
@@ -1890,6 +1907,8 @@ impl Session {
                 }
             }
         }
+        // How we are, for the others (and the server's memory of us).
+        self.share_vitals(dt);
     }
 
     pub fn held(&self) -> Option<(usize, &'static ItemDef)> {
@@ -1961,6 +1980,8 @@ impl Session {
         if self.health <= 0 {
             self.health = 0;
             self.dead = true;
+            // (Told to the others as the cause of the death.)
+            self.vsync.cause = cause.clone();
         }
         self.fire(crate::game::events::PLAYER_HURT, &cause);
     }
@@ -2404,6 +2425,7 @@ impl Session {
         for t in self.cooldown.iter_mut() {
             *t -= dt;
         }
+        self.punch = (self.punch - dt).max(0.0);
         if !self.dead {
             self.use_items(dt, c, audio);
         } else {
@@ -2701,6 +2723,16 @@ impl Session {
                     }
                 }
             }
+        }
+
+        // Another player under the crosshair: the hit is sent to the server (see game/pvp.rs).
+        if c.break_held && !struck && self.cooldown[0] <= 0.0 {
+            let held_id = held.map_or(0, |h| h.0 as u16 + 1);
+            struck = self.strike_player(self.reach().min(4.5), item.x.damage, held_id, audio);
+        }
+        // A click that hits nothing still swings the arm (and holds nothing up).
+        if c.break_held && !struck && self.target.is_none() {
+            self.air_punch();
         }
 
         // Breaking.

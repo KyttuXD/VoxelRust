@@ -253,6 +253,10 @@ pub fn load() -> Result<(), String> {
 /// `f` and `data` must be valid for the new thread; `name` NUL-terminated.
 pub unsafe fn create_thread(f: ThreadFn, name: *const c_char, data: *mut c_void) -> *mut c_void {
     let p = THREAD_CREATE.load(Ordering::Acquire);
+    // SDL2 not loaded (a server with no window, or a test): no thread to be had.
+    if p.is_null() {
+        return core::ptr::null_mut();
+    }
     #[cfg(windows)]
     {
         let func: unsafe extern "C" fn(ThreadFn, *const c_char, *mut c_void, *mut c_void, *mut c_void) -> *mut c_void =

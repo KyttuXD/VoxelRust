@@ -88,9 +88,15 @@ impl App {
                 died = g.dead;
             } else {
                 // Paused: keep loading terrain, but nothing moves.
+                // (A shared game still says now and then that we are here.)
+                g.keep_alive(real_dt);
                 let (cx, cz) = crate::world::chunk_at(g.player.pos[0], g.player.pos[2]);
                 g.world.update(cx, cz, distance, &mut g.pool, r, &mut g.store);
             }
+        }
+        // A big custom skin that was unpacked on a worker (see screens/skin.rs).
+        if self.skins.custom_loading() || self.settings.skin == "custom" {
+            self.take_loaded_skin(r);
         }
         // A new name may mean another of the built-in skins.
         if self.settings.skin != "custom" && self.skin_for != self.settings.player_name {

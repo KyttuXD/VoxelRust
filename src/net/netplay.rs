@@ -29,6 +29,13 @@ pub struct Remote {
     pub emote_t: f32,
     /// The status effects on them: id, level, seconds left when it was sent.
     pub effects: Vec<(String, u8, u32)>,
+    /// Their health, hunger, armour and ping, as last said (None until the first message; see `net/sync`).
+    pub vitals: Option<crate::net::sync::vitals::Vitals>,
+    /// Seconds since their arm began a swing (when the swing flag of their pose came up);
+    /// a big number at rest (see `content::pose::swing`).
+    pub swing_t: f32,
+    /// Seconds left of the red flash of a hit (see `game::pvp`).
+    pub hurt: f32,
 }
 
 pub enum Event {
@@ -95,6 +102,10 @@ pub struct Client {
     age: f32,
     /// What this player's account is (see `net/accounts/client.rs`).
     pub acct: crate::net::accounts::client::ClientAccount,
+    /// Our own ping in milliseconds as the server measured it (0 until it has; see `net/sync`).
+    pub own_ping: u16,
+    /// The player the server named to run the creatures (None: the lowest number does).
+    pub runner: Option<u16>,
 }
 
 /// Most voice frames held waiting (about a second of one talker).
@@ -154,7 +165,7 @@ impl Client {
         for _ in 0..120 {
             match inbox.next() {
                 Next::Msg(Msg::Welcome { id, seed, time, kind }) => {
-                    let mut c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None, skin_caps: None, skin_in: Default::default(), skin_cool: 0.0, age: 0.0, acct: Default::default() };
+                    let mut c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None, skin_caps: None, skin_in: Default::default(), skin_cool: 0.0, age: 0.0, acct: Default::default(), own_ping: 0, runner: None };
                     c.acct.name = crate::settings::clean_name(name, 16).to_ascii_lowercase();
                     c.acct.at = auth.at.clone();
                     c.acct.remember = auth.remember;
@@ -231,7 +242,7 @@ impl Client {
                     Msg::Join { id, name } => {
                         events.push(Event::Chat(alloc::format!("{} JOINED", name.to_ascii_uppercase())));
                         events.push(Event::Joined(name.clone()));
-                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, pace: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new() });
+                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, pace: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new(), vitals: None, swing_t: crate::content::pose::swing::REST, hurt: 0.0 });
                     }
                     Msg::Leave { id } => {
                         self.skin_in.forget(id);
@@ -243,14 +254,16 @@ impl Client {
                     Msg::Move { id, pos, yaw, pitch, held, pose } => {
                         if let Some(p) = self.players.get_mut(&id) {
                             p.held = held;
+                            // A swing begins when its flag comes up.
+                            if crate::content::pose::swing::starts(p.pose, pose) {
+                                p.swing_t = 0.0;
+                            }
                             p.pose = pose;
                             let (dx, dz) = ((pos[0] - p.pos[0]) as f32, (pos[2] - p.pos[2]) as f32);
                             let step = crate::math::sqrtf(dx * dx + dz * dz);
                             if p.seen {
-                                p.phase += step * 3.2;
-                                p.stride = (step * 2.5).min(1.0);
-                                // (positions come ten times a second)
-                                p.pace += (step * 10.0 - p.pace) * 0.5;
+                                // (positions come ten times a second; see content/pose/gait.rs)
+                                (p.phase, p.stride, p.pace) = crate::content::pose::gait::follow(p.phase, p.pace, step);
                             }
                             p.pos = pos;
                             p.yaw = yaw;
@@ -310,6 +323,8 @@ impl Client {
                             events.push(Event::Skin(id, png, slim));
                         }
                     }
+                    // Health, ping and the like are kept here; the game does not see them as events.
+                    Msg::State { id, channel: crate::proto::channel::VITALS, key, data, .. } => self.on_vitals_state(id, &key, &data),
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
                     Msg::ModList { mods } => events.push(Event::ModList(mods)),
@@ -329,6 +344,8 @@ impl Client {
             p.stride *= 1.0 - (dt * 3.0).min(1.0);
             p.pace *= 1.0 - (dt * 0.5).min(1.0);
             p.body.update(crate::content::pose::unpack(p.pose).0, dt);
+            p.swing_t = (p.swing_t + dt).min(crate::content::pose::swing::REST);
+            p.hurt = (p.hurt - dt).max(0.0);
             // An emote runs on while they stand still, and stops when they move off.
             if p.emote != 0 {
                 p.emote_t += dt;
@@ -411,9 +428,10 @@ impl Client {
     }
 
     /// Whether this player is the one who runs the creatures and the like
-    /// for everybody: the one with the lowest number of those present.
+    /// for everybody: the one the server named (the first to have come of
+    /// those present), else the one with the lowest number.
     pub fn runs_the_world(&self) -> bool {
-        self.players.keys().all(|&other| self.id < other)
+        self.is_the_runner()
     }
 
     /// Tell the server whether we want to hear voice chat and whether we
@@ -549,16 +567,16 @@ mod tests {
         let (mut ann, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
         let ea = pump(&mut ann, 80);
         // The first player is the operator and may do everything.
-        assert!(ea.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE)), "no such event");
+        assert!(ea.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE | PERM_PVP)), "no such event");
         let (mut bob, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
         let eb = pump(&mut bob, 100);
         // Everyone else may build, and nothing more, and starts in survival.
-        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_VOICE)), "no such event");
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_VOICE | PERM_PVP)), "no such event");
         pump(&mut ann, 40);
         ann.send_chat("/default -build");
         pump(&mut ann, 60);
         let eb = pump(&mut bob, 100);
-        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_VOICE)), "no such event");
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_VOICE | PERM_PVP)), "no such event");
         // Bob's edit goes nowhere...
         let stone = crate::block::reg().wk.stone;
         bob.send_block(2, 70, 2, stone);
@@ -569,7 +587,7 @@ mod tests {
         ann.send_chat("/perm Bob +build");
         pump(&mut ann, 60);
         let eb = pump(&mut bob, 100);
-        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_VOICE)), "no such event");
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_VOICE | PERM_PVP)), "no such event");
         bob.send_block(2, 70, 2, stone);
         pump(&mut bob, 60);
         let ea = pump(&mut ann, 100);

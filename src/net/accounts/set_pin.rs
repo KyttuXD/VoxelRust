@@ -39,10 +39,9 @@ pub fn run(base: &str, world: &str, name: &str, new_pin: &str) -> Result<(), Str
     let settings = crate::sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
     let cfg = Config::from_text(&settings, None);
     let (text, msg) = apply(&file, name, new_pin, &cfg, &mut Rng::default(), crate::sys::clock::unix_seconds())?;
-    if !crate::sys::write_file_atomic(&path, text.as_bytes()) {
+    if !crate::sys::write_file_private(&path, text.as_bytes()) {
         return Err(alloc::format!("could not write {}", path));
     }
-    crate::sys::clock::make_private(&path);
     logf!("voxelrust: {} ({})", msg, path);
     Ok(())
 }

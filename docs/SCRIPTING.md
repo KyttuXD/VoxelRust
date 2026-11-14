@@ -227,6 +227,9 @@ not call scripts again.
 | `fn on_armor_change(slot: i64)` | a worn armour piece was put on, taken off, set by `set_armor` or broke (`slot` 0 head, 1 chest, 2 legs, 3 feet) | |
 | `fn on_command(name: String, args: String) -> bool` | a `/command` the game does not know (`name` without the `/`, lower case; `args` the rest of the line) | `true` if it is yours; a string is shown as the reply |
 | `fn on_explode(x: f64, y: f64, z: f64, power: f64, source: String) -> bool` | an explosion is about to happen (`source` is `tnt`, `command`, a creature's id, or `mod<N>`) | `false` cancels; a number changes the power (0.5 to 8) |
+| `fn before_explode(x: f64, y: f64, z: f64, radius: f64, cause: String) -> bool` | an explosion is about to happen: its middle, its radius (0 to 16 blocks) and its cause (`tnt`, `creature`, `script`, `player` for `/blast`, `fire`, `other`); runs after `on_explode`. See [Explosions](#explosions-before-per-block-and-after) | `false` cancels the whole blast; `set_explosion_radius(r)` changes it |
+| `fn explode_block(x: i64, y: i64, z: i64, block: String) -> bool` | an explosion is about to destroy this block (asked for the first 20 000 blocks of a blast; blocks on an immune list are never asked about) | `false` spares the block |
+| `fn after_explode(x: f64, y: f64, z: f64, radius: f64, destroyed: i64, cause: String)` | an explosion is over; `destroyed` is how many blocks it took (the immune and spared ones are not counted) | |
 | `fn on_update(dt: f32)` | once a frame, after the game has moved the creatures and before the player moves: the place to move things, to carry the player (`hold_player`) and to ask for pictures | |
 | `fn on_interact(reach: f64) -> bool` | the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is; `input()` says which buttons are down) | `true` if the click was used up |
 | `fn on_condition(name: String, args: String) -> bool` | an `/if` condition the game does not know | `true` or `false` if it is yours; return nothing if it is not |
@@ -774,6 +777,80 @@ fn on_load() {
 ```
 
 
+### Explosions: before, per block and after
+
+Every explosion of the game (TNT and lit blocks, a creature that blows up,
+`/blast`, `explode` of this or another mod) goes through one function, so
+the hooks and the immune list below apply to all of them, whatever the
+radius (0 to 16 blocks).
+
+The order for one blast: the older `on_explode` (power), then
+`before_explode(x, y, z, radius, cause)`; then, for each block the blast
+would destroy, the immune list and `explode_block`; then, when it is over,
+`after_explode`. A chain of TNT calls `before_explode` for each block
+that goes off. `cause` is `tnt`, `creature`, `script` (a mod's `explode`),
+`player` (the `/blast` command), and `fire` and `other`, which are kept for
+causes the game does not raise yet.
+
+| Function | What it does |
+| --- | --- |
+| `set_explosion_radius(radius: f64) -> bool` | inside `before_explode` only: change the radius of the blast about to happen. Held to 0 to 16 blocks; **0 cancels the whole blast**. The last call wins. Answers `false` (and does nothing) when called outside the hook |
+| `set_immune_blocks(blocks: Vec<String>) -> i64` | declare the blocks no explosion destroys, once, instead of answering `explode_block` for each: a list of block ids (or block numbers). The engine skips those blocks with one bit test, so a big blast pays nothing for it. Call it from `on_load` (not `on_register`: there is no world yet); a mod's second call replaces its first; each mod has its own list, and a block on any mod's list is safe. At most **4096** entries (the rest are left out); a name that is no block is logged once and ignored. Answers how many entries it took |
+| `clear_immune_blocks()` | drop this mod's list |
+| `is_blast_immune(block_id: &str) -> bool` | whether explosions leave this block alone, by the game's own rule (water and lava, unbreakable blocks, `tag blastproof`, obsidian and bedrock) or by a mod's list |
+
+`explode_block(x, y, z, block)` is asked for the blocks the blast would
+destroy that are not immune: `false` spares the block, which then is not
+counted, drops nothing and does not catch fire if it is TNT. It is called for at
+most **20 000** blocks of one blast; the blocks after that are decided by the
+immune lists alone, so a mod that must protect a block always should list it
+with `set_immune_blocks` and use `explode_block` for rules that depend on the place.
+`after_explode` hears the radius the blast ended with and how many blocks it
+destroyed.
+
+Things to know:
+
+- An explosion started inside these hooks (a mod calling `explode` from
+  `before_explode`) nests. Scripts are called one at a time, so script hooks do
+  not run for it; the native hooks do, down to depth 2. From the third level on
+  no hook is called at all and only the immune lists apply, so nothing recurses.
+- Mods that clear blocks themselves for large blasts (with `set_block`)
+  agree with the engine by asking `is_blast_immune(id)` for each kind of
+  block, rather than keeping a second list. Engine blasts above radius 12 used to
+  skip the mod-side list; now the engine applies the list to every blast, of
+  every radius and cause, so the mod's own clearing and the engine's leave the same
+  blocks standing.
+- An explosion a script sets off from a hook of its own (`on_update`,
+  `on_item_use`) does not call script hooks (scripts do not call
+  scripts), but the immune lists, native hooks and the game's own rules apply.
+
+```rust
+fn on_load() {
+    set_immune_blocks(["obsidian", "bedrock", "my_vault_wall"]);
+}
+
+fn before_explode(x: f64, y: f64, z: f64, radius: f64, cause: String) -> bool {
+    // No creature blasts at all; TNT is half as big near the spawn point.
+    if cause == "creature" {
+        return false;
+    }
+    if x * x + z * z < 2500.0 {
+        set_explosion_radius(radius / 2.0);
+    }
+    true
+}
+
+fn explode_block(x: i64, y: i64, z: i64, block: String) -> bool {
+    block != "glass"
+}
+
+fn after_explode(x: f64, y: f64, z: f64, radius: f64, destroyed: i64, cause: String) {
+    if destroyed > 200 {
+        say("that was a big one");
+    }
+}
+```
+
 ### The air: fog, soft specks and a tint
 
 The engine sets the fog before it draws the world and a mod's drawing comes after, so
@@ -965,7 +1042,7 @@ the screen, then moved `dx` right and `dy` down (so `hud_text("bottom-right",
 in the mod's folder, relative to it (`"images/scare.png"`; letters, digits, `_`, `-`,
 `.` and `/` only, no `..`). It is read the first time a call names it and kept: a mod
 may name **16 pictures**, each at most **1024 x 1024** pixels and **4 MB** decoded
-(a name that fails also uses a place), all mods together 64. The picture goes to the
+(a name that fails also uses a place), all mods together 64 and at most **48 MB** decoded. The picture goes to the
 graphics card when first drawn and its pixels are dropped from memory; when the mod is
 switched off its pictures are freed. A picture the mod's pack names with a `picture`
 line is found by its file's name too, which is how a mod from a server shows its own.

@@ -23,7 +23,7 @@ mono gets the two sides averaged).
 | Music lanes, ducking | `src/client/audio/music.rs` |
 | Streaming decoders: Ogg, MP3, WAV | `src/util/audio/music_source.rs`, `ogg_stream.rs`, `mp3/stream.rs`, `wav_stream.rs`, `music_feed.rs` |
 | Pitch resampler, loop seam, fades, distance and pan | `src/util/audio/resample.rs`, `loopseam.rs`, `fade.rs`, `spatial.rs` |
-| What is around the player (roof, water, lava, fire) | `src/game/ambience_probe.rs` |
+| What is around the player (roof, water, lava, fire) | `src/game/ambience_probe.rs`, `src/game/lava_probe.rs` |
 
 ## Continuous sounds are beds, not loops
 
@@ -86,7 +86,8 @@ comes round again.
 | `cave` | The same columns: how many solid blocks are above (3 is nothing, 10 or more is deep). A house roof is thin; a cave is not. |
 | `underwater` | The block at the head is water. |
 | `wind` | Open sky and height above sea level. |
-| `water`, `lava` | Blocks of that liquid on a 5 by 5 grid within 8 blocks, at the feet and just below (water) or two below (lava). |
+| `water` | Blocks of water on a 5 by 5 grid within 8 blocks, at the feet and just below. |
+| `lava` | Lava on a grid three blocks apart out to 12 blocks, from three below the feet to one above; each counts more the closer it is (`src/game/lava_probe.rs`). The bed and the pops swell with it, and a pop is 30 to 100 percent as loud, the closer the louder. |
 | `fire` | A block named `fire` or tagged `tag fire` (the campfire) within 4 blocks, nearer counts more. |
 | `rain`, `snow`, `storm` | The weather where the player is. Snow plays no rain bed, only wind. |
 

@@ -67,6 +67,10 @@ pub struct SkinHub {
     inflight: usize,
     own_gen: u32,
     own_ready: Option<OwnSkin>,
+    /// The custom skin file being unpacked on a worker (generation), and its answer.
+    load_gen: u32,
+    loading: bool,
+    loaded: Option<Option<(usize, Vec<u8>)>>,
 }
 
 impl SkinHub {
@@ -77,6 +81,32 @@ impl SkinHub {
         self.own_gen += 1;
         self.own_ready = None;
         work::submit(Job::Own { gen: self.own_gen, side, rgba });
+    }
+
+    /// Unpack the custom skin file `png` (side `side` by its header) off the main thread; the
+    /// answer comes out of [`SkinHub::take_loaded`]. A load under way is forgotten.
+    pub fn load_custom(&mut self, side: usize, png: Vec<u8>) {
+        self.load_gen += 1;
+        self.loading = true;
+        self.loaded = None;
+        work::submit(Job::Load { gen: self.load_gen, side, png });
+    }
+
+    /// Forget a custom skin load under way (another skin was chosen).
+    pub fn cancel_load(&mut self) {
+        self.load_gen += 1;
+        self.loading = false;
+        self.loaded = None;
+    }
+
+    /// Whether the custom skin is still being unpacked.
+    pub fn custom_loading(&self) -> bool {
+        self.loading
+    }
+
+    /// The unpacked custom skin once it is: (side, pixels), or `None` inside if the file was no skin.
+    pub fn take_loaded(&mut self) -> Option<Option<(usize, Vec<u8>)>> {
+        self.loaded.take()
     }
 
     /// The own skin, packed, once it is.
@@ -109,6 +139,12 @@ impl SkinHub {
                 Done::Own(o) => {
                     if o.gen == self.own_gen {
                         self.own_ready = Some(o);
+                    }
+                }
+                Done::Loaded { gen, result } => {
+                    if gen == self.load_gen {
+                        self.loading = false;
+                        self.loaded = Some(result);
                     }
                 }
                 Done::Remote { id, gen, result } => {

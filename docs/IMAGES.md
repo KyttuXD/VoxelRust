@@ -42,7 +42,15 @@ on a worker thread (`client/skins/work.rs`) and never in the frame. Typical size
 a flat-coloured 64 x 64 skin is a few hundred bytes, a 1024 x 1024 painted one tens
 of kilobytes, noise is the worst case and costs about what it weighs.
 
-The decoder takes up to 4096 x 4096; the largest filtered data it unpacks is 72 MB
+The server unpacks a big skin (to make the 64 x 64 version older games get) on a worker thread
+(`net/skinwork.rs`, one at a time, 16 waiting at most), never on its tick, and sends a skin on to
+the other players a few pieces to a tick (`net/skinqueue.rs`, 100 000 bytes a tick for each
+connection; a connection with 8 MiB of skins waiting is let go). A custom skin file over 256 x 256
+is unpacked on the client's worker as well (`client/skins/work.rs`, `Job::Load`): the game starts
+with the built-in skin and changes to the custom one when it is ready. A 64 x 64 skin that came in
+pieces and is bigger than one plain message is packed again (smaller) for those who are sent it
+as one. Averaging pictures down (`resize.rs`) uses 64-bit sums, so even a 4096 skin to a single
+pixel is exact. The decoder takes up to 4096 x 4096; the largest filtered data it unpacks is 72 MB
 (a 4096 x 4096 RGBA picture is 67 MB).
 
 ## Skins

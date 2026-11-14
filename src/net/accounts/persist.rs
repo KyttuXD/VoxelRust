@@ -39,8 +39,7 @@ pub fn flush(server: &mut Server, edits_path: &str, now: bool) {
         return;
     }
     let path = accounts_path(edits_path);
-    if crate::sys::write_file_atomic(&path, server.acct.accounts.to_text().as_bytes()) {
-        crate::sys::clock::make_private(&path);
+    if crate::sys::write_file_private(&path, server.acct.accounts.to_text().as_bytes()) {
         server.acct.accounts.dirty = false;
     } else {
         logf!("voxelrust: could not write the accounts file; trying again in 10 seconds");

@@ -65,8 +65,9 @@ pub fn sample(world: &World, pos: [f64; 3], sky: Sky) -> Env {
     let altitude = clampf((py - crate::worldgen::SEA) as f32 / 70.0, 0.0, 1.0);
     let wind = (1.0 - shelter) * (0.2 + 0.5 * altitude);
 
-    // Water and lava within about eight blocks, at the player's level and just below.
-    let (mut water, mut lava) = (0u32, 0u32);
+    // Water within about eight blocks, at the player's level and just below
+    // (lava is looked for farther, by `lava_probe.rs`).
+    let mut water = 0u32;
     for dx in [-8, -4, 0, 4, 8] {
         for dz in [-8, -4, 0, 4, 8] {
             for dy in [-2, -1, 0] {
@@ -76,7 +77,6 @@ pub fn sample(world: &World, pos: [f64; 3], sky: Sky) -> Env {
                 }
                 match fluid_of(b) {
                     Some((false, _)) if dy >= -1 => water += 1,
-                    Some((true, _)) => lava += 1,
                     _ => {}
                 }
             }
@@ -111,7 +111,7 @@ pub fn sample(world: &World, pos: [f64; 3], sky: Sky) -> Env {
         underwater,
         wind,
         water: clampf(water as f32 / 20.0, 0.0, 1.0),
-        lava: clampf(lava as f32 / 12.0, 0.0, 1.0),
+        lava: crate::game::lava_probe::lava_near(&|x, y, z| world.get(x, y, z), [px, py, pz]),
         fire: clampf(fire / 1.5, 0.0, 1.0),
     }
 }
