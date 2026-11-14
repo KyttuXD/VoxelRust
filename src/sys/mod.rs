@@ -6,6 +6,8 @@
 //! than Mac OS X 10.4, Windows XP or any glibc.
 
 pub mod gl;
+pub mod heap;
+pub mod gl_shader;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod net;
 pub mod sdl;

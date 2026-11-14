@@ -91,13 +91,13 @@ for t in ["grass_top", "grass_side", "dirt", "stone", "sand", "gravel", "water",
 tex("white", "flat 255 255 255")
 # Palettes (docs/TEXTURING.md): base, dark, light. The ore's blobs are the base, with the light
 # colour on top and the dark one at the bottom right.
-w("palette ruby #e2406e #a82454 #ff9cb8")
+w("palette ruby #e83668 #a01a4c #ff94b4")
 tex("ruby_ore", "paint ore palette ruby")
 tex("workbench_top", "paint workbench 176 136 84")
 tex("stick", "paint stick 122 88 52")
-tex("ruby", "paint gem 226 60 110")
-tex("crystal", "paint gem 130 226 240")
-tex("coal", "paint gem 44 44 50")
+tex("ruby", "paint gem 232 54 104")
+tex("crystal", "paint gem 124 224 246")
+tex("coal", "paint gem 42 42 58")
 tex("apple", "paint fruit 206 48 44")
 tex("berries", "paint fruit 120 60 170")
 tex("raw_meat", "paint meat 214 96 96")
@@ -105,9 +105,9 @@ tex("cooked_meat", "paint meat 150 92 54")
 tex("raw_fish", "paint fishfood 130 170 196")
 tex("cooked_fish", "paint fishfood 206 160 110")
 # material: (id, name, colour, speed, ingredient item)
-TOOL_MATERIALS = [("wood", "Wooden", (160, 122, 74), 2, "planks"), ("stone", "Stone", (136, 138, 144), 3, "cobble"),
-                  ("copper", "Copper", (206, 124, 80), 4, "copper_ore"), ("iron", "Iron", (214, 214, 220), 6, "iron_ore"),
-                  ("crystal", "Crystal", (130, 226, 240), 8, "crystal"), ("ruby", "Ruby", (226, 60, 110), 11, "ruby")]
+TOOL_MATERIALS = [("wood", "Wooden", (166, 118, 70), 2, "planks"), ("stone", "Stone", (128, 136, 152), 3, "cobble"),
+                  ("copper", "Copper", (216, 116, 70), 4, "copper_ore"), ("iron", "Iron", (204, 212, 230), 6, "iron_ore"),
+                  ("crystal", "Crystal", (124, 224, 246), 8, "crystal"), ("ruby", "Ruby", (232, 54, 104), 11, "ruby")]
 for mid, _, (r, g, b), _, _ in TOOL_MATERIALS:
     for kind in ("pick", "axe", "shovel"):
         tex(f"{mid}_{kind}", f"paint {kind} {r} {g} {b}")
@@ -660,7 +660,7 @@ block("kiln", "Kiln", "brick furnace_front brick", cat="Farming", hardness=2.0, 
 block("smoker", "Smoker", "planks oven_front planks", cat="Farming", hardness=1.6, tool="axe", use="oven", light=5)
 block("campfire", "Campfire", "log_side", cat="Farming", hardness=0.6, tool="axe", use="oven", light=13, hurts=1,
       box=["1 0 6 15 3 10", "6 0 1 10 3 15", "5 3 5 11 7 11"], sound="sizzle", tag="fire")
-for mid, mname, (r, g, b) in (("iron", "Iron", (214, 214, 220)), ("copper", "Copper", (206, 124, 80))):
+for mid, mname, (r, g, b) in (("iron", "Iron", (204, 212, 230)), ("copper", "Copper", (216, 116, 70))):
     tex(f"{mid}_ingot", f"paint ingot {r} {g} {b}")
     w(f"item {mid}_ingot\n  name {mname} Ingot\n  icon {mid}_ingot\n  category Materials")
     w(f"smelt {mid}_ingot 1 {mid}_ore 1 coal 1")
@@ -816,9 +816,13 @@ for look in ["poison", "wither", "frozen", "absorb"]:
     for part in ["full", "half"]:
         tex(f"heart_{look}_{part}", f"paint heart_{look}_{part} 0 0 0")
 EFFECT_IDS = ["poison", "burning", "regeneration", "slowness", "speed", "hunger", "weakness", "strength",
-              "wither", "absorption", "frozen", "saturation", "night_vision", "jump_boost"]
+              "wither", "absorption", "frozen", "saturation", "night_vision", "jump_boost",
+              "decay", "haste", "mining_fatigue", "levitation", "blindness", "water_breathing"]
 for t in EFFECT_IDS + ["flame"]:
     tex(f"effect_{t}", f"paint effect_{t} 0 0 0")
+# The air meter's bubbles (painted by src/content/art/status.rs).
+for t in ["hud_bubble", "hud_bubble_pop"]:
+    tex(t, f"paint {t} 0 0 0")
 # Foods that start effects (see the `from eat` lines of the effects).
 tex("golden_apple", "paint fruit 240 196 52")
 tex("rotten_flesh", "paint meat 120 140 72")
@@ -837,6 +841,8 @@ fx.append("""# Status effects (written by tools/gen_base.py; see docs/DATA.md, "
 #     name <text>        kind good|bad|neutral     colour <r> <g> <b>     secs <default seconds>
 #     damage <points a second>   lethal yes|no     heal <points a second>   ticks <lumps a second>
 #     speed <percent>    jump <percent>     melee <percent>     (per level; negative slows/weakens)
+#     mine <percent>     lift <blocks a second up>     blind <percent of the view>     (per level)
+#     breath (no drowning)     tint <percent> (the screen takes `colour`)     sound <sound id> (on start)
 #     hunger <points a second, negative feeds>     absorb <health points>   vision   flame   extinguish
 #     heart normal|poison|wither|frozen            icon <texture>
 #     from block|entity|hit|eat|event <id> [seconds] [level] [chance]
@@ -861,7 +867,14 @@ effect("strength", "Strength", "good", ["melee 30"], "170 40 40", 30)
 effect("wither", "Wither", "bad", ["damage 1", "heart wither"], "60 60 70", 10)
 effect("absorption", "Absorption", "good", ["absorb 4", "from eat golden_apple 120 1"], "240 190 40", 120)
 effect("frozen", "Frozen", "bad", [
-    "damage 0.5", "lethal no", "speed -20", "heart frozen", "from block icicle 4 1"], "110 200 240", 8)
+    "damage 0.5", "lethal no", "speed -20", "heart frozen", "tint 14", "from block icicle 4 1"], "110 200 240", 8)
+effect("decay", "Decay", "bad", [
+    "damage 0.5", "heart wither", "from eat rotten_flesh 15 1 10"], "78 64 50", 20)
+effect("haste", "Haste", "good", ["mine 20"], "226 170 44", 60)
+effect("mining_fatigue", "Mining Fatigue", "bad", ["mine -30"], "112 104 92", 30)
+effect("levitation", "Levitation", "neutral", ["lift 1.8", "sound whoosh"], "160 134 214", 10)
+effect("blindness", "Blindness", "bad", ["blind 85", "tint 55"], "10 10 14", 10)
+effect("water_breathing", "Water Breathing", "good", ["breath", "sound splash"], "48 116 210", 180)
 effect("saturation", "Saturation", "good", ["hunger -1"], "220 130 60", 5)
 effect("night_vision", "Night Vision", "good", ["vision"], "60 60 200", 180)
 effect("jump_boost", "Jump Boost", "good", ["jump 40"], "100 220 110", 30)

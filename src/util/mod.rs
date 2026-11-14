@@ -7,9 +7,11 @@
 //! - `crypto`: Ed25519 signature checks (and SHA-512), for the updater
 //! - `image`: pictures (PNG, JPEG, GIF, BMP, TGA)
 //! - `audio`: sounds (WAV, AIFF, FLAC, ...)
+//! - `budget`: what the game may hold in memory, and what to give up when it holds too much
 
 pub mod archive;
 pub mod audio;
+pub mod budget;
 pub mod crypto;
 pub mod data;
 pub mod hash;

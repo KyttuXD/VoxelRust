@@ -55,6 +55,8 @@ struct Conn {
     mod_out: alloc::collections::VecDeque<Vec<u8>>,
     /// This player has already asked for mods.
     mods_asked: bool,
+    /// The status effects they last said they have, for telling newcomers.
+    effects: Vec<(String, u8, u32)>,
 }
 
 pub struct Server {
@@ -361,6 +363,11 @@ impl Server {
         alloc::format!("{} is now in {} mode", name, mode)
     }
 
+    /// Say something to every player, as the server (a chat line from nobody).
+    pub fn announce(&mut self, text: &str) {
+        self.broadcast(&Msg::Chat { id: 0, text: String::from(text) }, u16::MAX);
+    }
+
     fn broadcast(&mut self, msg: &Msg, except: u16) {
         let bytes = msg.encode();
         for c in self.conns.iter_mut().filter(|c| c.joined && !c.gone && c.id != except) {
@@ -428,7 +435,7 @@ impl Server {
             match self.listener.accept(0) {
                 Ok(Some(mut stream)) => {
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, gone: false, mod_out: Default::default(), mods_asked: false });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new() });
                 }
                 _ => break,
             }
@@ -541,6 +548,9 @@ impl Server {
                             if let Some((pos, yaw, pitch, held, pose)) = other.last_move {
                                 out.extend(Msg::Move { id: other.id, pos, yaw, pitch, held, pose }.encode());
                             }
+                            if !other.effects.is_empty() {
+                                out.extend(Msg::Effects { id: other.id, list: other.effects.clone() }.encode());
+                            }
                         }
                         let all: Vec<(i32, i32, i32, u16)> = self.edits.iter().map(|(k, &b)| (k.0, k.1, k.2, b)).collect();
                         for part in all.chunks(4000) {
@@ -566,6 +576,12 @@ impl Server {
                     }
                     // An emote the player plays (or stops): everyone else sees it.
                     Msg::Emote { emote, .. } if joined => self.broadcast(&Msg::Emote { id, emote }, id),
+                    // Their status effects: kept for newcomers and shown to everyone else.
+                    Msg::Effects { list, .. } if joined => {
+                        let list = crate::game::effects::sync::clean(list);
+                        self.conns[i].effects = list.clone();
+                        self.broadcast(&Msg::Effects { id, list }, id);
+                    }
                     Msg::SetBlock { x, y, z, block } if joined => {
                         let may = self.flags_for(&self.conns[i].name) & crate::proto::PERM_BUILD != 0;
                         if may && (0..CH).contains(&y) && block < self.cfg.states {

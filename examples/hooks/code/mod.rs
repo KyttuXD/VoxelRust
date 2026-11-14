@@ -5,16 +5,23 @@
 //! - `on_block_break`: Vault Blocks cannot be broken in survival.
 //! - `on_player_hurt`: falls hurt half as much.
 //! - `on_draw_hud`: shows the player's health as a number.
+//! - `bindings`, `on_key`, `on_hud`: a key binding (listed under this mod's
+//!   name in Settings > Controls > Key bindings) that shows or hides a line
+//!   with the player's hunger beside the hearts, drawn through the checked
+//!   `ModApi` (see "Controls, HUD and screens" in docs/MODDING.md).
 //!
 //! Hooks are plain functions the game calls at fixed points (the table is
 //! `native::Native`). Every one is optional; fill in what you need and
 //! leave the rest to `..Native::NONE`.
 
 use crate::block::{self, Block};
+use crate::client::modui::binds::KeyDecl;
+use crate::client::modui::ModApi;
 use crate::game::hooks::HudSink;
 use crate::native::{Native, API_VERSION};
 use crate::session::{GameMode, Session};
 use alloc::format;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 /// Must match the `feature` line in pack.txt.
 const NAME: &str = "hooksdemo";
@@ -47,11 +54,36 @@ fn on_draw_hud(g: &Session, hud: &mut dyn HudSink) {
     hud.text(7.0 * s, 6.0 * s, 1.0, &text, [255, 220, 220, 255]);
 }
 
+/// Whether the hunger line is shown (a key binding switches it).
+static SHOW_HUNGER: AtomicBool = AtomicBool::new(true);
+
+/// One key binding; 11 is the key code of H (`binds::key_scancode("h")`).
+const BINDINGS: &[KeyDecl] = &[KeyDecl { id: "toggle_hunger", label: "SHOW HUNGER", group: "HUD", key: 11 }];
+
+/// A binding of this mod went down (`down`) or up.
+fn on_key(_g: &mut Session, id: &str, down: bool) {
+    if down && id == "toggle_hunger" {
+        SHOW_HUNGER.fetch_xor(true, Ordering::Relaxed);
+    }
+}
+
+/// Once a frame while playing. The `ModApi` checks and caps whatever is asked.
+fn on_hud(g: &Session, api: &mut ModApi) {
+    if SHOW_HUNGER.load(Ordering::Relaxed) {
+        let _ = api.hud_set("beside_hearts", "hunger", &format!("FOOD {}", g.hunger), 0xFFD27F);
+    } else {
+        api.hud_remove("hunger");
+    }
+}
+
 pub static NATIVE: Native = Native {
     name: NAME,
     api: API_VERSION,
     on_block_break: Some(on_block_break),
     on_player_hurt: Some(on_player_hurt),
     on_draw_hud: Some(on_draw_hud),
+    bindings: BINDINGS,
+    on_key: Some(on_key),
+    on_hud: Some(on_hud),
     ..Native::NONE
 };

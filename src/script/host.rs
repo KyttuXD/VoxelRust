@@ -52,8 +52,94 @@ pub trait Host {
     fn dimension(&mut self) -> String {
         String::new()
     }
+    /// Give an effect to `who` (`"player"` or `"target"`, the creature in the
+    /// crosshair); `secs` of 0 means the effect's own time.
+    fn apply_effect(&mut self, _who: &str, _id: &str, _secs: f64, _level: i64) -> bool {
+        false
+    }
+    /// Take an effect (all of them for an empty id) from `who`.
+    fn remove_effect(&mut self, _who: &str, _id: &str) -> bool {
+        false
+    }
+    /// The level of an effect on `who`; 0 when it is not active.
+    fn effect_level(&mut self, _who: &str, _id: &str) -> i64 {
+        0
+    }
+    /// Set a number the post-processing shader reads as `u_<name>` (see
+    /// docs/SHADERS.md); false for a bad name or a value that is not a number.
+    fn set_shader_uniform(&mut self, _name: &str, _value: f64) -> bool {
+        false
+    }
     /// The mod whose script is about to run (for the log).
     fn set_mod(&mut self, _name: &str) {}
+    /// The running game, for the host functions of `script/ext/` (world
+    /// queries, creatures, bodies, drawing...). `None` for a host that is
+    /// not the game (the tests' mock): those functions then fail with a message.
+    fn session(&mut self) -> Option<&mut crate::session::Session> {
+        None
+    }
+    /// The game's data folder (ending with `/`), where a mod's files under
+    /// `tmp/<mod>/` live; empty when there is none.
+    fn data_dir(&mut self) -> String {
+        String::new()
+    }
+
+    // ---- the interface (see `host_ui.rs`)
+
+    /// What mods keep on the HUD, in their screens and for their keys.
+    fn ui(&mut self) -> &mut crate::client::modui::ModUi;
+    /// Hunger, 0 to 20.
+    fn hunger(&mut self) -> i64 {
+        0
+    }
+    /// Breath left, 0 to 10.
+    fn air(&mut self) -> f64 {
+        10.0
+    }
+    /// The biome under the player, lower case.
+    fn biome(&mut self) -> String {
+        String::new()
+    }
+    /// The hotbar slot chosen, 0 to 8.
+    fn selected_slot(&mut self) -> i64 {
+        0
+    }
+    /// The compass heading in degrees (0 north, 90 east).
+    fn heading(&mut self) -> f64 {
+        0.0
+    }
+    /// Whether the mod's switch `id` is on.
+    fn setting_on(&mut self, _mod_name: &str, _id: &str) -> bool {
+        false
+    }
+
+    // The calls of host_qol.rs: facing, biome, block facts, the screen line,
+    // the pack's slots and chests.
+    fn block_light(&mut self, _id: &str) -> i64 {
+        0
+    }
+    fn block_drop(&mut self, _id: &str) -> String {
+        String::new()
+    }
+    fn survival(&mut self) -> bool {
+        true
+    }
+    fn sneaking(&mut self) -> bool {
+        false
+    }
+    fn hud(&mut self, _text: &str) {}
+    fn slot_item(&mut self, _i: i64) -> String {
+        String::new()
+    }
+    fn slot_count(&mut self, _i: i64) -> i64 {
+        0
+    }
+    fn move_slot(&mut self, _from: i64, _to: i64) -> bool {
+        false
+    }
+    fn stack_to_chest(&mut self, _x: i64, _y: i64, _z: i64) -> i64 {
+        0
+    }
 }
 
 /// Every host function: (signature, what it does). Kept in step with
@@ -75,6 +161,10 @@ pub const HOST_FUNCTIONS: &[(&str, &str)] = &[
     ("set_time(t: f64)", "set the time of day"),
     ("explode(x: f64, y: f64, z: f64, power: f64)", "set off an explosion (power 0.5 to 8)"),
     ("effect(id: &str, secs: f64, level: i64) -> bool", "give the player a status effect"),
+    ("apply_effect(who: &str, id: &str, secs: f64, level: i64) -> bool", "give a status effect to \"player\" or \"target\" (the creature in the crosshair); 0 seconds is the effect's own time"),
+    ("remove_effect(who: &str, id: &str) -> bool", "take a status effect (all of them for an empty id) from \"player\" or \"target\"; false if it was not there"),
+    ("has_effect(who: &str, id: &str) -> bool", "whether \"player\" or \"target\" has that status effect"),
+    ("effect_level(who: &str, id: &str) -> i64", "the level of a status effect on \"player\" or \"target\"; 0 if it is not active"),
     ("play_sound(id: &str)", "play a sound"),
     ("run_command(text: &str) -> String", "carry out a chat command as the player (with or without the `/`); returns what it answers"),
     ("rand(n: i64) -> i64", "a random whole number from 0 up to n (not including n)"),
@@ -86,6 +176,16 @@ pub const HOST_FUNCTIONS: &[(&str, &str)] = &[
     ("state_get_int(key: &str, default: i64) -> i64", "a saved whole number (the default if there is none)"),
     ("state_set_int(key: &str, value: i64)", "save a whole number"),
     ("mod_name() -> String", "the name of the mod this script belongs to"),
+    ("set_shader_uniform(name: &str, value: f64) -> bool", "set the number `u_<name>` that the player's post-processing shader reads (see SHADERS.md)"),
+    ("block_light(block_id: &str) -> i64", "how much light a block gives off, 0 to 15"),
+    ("block_drop(block_id: &str) -> String", "the id of the item a block gives when broken in survival (empty if none)"),
+    ("survival() -> bool", "whether the player plays in survival mode"),
+    ("sneaking() -> bool", "whether the player is crouching (the sneak key is held)"),
+    ("hud(text: &str)", "show a line of text at the top left of the screen for a moment (call it again within a second to keep it; empty text takes it away); one line per mod"),
+    ("slot_item(slot: i64) -> String", "the id of the item in a pack slot (0 to 35, the first nine are the hotbar; empty if none)"),
+    ("slot_count(slot: i64) -> i64", "how many items are in a pack slot"),
+    ("move_slot(from: i64, to: i64) -> bool", "move a pack slot's items to another slot: into an empty one, onto the same item as far as it fits, else the two swap; false if nothing moved"),
+    ("stack_to_chest(x: i64, y: i64, z: i64) -> i64", "put the items of the pack (not the hotbar) that the chest at that block already holds into it; how many moved (0 if no chest, or in a shared game)"),
 ];
 
 // ---- argument helpers (also used by the built-in library)
@@ -162,6 +262,10 @@ pub(crate) fn call_host_fn(it: &mut Interp, name: &str, args: &[Value]) -> Optio
             Value::Unit
         }),
         "effect" => want(name, args, 3).and_then(|_| Ok((text(name, args, 0)?, num(name, args, 1)?, int(name, args, 2)?))).map(|(id, secs, level)| Value::Bool(it.host.effect(id, secs, level))),
+        "apply_effect" => want(name, args, 4).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?, num(name, args, 2)?, int(name, args, 3)?))).map(|(who, id, secs, level)| Value::Bool(it.host.apply_effect(who, id, secs, level))),
+        "remove_effect" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Bool(it.host.remove_effect(who, id))),
+        "has_effect" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Bool(it.host.effect_level(who, id) > 0)),
+        "effect_level" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Int(it.host.effect_level(who, id))),
         "play_sound" => want(name, args, 1).and_then(|_| text(name, args, 0)).map(|id| {
             it.host.play_sound(id);
             Value::Unit
@@ -182,7 +286,21 @@ pub(crate) fn call_host_fn(it: &mut Interp, name: &str, args: &[Value]) -> Optio
         "state_get_int" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, int(name, args, 1)?))).map(|(k, d)| Value::Int(it.state.get(k).and_then(|s| s.trim().parse::<i64>().ok()).unwrap_or(d))),
         "state_set_int" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, int(name, args, 1)?))).and_then(|(k, v)| it.state.set(k, &format!("{}", v))).map(|_| Value::Unit),
         "mod_name" => want(name, args, 0).map(|_| Value::str(it.mod_name)),
-        _ => return None,
+        "set_shader_uniform" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, num(name, args, 1)?))).map(|(n, v)| Value::Bool(it.host.set_shader_uniform(n, v))),
+        "block_light" => want(name, args, 1).and_then(|_| text(name, args, 0)).map(|id| Value::Int(it.host.block_light(id))),
+        "block_drop" => want(name, args, 1).and_then(|_| text(name, args, 0)).map(|id| Value::string(it.host.block_drop(id))),
+        "survival" => want(name, args, 0).map(|_| Value::Bool(it.host.survival())),
+        "sneaking" => want(name, args, 0).map(|_| Value::Bool(it.host.sneaking())),
+        "hud" => want(name, args, 1).and_then(|_| text(name, args, 0)).map(|t| {
+            it.host.hud(t);
+            Value::Unit
+        }),
+        "slot_item" => want(name, args, 1).and_then(|_| int(name, args, 0)).map(|i| Value::string(it.host.slot_item(i))),
+        "slot_count" => want(name, args, 1).and_then(|_| int(name, args, 0)).map(|i| Value::Int(it.host.slot_count(i))),
+        "move_slot" => want(name, args, 2).and_then(|_| Ok((int(name, args, 0)?, int(name, args, 1)?))).map(|(a, b)| Value::Bool(it.host.move_slot(a, b))),
+        "stack_to_chest" => want(name, args, 3).and_then(|_| Ok((int(name, args, 0)?, int(name, args, 1)?, int(name, args, 2)?))).map(|(x, y, z)| Value::Int(it.host.stack_to_chest(x, y, z))),
+        // The rest of the host functions are in script/host_ui.rs and script/ext/.
+        _ => return crate::script::host_ui::call(it, name, args).or_else(|| crate::script::ext::call(it, name, args)),
     };
     Some(match r {
         Ok(v) => Ok(v),
@@ -197,6 +315,8 @@ pub struct SessionHost<'g> {
     pub g: &'g mut crate::session::Session,
     pub rng: u32,
     pub mod_name: String,
+    /// The data folder, for `tmp_read` and `tmp_write`.
+    pub data_dir: String,
 }
 
 impl SessionHost<'_> {
@@ -273,6 +393,18 @@ impl Host for SessionHost<'_> {
         crate::game::effects::apply::give(self.g, id, secs as f32, level.clamp(1, 255) as i32).is_ok()
     }
 
+    fn apply_effect(&mut self, who: &str, id: &str, secs: f64, level: i64) -> bool {
+        crate::game::effects::script_api::give(self.g, who, id, secs, level)
+    }
+
+    fn remove_effect(&mut self, who: &str, id: &str) -> bool {
+        crate::game::effects::script_api::remove(self.g, who, id)
+    }
+
+    fn effect_level(&mut self, who: &str, id: &str) -> i64 {
+        crate::game::effects::script_api::level(self.g, who, id)
+    }
+
     fn play_sound(&mut self, id: &str) {
         if self.g.sound_queue.len() < 32 {
             self.g.sound_queue.push(String::from(id));
@@ -337,8 +469,87 @@ impl Host for SessionHost<'_> {
         self.g.dim.clone()
     }
 
+    fn set_shader_uniform(&mut self, name: &str, value: f64) -> bool {
+        self.g.shader_uniforms.set(name, value)
+    }
+
     fn set_mod(&mut self, name: &str) {
         self.mod_name = String::from(name);
+    }
+
+    fn session(&mut self) -> Option<&mut crate::session::Session> {
+        Some(&mut *self.g)
+    }
+
+    fn data_dir(&mut self) -> String {
+        self.data_dir.clone()
+    }
+
+    fn ui(&mut self) -> &mut crate::client::modui::ModUi {
+        // Safety: the state is never freed; no code of the interface calls a
+        // script while it holds the state (see `modui::with_ui`).
+        unsafe { &mut *crate::client::modui::ui_ptr() }
+    }
+
+    fn hunger(&mut self) -> i64 {
+        self.g.hunger as i64
+    }
+
+    fn air(&mut self) -> f64 {
+        crate::script::value::clean_f32(self.g.air)
+    }
+
+    fn biome(&mut self) -> String {
+        crate::client::modui::info::biome_name(self.g)
+    }
+
+    fn selected_slot(&mut self) -> i64 {
+        self.g.selected as i64
+    }
+
+    fn heading(&mut self) -> f64 {
+        crate::client::modui::info::heading_degrees(self.g.player.yaw)
+    }
+
+    fn setting_on(&mut self, mod_name: &str, id: &str) -> bool {
+        crate::client::modui::keys::switch_on(self.g, mod_name, id)
+    }
+
+    fn block_light(&mut self, id: &str) -> i64 {
+        crate::script::host_qol::block_light(id)
+    }
+
+    fn block_drop(&mut self, id: &str) -> String {
+        crate::script::host_qol::block_drop(id)
+    }
+
+    fn survival(&mut self) -> bool {
+        crate::script::host_qol::survival(self.g)
+    }
+
+    fn sneaking(&mut self) -> bool {
+        crate::script::host_qol::sneaking(self.g)
+    }
+
+    fn hud(&mut self, text: &str) {
+        let key = self.mod_name.clone();
+        self.g.script_hud.set(&key, text);
+    }
+
+    fn slot_item(&mut self, i: i64) -> String {
+        crate::script::host_qol::slot_item(self.g, i)
+    }
+
+    fn slot_count(&mut self, i: i64) -> i64 {
+        crate::script::host_qol::slot_count(self.g, i)
+    }
+
+    fn move_slot(&mut self, from: i64, to: i64) -> bool {
+        crate::script::host_qol::move_slot(self.g, from, to)
+    }
+
+    fn stack_to_chest(&mut self, x: i64, y: i64, z: i64) -> i64 {
+        crate::script::host_qol::stack_to_chest(self.g, x, y, z)
     }
 }
 
@@ -359,6 +570,18 @@ pub mod mock {
         pub rng: u32,
         pub health: i64,
         pub items: Vec<(String, i64)>,
+        pub ui: crate::client::modui::ModUi,
+        pub hunger: i64,
+        pub air: f64,
+        pub biome: String,
+        pub selected: i64,
+        pub heading: f64,
+        pub switches: Vec<(String, bool)>,
+        /// For the calls of host_qol.rs.
+        pub held: String,
+        pub sneak: bool,
+        /// The pack: (item id, count), an empty id for an empty slot.
+        pub slots: Vec<(String, i64)>,
     }
 
     impl Host for MockHost {
@@ -398,6 +621,21 @@ pub mod mock {
             self.calls.push(format!("effect {} {} {}", id, secs, level));
             true
         }
+        fn apply_effect(&mut self, who: &str, id: &str, secs: f64, level: i64) -> bool {
+            self.calls.push(format!("apply_effect {} {} {} {}", who, id, secs, level));
+            true
+        }
+        fn remove_effect(&mut self, who: &str, id: &str) -> bool {
+            self.calls.push(format!("remove_effect {} {}", who, id));
+            true
+        }
+        fn effect_level(&mut self, who: &str, id: &str) -> i64 {
+            if who == "player" && id == "poison" {
+                2
+            } else {
+                0
+            }
+        }
         fn play_sound(&mut self, id: &str) {
             self.calls.push(format!("sound {}", id));
         }
@@ -425,7 +663,85 @@ pub mod mock {
             self.items.iter().find(|i| i.0 == id).map_or(0, |i| i.1)
         }
         fn held_item(&mut self) -> String {
-            String::from("stick")
+            if self.held.is_empty() {
+                String::from("stick")
+            } else {
+                self.held.clone()
+            }
+        }
+        fn block_light(&mut self, id: &str) -> i64 {
+            if id == "lamp" {
+                15
+            } else {
+                0
+            }
+        }
+        fn block_drop(&mut self, id: &str) -> String {
+            String::from(id)
+        }
+        fn sneaking(&mut self) -> bool {
+            self.sneak
+        }
+        fn hud(&mut self, text: &str) {
+            self.calls.push(format!("hud {}", text));
+        }
+        fn slot_item(&mut self, i: i64) -> String {
+            self.slots.get(i as usize).map_or_else(String::new, |s| s.0.clone())
+        }
+        fn slot_count(&mut self, i: i64) -> i64 {
+            self.slots.get(i as usize).map_or(0, |s| s.1)
+        }
+        fn move_slot(&mut self, from: i64, to: i64) -> bool {
+            let (a, b) = (from as usize, to as usize);
+            if a >= self.slots.len() || b >= self.slots.len() || a == b || self.slots[a].0.is_empty() {
+                return false;
+            }
+            if self.slots[b].0.is_empty() {
+                self.slots.swap(a, b);
+            } else if self.slots[b].0 == self.slots[a].0 {
+                let n = (64 - self.slots[b].1).min(self.slots[a].1);
+                if n == 0 {
+                    return false;
+                }
+                self.slots[b].1 += n;
+                self.slots[a].1 -= n;
+                if self.slots[a].1 == 0 {
+                    self.slots[a] = (String::new(), 0);
+                }
+            } else {
+                self.slots.swap(a, b);
+            }
+            true
+        }
+        fn stack_to_chest(&mut self, x: i64, y: i64, z: i64) -> i64 {
+            self.calls.push(format!("stack_to_chest {} {} {}", x, y, z));
+            5
+        }
+        fn ui(&mut self) -> &mut crate::client::modui::ModUi {
+            &mut self.ui
+        }
+        fn hunger(&mut self) -> i64 {
+            self.hunger
+        }
+        fn air(&mut self) -> f64 {
+            self.air
+        }
+        fn biome(&mut self) -> String {
+            self.biome.clone()
+        }
+        fn selected_slot(&mut self) -> i64 {
+            self.selected
+        }
+        fn heading(&mut self) -> f64 {
+            self.heading
+        }
+        fn setting_on(&mut self, mod_name: &str, id: &str) -> bool {
+            let name = alloc::format!("{}.{}", mod_name, id);
+            self.switches.iter().find(|s| s.0 == name).map_or(false, |s| s.1)
+        }
+        fn set_shader_uniform(&mut self, name: &str, value: f64) -> bool {
+            self.calls.push(format!("shader_uniform {} {}", name, value));
+            crate::client::shaders::names::valid_user_name(name) && value.is_finite()
         }
     }
 }

@@ -42,7 +42,7 @@ For each file it reads from disk, the game prints `voxelrust: content from
 
 ### The author's mods
 
-The game ships no mods. The author keeps the mods below (twenty-one: the eight below, the
+The game ships no mods. The author keeps the mods below (twenty-two: the eight below, the
 creature mods and the mods that hold the content the game used to carry itself;
 see [DATA.md](DATA.md): the game's core is small) in a separate repository
 (`VoxelRust-Mods`); each is an ordinary folder with a `pack.txt` (and a
@@ -74,6 +74,7 @@ with the `native-mods` feature (see [Code that mods bring](#code-that-mods-bring
 | Monsters | `mods/monsters` | what hunts at night and in the caves |
 | Villagers | `mods/villagers` | the eight trades |
 | The Wanderer | `mods/wanderer` | the Wanderer |
+| Shaders | `mods/shaders` | four post-processing shaders (soft bloom, warm sunset, underwater ripple, retro dither), chosen in SETTINGS > VIDEO (see [SHADERS.md](SHADERS.md)). Pack lines and `.glsl` files only |
 
 Where they are: in the separate folder `VoxelRust-Mods`, beside the game's
 repository (with `SHIPPED` and `tests.rs`, which only the `native-mods` build
@@ -600,6 +601,17 @@ three called `Pelvis`, `Belly` and `Chest`. Bones that are not named like
 those are left to their own animation. Emotes turn any bone by name (see
 below).
 
+### Shaders
+
+A mod adds post-processing shaders (a golden evening, bloom, an underwater wobble,
+the colours of an old console) with `shader <id> <file> [<file2> [<file3>]]` lines
+in its `pack.txt` and plain GLSL ES 1.00 files, usually in a `shaders/` folder of the mod.
+The player picks one in SETTINGS > VIDEO > DETAIL AND DISTANCE... > SHADER, scripts can
+feed them numbers with `set_shader_uniform`, and one that does not compile is logged and
+switched off. The whole format, the uniforms (`u_time`, `u_resolution`, `u_sun`,
+`u_daylight`, `u_underwater`, `u_rain`, `u_fov`), the limits and how it is drawn are in
+[SHADERS.md](SHADERS.md); the line is in [DATA.md](DATA.md#shaders).
+
 ### Emotes
 
 A pack or mod adds emotes to the wheel (B) with `emote` lines and `key` lines
@@ -889,7 +901,8 @@ a world being opened, saved or reloaded, each frame, clicks, chat commands,
 explosions (`before_explode`, `after_explode`) and TNT being lit (`on_prime`),
 status effects (`effect_apply` may change the seconds and level of an effect
 about to be given to the player, or refuse it; `effect_tick` is called every
-frame for each effect that is running),
+frame for each effect that is running; `effect_start` and `effect_end` when one
+starts or ends),
 the events of the [Hooks reference](#hooks-reference) (breaking and placing,
 creatures appearing and dying, chat, crafting, using items, the HUD),
 messages and state shared between players, drawing, the map,
@@ -902,7 +915,17 @@ The effect hooks, in full (see [DATA.md](DATA.md#effects) for what effects are):
 ```rust
 effect_apply: Some(|g, id, secs, level| { /* id: &str, secs: &mut f32, level: &mut i32 */ true }),
 effect_tick: Some(|g, id, secs_left, level, dt| { /* every frame, for each running effect */ }),
+effect_start: Some(|g, id, level| { /* it was not active before */ }),
+effect_end: Some(|g, id| { /* ran out, was put out, or was cleared */ }),
 ```
+
+`effect_start` is called when an effect starts (not when it is only made longer
+or stronger), `effect_end` when it ends, however it ends (death included).
+An effect needs no code when the `effect` lines of [DATA.md](DATA.md#effects)
+say what it does; the hooks are for what they cannot say. A script has the same
+three as `on_effect_start`, `on_effect_tick` (once a second) and `on_effect_end`,
+and `apply_effect`, `remove_effect`, `has_effect` and `effect_level` to work with
+effects: see [SCRIPTING.md](SCRIPTING.md#effects).
 
 `effect_apply` is asked before an effect is given to the player (by a source,
 `/effect give` or `game::effects::apply::give`); it may change `secs` and
@@ -928,6 +951,30 @@ a mod with a `code/mod.rs` is never offered for download.
 
 `mods/SHIPPED` names the mods whose files the `native-mods` test build reads,
 and `mods/tests.rs` holds the tests for those mods; nothing is shipped.
+
+Most of what code does can also be done by a [script](SCRIPTING.md), which needs
+no build and can come down from a server: Trains, Vehicles and The Man From The
+Fog all run as scripts by default (`scripts/*.rs`), with their `code/` kept as the
+same logic for the `native-mods` build, which runs the code **instead of** the
+scripts (never both). Only what scripts cannot reach still needs code: new
+terrain and dimensions, fetching from the network (Earth's map tiles) and screens
+of the mod's own. [SCRIPT-COMPAT.md](SCRIPT-COMPAT.md) has the table.
+
+#### Lines and sections for scripts
+
+A pack with scripts keeps its own lines and sections the same way code does,
+by claiming them (it has no code to say so) with top-level lines in its `pack.txt`:
+
+```
+claims line manfromthefog      # lines "manfromthefog <key> <value>" are kept for scripts
+claims section vehicle         # sections "vehicle <id>" with their indented lines are kept
+```
+
+A claim holds for every pack read in the same loading, in whatever order, so the
+Boats pack can write `vehicle` sections for the script of the Vehicles pack. The
+words the game reads itself cannot be claimed. A claimed section also becomes an
+item with the section's id, as for code. Scripts read them with `pack_lines`,
+`pack_sections`, `pack_prop` and `pack_props` (see [SCRIPTING.md](SCRIPTING.md#more-host-calls)).
 
 ### Scripts that mods bring
 
@@ -965,9 +1012,12 @@ also passed to the mod's `on_event` hook.
 | `start` | a world is opened | none | `on_world_load` once the world is open | `fn(&mut Session)` |
 | (saving) | the world was saved | | `on_world_save` after the files are written | `fn(&mut Session)` |
 | (each frame) | the HUD is drawn in play | | `on_draw_hud` | `fn(&Session, &mut dyn HudSink)` |
+| (a key binding) | a mod's key binding goes down or up | | `on_key` (see [Controls, HUD and screens](#controls-hud-and-screens)) | `fn(&mut Session, id: &str, down: bool)` |
+| (each frame) | a frame of play | | `on_hud`: draw through the checked API | `fn(&Session, &mut ModApi)` |
+| (a mod's screen) | the player used a screen the mod opened | | `on_ui` | `fn(&mut Session, &mut ModApi, &UiEvent)` |
 | `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itempickup`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
 | `explode`, `blockexploded`, `tntprimed` | an explosion happens, breaks blocks, or TNT is lit | see [Explosions](#explosions) | `before_explode`: `false` cancels; `after_explode` and `on_prime` after | `fn(&mut Session, &mut ExplosionInfo) -> bool` |
-| `effectstart`, `effectend`, `wake` | a status effect starts or ends on the player; the player wakes | effect id | `effect_apply`: `false` refuses it; `effect_tick` every frame per running effect | `fn(&mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool` |
+| `effectstart`, `effectend`, `wake` | a status effect starts or ends on the player; the player wakes | effect id | `effect_apply`: `false` refuses it; `effect_tick` every frame per running effect; `effect_start`, `effect_end` when it starts and ends (scripts: `on_effect_start`, `on_effect_tick`, `on_effect_end`) | `fn(&mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool` |
 
 Older hooks (`update`, `interact`, `killed`, `hit`, `hurt`, `open`, `save` and so
 on) are described in `src/native.rs` and work as before. `open` and `save` also
@@ -982,7 +1032,7 @@ events it raises with `fire` are not passed back to its own `on_event`. A
 cancelled break or place leaves the world as it was (digging starts over);
 the script event is then not fired.
 
-`on_draw_hud` gets a `HudSink` with `size()`, `scale()`, `rect(x, y, w, h,
+`on_draw_hud` (the older, unchecked way) gets a `HudSink` with `size()`, `scale()`, `rect(x, y, w, h,
 colour)`, `text(x, y, scale, text, colour)` and `text_width(text, scale)`.
 Positions are screen pixels; multiply sizes by `scale()`.
 
@@ -1033,6 +1083,37 @@ renamed without leaving the old name as an alias.
 health with `on_draw_hud`, plus a few `when` scripts for the new events.
 Copy it to `mods/hooksdemo/` and rebuild.
 
+### Controls, HUD and screens
+
+A mod can put its own controls, HUD and screens in the game, from code
+(`Native`) or from a script ([SCRIPTING.md](SCRIPTING.md#controls-hud-and-screens),
+which has the same calls under other names). Both go through one checked
+handle, `ModApi` ([src/client/modui/api.rs](../src/client/modui/api.rs)):
+every string is cut, every count has a cap, NaN and huge numbers are brought
+into range, and a call over a cap just returns `false`. Nothing blocks the frame.
+
+| `Native` field | What it is |
+| --- | --- |
+| `bindings: &'static [KeyDecl]` | key bindings: `KeyDecl { id, label, group, key }` (`key` is an SDL scancode; `binds::key_scancode("g")` is 10). They are listed in SETTINGS > CONTROLS > KEY BINDINGS under a heading with the mod's name (and the group), can be rebound, and are saved as `modkey_<mod>.<id>` in `settings.txt`. |
+| `on_key: fn(&mut Session, id: &str, down: bool)` | a binding of this mod went down or up while playing (not while typing or in a menu; a release is always passed on). |
+| `on_hud: fn(&Session, &mut ModApi)` | once a frame while playing: draw with `api.hud_text`, `hud_rect`, `hud_outline`, `hud_item`, `hud_block`, `hud_bar` (anchor names `top-left`... `bottom-right`, distances in interface pixels, a colour as `0xRRGGBB` or `0xAARRGGBB`), keep lines in the slots with `hud_set` (`above_hotbar`, `beside_hearts`, `top_left_list`, `under_crosshair`), show `toast` and `action_bar`. At most 512 drawing commands a frame in all (256 for one mod); the rest return `false`. |
+| `on_ui: fn(&mut Session, &mut ModApi, &UiEvent)` | the player used a screen this mod opened with `api.ui_open(name, title)` and filled with `ui_text`, `ui_button`, `ui_toggle`, `ui_stepper`, `ui_input`, `ui_list`: a click, a change, or the screen closing (`UiEvent`, `UiKind`). |
+| `switches: &'static [SwitchDecl]` | rows for SETTINGS > GAME > MOD SWITCHES AND RELOAD: `SwitchDecl { id, label, default }`. Read one with `modui::keys::switch_on(g, NAME, id)`. |
+
+Reading the player for a HUD needs no new call: the hooks have the `Session`
+(`g.health`, `g.hunger`, `g.air`, `g.player.pos`, `g.held()`, `g.time`), and
+`modui::info::read(g, fps)` collects them (with the biome and a compass
+heading) into a `PlayerInfo`. Draw with the `ModApi` and not with the older
+`on_draw_hud` when you want the scaling, clipping and caps done for you.
+
+The list of key bindings **scrolls** (mouse wheel and a bar) when it is longer
+than the page: the game's own bindings come first, then each mod's under its
+name. Two bindings on one key are outlined in red; both fire. The same goes for
+the mod switches page. Do not call `with_ui` (or anything that calls a script)
+from inside these hooks: use the `ModApi` you are given. The example in
+[examples/hooks](../examples/hooks) has a binding that shows or hides a line
+beside the hearts.
+
 ### Adding an event or a hook
 
 A new event is one row in `REGISTRY` in
@@ -1063,6 +1144,29 @@ The language, the library, every hook and every host function, and
 worked examples are in [SCRIPTING.md](SCRIPTING.md); `voxelrust --script-check
 FILE` checks a script without starting the game.
 
+### Quality-of-life script mods
+
+Nine small mods in the mods repository are plain script mods (one `.rs`
+file each, nothing to build). Each has a README.txt; their commands are:
+
+| Mod | What it does |
+| --- | --- |
+| `waypoints` | `/wp add NAME`, `/wp del NAME`, `/wp list`, `/wp NAME`: named places with distance, compass direction and where to turn |
+| `death_marker` | remembers where you died; `/death` shows the way back, `/death hud` keeps it on the screen |
+| `light_warning` | a notice when the light at your feet is low (`/lightwarn N`, `off`, `on`) |
+| `sort_inventory` | `/sort` merges stacks and orders the pack, `/sort all` includes the hotbar |
+| `quick_stack` | `/stack` puts what the nearest chest already holds into it, `/stack all` for every chest within 6 blocks |
+| `coordinates_hud` | XYZ, facing and biome on the screen (`/coords`, `off`, `on`, `long`) |
+| `clock_hud` | the time of day and the minutes to night on the screen (`/clock`, `off`, `on`, `12`, `24`) |
+| `tree_felling` | breaking a log with an axe brings down the tree, at most 64 logs; sneak to chop one (`/treefelling off`, `on`) |
+| `veinminer` | sneak and break an ore with a pickaxe to mine the whole vein, at most 40 blocks (`/veinminer off`, `on`) |
+
+They use the host calls `heading`, `biome`, `block_light`, `block_drop`,
+`survival`, `sneaking`, `hud`, `slot_item`, `slot_count`, `move_slot` and
+`stack_to_chest` that were added for them (see [SCRIPTING.md](SCRIPTING.md)).
+The game's tests (`src/script/tests_qol.rs`) read and run every one of these
+scripts against a mock host when the mods folder is there.
+
 ## What mods cannot replace
 
 A mod's code is called only at the hooks in `src/native.rs`. Anything those
@@ -1072,3 +1176,9 @@ of [DATA.md](DATA.md#effects) cover (damage, healing, speed, jump, melee
 damage, hunger, absorption, night vision): those need code, and
 code needs a rebuild. What a pack can do is run the episodes and scripts
 described above.
+
+## Memory
+
+Long sounds and model files are read again from their files when they are
+needed, and let go when memory is short, so a mod can bring many of them: see
+[MEMORY.md](MEMORY.md). The files must stay in place while the game runs.

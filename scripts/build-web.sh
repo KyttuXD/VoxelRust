@@ -14,14 +14,16 @@
 # and open http://localhost:8000/. See docs/WEB.md.
 set -eu
 cd "$(dirname "$0")/.."
+# A shared target folder (CARGO_TARGET_DIR) keeps compiled code between checkouts and scripts.
+TARGET="${CARGO_TARGET_DIR:-target}"
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
 mkdir -p dist/web
 # The stack is 8 MB, as the main thread's is on a desktop system (the
 # linker's default for WebAssembly is 1 MB).
 VOXELRUST_BUILD=web RUSTFLAGS="-C link-arg=-zstack-size=8388608" \
-  $CARGO build --release --target wasm32-unknown-unknown --target-dir target/web
-cp target/web/wasm32-unknown-unknown/release/voxelrust.wasm dist/web/voxelrust.wasm
+  $CARGO build --release --target wasm32-unknown-unknown --target-dir "$TARGET"/web
+cp "$TARGET"/web/wasm32-unknown-unknown/release/voxelrust.wasm dist/web/voxelrust.wasm
 cp web/index.html web/voxelrust.js dist/web/
 cp assets/icon.png dist/web/icon.png
 cp assets/icon.ico dist/web/favicon.ico

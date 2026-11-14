@@ -8,9 +8,11 @@ limited subset of Rust, so a script file is (nearly always) also valid Rust.
 
 Scripts are for behaviour that pack lines cannot say (see
 [MODDING.md](MODDING.md): `when ... do ...`): "give a reward for killing a boss",
-"add a `/heal` command", "react to TNT". A mod that needs real speed,
-new terrain or its own drawing still brings compiled code
-([Code that mods bring](MODDING.md#code-that-mods-bring)).
+"add a `/heal` command", "react to TNT", and also for whole mods that used to
+need compiled code: a stalker that appears at night, a layer of rails, vehicles
+that float, roll and fly (see the mods `manfromthefog`, `trains` and `vehicles`).
+A mod that needs new terrain, an HTTP fetch or screens of its own still brings
+compiled code ([Code that mods bring](MODDING.md#code-that-mods-bring)).
 
 - [Where scripts live](#where-scripts-live)
 - [A first script](#a-first-script)
@@ -18,9 +20,12 @@ new terrain or its own drawing still brings compiled code
 - [The library](#the-library)
 - [Hooks: what the game calls](#hooks-what-the-game-calls)
 - [The host API: what scripts may do](#the-host-api-what-scripts-may-do)
+- [More host calls](#more-host-calls)
+- [Controls, HUD and screens](#controls-hud-and-screens)
 - [Saved state](#saved-state)
 - [Limits, errors and safety](#limits-errors-and-safety)
 - [Checking a script](#checking-a-script)
+- [Scripts and compiled code](#scripts-and-compiled-code)
 - [Worked examples](#worked-examples)
 - [For the game's own code](#for-the-games-own-code)
 
@@ -203,13 +208,28 @@ not call scripts again.
 | `fn on_block_place(x: i64, y: i64, z: i64, id: String) -> bool` | the player is about to place a block (at x, y, z) | `false` stops it |
 | `fn on_entity_spawn(kind: String) -> bool` | a creature appeared (`kind` is its id) | `false` takes it away |
 | `fn on_entity_death(kind: String, x: f64, y: f64, z: f64)` | a creature died, whatever the cause | |
+| `fn on_entity_hit(id: i64, kind: String, x: f64, y: f64, z: f64)` | the player hit a creature (it may have died of it): its id (the one `mob_info` and the other creature calls take), its kind and where it was | |
 | `fn on_player_hurt(amount: i64, cause: String) -> i64` | the player is about to take damage (`fall`, `drown`, `hunger`, `block`, `arrow`, `command`, `other`, or the id of the creature that bit) | the amount to take instead; `0` or `false` cancels. The first script to answer decides |
 | `fn on_chat(text: String) -> bool` | the player typed a line (commands too, with their `/`) | `false` swallows it |
 | `fn on_item_use(item: String) -> bool` | the player pressed use holding an item (once per press) | `false` stops it |
 | `fn on_craft(item: String)` | the player crafted something | |
 | `fn on_event(name: String, what: String)` | any event pack scripts can answer with `when` (the table in [MODDING.md](MODDING.md#events)) | |
+| `fn on_effect_start(id: String, level: i64)` | a status effect started on the player (not when it is only made longer or stronger) | |
+| `fn on_effect_tick(id: String, secs_left: f32, level: i64)` | about once a second for each status effect the player has | |
+| `fn on_effect_end(id: String)` | an effect ran out, was put out by water or was cleared (death included) | |
 | `fn on_command(name: String, args: String) -> bool` | a `/command` the game does not know (`name` without the `/`, lower case; `args` the rest of the line) | `true` if it is yours; a string is shown as the reply |
 | `fn on_explode(x: f64, y: f64, z: f64, power: f64, source: String) -> bool` | an explosion is about to happen (`source` is `tnt`, `command`, a creature's id, or `mod<N>`) | `false` cancels; a number changes the power (0.5 to 8) |
+| `fn on_update(dt: f32)` | once a frame, after the game has moved the creatures and before the player moves: the place to move things, to carry the player (`hold_player`) and to ask for pictures | |
+| `fn on_interact(reach: f64) -> bool` | the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is; `input()` says which buttons are down) | `true` if the click was used up |
+| `fn on_condition(name: String, args: String) -> bool` | an `/if` condition the game does not know | `true` or `false` if it is yours; return nothing if it is not |
+| `fn on_net(key: String, text: String)` | another player's copy of this mod sent a message with `net_send` | |
+| `fn on_register()` | once, when the script file is read (before any world): the place to declare key bindings and switches | |
+| `fn on_key_down(id: String)` | a key binding this mod declared was pressed (while playing, not in a menu or a text box) | |
+| `fn on_key_up(id: String)` | that key was let go | |
+| `fn on_hud(dt: f32)` | once a frame while playing: draw the HUD | |
+| `fn on_ui_click(id: String)` | a button of the mod's own screen was pressed | |
+| `fn on_ui_change(id: String, value: bool)` | a toggle (`bool`), stepper (a number), input (the text) or list (the line's number) of the screen changed | |
+| `fn on_ui_close(name: String)` | the mod's screen closed (the player closed it, or the mod did) | |
 
 Ids (`kind`, `item`, `id`) are the ids from the data files (`zombie`,
 `diamond`, `stone`). Where more than one script is asked, the first to
@@ -240,6 +260,10 @@ nothing) unless the player may run them there.
 | `set_time(t: f64)` | set the time of day |
 | `explode(x: f64, y: f64, z: f64, power: f64)` | set off an explosion (power 0.5 to 8); goes through `on_explode` of the other mods |
 | `effect(id: &str, secs: f64, level: i64) -> bool` | give the player a status effect |
+| `apply_effect(who: &str, id: &str, secs: f64, level: i64) -> bool` | give a status effect to `"player"` or `"target"` (the creature in the crosshair, up to 8 blocks); 0 seconds is the effect's own time; false if there is no such effect or target, or a mod refused it |
+| `remove_effect(who: &str, id: &str) -> bool` | take a status effect (all of them for an empty id) from `"player"` or `"target"`; false if it was not there |
+| `has_effect(who: &str, id: &str) -> bool` | whether `"player"` or `"target"` has that status effect |
+| `effect_level(who: &str, id: &str) -> i64` | the level of a status effect on `"player"` or `"target"`; 0 if it is not active |
 | `play_sound(id: &str)` | play a sound |
 | `run_command(text: &str) -> String` | carry out a chat command as the player (with or without the `/`); returns what it answers |
 | `rand(n: i64) -> i64` | a random whole number from 0 up to `n` (not including `n`) |
@@ -251,10 +275,355 @@ nothing) unless the player may run them there.
 | `state_get_int(key: &str, default: i64) -> i64` | a saved whole number (the default if there is none) |
 | `state_set_int(key: &str, value: i64)` | save a whole number |
 | `mod_name() -> String` | the name of the mod this script belongs to |
+| `set_shader_uniform(name: &str, value: f64) -> bool` | set the number `u_<name>` that the player's post-processing shader reads (a shader mod can declare `uniform float u_<name>;`); the value is kept within -1000 to 1000, at most 16 names; `false` for a bad name (lower-case letters, digits and `_`, starting with a letter, up to 24 long, and not one the game provides). See [SHADERS.md](SHADERS.md) |
+| `block_light(block_id: &str) -> i64` | how much light a block gives off, 0 to 15 |
+| `block_drop(block_id: &str) -> String` | the id of the item a block gives when broken in survival (empty if none) |
+| `survival() -> bool` | whether the player plays in survival mode |
+| `sneaking() -> bool` | whether the player is crouching (the sneak key is held) |
+| `hud(text: &str)` | show a line of text at the top left of the screen (under the frame rate); it stays 1.5 seconds, so call it again within a second to keep it; empty text takes it away. One line per mod, at most 6 lines at once, 48 characters |
+| `slot_item(slot: i64) -> String` | the id of the item in a pack slot (0 to 35, the first nine are the hotbar; empty if none) |
+| `slot_count(slot: i64) -> i64` | how many items are in a pack slot |
+| `move_slot(from: i64, to: i64) -> bool` | move a pack slot's items to another slot: into an empty one, onto the same item as far as it fits, else the two swap; `false` if nothing moved |
+| `stack_to_chest(x: i64, y: i64, z: i64) -> i64` | put the items of the pack (not the hotbar) that the chest at that block already holds into it; how many moved (0 if there is no chest, or in a shared game) |
+
+The calls for key bindings, the HUD and screens are in
+[Controls, HUD and screens](#controls-hud-and-screens).
 
 `run_command` is the way to everything the chat commands do (`/title`,
 `/weather`, `/shake`, `/launch`, `/after 5 ...`, `/var`...): see
 [MODDING.md](MODDING.md#pack-commands). It runs with exactly the player's rights.
+
+## More host calls
+
+The calls above are the basics. These give a mod the rest of what compiled
+code could do: look at the world, handle creatures, carry the player, draw,
+move things with the game's own physics, keep storage, read what packs say,
+and talk to other players. Every one is bounded (counts, sizes, distances) and
+works only in a running game; the ones that change the world are refused in a
+shared game for a player who does not run it, as `set_block` is. They are listed
+in `src/script/ext/` (one file for each table below); a test keeps the files and
+this page in step.
+
+Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
+`hud_frac_rect` and the like, and the game draws them every frame until the next
+`on_update` replaces them. What a script keeps from one call to the next goes in
+[saved state](#saved-state).
+
+### The world (read only)
+
+| Function | What it does |
+| --- | --- |
+| `is_loaded(x: i64, z: i64) -> bool` | whether the chunk column holding that place is loaded (`get_block` says "air" for places that are not) |
+| `surface_y(x: i64, z: i64) -> i64` | the height a creature stands at on that column of the world's natural ground (one above its top block); works where nothing is loaded |
+| `biome_at(x: i64, z: i64) -> String` | the natural biome of that column, lower case (`plains`, `forest`, `desert`, `tundra`, `taiga`, `mountain`, `swamp`, `savanna`, `jungle`, `badlands`) |
+| `is_solid(x: i64, y: i64, z: i64) -> bool` | whether the block there stops a body |
+| `block_tag(block_id: &str, tag: &str) -> f64` | the number after `tag <name>` in a block's pack lines (1 if none was given), or -1 if the block does not have the tag |
+| `scan_blocks(x0: i64, y0: i64, z0: i64, x1: i64, y1: i64, z1: i64, prefix: &str) -> Vec<(i64, i64, i64, String)>` | every loaded block in the box whose id starts with `prefix` (empty: any but air), as (x, y, z, id), up to 2000 of them, in x then z then y order; the box may hold at most 40 000 cells |
+| `block_ray(ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, max: f64) -> f64` | how far along a ray the first solid block is (up to `max`, at most 200), or -1 if none is in the way |
+| `find_path(sx: f64, sy: f64, sz: f64, gx: f64, gy: f64, gz: f64) -> Vec<(i64, i64, i64)>` | a walkable way over the loaded blocks from the place a walker stands (feet at sx, sy, sz) toward a goal, as the cells to step on in order (up to 64; the search looks at 320 cells at most, so a far goal gives the way to the nearest point reached); empty if there is none; both ends within 150 blocks of each other |
+
+### Creatures
+
+| Function | What it does |
+| --- | --- |
+| `mobs_near(x: f64, y: f64, z: f64, radius: f64, kind: &str) -> Vec<(i64, f64, f64, f64)>` | the living creatures of one kind (empty: any) within a radius, nearest first, as (id, x, y, z); at most 64 |
+| `spawn_mob(kind: &str, x: f64, y: f64, z: f64) -> i64` | make a creature appear and give its id, or -1 (no such kind, not allowed here, or the world is full of creatures: 300 at most) |
+| `mob_info(id: i64) -> (String, i64, f64, f64, f64)` | (kind, health, x, y, z) of a creature; the kind is empty if it is gone or dying |
+| `mob_set_pos(id: i64, x: f64, y: f64, z: f64)` | put a creature somewhere and stop it |
+| `mob_set_yaw(id: i64, yaw: f64)` | turn a creature (yaw 0 faces -z; its forward is (-sin yaw, -cos yaw)) |
+| `mob_set_size(id: i64, width: f64, height: f64)` | change the box a creature collides with (0.1 to 8 blocks); what it is drawn as does not change |
+| `mob_remove(id: i64)` | make a creature vanish at once: nothing drops, no `on_entity_death` |
+| `mob_hurt(id: i64, n: i64)` | hurt a creature as the player's blow would (drops and `on_entity_death` follow if it dies) |
+| `mob_in_view(max: f64) -> i64` | the id of the first creature on the player's look ray within `max` blocks (at most 100) with no block in the way, or -1 |
+
+### The player, input and the camera
+
+| Function | What it does |
+| --- | --- |
+| `player_look() -> (f64, f64)` | (yaw, pitch) in radians; yaw 0 faces -z, positive pitch looks up |
+| `look_dir() -> (f64, f64, f64)` | the unit vector the player looks along |
+| `set_look(yaw: f64, pitch: f64)` | turn the player's view (pitch is kept within 1.5 radians of level) |
+| `player_eye() -> (f64, f64, f64)` | where the player's eyes are |
+| `place_player(x: f64, y: f64, z: f64)` | put the player at a place (the feet), stopped |
+| `hold_player(x: f64, y: f64, z: f64)` | carry the player along: for this frame their eyes are at that place and they do not walk (set it again every frame, from `on_update`; this is how riding works) |
+| `player_mode() -> String` | `survival` or `creative` |
+| `player_dead() -> bool` | whether the player is dead (on the death screen) |
+| `player_sleeping() -> bool` | whether the player is in bed |
+| `wake()` | get the player out of bed |
+| `flash(secs: f64)` | flash the screen white for a moment (up to 1 second) |
+| `shake(amount: f64)` | shake the camera (0 to 3) |
+| `input() -> (f64, f64, bool, bool, bool, bool, bool)` | what the player presses this frame, in `on_update` and `on_interact`: (forward -1..1, strafe -1..1, jump, descend, leave, use, attack) |
+| `aim() -> (i64, i64, i64, i64, i64, i64, f64)` | the block the player looks at: (x, y, z, x, y, z of the cell in front of it, distance); the distance is -1 when nothing is in reach |
+| `use_ready() -> bool` | whether the use button's cooldown is over (it is set again by `use_cooldown`) |
+| `use_cooldown(secs: f64)` | start the use button's cooldown |
+| `attack_ready() -> bool` | whether the attack button's cooldown is over |
+| `attack_cooldown(secs: f64)` | start the attack button's cooldown |
+| `take_held() -> bool` | use up one of the item in hand (nothing is used up in creative); false if the hand is empty |
+| `who() -> String` | the name the player goes by |
+| `is_host() -> bool` | whether this copy of the game runs the creatures and the like (always true alone; one player in a shared game) |
+| `is_shared() -> bool` | whether this is a shared game (a server) |
+
+### Pictures: HUD and models
+
+| Function | What it does |
+| --- | --- |
+| `hud_frac_rect(x: f64, y: f64, w: f64, h: f64, r: i64, g: i64, b: i64, a: i64)` | fill a rectangle of the HUD this frame; x, y, w and h are fractions of the screen (0 to 1), the colour and opacity 0 to 255; at most 64 a frame |
+| `hud_frac_text(x: f64, y: f64, scale: f64, text: &str, r: i64, g: i64, b: i64)` | write text on the HUD this frame; x and y are fractions of the screen, `scale` times the size of the game's own interface (0.5 to 8); at most 32 a frame |
+| `draw_model(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, tint: f64)` | draw a model (a model id, or the id of a creature to use its model) in the world this frame, `height` blocks tall; `phase` is the walk or wheel cycle in radians; `tint` is 0 to 1 for a fixed brightness, or -1 for the light of the place; at most 200 a frame |
+| `draw_model_own(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, tint: f64)` | as `draw_model`, for the thing the player sits in or wears: it is drawn only when the player sees themselves from outside (third person) |
+| `draw_model_posed(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, stride: f64, head_pitch: f64, head_yaw: f64, clock: f64, tint: f64)` | as `draw_model` with the pose of a creature: `stride` 0 (still) to 1 (full stride), where the head looks relative to the body in degrees, and `clock`, the seconds it has been alive (tails wag and ears twitch on their own) |
+| `draw_speck(x: f64, y: f64, z: f64, r: i64, g: i64, b: i64)` | draw one small opaque speck of colour in the world this frame; at most 300 a frame |
+
+### Physics bodies
+
+| Function | What it does |
+| --- | --- |
+| `body_new(width: f64, height: f64, x: f64, y: f64, z: f64) -> i64` | make a physics body (a box on the ground at x, y, z, `width` by `height` blocks, up to 6 each) and give its id, or -1 if there are too many bodies (256 over all mods) |
+| `body_free(id: i64)` | forget a body |
+| `body_step(id: i64, dt: f64, forward: f64, strafe: f64, jump: bool, descend: bool, flying: bool, speed: f64)` | move a body for `dt` seconds (at most 0.1) as a walker would: `forward` and `strafe` -1..1 along its yaw, `jump`, `descend`, `flying` (no gravity: up on `jump`, down on `descend`), `speed` a multiplier of the walking speed (0 to 8; the player walks 4.8 blocks a second at 1, flies at 11); does nothing where the world is not loaded |
+| `body_pos(id: i64) -> (f64, f64, f64)` | where a body's feet are |
+| `body_exists(id: i64) -> bool` | whether a body with that id is there (bodies live only as long as the game session: a saved id is stale after the world is opened again) |
+| `body_set_pos(id: i64, x: f64, y: f64, z: f64)` | put a body somewhere; its velocity is kept (`body_set_vel` stops it) |
+| `body_vel(id: i64) -> (f64, f64, f64)` | a body's velocity in blocks a second |
+| `body_set_vel(id: i64, x: f64, y: f64, z: f64)` | set a body's velocity |
+| `body_yaw(id: i64) -> f64` | which way a body faces (yaw 0 faces -z) |
+| `body_set_yaw(id: i64, yaw: f64)` | turn a body |
+| `body_state(id: i64) -> (bool, bool)` | (on the ground, in water or lava) |
+| `body_ray(id: i64, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, max: f64) -> f64` | how far along a ray (up to `max`, at most 50) the box of a body is hit, or -1 if it is missed |
+
+### Storage on the chest screen
+
+| Function | What it does |
+| --- | --- |
+| `storage_open(key: &str) -> bool` | open this mod's storage of that name on the chest screen (made empty if it is new); false if there are too many storages (128 over all mods) or the key is empty or longer than 64 bytes |
+| `storage_dump(key: &str) -> String` | what a storage holds, as text to keep with `state_set` (empty if it holds nothing or there is none) |
+| `storage_load(key: &str, text: &str)` | fill a storage from text made by `storage_dump` (made if it is new) |
+| `storage_count(key: &str) -> i64` | how many items a storage holds |
+| `storage_to_player(key: &str) -> i64` | move everything a storage holds into the player's pack and give how many items did not fit (they stay in the storage) |
+| `storage_drop(key: &str)` | forget a storage and what it holds |
+
+### What the packs say
+
+| Function | What it does |
+| --- | --- |
+| `pack_lines(key: &str) -> Vec<Vec<String>>` | the words after each claimed top-level line that starts with `key`, in the order the packs were read (at most 500) |
+| `pack_sections(kind: &str) -> Vec<String>` | the ids of the claimed sections of a kind (`vehicle`...), in the order the packs were read (at most 500) |
+| `pack_prop(kind: &str, id: &str, key: &str, default: &str) -> String` | the words after the line `key` in a claimed section, joined with spaces, or `default` if the section or the line is not there |
+| `pack_props(kind: &str, id: &str) -> Vec<(String, String)>` | every line of a claimed section as (key, words joined with spaces) |
+
+### Files in `tmp`
+
+| Function | What it does |
+| --- | --- |
+| `tmp_read(name: &str) -> String` | the text of a file in this mod's `tmp` folder (empty if there is none, or it is not text) |
+| `world_file_read(name: &str) -> String` | the text of a file the world's save keeps for a mod's old compiled code (`<world>.<name>`, read only, and only `vehicles.txt` and `manfromthefog.txt`), empty if there is none or the game is shared: for a script that takes over from the code and reads what the code saved once |
+| `tmp_write(name: &str, text: &str) -> bool` | write a file in this mod's `tmp` folder; false if the name is not plain (letters, digits, `.`, `_`, `-`, up to 64 bytes), the text is over 256 KiB, or the mod already has 64 files |
+
+### Other players
+
+| Function | What it does |
+| --- | --- |
+| `net_send(key: &str, text: &str) -> bool` | send a message to this mod's scripts on the other players' games (`on_net`); false when the game is not shared or the key is over 64 bytes or the text over 8000 |
+
+### Shots, sky, pushes
+
+| Function | What it does |
+| --- | --- |
+| `shoot(x: f64, y: f64, z: f64, dx: f64, dy: f64, dz: f64, speed: f64, damage: i64, hostile: bool, r: i64, g: i64, b: i64) -> bool` | send a shot flying from a place along a direction (blocks a second, up to 60; it hurts what it hits for `damage`, up to 100, and the player too when `hostile`), drawn in the colour; false if there are too many in flight (200) or it is not allowed here |
+| `force_sky(rain: f64)` | force the sky to a fixed weather, 0 (clear) to 1 (storm), as `/weather` does; a negative number gives the sky back to the weather |
+| `mob_set_vel(id: i64, x: f64, y: f64, z: f64)` | set a creature's velocity in blocks a second (up to 60 in each direction): a push or a leap |
+| `clear_effect(id: &str) -> bool` | take a status effect off the player (a cure); false if they did not have it |
+| `push_player(x: f64, y: f64, z: f64)` | add to the player's velocity in blocks a second (up to 40 in each direction) |
+
+### Lines and sections for scripts
+
+A pack can keep top-level lines and indented sections the game itself does not
+know, for a script to read, by saying so in its `pack.txt`:
+
+```
+claims line manfromthefog
+claims section vehicle
+```
+
+From then on, in every pack read in the same loading (whichever comes first),
+`manfromthefog min_spawn_rate 1000` is a line and `vehicle boat` with its
+indented lines is a section the game keeps instead of warning about. A script
+reads them with `pack_lines("manfromthefog")` and `pack_sections("vehicle")`.
+The words the game itself reads (`block`, `item`, `texture`...) cannot be claimed.
+
+## Controls, HUD and screens
+
+A mod can have keys of its own, draw on the HUD and open its own screens.
+The same calls exist for native code ([MODDING.md](MODDING.md#controls-hud-and-screens));
+they share their limits.
+
+### Key bindings
+
+Declare them in `on_register`, which runs once when the script is read (the
+only place `bind_key` and `add_switch` work). Each gets an id, a label, a group
+and a default key. They appear in **Settings > Controls > Key bindings**, after
+the game's own, under a heading with the mod's name (and the group, if any);
+the player can rebind them, the choice is saved in `settings.txt`, and two
+bindings on one key are outlined in red but both still work.
+
+| Function | What it does |
+| --- | --- |
+| `bind_key(id: &str, label: &str, group: &str, key: i64) -> bool` | in `on_register` only: add a binding. `key` is a key code or a name such as `"g"`, `"f5"`, `"space"`, `"up"`, `"shift"` |
+| `add_switch(id: &str, label: &str, default: bool) -> bool` | in `on_register` only: add an on/off row to Settings > Game > Mod switches and reload |
+| `key_scancode(name: &str) -> i64` | the key code of a key name, 0 if it is not one |
+| `key_held(id: &str) -> bool` | whether the binding's key is down now |
+| `setting_on(id: &str) -> bool` | whether one of the mod's switches is on (its default until the player changes it) |
+
+`on_key_down(id)` and `on_key_up(id)` are called for the mod's own bindings
+only, not while typing, in a menu or on a mod screen; a key let go is always
+reported. A mod may declare 64 bindings and 16 switches; ids are letters,
+digits, `_` and `-` up to 32 characters, labels are cut at 40.
+
+### Drawing on the HUD
+
+Draw from `on_hud(dt)`: it runs once a frame, and what was drawn last frame is
+forgotten, so draw it all again. Every call returns `false` (and does nothing)
+when the frame's drawing commands are used up: **512 in all, 256 for one mod**.
+Text is cut to 120 characters; sizes and distances are in interface pixels (the
+game's pixels, scaled with the interface size setting); everything is clipped to
+the window, an icon is drawn only if it fits whole.
+
+An `anchor` is one of `"top-left"`, `"top"`, `"top-right"`, `"left"`,
+`"centre"`, `"right"`, `"bottom-left"`, `"bottom"`, `"bottom-right"`. The thing
+drawn is put so that its matching corner, edge or middle sits on that point of
+the screen, then moved `dx` right and `dy` down (so `hud_text("bottom-right",
+-4.0, -4.0, ...)` is a line four pixels in from the corner). A `colour` is
+`0xRRGGBB`, or `0xAARRGGBB` (a number above `0xFFFFFF` carries its own alpha).
+
+| Function | What it does |
+| --- | --- |
+| `hud_text(anchor: &str, dx: f64, dy: f64, scale: f64, text: &str, colour: i64) -> bool` | text, `scale` times the normal size (0.5 to 4) |
+| `hud_rect(anchor: &str, dx: f64, dy: f64, w: f64, h: f64, colour: i64) -> bool` | a filled rectangle |
+| `hud_outline(anchor: &str, dx: f64, dy: f64, w: f64, h: f64, thick: f64, colour: i64) -> bool` | a rectangle's outline, `thick` pixels thick (1 to 16) |
+| `hud_item(anchor: &str, dx: f64, dy: f64, size: f64, item_id: &str) -> bool` | an item's icon, `size` pixels square |
+| `hud_block(anchor: &str, dx: f64, dy: f64, size: f64, block_id: &str) -> bool` | a block's icon |
+| `hud_bar(anchor: &str, dx: f64, dy: f64, w: f64, h: f64, fraction: f64, colour: i64) -> bool` | a progress bar, `fraction` from 0 to 1 |
+
+A line that should stay (a status, a counter) can live in a **slot**, and is
+laid out for you next to the game's own HUD. It stays until the mod changes or
+removes it, so set it when something changes rather than every frame. A mod
+may keep 16 lines (64 in all).
+
+| Slot | Where |
+| --- | --- |
+| `"above_hotbar"` | centred above the hotbar, growing upward |
+| `"beside_hearts"` | to the left of the hearts, growing upward |
+| `"top_left_list"` | a list down the top left, under the frame rate |
+| `"under_crosshair"` | centred under the crosshair, growing downward |
+
+| Function | What it does |
+| --- | --- |
+| `hud_set(slot: &str, id: &str, text: &str, colour: i64) -> bool` | put a line in a slot, or change the line with this id |
+| `hud_set_icon(id: &str, item_id: &str) -> bool` | give that line an item icon in front (an empty id takes it away) |
+| `hud_remove(id: &str) -> bool` | take the line away |
+| `toast(text: &str, secs: f64) -> bool` | a boxed message at the top that fades after `secs` (0.5 to 30); up to 8 wait at once |
+| `action_bar(text: &str, secs: f64) -> bool` | one line above the hotbar, replaced by the next |
+
+What a HUD may read, besides `player_health()`, `player_pos()`, `held_item()`,
+`time()` and `dimension()`:
+
+| Function | What it gives |
+| --- | --- |
+| `hunger() -> i64` | the player's hunger (20 is full) |
+| `air() -> f64` | breath left (10 is full) |
+| `biome() -> String` | the biome under the player, lower case |
+| `selected_slot() -> i64` | the hotbar slot chosen, 0 to 8 |
+| `heading() -> f64` | the way the player faces in degrees: 0 north (toward -z), 90 east (+x), 180 south, 270 west |
+| `fps() -> f64` | frames a second |
+
+### Screens of your own
+
+A mod opens a screen (from a key binding, a command, anything), fills it row
+by row with the widgets the settings use, and hears about the player's clicks.
+One screen is open at a time; opening another closes the first. A screen takes
+up to 48 widgets and scrolls when it is taller than the window; Escape or CLOSE
+closes it. Widget ids are unique on a screen and follow the rules of key ids.
+
+| Function | What it does |
+| --- | --- |
+| `ui_open(name: &str, title: &str) -> bool` | open an empty screen called `name`; add the widgets after it |
+| `ui_close() -> bool` | close the mod's screen |
+| `ui_text(text: &str) -> bool` | a line of text |
+| `ui_button(id: &str, label: &str) -> bool` | a button: `on_ui_click(id)` |
+| `ui_toggle(id: &str, label: &str, on: bool) -> bool` | an on/off toggle: `on_ui_change(id, value)` with a `bool` |
+| `ui_stepper(id: &str, label: &str, value: i64, min: i64, max: i64) -> bool` | a number you step with the mouse: `on_ui_change` with the number |
+| `ui_input(id: &str, label: &str, value: &str) -> bool` | a text box (60 characters): `on_ui_change` with the text, as it is typed |
+| `ui_list(id: &str, items: &str, selected: i64) -> bool` | a scrolling list of 5 lines; `items` are separated by `\n` (up to 128): `on_ui_change` with the line's number |
+| `ui_set_text(id: &str, text: &str) -> bool` | change a button's, toggle's or stepper's label, an input's text, or a list's items |
+| `ui_set_line(n: i64, text: &str) -> bool` | change the text of the `n`th widget (counting from 0) if it is a text line |
+| `ui_set_value(id: &str, n: i64) -> bool` | change a toggle (0 or 1), a stepper or a list's chosen line (-1 for none) |
+| `ui_get_text(id: &str) -> String` | an input's text, or the text of a list's chosen line |
+| `ui_get_value(id: &str) -> i64` | a toggle's (0 or 1), stepper's or list's (-1 for none) value |
+
+`on_ui_click`, `on_ui_change` and `on_ui_close` are called after the frame the
+player used the screen in, for the mod that owns it. A mod can change what is
+shown at any time (from `on_tick` too) with `ui_set_text`, `ui_set_line` and
+`ui_set_value`.
+
+### Safety
+
+Everything above is bounded in the game, not by the script's good manners:
+drawing commands, key bindings, switches, HUD lines, toasts, widgets, list
+lines, text and ids all have caps (the numbers above), text is cut to
+printable ASCII and upper case, NaN and enormous numbers are brought into range
+and a window position off the screen draws nothing. The calls take a constant
+time, so a script cannot slow a frame by asking for too much; one that loops
+for ever is stopped by the step budget of the call (see
+[Limits](#limits-errors-and-safety)). An error in a script (a wrong anchor or
+slot name, `bind_key` outside `on_register`, a key name that is not one) switches that
+file off and nothing else, the same as any other error.
+
+### A worked example: a compass and a stats screen
+
+The scripting-demo mod has this: **G** switches a compass on the HUD, **H**
+opens a small screen of facts.
+
+```rust
+fn on_register() {
+    bind_key("compass", "Toggle compass", "Demo", "g");
+    bind_key("stats", "Open stats", "Demo", "h");
+    add_switch("compass_on_start", "Compass on at start", true);
+}
+
+fn compass_text(deg: f64) -> String {
+    let names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+    let i = ((deg + 22.5) / 45.0) as i64 % 8;
+    format!("{} {:.0}", names[i as usize], deg)
+}
+
+fn on_key_down(id: String) {
+    if id == "compass" {
+        let shown = state_get_int("compass", if setting_on("compass_on_start") { 1 } else { 0 }) == 0;
+        state_set_int("compass", if shown { 1 } else { 0 });
+        toast(if shown { "COMPASS ON" } else { "COMPASS OFF" }, 1.5);
+    } else if id == "stats" {
+        ui_open("stats", "Stats");
+        ui_text(&format!("HEALTH {}   HUNGER {}", player_health(), hunger()));
+        ui_text(&format!("BIOME {}", biome()));
+        ui_button("close", "Close");
+    }
+}
+
+fn on_ui_click(id: String) {
+    if id == "close" {
+        ui_close();
+    }
+}
+
+fn on_hud(dt: f32) {
+    if state_get_int("compass", if setting_on("compass_on_start") { 1 } else { 0 }) == 0 {
+        return;
+    }
+    let text = compass_text(heading());
+    hud_rect("top", 0.0, 4.0, 60.0, 12.0, 0xA0000000);
+    hud_text("top", 0.0, 7.0, 1.0, &text, 0xFFFFFF);
+}
+```
 
 ## Saved state
 
@@ -269,8 +638,10 @@ one call runs.
 
 ## Limits, errors and safety
 
-A script has no way to read or write a file, reach the network, start a
-program, or see anything the host API does not give it.
+A script has no way to read or write a file (except the plain text files of
+`tmp_read` and `tmp_write` in its own `tmp` folder), reach the network (except
+messages to the same mod on other players' games), start a program, or see
+anything the host API does not give it.
 
 Every call into a script (a hook, a command) has a budget:
 
@@ -309,7 +680,51 @@ voxelrust --script-check scripts/main.rs
 reads a file the way the game would and prints the mistake (with its line
 and column), or `ok` with the hooks it defines. It warns about a function named
 like a hook (`on_blok_break`) that is not one, and about a hook that
-declares more parameters than the game passes. It opens no window.
+declares more parameters than the game passes. It also looks at every call by
+name (`script/lint.rs`): a call to a function that is not the file's own, a host
+function or the library (`sayy("x")`), or a host function or the file's own
+function given the wrong number of arguments, is an error with its line. It
+opens no window.
+
+## Scripts and compiled code
+
+A mod can have both `scripts/` and `code/` (compiled Rust, see
+[MODDING.md](MODDING.md#code-that-mods-bring)) with the same logic. The script is
+the default: a normal build has no compiled mod code at all. The opt-in
+`native-mods` build compiles `code/` in, and then it runs **instead of** the mod's
+scripts, which are left unread (the game logs that), so the two never do the same
+thing twice. `docs/SCRIPT-COMPAT.md` says which mods run as scripts and what is
+left that scripts cannot do.
+
+## Effects
+
+Effects are defined in a pack with `effect` lines ([DATA.md](DATA.md#effects):
+damage, healing, speed, mining speed, levitation, blindness, a screen tint,
+hearts, a sound...), and a script gives them out, asks about them and answers
+their start, tick and end. `effect(id, secs, level)` is the player-only short
+form of `apply_effect("player", ...)`. The tick hook is called about once a
+second, not each frame, so it is cheap.
+
+```rust
+fn on_effect_start(id: String, level: i64) {
+    if id == "gloom" {
+        say("THE LIGHT GOES OUT OF THE WORLD");
+    }
+}
+
+fn on_effect_tick(id: String, secs_left: f32, level: i64) {
+    // A lantern keeps the gloom off the player.
+    if id == "gloom" && held_item() == "lantern" {
+        remove_effect("player", "gloom");
+    }
+}
+
+fn on_effect_end(id: String) {
+    if id == "levitation" && !has_effect("player", "water_breathing") {
+        apply_effect("player", "water_breathing", 5.0, 1);
+    }
+}
+```
 
 ## Worked examples
 
@@ -424,6 +839,14 @@ fn on_block_break(x: i64, y: i64, z: i64, id: String) {
   (`explosion::explode`) have a call of their own. To add a hook, add a `HookDoc`
   to `script::HOOKS`, a function to `bridge.rs`, the call where the event happens,
   and a row to the table above (a test checks the docs list every hook).
+- The later host calls (`heading` to `stack_to_chest`) are written in `script/host_qol.rs`, and `hud` keeps its lines in `script/hud.rs` (`Session::script_hud`, drawn by `client/app.rs`).
 - To add a host function, add it to `Host` (`script/host.rs`), to
   `SessionHost`, to `call_host_fn`, to `HOST_FUNCTIONS` and to the table above (tests
-  check all four agree).
+  check all four agree). The functions for controls, the HUD and screens are in
+  `script/host_ui.rs` (`UI_FUNCTIONS`, one thin call each into `ModApi` of
+  `client/modui/api.rs`, which holds the limits); the state they change is a
+  `ModUi` that the host hands out with `Host::ui()`.
+- What a script declares in `on_register` (key bindings, switches) is kept in
+  `ScriptHost::decls`; the Settings pages read it, with the native mods' own
+  tables, through `client/modui/keys.rs`. Key presses reach a mod's scripts with
+  `ScriptHost::call_hook_in`, which asks only the mods it is told to.

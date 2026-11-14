@@ -75,6 +75,30 @@ imports! {
     fn glDeleteBuffers(n: i32, ids: *const u32);
     fn glActiveTexture(unit: u32);
     fn glClientActiveTexture(unit: u32);
+    // The shader calls of sys/gl_shader.rs (post-processing only).
+    fn glCreateShader(kind: u32) -> u32;
+    fn glShaderSource(shader: u32, count: i32, strings: *const *const u8, lengths: *const i32);
+    fn glCompileShader(shader: u32);
+    fn glGetShaderiv(shader: u32, name: u32, out: *mut i32);
+    fn glGetShaderInfoLog(shader: u32, cap: i32, len: *mut i32, dst: *mut u8);
+    fn glDeleteShader(shader: u32);
+    fn glCreateProgram() -> u32;
+    fn glAttachShader(program: u32, shader: u32);
+    fn glBindAttribLocation(program: u32, index: u32, name: *const u8);
+    fn glLinkProgram(program: u32);
+    fn glGetProgramiv(program: u32, name: u32, out: *mut i32);
+    fn glGetProgramInfoLog(program: u32, cap: i32, len: *mut i32, dst: *mut u8);
+    fn glUseProgram(program: u32);
+    fn glDeleteProgram(program: u32);
+    fn glGetUniformLocation(program: u32, name: *const u8) -> i32;
+    fn glUniform1i(location: i32, v: i32);
+    fn glUniform1f(location: i32, v: f32);
+    fn glUniform2f(location: i32, a: f32, b: f32);
+    fn glUniform3f(location: i32, a: f32, b: f32, c: f32);
+    fn glUniform4f(location: i32, a: f32, b: f32, c: f32, d: f32);
+    fn glEnableVertexAttribArray(index: u32);
+    fn glDisableVertexAttribArray(index: u32);
+    fn glVertexAttribPointer(index: u32, size: i32, kind: u32, normalized: u8, stride: i32, p: *const c_void);
 }
 
 /// The one call that returns memory: the text is fetched into a buffer

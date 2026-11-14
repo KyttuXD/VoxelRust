@@ -10,8 +10,8 @@
 
 use super::*;
 
-const WOOD: [u8; 3] = [160, 122, 74];
-const WOOD_DARK: [u8; 3] = [116, 86, 52];
+const WOOD: [u8; 3] = [166, 118, 70];
+const WOOD_DARK: [u8; 3] = [118, 80, 54];
 
 /// A two-pixel handle in columns 7 and 8 from row `y0` to row `y1`, in the
 /// colours `wood` (lit column, shaded column).
@@ -61,6 +61,15 @@ pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
     })
 }
 
+/// The letter of a role picture at `(x, y)`; `.` outside the tile.
+fn shape_cell(rows: &[&str; 16], x: i32, y: i32) -> u8 {
+    if (0..16).contains(&x) && (0..16).contains(&y) {
+        rows[y as usize].as_bytes()[x as usize]
+    } else {
+        b'.'
+    }
+}
+
 /// The box of a role picture's head (its `L`, `M`, `D` and `W` cells): where a gradient is spread.
 fn shape_head_box(rows: &[&str; 16]) -> (i32, i32, i32, i32) {
     let (mut x0, mut y0, mut x1, mut y1) = (16, 16, -1, -1);
@@ -80,11 +89,11 @@ fn shape_head_box(rows: &[&str; 16]) -> (i32, i32, i32, i32) {
     (x0, y0, x1 - x0 + 1, y1 - y0 + 1)
 }
 
-/// A tool painted from the OCD pack's own silhouette (see `tool_shapes`): the
+/// A tool painted from VoxelRust's own silhouette (see `tool_shapes`): the
 /// outline and the shape come from the picture, the colours from the palette
 /// (the head's from its roles `L` light, `M` mid, `D` dark and `W` highlight,
-/// with a gradient over the head if the palette has one; the handle's from the
-/// second palette).
+/// with a gradient over the head if the palette has one; the haft's from the
+/// second palette; `B`, the binding, is the base colour's dark tone).
 fn paint_shape(rows: &[&str; 16], pal: &Palette, x: i32, y: i32) -> Px {
     let (hx, hy, hw, hh) = shape_head_box(rows);
     let wood = pal.handle_or((WOOD, WOOD_DARK));
@@ -94,9 +103,18 @@ fn paint_shape(rows: &[&str; 16], pal: &Palette, x: i32, y: i32) -> Px {
         return CLEAR;
     }
     match rows[y as usize].as_bytes()[x as usize] {
-        b'o' => px(pal.outline()),
+        b'o' => {
+            // The rim light: the house outline is lighter where the picture lies to its right or below it and nothing to its left or above.
+            let solid = |dx: i32, dy: i32| shape_cell(rows, x + dx, y + dy) != b'.';
+            if pal.outline() == OUTLINE && (solid(1, 0) || solid(0, 1)) && !solid(-1, 0) && !solid(0, -1) {
+                px(RIM)
+            } else {
+                px(pal.outline())
+            }
+        }
         b'h' => px(wood.0),
         b'H' => px(wood.1),
+        b'B' => px(pal.dark_of(pal.base())),
         b'L' => px(l),
         b'M' => px(m),
         b'D' => px(d),

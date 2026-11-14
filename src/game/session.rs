@@ -26,7 +26,7 @@ pub enum GameMode {
 
 pub const MAX_HEALTH: i32 = 20;
 pub const MAX_HUNGER: i32 = 20;
-const MAX_AIR: f32 = 10.0;
+const MAX_AIR: f32 = crate::game::effects::air::MAX_AIR;
 
 /// What the player is asking for this frame.
 #[derive(Clone, Copy, Default)]
@@ -131,6 +131,8 @@ pub struct Session {
     touch_timer: f32,
     /// Sounds asked for by commands, played when the sound system is at hand.
     pub sound_queue: Vec<String>,
+    /// What scripts have set for the post-processing shader (`set_shader_uniform`).
+    pub shader_uniforms: crate::client::shaders::names::UserUniforms,
     /// How many `/fire` events are being acted on at once (see the `/fire` command).
     fire_depth: u8,
     /// Asleep in a bed: the night passes quickly (see [`tick_clock`]).
@@ -214,6 +216,8 @@ pub struct Session {
     /// The block being mined and how far along, 0..1.
     pub mining: Option<([i32; 3], f32)>,
     pub note: (String, f32),
+    /// Lines of text scripts put on the screen (host call `hud`).
+    pub script_hud: crate::script::hud::HudLines,
     pub cooldown: [f32; 2],
     /// A bow being drawn (see game/bow.rs) and food being eaten (game/eating.rs).
     pub bow: crate::game::bow::Bow,
@@ -516,6 +520,7 @@ impl Session {
             tick_timer: 0.0,
             touch_timer: 0.0,
             sound_queue: Vec::new(),
+            shader_uniforms: Default::default(),
             fire_depth: 0,
             sleeping: false,
             pending_hurt: 0,
@@ -571,6 +576,7 @@ impl Session {
             target: None,
             mining: None,
             note: (String::new(), 0.0),
+            script_hud: Default::default(),
             cooldown: [0.0; 2],
             bow: Default::default(),
             eating: Default::default(),
@@ -647,6 +653,7 @@ impl Session {
                 hit(self, id, kind, at);
             }
         }
+        crate::script::bridge::entity_hit(self, id, kind, at);
     }
 
     fn mob_killed(&mut self, kind: usize, at: [f64; 3]) {
@@ -754,6 +761,9 @@ impl Session {
             name => {
                 // A condition of some mod's own code, perhaps.
                 if let Some(holds) = crate::native::active().filter_map(|(_, n)| n.condition).find_map(|condition| condition(self, cond)) {
+                    return holds;
+                }
+                if let Some(holds) = crate::script::bridge::condition(self, cond) {
                     return holds;
                 }
                 let have = match name {
@@ -1765,6 +1775,7 @@ impl Session {
                         }
                         // A mod's own code talking to itself on another
                         // player's machine.
+                        ch::SCRIPT => crate::script::bridge::net_message(self, &key, &text),
                         c if c >= ch::NATIVE => {
                             if let Some(n) = crate::native::all().get((c - ch::NATIVE) as usize).filter(|n| reg().has(n.name)) {
                                 if let Some(message) = n.message {
@@ -1956,6 +1967,7 @@ impl Session {
         self.world.far_radius = if far > distance { far } else { 0 };
         self.clock += dt;
         self.note.1 -= dt;
+        self.script_hud.tick(dt);
         self.net_update(dt);
         self.hurt_flash = (self.hurt_flash - dt).max(0.0);
         // A full day lasts twenty minutes. (No `%` on floats: that would
@@ -2100,6 +2112,7 @@ impl Session {
             use crate::game::effects::apply as fxa;
             self.player.speed_scale *= fxa::speed_scale(&self.fx, &fxa::lookup);
             self.player.jump_scale = fxa::jump_scale(&self.fx, &fxa::lookup);
+            self.player.lift = crate::game::effects::body::lift_speed(&self.fx, &fxa::lookup);
             fxa::step(self, dt, audio);
         }
         // Movement. Until the ground under the player exists, hold still:
@@ -2113,6 +2126,7 @@ impl Session {
                 update(g, dt, c, audio)
             }
         });
+        crate::script::bridge::update(self, dt, c);
         let seat = self.seat;
         self.carried = seat.is_some();
         self.posing.climbing = false;
@@ -2346,18 +2360,16 @@ impl Session {
         // Breath.
         let eye = self.player.eye();
         let head = self.world.get(floord(eye[0]), floord(eye[1]), floord(eye[2]));
-        if reg().kind[head as usize] == Kind::Liquid {
-            self.air = (self.air - dt).max(0.0);
-            if self.air <= 0.0 {
-                self.drown += dt;
-                if self.drown >= 1.0 {
-                    self.drown = 0.0;
-                    self.damage_from("drown", 2, audio);
-                }
+        {
+            // Air runs out under water, unless an effect lets the body breathe (game/effects/air.rs).
+            use crate::game::effects::{air, apply as fxa, body};
+            let breathing = body::can_breathe(&self.fx, &fxa::lookup);
+            let (state, hurt) = air::step(air::Air { air: self.air, drown: self.drown }, dt, reg().kind[head as usize] == Kind::Liquid, breathing);
+            self.air = state.air;
+            self.drown = state.drown;
+            if hurt > 0 {
+                self.damage_from("drown", hurt, audio);
             }
-        } else {
-            self.air = (self.air + dt * 4.0).min(MAX_AIR);
-            self.drown = 0.0;
         }
         // Hunger: a point every 45 seconds, faster when sprinting about.
         let moving = self.player.vel[0] * self.player.vel[0] + self.player.vel[2] * self.player.vel[2] > 20.0;
@@ -2460,6 +2472,9 @@ impl Session {
                 used = interact(g, c, near_block, audio);
             }
         });
+        if !used {
+            used = crate::script::bridge::interact(self, c, near_block);
+        }
         if used || self.carried {
             self.bow.reset();
             self.eating.reset();
@@ -2600,6 +2615,8 @@ impl Session {
                     };
                     // The right kind of tool digs several times faster.
                     let speed = if item.tool != 0 && item.tool == d.tool { item.speed } else { 1.0 };
+                    // Haste and mining fatigue.
+                    let speed = speed * crate::game::effects::body::mine_scale(&self.fx, &crate::game::effects::apply::lookup);
                     let progress = if d.hardness <= 0.0 { 1.0 } else { progress + dt * speed / d.hardness };
                     if progress >= 1.0 {
                         if self.cooldown[0] <= 0.0 {

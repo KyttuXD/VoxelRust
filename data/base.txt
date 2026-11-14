@@ -61,28 +61,28 @@ texture sun builtin sun
 texture moon builtin moon
 texture wand builtin wand
 texture white flat 255 255 255
-palette ruby #e2406e #a82454 #ff9cb8
+palette ruby #e83668 #a01a4c #ff94b4
 texture ruby_ore paint ore palette ruby
 texture workbench_top paint workbench 176 136 84
 texture stick paint stick 122 88 52
-texture ruby paint gem 226 60 110
-texture crystal paint gem 130 226 240
-texture coal paint gem 44 44 50
+texture ruby paint gem 232 54 104
+texture crystal paint gem 124 224 246
+texture coal paint gem 42 42 58
 texture apple paint fruit 206 48 44
 texture berries paint fruit 120 60 170
 texture raw_meat paint meat 214 96 96
 texture cooked_meat paint meat 150 92 54
 texture raw_fish paint fishfood 130 170 196
 texture cooked_fish paint fishfood 206 160 110
-texture wood_pick paint pick 160 122 74
-texture wood_axe paint axe 160 122 74
-texture wood_shovel paint shovel 160 122 74
-texture stone_pick paint pick 136 138 144
-texture stone_axe paint axe 136 138 144
-texture stone_shovel paint shovel 136 138 144
-texture iron_pick paint pick 214 214 220
-texture iron_axe paint axe 214 214 220
-texture iron_shovel paint shovel 214 214 220
+texture wood_pick paint pick 166 118 70
+texture wood_axe paint axe 166 118 70
+texture wood_shovel paint shovel 166 118 70
+texture stone_pick paint pick 128 136 152
+texture stone_axe paint axe 128 136 152
+texture stone_shovel paint shovel 128 136 152
+texture iron_pick paint pick 204 212 230
+texture iron_axe paint axe 204 212 230
+texture iron_shovel paint shovel 204 212 230
 texture pine_planks paint planks 122 88 56
 texture oak_chest paint chest_front 176 136 84
 texture oak_chest_side paint chest_side 176 136 84
@@ -765,14 +765,14 @@ block furnace
   tool pick
   use furnace
   light 8
-texture iron_ingot paint ingot 214 214 220
+texture iron_ingot paint ingot 204 212 230
 item iron_ingot
   name Iron Ingot
   icon iron_ingot
   category Materials
 smelt iron_ingot 1 iron_ore 1 coal 1
 smelt iron_ingot 3 iron_ore 2 coal 2
-texture copper_ingot paint ingot 206 124 80
+texture copper_ingot paint ingot 216 116 70
 item copper_ingot
   name Copper Ingot
   icon copper_ingot
@@ -808,7 +808,7 @@ item bow
   shoots 6 34 0.7 arrow
 shaped arrow 4 "G" "S" with G gravel S stick
 shaped bow 1 "SM." "S.M" "SM." with M string S stick
-texture wood_sword paint sword 160 122 74
+texture wood_sword paint sword 166 118 70
 item wood_sword
   name Wooden Sword
   icon wood_sword
@@ -816,7 +816,7 @@ item wood_sword
   stack 1
   damage 6
 shaped wood_sword 1 "I" "I" "S" with I @planks S stick
-texture stone_sword paint sword 136 138 144
+texture stone_sword paint sword 128 136 152
 item stone_sword
   name Stone Sword
   icon stone_sword
@@ -824,7 +824,7 @@ item stone_sword
   stack 1
   damage 7
 shaped stone_sword 1 "I" "I" "S" with I cobble S stick
-texture iron_sword paint sword 214 214 220
+texture iron_sword paint sword 204 212 230
 item iron_sword
   name Iron Sword
   icon iron_sword
@@ -1026,7 +1026,15 @@ texture effect_frozen paint effect_frozen 0 0 0
 texture effect_saturation paint effect_saturation 0 0 0
 texture effect_night_vision paint effect_night_vision 0 0 0
 texture effect_jump_boost paint effect_jump_boost 0 0 0
+texture effect_decay paint effect_decay 0 0 0
+texture effect_haste paint effect_haste 0 0 0
+texture effect_mining_fatigue paint effect_mining_fatigue 0 0 0
+texture effect_levitation paint effect_levitation 0 0 0
+texture effect_blindness paint effect_blindness 0 0 0
+texture effect_water_breathing paint effect_water_breathing 0 0 0
 texture effect_flame paint effect_flame 0 0 0
+texture hud_bubble paint hud_bubble 0 0 0
+texture hud_bubble_pop paint hud_bubble_pop 0 0 0
 texture golden_apple paint fruit 240 196 52
 texture rotten_flesh paint meat 120 140 72
 item golden_apple

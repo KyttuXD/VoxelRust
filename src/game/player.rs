@@ -48,6 +48,8 @@ pub struct Player {
     pub speed_scale: f32,
     /// Multiplies the speed of a jump (a jump boost effect).
     pub jump_scale: f32,
+    /// Upward speed an effect lifts the body at (levitation); 0 for none.
+    pub lift: f32,
     /// How far down in a crouch (0..1): holding the descend key on the
     /// ground. Lowers the eyes and slows the walk (content/pose/crouch.rs).
     pub crouch: f32,
@@ -75,6 +77,7 @@ impl Player {
             height,
             speed_scale: 1.0,
             jump_scale: 1.0,
+            lift: 0.0,
             crouch: 0.0,
             climb: None,
         }
@@ -163,6 +166,12 @@ impl Player {
                     self.vel[1] = JUMP * self.jump_scale;
                 }
             }
+        }
+
+        // Levitation: lifted off the ground, whatever else holds.
+        if self.lift > 0.0 && !self.flying {
+            self.vel[1] = crate::game::effects::body::levitate(self.vel[1], self.lift, dt);
+            self.climb = None;
         }
 
         // Move in small steps so nothing is skipped at high speed.

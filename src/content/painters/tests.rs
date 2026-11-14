@@ -72,7 +72,7 @@ fn every_name_the_data_uses_is_in_the_lists() {
         for t in &r.tiles {
             match &t.src {
                 TileSrc::Builtin(n) => assert!(BUILTINS.contains(&n.as_str()), "{} uses unlisted painter {n}", t.id),
-                TileSrc::Paint { style, .. } => assert!(STYLES.contains(&style.as_str()) || crate::content::art::bow::painted(style, [1, 2, 3], 0, 0).is_some() || crate::content::art::hud::knows(style), "{} uses unlisted style {style}", t.id),
+                TileSrc::Paint { style, .. } => assert!(STYLES.contains(&style.as_str()) || crate::content::art::bow::painted(style, [1, 2, 3], 0, 0).is_some() || crate::content::art::hud::knows(style) || crate::content::art::status::painted(style, 0, 0).is_some(), "{} uses unlisted style {style}", t.id),
                 _ => {}
             }
         }
@@ -117,10 +117,68 @@ fn pictures_have_no_noise() {
     for name in BUILTINS {
         assert_eq!(picture(|x, y| builtin(name, x, y)), picture(|x, y| builtin(name, x, y)));
     }
+    // Stone: fill, frame, the glint and the chips; dirt: the same with its flecks.
     let stone = picture(|x, y| builtin("stone", x, y));
-    assert_eq!(colours(&stone), 2);
+    assert_eq!(colours(&stone), 4);
     let dirt = picture(|x, y| builtin("dirt", x, y));
-    assert_eq!(colours(&dirt), 2);
+    assert_eq!(colours(&dirt), 4);
+}
+
+/// The sum of the channels of the pixel at `(x, y)` of a 16 x 16 picture.
+fn bright(px: &[u8], x: usize, y: usize) -> u32 {
+    let o = (y * 16 + x) * 4;
+    px[o] as u32 + px[o + 1] as u32 + px[o + 2] as u32
+}
+
+#[test]
+fn block_faces_carry_the_house_corners() {
+    // A glint at (1, 1) lighter than the fill beside it, the frame's colour again at (14, 14).
+    for name in ["stone", "deepstone", "dirt", "sand", "clay", "gravel", "sandstone"] {
+        let px = picture(|x, y| builtin(name, x, y));
+        assert!(bright(&px, 1, 1) > bright(&px, 2, 2), "{name}: no glint at (1, 1)");
+        assert_eq!(px[(14 * 16 + 14) * 4..(14 * 16 + 14) * 4 + 4], px[0..4], "{name}: no shadow at (14, 14)");
+    }
+    for style in ["concrete", "wool", "terracotta", "rock"] {
+        let px = picture(|x, y| paint(style, [150, 110, 70], x, y));
+        assert!(bright(&px, 1, 1) > bright(&px, 2, 2), "{style}: no glint at (1, 1)");
+        assert_eq!(px[(14 * 16 + 14) * 4..(14 * 16 + 14) * 4 + 4], px[0..4], "{style}: no shadow at (14, 14)");
+    }
+}
+
+#[test]
+fn shades_lean_cool_and_lights_lean_warm() {
+    // Darker: red falls further than blue. Lighter: red rises further than blue.
+    let c = [160, 160, 160];
+    let (d, l) = (scale(c, 70), lift(c));
+    assert!(d[0] < d[1] && d[1] < d[2], "{d:?}");
+    assert!(l[0] > l[1] && l[1] > l[2], "{l:?}");
+}
+
+#[test]
+fn items_have_the_house_outline_with_a_rim_light_on_the_lit_edge() {
+    for style in ["pick", "axe", "shovel", "hoe", "sword", "gem", "ingot", "meat", "fruit"] {
+        let px = picture(|x, y| paint(style, [200, 60, 60], x, y));
+        let has = |c: [u8; 3]| px.chunks(4).any(|p| p[3] == 255 && p[..3] == c);
+        assert!(has(OUTLINE), "{style}: no outline");
+        assert!(has(RIM), "{style}: no rim light");
+    }
+}
+
+#[test]
+fn the_tool_shapes_are_sixteen_by_sixteen_of_known_letters() {
+    use crate::painters::tool_shapes::shape;
+    for name in ["stick", "pick", "axe", "shovel", "hoe", "sword", "arrow", "bow", "bow_pull0", "bow_pull1", "bow_pull2", "crossbow", "crossbow_pull0", "crossbow_pull1", "crossbow_pull2"] {
+        let rows = shape(name).unwrap_or_else(|| panic!("no shape {name}"));
+        for r in rows.iter() {
+            assert_eq!(r.len(), 16, "{name}: {r}");
+            assert!(r.bytes().all(|c| b".ohHLMDBW".contains(&c)), "{name}: {r}");
+        }
+    }
+    // Tools stand on a two pixel haft in columns 7 and 8.
+    for name in ["stick", "pick", "axe", "shovel", "hoe", "sword"] {
+        let rows = shape(name).unwrap();
+        assert!(rows[12].as_bytes()[7] != b'.' && rows[12].as_bytes()[8] != b'.', "{name}");
+    }
 }
 
 #[test]

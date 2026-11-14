@@ -37,6 +37,10 @@ pub fn painted(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
     if let Some(p) = crate::content::art::hud::painted(style, x, y) {
         return Some(p);
     }
+    // The newer effects' icons and the air bubbles (content/art/status.rs).
+    if let Some(p) = crate::content::art::status::painted(style, x, y) {
+        return Some(p);
+    }
     crate::painters::paint(style, rgb, x, y)
 }
 
@@ -55,7 +59,7 @@ pub fn painted_pal(style: &str, pal: &crate::palette::Palette, x: i32, y: i32) -
 /// none it is a flat fill all over.
 fn flat_px(rgb: [u8; 3], noise: u8, x: i32, y: i32) -> Px {
     if noise > 0 {
-        crate::painters::framed(x, y, rgb, crate::painters::DARK)
+        crate::painters::sealed(x, y, rgb, crate::painters::DARK)
     } else {
         crate::painters::px(rgb)
     }

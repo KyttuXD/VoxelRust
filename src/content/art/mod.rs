@@ -3,3 +3,4 @@
 
 pub mod bow;
 pub mod hud;
+pub mod status;

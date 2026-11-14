@@ -26,6 +26,8 @@ pub struct Mob {
     pub clock: f32,
     /// Poison, burning and the like (see game/effects).
     pub fx: crate::game::effects::Effects,
+    /// Its breath: land creatures drown with their heads under water.
+    pub air: crate::game::effects::air::Air,
     /// Which look it has: 0 is the entity's own, n is its n-th variant.
     pub variant: u8,
     /// Seconds left before a young one is grown (0 = adult).
@@ -243,6 +245,7 @@ impl Mobs {
             stride: 0.0,
             clock: think * 10.0,
             fx: Default::default(),
+            air: Default::default(),
             variant,
             young: 0.0,
             home: [floord(pos[0]), floord(pos[1]), floord(pos[2])],
@@ -567,6 +570,18 @@ impl Mobs {
                     m.hurt = 0.35;
                 } else if delta > 0 {
                     m.health = (m.health + delta).min(d.health.max(m.health));
+                }
+            }
+            // Drowning (game/effects/air.rs): swimmers and fliers do not.
+            if d.behavior != Behavior::Swim && d.behavior != Behavior::Fly {
+                let head = [floord(m.body.pos[0]), floord(m.body.pos[1] + m.look().2 as f64 * 0.9), floord(m.body.pos[2])];
+                let under = block::is_water(world.get(head[0], head[1], head[2]));
+                if under || crate::game::effects::air::shown(m.air.air) {
+                    let hurt = crate::game::effects::apply::tick_mob_air(&m.fx, &mut m.air, dt, under);
+                    if hurt > 0 {
+                        m.health -= hurt;
+                        m.hurt = 0.35;
+                    }
                 }
             }
             if m.young > 0.0 {
@@ -1185,7 +1200,7 @@ mod tests {
         assert_eq!(r.models[lurker.model].id, "player");
         assert_eq!(r.models[r.entities[kind("cow")].model].id, "cow");
         for m in &r.models {
-            crate::model::ModelDef::from_bbmodel(&m.id, &m.text).unwrap();
+            crate::model::ModelDef::from_bbmodel(&m.id, &m.source().unwrap()).unwrap();
         }
     }
 

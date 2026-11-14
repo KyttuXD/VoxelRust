@@ -7,7 +7,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub const VERSION: u16 = 10;
+pub const VERSION: u16 = 11;
 
 /// What a player may do on a server (the flags of [`Msg::Perms`]).
 pub const PERM_BUILD: u8 = 1;
@@ -37,10 +37,15 @@ pub mod channel {
     pub const HIT: u8 = 2;
     /// What is in the chest at `key` ("x y z"); kept.
     pub const CHEST: u8 = 3;
+    /// Messages of mods' scripts to the same mod's scripts elsewhere
+    /// (`net_send` and `on_net`, see script/ext/net.rs); the key is `mod\x1fkey`.
+    pub const SCRIPT: u8 = 4;
     /// From here up: the mods' own code, one channel each (see
     /// `Session::send_ext`).
     pub const NATIVE: u8 = 32;
 }
+/// Most status effects in one [`Msg::Effects`].
+pub const MAX_EFFECTS: usize = 16;
 /// Longest message body accepted.
 pub const MAX_BODY: usize = 60_000;
 
@@ -76,6 +81,12 @@ pub enum Msg {
     /// I started playing an emote (its place in the content's emote list
     /// plus one), or stopped (0). Relayed to the others with my id.
     Emote { id: u16, emote: u16 },
+    /// The status effects on a player (poison, burning, mods' own...), sent
+    /// by them whenever the set changes (an effect starts, ends or changes
+    /// level) and relayed with their id; also told to players who join
+    /// later. Each is its id, level and the whole seconds left. The server
+    /// keeps it only to relay: everyone's effects are their own game's.
+    Effects { id: u16, list: Vec<(String, u8, u32)> },
     /// A block changed (sent by whoever changed it, relayed to the rest).
     SetBlock { x: i32, y: i32, z: i32, block: u16 },
     Chat { id: u16, text: String },
@@ -233,6 +244,17 @@ impl Msg {
                 w.u16(*id);
                 w.u16(*emote);
             }
+            Msg::Effects { id, list } => {
+                w.u8(21);
+                w.u16(*id);
+                let n = list.len().min(MAX_EFFECTS);
+                w.u8(n as u8);
+                for (name, level, secs) in &list[..n] {
+                    w.str(name);
+                    w.u8(*level);
+                    w.u32(*secs);
+                }
+            }
             Msg::SetBlock { x, y, z, block } => {
                 w.u8(3);
                 w.i32(*x);
@@ -363,6 +385,18 @@ impl Msg {
             2 => Msg::Move { id: r.u16()?, pos: [r.coord()?, r.coord()?, r.coord()?], yaw: r.f32()?, pitch: r.f32()?, held: r.u16()?, pose: r.u8()? },
             3 => Msg::SetBlock { x: r.i32()?, y: r.i32()?, z: r.i32()?, block: r.u16()? },
             20 => Msg::Emote { id: r.u16()?, emote: r.u16()? },
+            21 => {
+                let id = r.u16()?;
+                let n = r.u8()? as usize;
+                if n > MAX_EFFECTS {
+                    return None;
+                }
+                let mut list = Vec::with_capacity(n);
+                for _ in 0..n {
+                    list.push((r.str()?, r.u8()?, r.u32()?));
+                }
+                Msg::Effects { id, list }
+            }
             4 => Msg::Chat { id: r.u16()?, text: r.str()? },
             5 => {
                 let id = r.u16()?;
@@ -516,6 +550,8 @@ mod tests {
             Msg::Move { id: 7, pos: [1.5, -64.25, 1e6], yaw: -3.1, pitch: 0.5, held: 9, pose: 0x23 },
             Msg::Emote { id: 3, emote: 12 },
             Msg::Emote { id: 3, emote: 0 },
+            Msg::Effects { id: 3, list: alloc::vec![(String::from("poison"), 2, 17), (String::from("night_vision"), 255, 86_400)] },
+            Msg::Effects { id: 0, list: Vec::new() },
             Msg::SetBlock { x: -100_000, y: 127, z: 5, block: 4095 },
             Msg::Chat { id: 2, text: String::from("hello there") },
             Msg::Skin { id: 4, png: alloc::vec![1, 2, 3, 250], slim: true },
@@ -546,6 +582,25 @@ mod tests {
             assert_eq!(inbox.next(), Next::Msg(m.clone()));
         }
         assert_eq!(inbox.next(), Next::Wait);
+    }
+
+    #[test]
+    fn a_list_of_too_many_effects_is_refused_and_a_long_one_is_cut() {
+        // Sending more than the limit sends the first ones only.
+        let many: Vec<(String, u8, u32)> = (0..40).map(|i| (alloc::format!("e{i}"), 1, 5)).collect();
+        let mut inbox = Inbox::default();
+        inbox.push(&Msg::Effects { id: 1, list: many.clone() }.encode());
+        assert_eq!(inbox.next(), Next::Msg(Msg::Effects { id: 1, list: many[..MAX_EFFECTS].to_vec() }));
+        // A message that claims more than the limit is junk.
+        let mut body = alloc::vec![21u8, 1, 0, (MAX_EFFECTS + 1) as u8];
+        for _ in 0..=MAX_EFFECTS {
+            body.extend_from_slice(&[1, b'a', 1, 5, 0, 0, 0]);
+        }
+        let mut bytes = (body.len() as u16).to_le_bytes().to_vec();
+        bytes.extend_from_slice(&body);
+        let mut i = Inbox::default();
+        i.push(&bytes);
+        assert_eq!(i.next(), Next::Bad);
     }
 
     #[test]

@@ -43,10 +43,11 @@ and open <http://localhost:8000/>. Any static web server does.
 
 ## Publishing
 
-**The website is not deployed.** The address meant for it is
-`voxelrust.games.kyttuslab.org`, but its server could not be reached over
-SSH without credentials, so nothing has been put there. The build exists
-only as `dist/web/` on the machine that made it.
+**The website is not deployed yet.** The address meant for it is
+`voxelrust.games.kyttuslab.org`. `scripts/deploy-web.sh` uploads a build
+there over ssh and swaps it in atomically, and `scripts/site-updater.sh` on
+the server keeps it in step with the published release; both are described in
+[DEPLOY.md](DEPLOY.md) and have not yet been run against the real server.
 
 To publish it anywhere, copy the contents of `dist/web/` to any static host (GitHub Pages, an S3
 bucket, a folder on a web server). There is nothing to configure: the page
@@ -137,7 +138,10 @@ loop:
   atlas's fifth mip level, so there distant blocks are drawn without mip
   levels and shimmer a little. Anything the game asks for that the
   JavaScript does not do is reported in the console as `NOT IMPLEMENTED`,
-  never ignored.
+  never ignored. The calls for the mods' post-processing shaders
+  ([SHADERS.md](SHADERS.md): `glCreateShader`, `glUseProgram`...) hand the
+  game's own program to WebGL for the length of one full-screen draw; its
+  vertices come from a buffer object, since WebGL cannot read the game's memory.
 - **Sockets** (`src/sys/web/net.rs`): always fail.
 
 **The main loop.** A page must return to the browser after each frame. The

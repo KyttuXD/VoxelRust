@@ -126,7 +126,7 @@ of a release out in `dist/nightly/`:
 | `voxelrust-macos-legacy-x86_64.zip` | `VoxelRust.app` for Mac OS X 10.6 and later |
 | `voxelrust-web.zip` | the browser version (`dist/web`) |
 | `voxelrust-<build name>.bin`, `voxelrust-windows-x86_64.exe` | the bare programs, for the game's updater |
-| `nightly.txt` | the commit, the release number, and each bare program's SHA-256 and size: what the updater reads |
+| `nightly.txt` | the commit, the release number, each bare program's SHA-256 and size, and the browser zip's (a `web` line, for the website's updater): what the updater reads |
 | `nightly.txt.sig` | the Ed25519 signature of `nightly.txt` (64 bytes): the updater refuses the list without it |
 | `BUILDS.txt`, `SHA256SUMS.txt` | for people: which file is for which machine, and checksums |
 
@@ -149,6 +149,10 @@ uploaded by hand, because the workflows cannot run (see
 ```sh
 gh release upload nightly --clobber dist/nightly/*
 ```
+
+Building, signing and publishing in one go (GitHub, the mirror and the
+website, with `--dry-run`) is `scripts/deploy-server.sh`; see
+[DEPLOY.md](DEPLOY.md).
 
 ### Signing the release
 
@@ -304,8 +308,9 @@ Switching it off:
   only reports a newer version. A release replaces a program only if its
   number (`seq` in `nightly.txt`) is larger, so an old list cannot move a
   program back. The new program must pass its checksum and `--stamp` check.
-- A server (`--server`) updates itself as well, and restarts into the update
-  once nobody is connected, with the same options.
+- A server (`--server`) updates itself as well, with the same options, but
+  looks every 90 seconds (`update_check_seconds`), warns its players and
+  restarts after 30 seconds; see [DEPLOY.md](DEPLOY.md).
 - There is no check at all in scripted runs (`--screenshot`, `--bench`),
   for `--server`, or in the browser.
 
@@ -376,6 +381,109 @@ SDL2, graphics card or network. (The game itself is `no_std`; the tests build
 against `std` so that plain `cargo test` works.) With `--features native-mods` they include the mods folder's `tests.rs`,
 the tests of the mods (see [Mod code](#mod-code)); `cargo test --lib` passes
 both with and without the feature.
+
+## Faster builds
+
+The game is one crate of about 60,000 lines with no dependencies, so every
+build compiles all of it, and `--release` (fat LTO, one code generation unit)
+does it on one core. For working on the game, use the faster ways below. None
+of them changes a shipped program: releases still use `--release`.
+
+| Want | Command | Notes |
+| --- | --- | --- |
+| Does it compile? | `cargo check --lib` (alias: `cargo quick`) | no code generation, no linking; add `--tests` to check the tests too |
+| Try it in the game | `cargo build --profile fastdev` (alias: `cargo fastdev`) | program in `target/fastdev/voxelrust` |
+| Run the tests | `cargo test --lib` | the `test` profile has line tables only, not full debug information |
+| Ship | `cargo build --release` | slow on purpose |
+
+**The `fastdev` profile** (`Cargo.toml`) inherits `dev`: optimisation level 1
+(playable, unlike level 0), no debug information, incremental compilation, 256
+code generation units and no LTO. It is for edit-and-run; it is not what the
+speed numbers in this file were measured with, and it is not for shipping.
+
+**One target folder.** Every script in `scripts/` takes the folder from
+`CARGO_TARGET_DIR` (default `target`), and so does cargo itself, so several
+checkouts or worktrees can share one folder and one compile cache:
+
+```sh
+export CARGO_TARGET_DIR=$HOME/.cache/voxelrust-target
+cargo check --lib
+```
+
+Different profiles, targets and toolchains keep separate files in it. Do not
+run two cargo commands in the same folder at once: the second waits for the
+first. Programs end up in `$CARGO_TARGET_DIR/release/` and so on, and the
+scripts that package or install them look there.
+
+**The linker.** Nothing is set in `.cargo/config.toml`, because there is
+nothing on this machine to gain. On x86_64 Linux, Rust 1.90 and later link with
+the `rust-lld` that ships with the toolchain by default. `mold` and a separate
+`ld.lld` were not installed where this was checked, and a setting that names a
+program that is missing breaks every build on a machine without it, so it is
+not in the repository. For the old 1.77 toolchain, which still uses the system's
+`ld`, or to use mold if you have installed it, put this in your own
+`~/.cargo/config.toml`:
+
+```toml
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+```
+
+`.cargo/config.toml` only defines the aliases `fastdev` and `quick`; it sets no
+flags, so the Windows, macOS and web scripts (which pass their own `RUSTFLAGS`)
+are unaffected.
+
+**`build.rs`.** It runs again only when something it reads changes: `build.rs`
+itself, the files under `data/`, the environment variables `VOXELRUST_COMMIT`,
+`VOXELRUST_SEQ`, `VOXELRUST_RELEASE` and (with `native-mods`)
+`VOXELRUST_MODS_DIR` and the mods folder, and git's `HEAD` and the file of the
+current branch. The git paths come from `git rev-parse --git-path`, so they
+exist in a worktree too (there `.git` is a file; the old fixed paths did not
+exist, and cargo ran the script on every build). The files it writes are
+replaced only when their text changed, so an unchanged table is not compiled
+again. **Each commit changes the commit name built into the program**, which
+recompiles the crate once. While you are making many small commits, set
+`VOXELRUST_COMMIT=dev` to skip that (the program then says `commit dev`, and
+the updater treats it as a build with no known commit: do not do this for a
+program you give to someone). The tables under `src/content/painters/`
+(`tool_shapes.rs` and the others) are ordinary source files written by the
+scripts in `tools/` when you run them; the build never regenerates them.
+
+**Why the crate is not split into several.** A workspace of path crates was
+considered (`util/math`, `util/hash`, `util/crypto`, `util/image`, `script`).
+The seams are not clean enough to be worth it: the pieces that depend on
+nothing (math, hash, crypto) are tiny and compile in a fraction of a second,
+and the large ones (`script`, `content`, `game`) reach into the rest through
+`crate::sys` (the `logf!` macro and file access), `crate::session`, and the
+registry. Cutting them out would mean moving those into a base crate and
+changing every `crate::` path in 60,000 lines, with no way to prove the 1.77,
+wasm and Mac builds still work. The cost of that, and the extra
+`Cargo.toml` and build-script files for scripts that currently take one
+`cargo build`, outweigh the gain. If it is done later, the order that works
+is: `sys` and `util` first (everything depends on them), then `script`.
+
+**Smaller files.** `client/app.rs` used to be 4,600 lines, so every edit to
+the client recompiled and re-checked a file of that size. It is now about
+1,560 lines; the rest lives in files by subject, as child modules of `app` (so
+they keep access to its private items):
+
+| Folder | Files |
+| --- | --- |
+| `client/screens/` | `title.rs` (title, worlds, new and edit world, pause, death), `settings.rs`, `join.rs` (servers, hosting), `inventory.rs`, `map.rs`, `overlays.rs` (chat, emotes), `skin.rs`, beside the existing `crafting.rs` |
+| `client/frame/` | `input.rs` (keys, events), `update.rs`, `draw.rs`, `creatures.rs`, `hud.rs`, `scripted.rs` (line-up and showcase for pictures) |
+| `client/launch/` | `args.rs` (help text, options, parsing), `mods_load.rs` (reading packs and mods, importing, exporting textures), `server_run.rs` (the dedicated server and the hosted one) |
+
+They are declared in `app.rs` with `#[path = "..."] mod name;`. Note that
+Rust compiles a crate as a whole; the gain from smaller files is mostly for
+people (and for the incremental compiler, which reuses more per function), not
+a dramatic drop in compile time. The functions `run` (about 780 lines, start-up
+and the main loop in one closure) and `screen_settings` and `screen_inventory`
+(about 260 lines each) are still long: `run` shares dozens of local variables
+with the loop closure and was left whole.
+
+**Timings.** TODO (the tester fills this in): clean `cargo build --release`,
+clean and incremental `cargo build --profile fastdev`, and `cargo check --lib`,
+before and after, on the same machine.
 
 ## Performance notes
 

@@ -20,11 +20,21 @@ pub fn live() -> bool {
     ScriptHost::is_live()
 }
 
-fn run(g: &mut Session, hook: &str, args: Vec<Value>, mut on_result: impl FnMut(&Value) -> bool) {
+pub(crate) fn run(g: &mut Session, hook: &str, args: Vec<Value>, mut on_result: impl FnMut(&Value) -> bool) {
     let world = g.name.clone();
     with_host(|h| {
-        let mut host = SessionHost { g, rng: h.rng, mod_name: String::new() };
+        let mut host = SessionHost { g, rng: h.rng, mod_name: String::new(), data_dir: h.data_dir.clone() };
         h.call_hook(&mut host, &world, hook, &args, &mut on_result);
+        h.rng = host.rng;
+    });
+}
+
+/// As `run`, for one mod's scripts.
+fn run_in(g: &mut Session, only: &dyn Fn(&str) -> bool, hook: &str, args: Vec<Value>, mut on_result: impl FnMut(&Value) -> bool) {
+    let world = g.name.clone();
+    with_host(|h| {
+        let mut host = SessionHost { g, rng: h.rng, mod_name: String::new(), data_dir: h.data_dir.clone() };
+        h.call_hook_in(&mut host, &world, Some(only), hook, &args, &mut on_result);
         h.rng = host.rng;
     });
 }
@@ -112,6 +122,14 @@ pub fn entity_death(g: &mut Session, kind: usize, at: [f64; 3]) {
         return;
     }
     run(g, "on_entity_death", alloc::vec![Value::string(entity_id(kind)), Value::Float(at[0]), Value::Float(at[1]), Value::Float(at[2])], |_| false);
+}
+
+/// The player hit a creature.
+pub fn entity_hit(g: &mut Session, id: u32, kind: usize, at: [f64; 3]) {
+    if !live() {
+        return;
+    }
+    run(g, "on_entity_hit", alloc::vec![Value::Int(id as i64), Value::string(entity_id(kind)), Value::Float(at[0]), Value::Float(at[1]), Value::Float(at[2])], |_| false);
 }
 
 /// The player is about to take damage. The first script to answer with a
@@ -247,4 +265,104 @@ pub fn explode(g: &mut Session, info: &mut ExplosionInfo) -> bool {
         go = false;
     }
     go
+}
+
+/// Once a frame, right after the mods' native code has moved things and
+/// before the player moves: what the player presses is handed over, last
+/// frame's pictures are dropped, and `on_update` runs.
+pub fn update(g: &mut Session, dt: f32, c: &crate::session::Controls) {
+    if !live() {
+        return;
+    }
+    crate::script::ext::new_frame(g);
+    crate::script::ext::data(g).controls = *c;
+    run(g, "on_update", alloc::vec![Value::Float(clean_f32(dt))], |_| false);
+}
+
+/// The player's hands: called before the game's own handling of a click.
+/// `true` if a script used the click up.
+pub fn interact(g: &mut Session, c: &crate::session::Controls, reach: f32) -> bool {
+    if !live() {
+        return false;
+    }
+    crate::script::ext::data(g).controls = *c;
+    let mut used = false;
+    run(g, "on_interact", alloc::vec![Value::Float(clean_f32(reach))], |r| {
+        if matches!(r, Value::Bool(true)) {
+            used = true;
+        }
+        used
+    });
+    used
+}
+
+/// A message another player's copy of a mod sent with `net_send` (the key
+/// carries the mod's name before a `\x1f`).
+pub fn net_message(g: &mut Session, key: &str, text: &str) {
+    if !live() {
+        return;
+    }
+    let Some((mod_name, key)) = key.split_once('\u{1f}') else { return };
+    run_in(g, &|m| m == mod_name, "on_net", alloc::vec![Value::str(key), Value::str(text)], |_| false);
+}
+
+/// An `/if` condition the game does not know: a script may answer it. `words`
+/// are the words of the condition (the first is its name). The first script
+/// to return `true` or `false` decides; one that returns nothing does not know it.
+pub fn condition(g: &mut Session, words: &[&str]) -> Option<bool> {
+    if !live() || words.is_empty() {
+        return None;
+    }
+    let name = words[0].to_ascii_lowercase();
+    let rest = words[1..].join(" ");
+    let mut answer: Option<bool> = None;
+    run(g, "on_condition", alloc::vec![Value::string(name), Value::string(rest)], |r| match r {
+        Value::Bool(b) => {
+            answer = Some(*b);
+            true
+        }
+        _ => false,
+    });
+    answer
+}
+
+// ---- controls, HUD and screens (see script/host_ui.rs, client/modui)
+
+/// One of a mod's key bindings went down or up (`mod_name` is the cleaned
+/// name the bindings carry).
+pub fn key(g: &mut Session, mod_name: &str, id: &str, down: bool) {
+    if !live() {
+        return;
+    }
+    let hook = if down { "on_key_down" } else { "on_key_up" };
+    run_in(g, &|m| crate::client::modui::limits::clean_mod(m) == mod_name, hook, alloc::vec![Value::str(id)], |_| false);
+}
+
+/// Once a frame while playing: the scripts draw their HUD.
+pub fn hud(g: &mut Session, dt: f32) {
+    if !live() {
+        return;
+    }
+    run(g, "on_hud", alloc::vec![Value::Float(clean_f32(dt))], |_| false);
+}
+
+/// The player used a mod's screen: its scripts hear of it.
+pub fn ui_event(g: &mut Session, ev: &crate::client::modui::screens::UiEvent) {
+    use crate::client::modui::screens::{UiKind, UiValue};
+    if !live() {
+        return;
+    }
+    let (hook, args) = match &ev.kind {
+        UiKind::Click => ("on_ui_click", alloc::vec![Value::str(&ev.id)]),
+        UiKind::Change(v) => {
+            let value = match v {
+                UiValue::Bool(b) => Value::Bool(*b),
+                UiValue::Int(n) => Value::Int(*n),
+                UiValue::Text(t) => Value::str(t),
+            };
+            ("on_ui_change", alloc::vec![Value::str(&ev.id), value])
+        }
+        UiKind::Closed => ("on_ui_close", alloc::vec![Value::str(&ev.screen)]),
+    };
+    run_in(g, &|m| m == ev.mod_name, hook, args, |_| false);
 }

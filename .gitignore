@@ -26,3 +26,6 @@ desktop.ini
 *~
 .idea/
 .vscode/
+
+# Where to deploy (hosts, users, paths): copy deploy.conf.example to deploy.conf
+deploy.conf

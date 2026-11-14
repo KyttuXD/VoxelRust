@@ -32,7 +32,7 @@ pub const ACTIONS: [(Action, &str, &str, i32); 15] = [
     (Action::Left, "left", "MOVE LEFT", 4),
     (Action::Right, "right", "MOVE RIGHT", 7),
     (Action::Jump, "jump", "JUMP / FLY UP", 44),
-    (Action::Descend, "descend", "FLY DOWN / CROUCH", 225),
+    (Action::Descend, "descend", "DOWN / CROUCH", 225),
     (Action::Sprint, "sprint", "SPRINT", 224),
     (Action::Fly, "leave", "GET OFF / GET OUT", 9),
     (Action::Inventory, "inventory", "INVENTORY", 8),
@@ -75,6 +75,8 @@ pub struct Settings {
     pub fullscreen_mode: i32,
     /// Percentage of full resolution the 3D view is drawn at (25..=100).
     pub render_scale: i32,
+    /// The post-processing shader in use (a mod's `shader` id; empty = off).
+    pub shader: String,
     /// 0 = automatic.
     pub gui_scale: i32,
     /// Frames per second to hold by adjusting the view distance (0 = off).
@@ -131,6 +133,9 @@ pub struct Settings {
     pub slim_arms: bool,
     /// The switches packs add (`setting <id> ...`), as last set here.
     pub flags: Vec<(String, bool)>,
+    /// Keys the player gave to mods' key bindings, as (`<mod>.<id>`, scancode);
+    /// a binding on its default key is not listed (see `client::modui::binds`).
+    pub mod_keys: Vec<(String, i32)>,
     /// Settings the game itself has no name for: what the mods' own code
     /// keeps here (see [`Settings::extra`]). Kept as written.
     pub extras: Vec<(String, String)>,
@@ -170,6 +175,7 @@ impl Default for Settings {
             fullscreen: false,
             fullscreen_mode: 0,
             render_scale: 100,
+            shader: String::new(),
             gui_scale: 0,
             target_fps: 0,
             max_fps: 0,
@@ -202,6 +208,7 @@ impl Default for Settings {
             map_waypoints: true,
             slim_arms: false,
             flags: Vec::new(),
+            mod_keys: Vec::new(),
             extras: Vec::new(),
             mods_off: String::new(),
             texture_pack: String::new(),
@@ -278,6 +285,7 @@ impl Settings {
             fullscreen: flag("fullscreen", d.fullscreen),
             fullscreen_mode: int("fullscreen_mode", 0, 0, FULLSCREEN_MODES.len() as i32 - 1),
             render_scale: int("render_scale", 100, 25, 100),
+            shader: clean_name(kv(text, "shader").unwrap_or(""), 32),
             gui_scale: int("gui_scale", d.gui_scale, 0, 6),
             target_fps: int("target_fps", d.target_fps, 0, 1000),
             max_fps: int("max_fps", d.max_fps, 0, 1000),
@@ -309,14 +317,22 @@ impl Settings {
             map_grid: flag("map_grid", false),
             map_waypoints: flag("map_waypoints", true),
             slim_arms: flag("slim_arms", false),
-            flags: text.lines().filter_map(|l| l.strip_prefix("flag_")).filter_map(|l| l.split_once('=')).map(|(k, v)| (String::from(k.trim()), v.trim() == "1")).take(64).collect(),
+            flags: text.lines().filter_map(|l| l.strip_prefix("flag_")).filter_map(|l| l.split_once('=')).map(|(k, v)| (String::from(k.trim()), v.trim() == "1")).take(160).collect(),
+            mod_keys: text
+                .lines()
+                .filter_map(|l| l.strip_prefix("modkey_"))
+                .filter_map(|l| l.split_once('='))
+                .filter_map(|(k, v)| v.trim().parse::<i32>().ok().filter(|c| (1..=511).contains(c)).map(|c| (String::from(k.trim()), c)))
+                .filter(|(k, _)| !k.is_empty() && k.len() <= 90 && k.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+                .take(256)
+                .collect(),
             extras: {
                 // Whatever is not one of the game's own settings.
                 let own = Settings::default().to_text();
                 text.lines()
                     .filter_map(|l| l.trim().split_once('='))
                     .filter(|(k, _)| !k.is_empty() && k.len() <= 32 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-                    .filter(|(k, _)| !k.starts_with("key_") && !k.starts_with("flag_") && kv(&own, k).is_none())
+                    .filter(|(k, _)| !k.starts_with("key_") && !k.starts_with("flag_") && !k.starts_with("modkey_") && kv(&own, k).is_none())
                     .map(|(k, v)| (String::from(k), v.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').take(120).collect::<String>()))
                     .take(32)
                     .collect()
@@ -362,7 +378,7 @@ impl Settings {
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\nslim_arms={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.slim_arms as i32));
         s.push_str(&alloc::format!("map_zoom={}\nmap_preset_1={}\nmap_preset_2={}\nmap_preset_3={}\nmap_follow={}\nmap_grid={}\nmap_waypoints={}\n", self.map_zoom, self.map_preset[0], self.map_preset[1], self.map_preset[2], self.map_follow as i32, self.map_grid as i32, self.map_waypoints as i32));
         s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\ntexture_pack={}\npack_hue={}\npack_saturation={}\npack_brightness={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.texture_pack, self.pack_hue, self.pack_saturation, self.pack_brightness, self.auto_update as i32));
-        s.push_str(&alloc::format!("picker_dir={}\nupdate_mirror={}\n", self.picker_dir, self.update_mirror));
+        s.push_str(&alloc::format!("picker_dir={}\nupdate_mirror={}\nshader={}\n", self.picker_dir, self.update_mirror, self.shader));
         s.push_str(&alloc::format!(
             "voice_hear={}\nvoice_mic={}\nvoice_activation={}\nvoice_threshold={}\nvoice_volume={}\nvoice_device={}\n",
             self.voice_hear as i32,
@@ -380,6 +396,9 @@ impl Settings {
         }
         for (id, on) in &self.flags {
             s.push_str(&alloc::format!("flag_{}={}\n", id, *on as i32));
+        }
+        for (name, key) in &self.mod_keys {
+            s.push_str(&alloc::format!("modkey_{}={}\n", name, key));
         }
         s
     }
@@ -416,6 +435,18 @@ mod tests {
         assert_eq!(odd.player_name, "bxyb");
         assert_eq!(odd.key(Action::Jump), 1);
         assert_eq!(Settings::parse(""), Settings::default());
+    }
+
+    #[test]
+    fn mods_keys_and_switches_are_kept_and_junk_is_dropped() {
+        let s = Settings::parse("modkey_demo.compass=20\nmodkey_demo.bad=0\nmodkey_demo.big=9999\nmodkey_=5\nmodkey_a b.c=7\nmodkey_x.y=abc\nflag_demo.fast=1\n");
+        assert_eq!(s.mod_keys, [(String::from("demo.compass"), 20)]);
+        assert_eq!(s.flags, [(String::from("demo.fast"), true)]);
+        assert!(s.extras.is_empty(), "{:?}", s.extras);
+        assert_eq!(Settings::parse(&s.to_text()), s);
+        // Many of them are kept up to the cap, never more.
+        let many: String = (0..400).map(|i| alloc::format!("modkey_m.k{}={}\n", i, 5 + i % 100)).collect();
+        assert_eq!(Settings::parse(&many).mod_keys.len(), 256);
     }
 
     #[test]

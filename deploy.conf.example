@@ -1,0 +1,33 @@
+# Where scripts/deploy-server.sh and scripts/deploy-web.sh publish to.
+# Copy this file to deploy.conf (it is ignored by git) and fill it in. The
+# environment overrides it. NOTHING SECRET goes here: ssh uses your ssh keys
+# and agent, gh uses its own login, and the signing key is a file named by
+# VOXELRUST_SIGN_KEY (default ~/.voxelrust/update-signing-key.pem).
+
+# GitHub: the (private) repository and the rolling release the updater reads.
+GITHUB_REPO=KyttuXD/VoxelRust
+GIT_REMOTE=origin
+GIT_BRANCH=main
+RELEASE_TAG=nightly
+
+# ssh options for every host below, e.g. "-i ~/.ssh/voxelrust_deploy -p 22".
+SSH_OPTS=""
+
+# The website voxelrust.games.kyttuslab.org. The web server's root is
+# SITE_ROOT/current (a symlink the deploy flips). SITE_KEEP releases are kept.
+SITE_HOST=deploy@your-vps.example.org
+SITE_ROOT=/var/www/voxelrust.games.kyttuslab.org
+SITE_KEEP=3
+# Optional: the site's address, only used to print a check command.
+SITE_URL=https://voxelrust.games.kyttuslab.org
+
+# The plain-HTTP/HTTPS mirror folder on the VPS: signed nightly.txt, the
+# programs and the web zip. Serves the game's update_mirror setting, and is
+# what scripts/site-updater.sh reads while the GitHub repository is private.
+# Leave MIRROR_HOST empty for no mirror.
+MIRROR_HOST=deploy@your-vps.example.org
+MIRROR_DIR=/var/www/voxelrust-updates
+
+# Only for deploy-server.sh --install: where the server package is copied.
+SERVER_HOST=deploy@your-vps.example.org
+SERVER_DIR=/srv/voxelrust

@@ -9,20 +9,21 @@ use alloc::vec::Vec;
 pub fn water_px(x: i32, y: i32, phase: i32) -> Px {
     const WOBBLE: [i32; 4] = [0, 1, 2, 1];
     let ripple = (y + WOBBLE[(x / 4 & 3) as usize] + phase).rem_euclid(8) == 0;
-    let c = if ripple { [74, 146, 226] } else { [44, 104, 198] };
+    let c = if ripple { [86, 160, 240] } else { [40, 106, 206] };
     [c[0], c[1], c[2], 168]
 }
 
 /// Lava: molten orange with a few dark crust slabs and hot yellow spots.
 pub fn lava_px(x: i32, y: i32) -> Px {
-    let crust = rect(x, y, 1, 2, 4, 2) || rect(x, y, 9, 1, 5, 2) || rect(x, y, 5, 8, 4, 2) || rect(x, y, 11, 11, 3, 2) || rect(x, y, 2, 12, 3, 1);
-    let hot = rect(x, y, 3, 5, 2, 1) || rect(x, y, 11, 5, 1, 2) || rect(x, y, 7, 12, 2, 1) || rect(x, y, 13, 8, 1, 1);
+    // Crust slabs with a notch each, and hot spots in short bars.
+    let crust = rect(x, y, 1, 2, 4, 2) || rect(x, y, 2, 4, 1, 1) || rect(x, y, 9, 1, 5, 2) || rect(x, y, 12, 3, 1, 1) || rect(x, y, 5, 8, 4, 2) || rect(x, y, 6, 10, 1, 1) || rect(x, y, 11, 11, 3, 2) || rect(x, y, 2, 12, 3, 1);
+    let hot = rect(x, y, 3, 6, 2, 1) || rect(x, y, 11, 5, 1, 2) || rect(x, y, 7, 13, 2, 1) || rect(x, y, 13, 8, 1, 1);
     px(if crust {
-        [92, 30, 16]
+        [86, 28, 34]
     } else if hot {
-        [255, 196, 64]
+        [255, 204, 72]
     } else {
-        [226, 88, 24]
+        [232, 94, 28]
     })
 }
 

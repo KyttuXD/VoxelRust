@@ -16,9 +16,17 @@
 //!   takes a point every two seconds.
 //! - Absorption is padding that takes damage before health does; it goes
 //!   when its effect does.
+//!
+//! Other files here: `air.rs` (drowning), `body.rs` (mining speed,
+//! levitation, blindness, breathing, screen tint), `script_api.rs` (what
+//! scripts may do with effects) and `sync.rs` (telling other players).
 
+pub mod air;
 pub mod apply;
+pub mod body;
 pub mod data;
+pub mod script_api;
+pub mod sync;
 
 pub use data::{EffectDef, HeartStyle, Nature, Source, SourceKind, MAX_LEVEL, MAX_SECS};
 
@@ -80,6 +88,10 @@ pub struct Effects {
     /// Set whenever the list changes (so a creature's speed is worked out
     /// again); the user of it clears it.
     pub changed: bool,
+    /// What was last told to the other players (see `sync.rs`).
+    pub sent: Vec<(String, u8)>,
+    /// Seconds since the scripts' `on_effect_tick` was last called.
+    pub beat: f32,
     rng: u32,
 }
 

@@ -277,7 +277,7 @@ mod tests {
                     }
                 };
                 let spec = &r.models[model];
-                let def = crate::model::ModelDef::from_bbmodel(&spec.id, &spec.text).unwrap();
+                let def = crate::model::ModelDef::from_bbmodel(&spec.id, &spec.source().unwrap()).unwrap();
                 assert!(fits(&img, def.model.tex_w, def.model.tex_h), "{}: picture {} is {}x{}, model {} is {}x{}", e.id, name, img.w, img.h, spec.id, def.model.tex_w, def.model.tex_h);
             }
         }

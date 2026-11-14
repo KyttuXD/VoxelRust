@@ -4,12 +4,12 @@
 
 use super::*;
 
-const TYRE: [u8; 3] = [58, 58, 64];
-const HUB: [u8; 3] = [150, 150, 158];
-const MAST: [u8; 3] = [96, 70, 40];
-const SAIL: [u8; 3] = [236, 232, 220];
-const SLEEPER: [u8; 3] = [150, 112, 68];
-const SLEEPER_DARK: [u8; 3] = [112, 82, 50];
+const TYRE: [u8; 3] = [54, 54, 70];
+const HUB: [u8; 3] = [154, 156, 172];
+const MAST: [u8; 3] = [102, 68, 44];
+const SAIL: [u8; 3] = [240, 234, 220];
+const SLEEPER: [u8; 3] = [158, 108, 64];
+const SLEEPER_DARK: [u8; 3] = [116, 78, 52];
 
 fn when(on: bool, c: [u8; 3]) -> Option<[u8; 3]> {
     if on {
@@ -24,9 +24,11 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
     let (l, m, d) = (pal.light_of(rgb), rgb, pal.dark_of(rgb));
     Some(match style {
         "gem" => outlined_with(x, y, pal.outline(), &|x, y| {
-            // A cut stone: lit upper left, shaded lower right.
+            // A cut stone: lit upper left, shaded lower right, a pale sparkle on the lit facet.
             if (2 * x - 15).abs() + (2 * y - 15).abs() <= 11 {
-                Some(if x + y <= 13 {
+                Some(if (x, y) == (5, 6) {
+                    sparkle(l)
+                } else if x + y <= 13 {
                     l
                 } else if x + y >= 17 {
                     d
@@ -38,11 +40,11 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
             }
         }),
         "ingot" => outlined_with(x, y, pal.outline(), &|x, y| {
-            // A bar seen from a corner: lit top, front, shaded end.
+            // A bar seen from a corner: lit top with a sparkle, front with a stamped notch, shaded end.
             if (5..9).contains(&y) && (2 + (8 - y)..12 + (8 - y)).contains(&x) {
-                Some(l)
+                Some(if (x, y) == (6, 6) { sparkle(l) } else { l })
             } else if (9..12).contains(&y) && (2..12).contains(&x) {
-                Some(m)
+                Some(if (x, y) == (4, 10) || (x, y) == (5, 10) { d } else { m })
             } else if (9..12).contains(&y) && (12..12 + (12 - y)).contains(&x) {
                 Some(d)
             } else {

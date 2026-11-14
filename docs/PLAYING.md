@@ -71,7 +71,7 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | Esc | menu / close a screen |
 | F1 | hide or show the HUD |
 | F2 | save a screenshot (`screenshot-<number>.bmp` in the data folder) |
-| F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts |
+| F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts, memory use against its limit (see [MEMORY.md](MEMORY.md)) |
 | F5 | third-person view |
 | F11 | full screen |
 
@@ -211,6 +211,18 @@ ten seconds. Their damage, healing and hunger, and the blocks and bites that sta
 | Saturation | fills your hunger bar, a point a second | `/effect give` |
 | Night Vision | the night and caves are drawn lighter | `/effect give` |
 | Jump Boost | jump 40% higher | `/effect give` |
+| Decay | half a point of health a second, and can kill; dark hearts | rotten flesh, now and then |
+| Haste, Mining Fatigue | blocks break 20% faster, or 30% slower | `/effect give` |
+| Levitation | you float upwards (about two blocks a second) until it ends | `/effect give` |
+| Blindness | the world goes dark and the fog closes in to a few blocks | `/effect give` |
+| Water Breathing | your air does not run out under water | `/effect give` |
+
+Freezing is the Frozen effect (`/effect give freezing` works). **Drowning**:
+when your head goes under water a row of bubbles appears above your
+hearts and one pops every second; with none left you take 2 points of damage
+a second until you surface, and your air comes back about four times as fast
+as it went. Water Breathing, or a mod's item that gives it, keeps the air
+full. Creatures that live on land drown too.
 
 Having an effect again keeps the stronger one: a higher level replaces it,
 the same level takes the longer time. Dying clears them all. Creatures can be
@@ -760,7 +772,7 @@ blocks from it.
 | `/feed [N]` | give yourself N hunger points (4 if left out) | works |
 | `/hurt [N]` | take N damage (1 if left out, 100 at most) | works |
 | `/effect give ID [SECONDS] [LEVEL]` | give yourself a status effect (see [Status effects](#status-effects)); the effect's own time and level 1 if left out. `/effect give` alone lists the ids | works |
-| `/effect clear [ID]` | take one effect away, or all of them | works |
+| `/effect clear [ID]` | take one effect away, or all of them (other names such as `freezing` work) | works |
 | `/effect list` | the effects you have, with level and time left | works |
 | `/effect mob ID [SECONDS] [LEVEL]` | give an effect to the creature you are looking at | works |
 | `/launch [UP] [FORWARD]` | throw yourself upward and the way you face, in blocks per second (8 and 0 if left out; -40 to 40) | works |
@@ -834,7 +846,11 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   **DETAIL AND DISTANCE...** opens a second page with view distance (2-48
   chunks), distant terrain (0-256 chunks, 0 is off), the distant builds and
   trees rows below, 3D DETAIL (draws the 3D view at a lower resolution; a big
-  help on old graphics cards) and clouds.
+  help on old graphics cards), clouds and **SHADER** (OFF, or one of the
+  post-processing shaders that your mods bring, such as the Shaders mod's soft
+  bloom or retro dither; it says NOT SUPPORTED HERE on a graphics card that
+  cannot run them, and a shader that fails is switched off; see
+  [SHADERS.md](SHADERS.md)).
   Vsync is off unless you turn it on.
   Three rows set how the distant terrain is made: **DISTANT BUILDS AND TREES**
   (0-8 tiles; a tile is 4 x 4 chunks), **TREES** (none, some, all) and
@@ -852,9 +868,14 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   leave a world.
 - **CONTROLS**: mouse speed, invert mouse, and a KEY BINDINGS... page with
   every key marked * above and RESET KEYS. Click a binding, then press the new key (Esc cancels).
+  Mods can add keys of their own: they come after the game's, each mod under a
+  heading with its name, and the list scrolls (mouse wheel or the bar at its
+  side) when it is longer than the page. Two bindings on one key are outlined in
+  red: that is allowed, and both do their thing.
 - **GAME**: player name, autosave interval, GAME MODE while a world is open,
   and two pages: VIEW, WEATHER AND MAP... (view bobbing, weather, minimap) and
-  MOD SWITCHES AND RELOAD... (RELOAD MODS NOW and the switches mods add). Below those
+  MOD SWITCHES AND RELOAD... (RELOAD MODS NOW, the switches mods add, and
+  the on/off rows mods declare for themselves under their name; it scrolls). Below those
   come the switches the packs add (the first four are shown; NATURAL
   DISASTERS is one, from the Disasters mod, see
   [Weather and disasters](#weather-and-disasters)). Then, while the Earth

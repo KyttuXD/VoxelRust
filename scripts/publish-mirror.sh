@@ -6,7 +6,7 @@
 #   sh scripts/publish-mirror.sh me@example.org /var/www/voxelrust
 #
 # Copies from dist/nightly/ (made by scripts/package-release.sh): nightly.txt,
-# nightly.txt.sig and the bare programs (*.bin, *.exe), into <remote dir> on
+# nightly.txt.sig, the bare programs (*.bin, *.exe) and the browser zip (voxelrust-web.zip, for the site updater), into <remote dir> on
 # the host, which a web server serves as a static folder (see docs/BUILDING.md).
 # Players then set  update_mirror=http://your.host/voxelrust/  in settings.txt.
 #
@@ -21,7 +21,7 @@ dir="${2:?usage: publish-mirror.sh <ssh host> <remote dir>}"
 src="dist/nightly"
 [ -f "$src/nightly.txt" ] && [ -f "$src/nightly.txt.sig" ] || { echo "no signed list in $src (run scripts/package-release.sh first)" >&2; exit 1; }
 programs=""
-for f in "$src"/voxelrust-*.bin "$src"/voxelrust-*.exe; do
+for f in "$src"/voxelrust-*.bin "$src"/voxelrust-*.exe "$src"/voxelrust-web.zip; do
   [ -f "$f" ] && programs="$programs $f"
 done
 [ -n "$programs" ] || { echo "no programs in $src" >&2; exit 1; }

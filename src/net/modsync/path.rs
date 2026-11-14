@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 
 /// The file types a downloaded mod may hold (the extension, lower case).
 /// No program, shell script or library is among them.
-pub const ALLOWED_EXT: &[&str] = &["txt", "json", "bbmodel", "png", "jpg", "gif", "bmp", "tga", "wav", "ogg", "mp3", "flac", "rs", "md"];
+pub const ALLOWED_EXT: &[&str] = &["txt", "json", "bbmodel", "png", "jpg", "gif", "bmp", "tga", "wav", "ogg", "mp3", "flac", "rs", "md", "glsl"];
 
 /// Most mods taken from one server.
 pub const MAX_MODS: usize = 64;

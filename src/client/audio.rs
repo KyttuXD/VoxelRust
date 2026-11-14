@@ -167,7 +167,7 @@ pub struct Audio {
     pub captions: Vec<(alloc::string::String, f32)>,
     /// Sounds from the data folder's `sounds/` folder (`<id>.wav`): they
     /// replace the sound of that name, made or recorded.
-    user: Vec<(alloc::string::String, &'static [i16])>,
+    user: Vec<(alloc::string::String, crate::wav::clip::Clip)>,
 }
 
 impl Audio {
@@ -222,10 +222,13 @@ impl Audio {
             let lower = f.to_ascii_lowercase();
             let Some(stem) = [".wav", ".flac", ".aiff", ".aif", ".ogg", ".mp3"].iter().find_map(|e| lower.strip_suffix(e)) else { continue };
             let id = &f[..stem.len()];
-            if let Some(samples) = crate::sys::read_file(&alloc::format!("{}{}", dir, f)).and_then(|b| crate::wav::decode(&b)) {
-                let leaked: &'static [i16] = alloc::boxed::Box::leak(samples.into_boxed_slice());
+            let path = alloc::format!("{}{}", dir, f);
+            if let Some(samples) = crate::sys::read_file(&path).and_then(|b| crate::wav::decode(&b)) {
+                // (A long one is decoded again when it plays, not kept.)
+                let clip = crate::wav::clip::Clip::new(&path, samples);
+                self.stop_clips();
                 self.user.retain(|u| u.0 != id);
-                self.user.push((alloc::string::String::from(id), leaked));
+                self.user.push((alloc::string::String::from(id), clip));
                 names.push(alloc::string::String::from(id));
             }
         }
@@ -259,6 +262,61 @@ impl Audio {
             Sound::Rumble => "rumble",
             Sound::Wave => "wave",
         }
+    }
+
+    /// The clips the mixer is reading right now (they must not be freed).
+    fn playing_clips(&mut self) -> Vec<*const i16> {
+        if self.device == 0 {
+            return Vec::new();
+        }
+        let api = sdl();
+        unsafe {
+            (api.SDL_LockAudioDevice)(self.device);
+            let v: Vec<*const i16> = (*self.mixer).voices.iter().filter(|v| v.left > 0 && !v.clip.is_null()).map(|v| v.clip).collect();
+            (api.SDL_UnlockAudioDevice)(self.device);
+            v
+        }
+    }
+
+    /// Silence the voices that play a recording (before its samples change hands).
+    fn stop_clips(&mut self) {
+        if self.device == 0 {
+            return;
+        }
+        let api = sdl();
+        unsafe {
+            (api.SDL_LockAudioDevice)(self.device);
+            for v in (*self.mixer).voices.iter_mut() {
+                if !v.clip.is_null() {
+                    *v = SILENT;
+                }
+            }
+            (api.SDL_UnlockAudioDevice)(self.device);
+        }
+    }
+
+    /// Free the decoded samples of long recordings not played for `idle`
+    /// seconds (0 = all that are not playing now). They are decoded again
+    /// when next played. Returns the bytes freed.
+    pub fn trim_clips(&mut self, idle: u32) -> usize {
+        let playing = self.playing_clips();
+        let clock = crate::sys::now() as u32;
+        let mut freed = 0;
+        for s in crate::block::reg().sounds.iter() {
+            if let Some(c) = &s.clip {
+                freed += c.evict(clock, idle, &playing);
+            }
+        }
+        for u in &self.user {
+            freed += u.1.evict(clock, idle, &playing);
+        }
+        freed
+    }
+
+    /// Bytes of decoded recordings held now.
+    pub fn clip_bytes(&self) -> usize {
+        let a: usize = crate::block::reg().sounds.iter().filter_map(|s| s.clip.as_ref()).map(|c| c.resident_bytes()).sum();
+        a + self.user.iter().map(|u| u.1.resident_bytes()).sum::<usize>()
     }
 
     /// Stop everything at once (leaving a world must not leave its rain
@@ -323,7 +381,7 @@ impl Audio {
     /// Play a sound by the name the data files give it. Unknown names are
     /// silently nothing: a pack may name sounds another pack provides.
     pub fn play_named(&mut self, name: &str, volume: f32) {
-        let own: Option<&'static [i16]> = self.user.iter().find(|u| u.0 == name).map(|u| u.1);
+        let own: Option<crate::wav::clip::Clip> = self.user.iter().find(|u| u.0 == name).map(|u| u.1.clone());
         let def = crate::block::reg().sounds.iter().find(|s| s.id == name);
         if def.is_none() && own.is_none() {
             return;
@@ -363,7 +421,8 @@ impl Audio {
             return;
         }
         // A recorded sound: the folder's own, else the data's.
-        let clip: Option<&'static [i16]> = own.or_else(|| def.and_then(|d| d.clip.as_deref()));
+        let clock = crate::sys::now() as u32;
+        let clip: Option<&[i16]> = own.as_ref().or(def.and_then(|d| d.clip.as_ref())).and_then(|c| c.get(clock));
         let mut voice = Voice {
             left: (secs * RATE as f32) as u32,
             total: (secs * RATE as f32).max(1.0) as u32,

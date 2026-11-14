@@ -113,6 +113,7 @@ Vehicles, Natural Disasters, Holidays...) live in a separate repository,
 | [docs/EARTH.md](docs/EARTH.md) | real-world terrain, the map, data sources |
 | [docs/MODDING.md](docs/MODDING.md) | packs, the mods folder, mods from a server, scripts and commands, models, skins |
 | [docs/DATA.md](docs/DATA.md) | the content file format |
+| [docs/MEMORY.md](docs/MEMORY.md) | memory and CPU: what takes memory, the budget (300 MB, 700 MB with mods), what is given up first |
 | [docs/BUILDING.md](docs/BUILDING.md) | building for each platform, packaging a release, build names and updating, tests, CI, icons |
 | [docs/PORTING.md](docs/PORTING.md) | how it stays portable, old Macs, PowerPC, measurements |
 | [docs/WEB.md](docs/WEB.md) | the browser build |

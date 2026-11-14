@@ -3,6 +3,8 @@
 #     name <text>        kind good|bad|neutral     colour <r> <g> <b>     secs <default seconds>
 #     damage <points a second>   lethal yes|no     heal <points a second>   ticks <lumps a second>
 #     speed <percent>    jump <percent>     melee <percent>     (per level; negative slows/weakens)
+#     mine <percent>     lift <blocks a second up>     blind <percent of the view>     (per level)
+#     breath (no drowning)     tint <percent> (the screen takes `colour`)     sound <sound id> (on start)
 #     hunger <points a second, negative feeds>     absorb <health points>   vision   flame   extinguish
 #     heart normal|poison|wither|frozen            icon <texture>
 #     from block|entity|hit|eat|event <id> [seconds] [level] [chance]
@@ -105,7 +107,49 @@ effect frozen
   lethal no
   speed -20
   heart frozen
+  tint 14
   from block icicle 4 1
+effect decay
+  name Decay
+  kind bad
+  colour 78 64 50
+  secs 20
+  damage 0.5
+  heart wither
+  from eat rotten_flesh 15 1 10
+effect haste
+  name Haste
+  kind good
+  colour 226 170 44
+  secs 60
+  mine 20
+effect mining_fatigue
+  name Mining Fatigue
+  kind bad
+  colour 112 104 92
+  secs 30
+  mine -30
+effect levitation
+  name Levitation
+  kind neutral
+  colour 160 134 214
+  secs 10
+  lift 1.8
+  sound whoosh
+effect blindness
+  name Blindness
+  kind bad
+  colour 10 10 14
+  secs 10
+  blind 85
+  tint 55
+effect water_breathing
+  name Water Breathing
+  kind good
+  colour 48 116 210
+  secs 180
+  breath
+  sound splash
 effect saturation
   name Saturation
   kind good
