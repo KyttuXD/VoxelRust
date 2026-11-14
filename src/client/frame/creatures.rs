@@ -13,7 +13,9 @@ impl App {
         let light_at = |pos: [f64; 3]| -> f32 {
             let (x, z) = (floord(pos[0]), floord(pos[2]));
             let covered = (floord(pos[1]) + 2..CH).any(|y| reg.opaque[g.world.get(x, y, z) as usize] != 0);
-            (0.18 + 0.82 * day) * if covered { 0.55 } else { 1.0 }
+            // Never so dark that a creature cannot be seen against a night sky (zombies and
+            // the like come out at night): about two fifths of daylight at the least.
+            (0.40 + 0.60 * day) * if covered { 0.75 } else { 1.0 }
         };
         let rel = |pos: [f64; 3]| [(pos[0] - cam.pos[0]) as f32, (pos[1] - cam.pos[1]) as f32, (pos[2] - cam.pos[2]) as f32];
         // What is behind the camera is not drawn at all.

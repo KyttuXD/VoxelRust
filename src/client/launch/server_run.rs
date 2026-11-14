@@ -56,6 +56,11 @@ pub(super) fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String
             }
         }
     }
+    // Where players were when they left, so they come back to the same place.
+    let spots_path = edits_path.replace(".server-edits.txt", ".server-spots.txt");
+    if let Some(text) = sys::read_file(&spots_path) {
+        server.load_spots(&String::from_utf8_lossy(&text));
+    }
     if let Some(text) = sys::read_file(&edits_path) {
         server.load_text(&String::from_utf8_lossy(&text));
     }
@@ -79,6 +84,7 @@ pub(super) fn server_loop(mut server: crate::server::Server, edits_path: String,
     let mut last = sys::now();
     let mut save_timer = 0.0f32;
     let mut ops_wait = 0.0f32;
+    let mut spot_timer = 0.0f32;
     // A dedicated server warns its players and restarts into an installed
     // update after 30 seconds (see `server_update::restart`); a game hosted
     // from the menu only does so once nobody is connected.
@@ -129,6 +135,18 @@ pub(super) fn server_loop(mut server: crate::server::Server, edits_path: String,
                 ops_wait = 10.0;
             }
         }
+        spot_timer += dt;
+        if spot_timer > 10.0 {
+            spot_timer = 0.0;
+            server.snapshot_spots();
+        }
+        if server.spots_dirty && ops_wait <= 0.0 {
+            if sys::write_file_atomic(&edits_path.replace(".server-edits.txt", ".server-spots.txt"), server.spots_text().as_bytes()) {
+                server.spots_dirty = false;
+            } else {
+                ops_wait = 10.0;
+            }
+        }
         save_timer += dt;
         if save_timer > 20.0 && server.dirty {
             save_timer = 0.0;
@@ -143,6 +161,9 @@ pub(super) fn server_loop(mut server: crate::server::Server, edits_path: String,
     if server.dirty {
         sys::write_file_atomic(&edits_path, server.save_text().as_bytes());
     }
+    // Where everyone stands as the server stops, so they come back to it.
+    server.snapshot_spots();
+    sys::write_file_atomic(&edits_path.replace(".server-edits.txt", ".server-spots.txt"), server.spots_text().as_bytes());
     !HOST_STOP.load(Ordering::Relaxed) && (restart_now || update_ready_and_empty(&server))
 }
 

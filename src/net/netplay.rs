@@ -618,6 +618,36 @@ mod tests {
     }
 
     #[test]
+    fn a_player_comes_back_where_they_left_off() {
+        let (port, stop, handle) = start_server(4);
+        let (mut r, _) = Client::connect("127.0.0.1", port, "Ref").unwrap();
+        let (mut a, _) = Client::connect("127.0.0.1", port, "Dana").unwrap();
+        pump(&mut a, 60);
+        a.send_move(1.0, [33.5, 71.0, -12.25], 2.0, -0.25, 0);
+        pump(&mut a, 60);
+        drop(a);
+        pump(&mut r, 100);
+        // The server notes it as they leave; a different spelling of the name is the same player.
+        let (mut b, _) = Client::connect("127.0.0.1", port, "dana").unwrap();
+        let events = pump(&mut b, 200);
+        let got = events.iter().find_map(|e| match e {
+            Event::State(_, crate::proto::channel::PLAYER, key, data) if key == "you" => Some(String::from_utf8_lossy(data).into_owned()),
+            _ => None,
+        });
+        assert_eq!(got.as_deref(), Some("33.5 71 -12.25 2 -0.25"), "{} events, none with the place", events.len());
+        // A newcomer with no history is told nothing.
+        let (mut c, _) = Client::connect("127.0.0.1", port, "Eve").unwrap();
+        let events = pump(&mut c, 100);
+        assert!(!events.iter().any(|e| matches!(e, Event::State(_, crate::proto::channel::PLAYER, ..))));
+        stop.store(true, Ordering::Relaxed);
+        let server = handle.join().unwrap();
+        assert!(server.spots_text().starts_with("dana 33.5 71 -12.25 2 -0.25"));
+        let mut again = Server::bind(Config { port: 0, seed: 1, kind: String::new(), max_players: 1, content: 0, states: 1, pack: Vec::new(), mods: Vec::new() }).unwrap();
+        again.load_spots(&server.spots_text());
+        assert_eq!(again.spots, server.spots);
+    }
+
+    #[test]
     fn full_servers_and_wrong_content_are_refused_and_tiles_are_relayed() {
         let (port, stop, handle) = start_server(1);
         let (_a, _) = Client::connect("127.0.0.1", port, "One").unwrap();

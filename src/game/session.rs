@@ -231,6 +231,8 @@ pub struct Session {
     regen: f32,
     drown: f32,
     autosave: f32,
+    /// The server's note of where we left off has been used (see `go_to_spot`).
+    spot_applied: bool,
     meta_path: String,
     pub is_new: bool,
 }
@@ -601,6 +603,7 @@ impl Session {
             regen: 0.0,
             drown: 0.0,
             autosave: 0.0,
+            spot_applied: false,
             meta_path: path,
             is_new,
         };
@@ -628,6 +631,24 @@ impl Session {
         s.mod_sync = Some(crate::net::modsync::client::ClientSync::new(base, &host, port));
         s.push_chat(alloc::format!("CONNECTED TO {}", address.to_ascii_uppercase()));
         Ok(s)
+    }
+
+    /// The server says where this player was when they left: go there (once, on joining).
+    fn go_to_spot(&mut self, text: &str) {
+        if self.spot_applied {
+            return;
+        }
+        let v: Vec<f64> = text.split(' ').filter_map(|w| w.parse::<f64>().ok()).filter(|f| f.is_finite()).collect();
+        if let [x, y, z, yaw, pitch] = v[..] {
+            if x.abs() < 3.0e7 && z.abs() < 3.0e7 && y > -64.0 && y < 4096.0 {
+                self.spot_applied = true;
+                self.player.pos = [x, y, z];
+                self.player.vel = [0.0; 3];
+                self.player.yaw = yaw as f32;
+                self.player.pitch = (pitch as f32).clamp(-1.55, 1.55);
+                self.push_chat(String::from("BACK WHERE YOU LEFT OFF"));
+            }
+        }
     }
 
     pub fn push_chat(&mut self, line: String) {
@@ -1767,6 +1788,7 @@ impl Session {
                     let text = String::from_utf8_lossy(&data).into_owned();
                     let host = self.runs_the_world();
                     match channel {
+                        ch::PLAYER if !host && self.net.is_some() => self.go_to_spot(&text),
                         ch::MOBS if !host => self.mobs.apply_snapshot(&text),
                         ch::HIT if host => {
                             let mut w = text.split(' ');

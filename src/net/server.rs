@@ -90,6 +90,10 @@ pub struct Server {
     pub banned: Vec<String>,
     /// `ops` or `banned` changed since they were last written out.
     pub ops_dirty: bool,
+    /// Where each player was when they left (by lower-case name): x, y, z, yaw, pitch.
+    /// They come back to it (sent right after the welcome).
+    pub spots: BTreeMap<String, [f64; 5]>,
+    pub spots_dirty: bool,
     /// What players may do who have no entry of their own.
     pub default_perms: u8,
     /// Players with permissions of their own (lower-case name, `PERM_` flags).
@@ -117,7 +121,7 @@ impl Server {
     pub fn bind(cfg: Config) -> Result<Server, NetError> {
         let listener = TcpListener::bind(cfg.port)?;
         Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
-            kept: BTreeMap::new(), kept_bytes: 0, ops: Vec::new(), banned: Vec::new(), ops_dirty: false,
+            kept: BTreeMap::new(), kept_bytes: 0, ops: Vec::new(), banned: Vec::new(), ops_dirty: false, spots: BTreeMap::new(), spots_dirty: false,
             default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE, perms: Vec::new(), creative: Vec::new(), voice: Default::default() })
     }
 
@@ -665,6 +669,10 @@ impl Server {
                         for ((channel, key), data) in &self.kept {
                             out.extend(Msg::State { id: 0, channel: *channel, keep: true, key: key.clone(), data: data.clone() }.encode());
                         }
+                        // Back where they left off.
+                        if let Some(s) = self.spots.get(&name.to_ascii_lowercase()) {
+                            out.extend(Msg::State { id: 0, channel: crate::proto::channel::PLAYER, keep: false, key: String::from("you"), data: spot_text(s).into_bytes() }.encode());
+                        }
                         if self.conns[i].stream.send_all(&out, 4_000).is_err() {
                             self.conns[i].gone = true;
                             break;
@@ -789,6 +797,9 @@ impl Server {
             if self.conns[k].gone {
                 let c = self.conns.swap_remove(k);
                 if c.joined {
+                    if let Some((pos, yaw, pitch, ..)) = c.last_move {
+                        self.remember_spot(&c.name, [pos[0], pos[1], pos[2], yaw as f64, pitch as f64]);
+                    }
                     log.push(alloc::format!("{} left ({} online)", c.name, self.players()));
                     self.broadcast(&Msg::Leave { id: c.id }, c.id);
                 }
@@ -809,6 +820,43 @@ impl Server {
         s
     }
 
+    /// Note where a player stands as they leave (only sane numbers; at most 4096 players).
+    fn remember_spot(&mut self, name: &str, spot: [f64; 5]) {
+        let ok = spot.iter().all(|v| v.is_finite()) && spot[..3].iter().all(|v| v.abs() < 3.0e7) && spot[1] > -64.0 && spot[1] < 4096.0;
+        let key = name.to_ascii_lowercase();
+        if ok && (self.spots.len() < 4096 || self.spots.contains_key(&key)) {
+            self.spots.insert(key, spot);
+            self.spots_dirty = true;
+        }
+    }
+
+    /// Note where everyone who is here stands now (done every few seconds and as the server stops,
+    /// so a restart or a crash costs little).
+    pub fn snapshot_spots(&mut self) {
+        let here: Vec<(String, [f64; 5])> = self.conns.iter().filter(|c| c.joined && !c.gone).filter_map(|c| c.last_move.map(|m| (c.name.clone(), [m.0[0], m.0[1], m.0[2], m.1 as f64, m.2 as f64]))).collect();
+        for (n, s) in here {
+            self.remember_spot(&n, s);
+        }
+    }
+
+    /// The remembered places, one `name x y z yaw pitch` line each.
+    pub fn spots_text(&self) -> String {
+        self.spots.iter().map(|(n, s)| alloc::format!("{} {} {} {} {} {}\n", n, s[0], s[1], s[2], s[3], s[4])).collect()
+    }
+
+    /// Read what [`Server::spots_text`] wrote.
+    pub fn load_spots(&mut self, text: &str) {
+        for line in text.lines() {
+            let w: Vec<&str> = line.split(' ').collect();
+            if let [name, a, b, c, d, e] = w[..] {
+                if let (Ok(a), Ok(b), Ok(c), Ok(d), Ok(e)) = (a.parse::<f64>(), b.parse::<f64>(), c.parse::<f64>(), d.parse::<f64>(), e.parse::<f64>()) {
+                    self.remember_spot(name, [a, b, c, d, e]);
+                }
+            }
+        }
+        self.spots_dirty = false;
+    }
+
     pub fn load_text(&mut self, text: &str) {
         let r = crate::block::reg();
         for line in text.lines() {
@@ -820,6 +868,11 @@ impl Server {
             }
         }
     }
+}
+
+/// A remembered place as the text the client reads: `x y z yaw pitch`.
+fn spot_text(s: &[f64; 5]) -> String {
+    alloc::format!("{} {} {} {} {}", s[0], s[1], s[2], s[3], s[4])
 }
 
 #[cfg(test)]

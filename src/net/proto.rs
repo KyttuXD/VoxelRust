@@ -46,6 +46,8 @@ pub mod channel {
     /// Messages of mods' scripts to the same mod's scripts elsewhere
     /// (`net_send` and `on_net`, see script/ext/net.rs); the key is `mod\x1fkey`.
     pub const SCRIPT: u8 = 4;
+    /// From the server to a joining player: where they were when they left (`x y z yaw pitch`).
+    pub const PLAYER: u8 = 5;
     /// From here up: the mods' own code, one channel each (see
     /// `Session::send_ext`).
     pub const NATIVE: u8 = 32;
