@@ -43,3 +43,4 @@ pub mod creature_look;
 pub mod mod_message;
 pub mod fx;
 pub mod mod_sound;
+pub mod sync_vitals;

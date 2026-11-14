@@ -772,6 +772,11 @@ is not shown and they cannot happen at all.
 T opens the chat line; Enter sends, Esc cancels. Chat is shown in capitals.
 Each player's name is shown in a colour of its own, the same every time.
 
+In a shared game, **hold Tab** for the list of players with their health and ping
+(see [MULTIPLAYER.md](MULTIPLAYER.md#health-armour-the-player-list-and-what-the-server-remembers)).
+Players near you have small hearts under their name, and the armour they wear is
+shown on them.
+
 **Colours.** `&` followed by one of sixteen characters changes the colour of
 the text after it, in chat and in anything a pack says with `/say`:
 

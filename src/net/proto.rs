@@ -70,6 +70,10 @@ pub mod channel {
     pub const MODMSG: u8 = 5;
     /// From the server to a joining player: where they were when they left (`x y z yaw pitch`).
     pub const PLAYER: u8 = 6;
+    /// Players' health, hunger, worn armour, ping and death notices, the
+    /// server's questions that measure a ping, and who runs the creatures
+    /// (`net/sync`); never kept. A game that does not know the channel ignores it.
+    pub const VITALS: u8 = 7;
     /// From here up: the mods' own code, one channel each (see
     /// `Session::send_ext`).
     pub const NATIVE: u8 = 32;

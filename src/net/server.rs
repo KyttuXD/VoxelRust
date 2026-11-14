@@ -23,6 +23,11 @@ use alloc::vec::Vec;
 mod accounts_flow;
 use self::accounts_flow::Gate;
 
+/// The server's half of the sync of shared games (health, pings, who runs the creatures, a
+/// guest who comes back too soon): also a child module, for the same reason.
+#[path = "sync/server_side.rs"]
+mod sync_flow;
+
 pub struct Config {
     pub port: u16,
     pub seed: u32,
@@ -58,8 +63,8 @@ struct Conn {
     voice_bucket: crate::net_voice::Bucket,
     /// Ticks since anything arrived; idle strangers are dropped.
     quiet: u32,
-    /// Seconds since anything arrived; players who say nothing for two
-    /// minutes (a client sends its position every couple of seconds) are
+    /// Seconds since anything arrived; players who say nothing for a
+    /// minute (a client sends its position every couple of seconds) are
     /// dropped, so a dead connection does not stay a player for ever.
     idle: f32,
     /// What this connection may still send (see `net::limits`).
@@ -77,6 +82,8 @@ struct Conn {
     /// Which protocol they speak, whether they are logged in to an account, and the login
     /// challenge they owe an answer to (see `net/accounts`).
     acct: crate::net::accounts::state::ConnAuth,
+    /// Their health, death, emote, ping and place in the order of arrival (see `net/sync`).
+    sync: crate::net::sync::state::ConnSync,
 }
 
 pub struct Server {
@@ -115,6 +122,8 @@ pub struct Server {
     pub voice: crate::net_voice::Rules,
     /// Accounts: the settings, the accounts, the limits on logins (see `net/accounts`).
     pub acct: crate::net::accounts::state::AccountState,
+    /// The chat history, remembered health and the like (see `net/sync`).
+    sync: crate::net::sync::state::ServerSync,
 }
 
 const SEND_TIMEOUT: u32 = 3000;
@@ -128,14 +137,14 @@ pub const MAX_KEPT_BYTES: usize = 8 << 20;
 /// Connections that have not said hello yet, at most.
 const MAX_STRANGERS: usize = 24;
 /// Seconds without a word from a player before they are dropped.
-const IDLE_SECONDS: f32 = 120.0;
+const IDLE_SECONDS: f32 = 60.0;
 
 impl Server {
     pub fn bind(cfg: Config) -> Result<Server, NetError> {
         let listener = TcpListener::bind(cfg.port)?;
         Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
             kept: BTreeMap::new(), kept_bytes: 0, ops: Vec::new(), banned: Vec::new(), ops_dirty: false, spots: BTreeMap::new(), spots_dirty: false,
-            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE, perms: Vec::new(), creative: Vec::new(), voice: Default::default(), acct: Default::default() })
+            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE, perms: Vec::new(), creative: Vec::new(), voice: Default::default(), acct: Default::default(), sync: Default::default() })
     }
 
     /// A player number no one here has: never 0 (the server) or 65535 (what
@@ -167,11 +176,11 @@ impl Server {
     }
 
     /// Whether the connection `i` is the player who runs the creatures for
-    /// everybody: the one who came first of those here (the same rule as
-    /// `Client::runs_the_world`, which goes by the lowest number).
+    /// everybody: the one who came first of those here (the clients are told
+    /// who that is, see `net/sync`).
     fn runs_the_world(&self, i: usize) -> bool {
-        let me = self.conns[i].id;
-        self.conns.iter().filter(|c| c.joined && !c.gone).all(|c| c.id >= me)
+        let me = self.conns[i].sync.order;
+        self.conns.iter().filter(|c| c.joined && !c.gone).all(|c| c.sync.order >= me)
     }
 
     pub fn port(&self) -> u16 {
@@ -543,6 +552,7 @@ impl Server {
             c.skin.tick(dt);
         }
         self.account_tick(dt);
+        self.sync_tick(dt);
         for _ in 0..8 {
             match self.listener.accept(0) {
                 Ok(Some(mut stream)) => {
@@ -554,7 +564,7 @@ impl Server {
                         continue;
                     }
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default() });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default() });
                 }
                 _ => break,
             }
@@ -659,7 +669,9 @@ impl Server {
                             Some(crate::net::version::mismatch_reason(version, VERSION, &crate::net::version::local()))
                         } else if self.banned.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
                             Some(String::from("you may not join this server"))
-                        } else if self.players() >= self.cfg.max_players {
+                        } else if self.players() >= self.cfg.max_players && !self.name_is_here(&name) {
+                            // (A player of the same name may be their own old connection, which
+                            // makes way when they are let in: `admit` looks again.)
                             Some(String::from("the server is full"))
                         } else {
                             // A name with an account is logged in to first (see net/accounts).
@@ -685,11 +697,21 @@ impl Server {
                         }
                     }
                     Msg::Move { pos, yaw, pitch, held, pose, .. } if joined => {
+                        // An emote ends when they walk off it.
+                        if let Some((old, ..)) = self.conns[i].last_move {
+                            let (dx, dz) = (old[0] - pos[0], old[2] - pos[2]);
+                            if dx * dx + dz * dz > 0.25 {
+                                self.conns[i].sync.emote = 0;
+                            }
+                        }
                         self.conns[i].last_move = Some((pos, yaw, pitch, held, pose));
                         self.broadcast(&Msg::Move { id, pos, yaw, pitch, held, pose }, id);
                     }
                     // An emote the player plays (or stops): everyone else sees it.
-                    Msg::Emote { emote, .. } if joined => self.broadcast(&Msg::Emote { id, emote }, id),
+                    Msg::Emote { emote, .. } if joined => {
+                        self.conns[i].sync.emote = emote;
+                        self.broadcast(&Msg::Emote { id, emote }, id);
+                    }
                     // Their status effects: kept for newcomers and shown to everyone else.
                     Msg::Effects { list, .. } if joined => {
                         let list = crate::game::effects::sync::clean(list);
@@ -704,6 +726,11 @@ impl Server {
                             self.edits.insert((x, y, z), block);
                             self.dirty = true;
                             self.broadcast(&Msg::SetBlock { x, y, z, block }, id);
+                            // Two players changing one block at once would each be left with the
+                            // other's: the one who came last (the server's copy) is told to both.
+                            if self.sync.block_conflict((x, y, z), id) {
+                                self.send_to(id, &Msg::SetBlock { x, y, z, block });
+                            }
                         }
                     }
                     Msg::ModsWant { names } if joined && !self.conns[i].mods_asked => {
@@ -730,6 +757,11 @@ impl Server {
                     Msg::Voice { seq, frame, .. } if joined => self.relay_voice(i, seq, &frame),
                     Msg::State { channel, keep, key, data, .. } if joined => {
                         use crate::proto::channel as ch;
+                        if channel == ch::VITALS {
+                            // Health, a death, the answer to a ping (see net/sync).
+                            self.on_vitals(i, &key, &data, &mut log);
+                            continue;
+                        }
                         if channel == ch::MODMSG {
                             // A mod's message: only a sound one is passed on, never kept, to the
                             // one player it is for (not back to the sender) or to all the others.
@@ -786,6 +818,7 @@ impl Server {
                     Msg::Chat { text, .. } if joined => {
                         let text: String = text.chars().take(120).collect();
                         log.push(alloc::format!("<{}> {}", self.conns[i].name, text));
+                        self.sync.history.push(&alloc::format!("<{}> {}", self.conns[i].name, text));
                         self.broadcast(&Msg::Chat { id, text }, id);
                     }
                     // Anything else from a client is not allowed.
@@ -821,11 +854,9 @@ impl Server {
             if self.conns[k].gone {
                 let c = self.conns.swap_remove(k);
                 if c.joined {
-                    if let Some((pos, yaw, pitch, ..)) = c.last_move {
-                        // (An account's place is kept under its name, a guest's under theirs.)
-                        let key = c.acct.account.clone().unwrap_or_else(|| c.name.clone());
-                        self.remember_spot(&key, [pos[0], pos[1], pos[2], yaw as f64, pitch as f64]);
-                    }
+                    // (An account's place and health are kept under its name, a guest's under theirs.)
+                    let notes = Self::leave_notes(&c);
+                    self.apply_notes(notes);
                     log.push(alloc::format!("{} left ({} online)", c.name, self.players()));
                     self.broadcast(&Msg::Leave { id: c.id }, c.id);
                 }
@@ -833,6 +864,7 @@ impl Server {
                 k += 1;
             }
         }
+        self.announce_runner();
         log
     }
 
@@ -859,24 +891,38 @@ impl Server {
     /// Note where everyone who is here stands now (done every few seconds and as the server stops,
     /// so a restart or a crash costs little).
     pub fn snapshot_spots(&mut self) {
-        let here: Vec<(String, [f64; 5])> = self.conns.iter().filter(|c| c.joined && !c.gone).filter_map(|c| c.last_move.map(|m| (c.acct.account.clone().unwrap_or_else(|| c.name.clone()), [m.0[0], m.0[1], m.0[2], m.1 as f64, m.2 as f64]))).collect();
-        for (n, s) in here {
-            self.remember_spot(&n, s);
+        let here: Vec<sync_flow::Notes> = self.conns.iter().filter(|c| c.joined && !c.gone).map(Self::leave_notes).collect();
+        for n in here {
+            self.apply_notes(n);
         }
     }
 
     /// The remembered places, one `name x y z yaw pitch` line each.
     pub fn spots_text(&self) -> String {
-        self.spots.iter().map(|(n, s)| alloc::format!("{} {} {} {} {} {}\n", n, s[0], s[1], s[2], s[3], s[4])).collect()
+        self.spots
+            .iter()
+            .map(|(n, s)| {
+                // (Their health follows when it is known: health, most health, hunger.)
+                let health = self.sync.health.get(n).map_or(String::new(), |h| alloc::format!(" {} {} {}", h[0], h[1], h[2]));
+                alloc::format!("{} {} {} {} {} {}{}\n", n, s[0], s[1], s[2], s[3], s[4], health)
+            })
+            .collect()
     }
 
     /// Read what [`Server::spots_text`] wrote.
     pub fn load_spots(&mut self, text: &str) {
         for line in text.lines() {
             let w: Vec<&str> = line.split(' ').collect();
-            if let [name, a, b, c, d, e] = w[..] {
-                if let (Ok(a), Ok(b), Ok(c), Ok(d), Ok(e)) = (a.parse::<f64>(), b.parse::<f64>(), c.parse::<f64>(), d.parse::<f64>(), e.parse::<f64>()) {
-                    self.remember_spot(name, [a, b, c, d, e]);
+            if w.len() == 6 || w.len() == 9 {
+                let n: Vec<Option<f64>> = w[1..6].iter().map(|v| v.parse::<f64>().ok()).collect();
+                if let [Some(a), Some(b), Some(c), Some(d), Some(e)] = n[..] {
+                    self.remember_spot(w[0], [a, b, c, d, e]);
+                    if w.len() == 9 {
+                        let h: Vec<Option<u8>> = w[6..9].iter().map(|v| v.parse::<u8>().ok()).collect();
+                        if let [Some(a), Some(b), Some(c)] = h[..] {
+                            self.remember_health(w[0], [a, b, c]);
+                        }
+                    }
                 }
             }
         }
@@ -1004,7 +1050,7 @@ mod tests {
         // One still in use after the counter went round is not given out again.
         let mut s = Server::bind(plain_config()).unwrap();
         let stream = crate::sys::net::TcpStream::connect("127.0.0.1", s.port(), 2000).unwrap();
-        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default() });
+        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default() });
         s.next_id = 6;
         assert_eq!((s.fresh_id(), s.fresh_id()), (6, 8));
     }

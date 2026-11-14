@@ -88,6 +88,8 @@ impl App {
                 died = g.dead;
             } else {
                 // Paused: keep loading terrain, but nothing moves.
+                // (A shared game still says now and then that we are here.)
+                g.keep_alive(real_dt);
                 let (cx, cz) = crate::world::chunk_at(g.player.pos[0], g.player.pos[2]);
                 g.world.update(cx, cz, distance, &mut g.pool, r, &mut g.store);
             }

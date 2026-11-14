@@ -127,7 +127,8 @@ Shared between everyone on a server:
   (`Msg::Emote`, the number of the emote in the server's pack; 0 stops it).
 - **Block edits**: every block placed or broken, including everything built
   before you joined.
-- **Chat**.
+- **Chat**, and the last ten lines of it for anyone who joins.
+- **Health, hunger, armour and ping** of every player (next section).
 - **Time of day**, and with it the weather (which is worked out from the
   seed, place and time, so everyone sees the same sky).
 - **Content**: the server's packs (next section).
@@ -140,9 +141,11 @@ Shared between everyone on a server:
 
 The server does not run creatures or vehicles itself: it only passes
 messages on. Instead **one player's game runs them for everybody**: the
-player with the lowest player number of those present (normally whoever
-joined first). When that player
-leaves, the next lowest takes over. Vehicles are run by the code of the
+player who came first of those present. The server names them to everybody
+when someone joins or leaves; when that player leaves, the next to have come
+takes over (the game that takes over carries on with the creatures it had
+been shown). A server that names nobody (an older one) is taken to mean the
+lowest player number. Vehicles are run by the code of the
 Vehicles mod, so they are shared only while that mod is on.
 
 - That game moves the creatures and the vehicles nobody is riding, and
@@ -176,11 +179,70 @@ passes these on like everything else and keeps a message only when the mod
 asks it to. A game acts on them only while that mod is on; the others
 ignore them.
 
+### Health, armour, the player list and what the server remembers
+
+Every player's game tells the server how it is: health and most health (up
+to 100, in half hearts), hunger, and the item in each of the four armour
+slots, at most four times a second and every two seconds even when nothing
+changed. The server checks the numbers (a most health from 1 to 100, health
+not above it, hunger 0 to 20; anything else is ignored), adds the player's
+ping and passes it on. Games keep the latest of each player and show it:
+
+- **Hearts under the name tag** of players within 24 blocks: ten small hearts
+  to a row, more rows below for more than 20 health.
+- **The armour** other players wear is drawn on their models.
+- **The player list**: hold **Tab** in the game (a shared game only) for a list
+  of the players with a health bar, health and ping in milliseconds. The
+  server asks every five seconds and the game answers at once; a game that
+  does not know this is not asked and shows no ping.
+
+Health belongs to each game, as before: the server does not heal or hurt
+anyone and does not check how fast health rises. Two things are the
+server's: **a death** (the dying game sends "I died" with its cause; the
+server says `NAME died` / `NAME fell from a high place` / ... in chat once,
+until that player is well again), and **memory**: the server writes the last
+health, most health and hunger of each player (by account, or by name for a
+guest) next to the place they left, in the `.server-spots.txt` file
+(`name x y z yaw pitch health max hunger`; older lines with no health still
+load). When the player joins again their game is given that health and
+hunger. A player who left dead comes back at the world's spawn at full
+health instead, like after a respawn.
+
+All of this is one state channel (7, `channel::VITALS` in `src/net/proto.rs`;
+the code is in `src/net/sync/`), so the protocol version did not change: an
+older game ignores the messages, and an older server just passes them on.
+
+### Joining, leaving and joining again
+
+What a server tells a player who joins, in this order: the world (seed, time of day), the
+program's version, the content pack, the mod list, the last ten lines of chat,
+who runs the creatures, then each player here with their skin, position and
+pose, status effects, health and armour, and the emote they are playing, then
+every block change, the kept chest contents, and, for a player who has been
+here before, where they were and how they were. Time of day is sent again every five seconds
+and the weather follows from the seed and the time, so everyone has the same
+sky. The skin is sent again on every join, and the skins of players who
+left are forgotten.
+
+- **Coming back before the old connection has timed out.** A player who
+  joins again under the same account replaces their old connection. A guest
+  (no account) who joins again from the same address under the same name,
+  when their old connection has said nothing for 2.5 seconds, replaces it
+  too: they keep their name (it does not become `Bob2`) and their place on a
+  full server. From another address, or while the old connection is still
+  talking, the name is taken as before and the newcomer gets a number added.
+  The server looks again at the player limit once the old connection has
+  made way.
+- **A player who says nothing for 60 seconds is dropped** (a game says
+  something at least every two seconds, also while it loads the world).
+- **Two players changing the same block within a moment**: the one who came
+  last wins on the server, and both are told, so that nobody is left with the
+  other's block.
+
 ### Not shared
 
-- **Inventories, health and hunger.** These are per player and are not kept
-  by the server. You join in creative mode with the creative starting items,
-  and nothing you carry is saved when you leave.
+- **Inventories.** These are per player and are not kept
+  by the server. You join with the starting items, and nothing you carry is saved when you leave.
 - **Villagers' work.** Villagers are shared like other creatures, but their
   farming and building is not applied to a shared world.
 - **Pets** are not saved on a server.
@@ -426,7 +488,7 @@ skin 30 a second. Voice has its own limit. Also:
   for 20 seconds is dropped);
 
 - at most 24 connections that have not said hello yet, and nobody stays
-  connected without a word for two minutes;
+  connected without a word for a minute;
 - the server keeps at most 600 000 changed blocks and 8 MB of kept state (chests);
   a chest's contents are only taken from players who may build, and the
   creature snapshots only from the player who runs the creatures;

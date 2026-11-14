@@ -4,6 +4,7 @@ pub mod app;
 pub mod render;
 pub mod hand;
 pub mod effects_hud;
+pub mod playerlist;
 pub mod wear_bar;
 pub mod ui;
 pub mod fullmap;

@@ -114,6 +114,7 @@ impl App {
             crate::script::ext::draw::draw_world(g, r, cam.pos, self.third_person, &light_at);
         }
         // Other players, with their names over their heads.
+        self.tag_hearts.borrow_mut().clear();
         if let Some(net) = &g.net {
             for (id, p) in net.players.iter().filter(|p| p.1.seen) {
                 let at = rel(p.pos);
@@ -134,6 +135,10 @@ impl App {
                     None => r.entity_texture(&crate::pack_entities::skin_picture(crate::pack_entities::default_skin_for(&p.name))),
                 };
                 r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                // The armour they wear (from their health message).
+                if let Some(v) = p.vitals.filter(|v| v.worn.iter().any(|&w| w != 0)) {
+                    r.draw_model_armor(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l], &crate::client::render::armor::looks(&crate::client::playerlist::worn_slots(&v.worn)));
+                }
                 // What they hold, out to the right of the body (not while sitting, lying or emoting: the hand is elsewhere).
                 let busy = drawn.pose.body.walk_weight() < 0.5 || drawn.pose.body.emote != 0;
                 let held = if p.held == 0 || busy { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(Some(p.held as usize - 1)) };
@@ -152,6 +157,10 @@ impl App {
                         label.push_str(&alloc::format!(" ({}{})", d.name.to_ascii_uppercase(), if p.effects.len() > 1 { alloc::format!(" +{}", p.effects.len() - 1) } else { String::new() }));
                     }
                     tags.push((sx, sy, label, shrink));
+                    // Their health under the name, for those near.
+                    if let (Some(v), true) = (p.vitals, dist < crate::client::playerlist::HEARTS_RANGE) {
+                        self.tag_hearts.borrow_mut().push((sx, sy, v.hp as i32, v.max as i32, shrink));
+                    }
                   }
                 }
             }
