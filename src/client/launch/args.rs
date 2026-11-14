@@ -76,7 +76,8 @@ Run it with no options for the title screen. Options:
                       (one of each) or walking (the same, mid-stride);
                       craft:ITEM (the crafting table with that item's recipe
                       laid out), looks:NAME (with creatures: every look of
-                      the creatures with NAME in their id); nocull (no
+                      the creatures with NAME in their id); swing:F (third
+                      person, the arm F of the way through a punch); nocull (no
                       occlusion culling of hidden sections, to compare)
 
 Controls (all can be changed in Settings): WASD move, mouse look, Space jump,

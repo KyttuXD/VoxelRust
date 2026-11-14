@@ -1217,7 +1217,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         help_timer: 0.0,
         loading_since: 0.0,
         wheel: Default::default(),
-        third_person: opts.show.contains("third") || opts.show.contains("front") || opts.show.contains("bends:"),
+        third_person: opts.show.contains("third") || opts.show.contains("front") || opts.show.contains("bends:") || opts.show.contains("swing:"),
         third_front: opts.show.contains("front"),
         swallow_text: false,
         hud_hidden: false,

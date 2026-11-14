@@ -33,6 +33,8 @@ pub struct Posing {
     pub run: f32,
     /// A gait held for a still (`--show bends:NAME`): phase, stride and run.
     pub shown_gait: Option<(f32, f32, f32)>,
+    /// An arm swing held for a still (`--show swing:F`, F in 0..1 through the punch).
+    pub shown_swing: Option<f32>,
     /// For scripted screenshots (`--show pose:NAME`, `--show emote:ID@SECONDS`): a posture
     /// held whatever the player does, and an emote kept at the time it was started at.
     pub forced: Option<Kind>,
@@ -142,6 +144,10 @@ impl Posing {
         let mut b = self.smooth.body();
         b.flags = a.flags | if self.carrying { pose::CARRY } else { 0 };
         b.swing = a.swing;
+        if let Some(f) = self.shown_swing {
+            b.flags |= pose::SWING;
+            b.swing = f;
+        }
         b.draw = a.draw;
         b.run = self.run.clamp(0.0, 1.0);
         if let Some((n, t)) = self.emote {
