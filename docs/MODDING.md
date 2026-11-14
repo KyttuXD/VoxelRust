@@ -743,16 +743,24 @@ SETTINGS > SKIN shows a turning preview of your character.
   `tools/entity_textures.py` in the OCD style (see
   [TEXTURING.md](TEXTURING.md#creatures-and-players)); a texture pack can
   replace them.
-- **Your own skin**: a **64 x 64** picture in the usual player-skin layout
-  (the older **64 x 32** layout works too; the game mirrors the arm and leg
-  to make the left ones). Click CHOOSE A SKIN FILE... to open the file
+- **Your own skin**: a square picture in the usual player-skin layout, **64 x
+  64** or an HD one: any side that is a multiple of 64, up to **4096 x 4096**
+  (128, 192, 256, 512, 1024...; see [IMAGES.md](IMAGES.md) and
+  [PLAYING.md](PLAYING.md#skins)). The older 2:1 layout (**64 x 32**, 128 x 64...)
+  works too; the game mirrors the arm and leg to make the left ones, at the
+  picture's own scale. Click CHOOSE A SKIN FILE... to open the file
   browser (below), pick the picture, and click SELECT (or double click it).
   PNG, JPEG, GIF, BMP and TGA are read; the game saves the skin in the data
   folder as `skin.png` and selects `custom`. You can also put `skin.png`
   there yourself.
 
-If the picture is the wrong size or cannot be read, the game says so on the
-SKIN tab and keeps the current look.
+If the picture is the wrong size (not square, not a multiple of 64, over
+4096) or cannot be read, the game says so on the SKIN tab and keeps the
+current look. A skin that is W pixels wide is the 64 x 64 layout with every cell
+W / 64 pixels across, so an HD skin lines up on the same models: the player
+models declare a 64 x 64 texture and take their coordinates as fractions of
+it. A texture pack or a mod may bring HD skins too (`skin_<name>` pictures of
+any skin size).
 
 ### The file browser
 
@@ -778,8 +786,9 @@ the first file is selected, with `pickgo` as well it is chosen) in a
 scripted run.
 
 In multiplayer your skin is sent to the server and shown to the other
-players, as long as its PNG file is no larger than 24,000 bytes; a larger one
-is still used on your own screen.
+players (see [Skins in multiplayer](PLAYING.md#skins)): the game packs it into
+a small PNG first (at most 1 MiB; an HD skin that would not fit is sent at a
+smaller size), and older games and servers get a 64 x 64 version.
 
 ## A worked example
 

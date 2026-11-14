@@ -8,3 +8,5 @@ pub mod modsync;
 pub mod limits;
 pub mod modmsg;
 pub mod version;
+pub mod skinxfer;
+pub mod skinslot;

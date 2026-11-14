@@ -16,16 +16,18 @@ pub enum Class {
     Chat,
     /// Shared state (creatures, chests, mods' own messages).
     State,
-    /// A skin picture.
+    /// A skin picture, or the announcement of a big one.
     Skin,
     /// A mod's message to the same mod on other machines (`net::modmsg`).
     Mod,
+    /// One piece of a big skin (`net::skinxfer`): a skin of 1 MiB is 27 of them.
+    SkinPart,
 }
 
-const CLASSES: usize = 6;
+const CLASSES: usize = 7;
 
 /// `(tokens per second, most tokens held)` of each class, in `Class` order.
-const RATES: [(f32, f32); CLASSES] = [(100.0, 200.0), (1500.0, 6000.0), (2.0, 8.0), (300.0, 600.0), (0.5, 3.0), (crate::net::modmsg::PER_SECOND, crate::net::modmsg::PER_SECOND)];
+const RATES: [(f32, f32); CLASSES] = [(100.0, 200.0), (1500.0, 6000.0), (2.0, 8.0), (300.0, 600.0), (0.5, 3.0), (crate::net::modmsg::PER_SECOND, crate::net::modmsg::PER_SECOND), (30.0, 60.0)];
 
 /// Dropped messages in a row (less what the time since has forgiven) after
 /// which the connection is cut instead of merely ignored.
@@ -77,12 +79,12 @@ impl Throttle {
     }
 }
 
-/// Whether `png` starts like a 64 x 64 PNG (the only skin size). Checked
-/// before a skin is decoded, because a PNG header can claim a picture of
-/// 4096 x 4096 in a few bytes, and decoding that costs tens of megabytes.
+/// Whether `png` starts like a PNG of a size a skin may have: square, a
+/// multiple of 64 from 64 to 4096, not interlaced (see `content::skin_grid`).
+/// Checked before a skin is decoded, because a PNG header can claim a picture
+/// of 4096 x 4096 in a few bytes, and decoding that costs tens of megabytes.
 pub fn skin_header_ok(png: &[u8]) -> bool {
-    const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-    png.len() >= 24 && png[..8] == SIGNATURE && &png[12..16] == b"IHDR" && png[16..20] == 64u32.to_be_bytes() && png[20..24] == 64u32.to_be_bytes()
+    crate::net::skinxfer::side_of_png(png).is_some()
 }
 
 /// A time of day from the network as a number in 0..1 (anything else, such as
@@ -149,18 +151,42 @@ mod tests {
     }
 
     #[test]
-    fn skins_must_say_they_are_64_by_64() {
+    fn skins_must_say_they_are_a_size_a_skin_may_be() {
         let good = crate::png::encode(64, 64, &alloc::vec![255u8; 64 * 64 * 4]);
         assert!(skin_header_ok(&good));
-        let big = crate::png::encode(128, 128, &alloc::vec![255u8; 128 * 128 * 4]);
-        assert!(!skin_header_ok(&big));
+        for side in [128usize, 192, 512] {
+            assert!(skin_header_ok(&crate::png::encode(side, side, &alloc::vec![255u8; side * side * 4])), "{side}");
+        }
+        // Wrong shapes: not a multiple of 64, not square.
+        assert!(!skin_header_ok(&crate::png::encode(100, 100, &alloc::vec![255u8; 100 * 100 * 4])));
+        assert!(!skin_header_ok(&crate::png::encode(128, 64, &alloc::vec![255u8; 128 * 64 * 4])));
         assert!(!skin_header_ok(&good[..20]));
         assert!(!skin_header_ok(b"not a picture at all, but long enough"));
-        // A header that claims 4096 x 4096.
+        // Headers that claim too much (the checksum no longer fits either: both are refused).
         let mut bomb = good.clone();
-        bomb[16..20].copy_from_slice(&4096u32.to_be_bytes());
-        bomb[20..24].copy_from_slice(&4096u32.to_be_bytes());
+        bomb[16..20].copy_from_slice(&8192u32.to_be_bytes());
+        bomb[20..24].copy_from_slice(&8192u32.to_be_bytes());
         assert!(!skin_header_ok(&bomb));
+        let mut bomb = good.clone();
+        let crc = crate::png::crc32(&{
+            let mut b = bomb[12..29].to_vec();
+            b[4..8].copy_from_slice(&8192u32.to_be_bytes());
+            b[8..12].copy_from_slice(&8192u32.to_be_bytes());
+            b
+        });
+        bomb[16..20].copy_from_slice(&8192u32.to_be_bytes());
+        bomb[20..24].copy_from_slice(&8192u32.to_be_bytes());
+        bomb[29..33].copy_from_slice(&crc.to_be_bytes());
+        assert!(!skin_header_ok(&bomb), "a header with a right checksum but a size no skin has");
+    }
+
+    #[test]
+    fn pieces_of_a_big_skin_have_room_but_not_for_ever() {
+        let mut t = Throttle::default();
+        assert_eq!((0..200).filter(|_| t.allow(Class::SkinPart)).count(), 60);
+        assert!(t.allow(Class::Skin) && t.allow(Class::Motion));
+        t.refill(1.0);
+        assert_eq!((0..200).filter(|_| t.allow(Class::SkinPart)).count(), 30);
     }
 
     #[test]

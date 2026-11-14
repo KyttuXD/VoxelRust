@@ -936,12 +936,12 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   and MAP DATA RELAY (host:port, for old machines; see
   [EARTH.md](EARTH.md)).
 - **VOICE**: proximity voice chat on servers, see [Voice chat](#voice-chat).
-- **SKIN**: pick one of the built-in looks or choose your own 64 x 64 picture with the built-in file browser. See
-  [MODDING.md](MODDING.md#player-skins).
+- **SKIN**: pick one of the built-in looks or choose your own picture, **up to 4096 x 4096**, with the built-in file
+  browser (see [Skins](#skins) below and [MODDING.md](MODDING.md#player-skins)).
   **IMPORT FROM WEB ADDRESS...** opens a small panel: paste (Ctrl+V, Cmd+V on a Mac) a direct link to a
-  64 x 64 or 64 x 32 picture (an `http` or `https` address, such as a `.png` link or a
+  skin picture (an `http` or `https` address, such as a `.png` link or a
   `textures.minecraft.net/texture/...` link; a web page that merely shows a skin is not a picture) and press
-  DOWNLOAD. It is fetched in the background with `curl` (at most 2 MB, 20 seconds) into `tmp/skins/` in the data
+  DOWNLOAD. It is fetched in the background with `curl` (at most 1 MiB, 20 seconds; the picture may unpack to 24 MiB, up to 4096 x 4096) into `tmp/skins/` in the data
   folder, checked, and imported like a file from the browser. The panel says `DOWNLOADING...`, `IMPORTED`,
   `COULD NOT DOWNLOAD`, `NOT A SKIN PICTURE` or `TOO BIG`. The build for old Macs (`macos-legacy`) cannot open
   `https` addresses and says so. You can also drop a picture file on the window while the SKIN tab is open.
@@ -1021,6 +1021,41 @@ second on a display wider than 1440 pixels, it switches full screen to 1280
 x 800, which an old graphics card draws much faster, and says so in the chat
 area. This happens once; it does not happen with vsync on. Change it back
 under SETTINGS > VIDEO whenever you like.
+
+
+### Skins
+
+A skin is a picture of your character, laid out like the usual player skins on a 64 x 64 grid. The game takes:
+
+- **64 x 64** (and the older **64 x 32**, which it brings up to 64 x 64 by mirroring the left arm and leg);
+- **HD skins**: a square picture whose side is a multiple of 64, from 128 up to **4096 x 4096** (128, 192, 256, 512, 1024,
+  2048, 4096). A skin W pixels wide is the 64 x 64 layout with every cell W / 64 pixels across, so it lines up on the
+  same models. Slim arms are found from the picture at any size (or forced with FORCE SLIM ARMS).
+- A picture that is not square, not a multiple of 64 or over 4096 is refused with a message that says its size.
+
+Your skin is kept as `skin.png` in the data folder (an HD PNG you choose is kept as it is). On screen an HD skin is
+smoothed and mipmapped; a 64 wide skin stays pixel-sharp.
+
+**In multiplayer** the game packs the skin with its own PNG writer (palette mode for pictures of 256 colours or fewer,
+the best filter for every row, deflate with repeat finding; see [IMAGES.md](IMAGES.md)) on a worker thread, so the
+game does not stop; a typical skin shrinks to a few kilobytes or tens of them. Then:
+
+- a 64 x 64 skin goes in one message, as it always did;
+- a bigger one is announced with its size and then sent in pieces of up to 40,000 bytes. The server accepts at most
+  **1 MiB** of PNG and **4096 x 4096**, checks the picture's header before it takes the first piece, takes one skin at a
+  time per player and at most one change every **5 seconds**, and passes on only skins that decode at the size they
+  say. (A skin whose PNG would pass 1 MiB is sent at half the side, again if need be, until it fits.)
+- players with an older game (protocol 13) are sent a **64 x 64 version** the server makes by averaging down your
+  skin; new games get the HD one. If the server does not take HD skins (it does not say so), your game sends the
+  64 x 64 version.
+- other players' skins live on the graphics card only (the unpacked picture is not kept in memory). All together they
+  may use **64 MB** of texture memory: a player within **48 blocks** is shown with the full skin, up to **96 blocks**
+  at 256 x 256 and beyond that at 64 x 64. When the total would pass 64 MB, the skins of the players who were near
+  longest ago are made smaller first, and they grow again when the player comes back. The compressed pictures are kept
+  (up to 24 MB) for this.
+
+Skins over 64 x 64 are the exception to the memory rule of the game (300 MB without mods, 700 MB with): your own HD skin
+and the HD skins of other players use more, within the budget above.
 
 ## The data folder
 

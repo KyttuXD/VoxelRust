@@ -91,11 +91,12 @@ impl App {
             self.load_skin(r);
         }
         if let Some(g) = self.session.as_mut() {
+            // Our skin goes out once it is packed (a big one is packed on a worker) and the server
+            // will take one (not within five seconds of the last); until then this is asked again every frame.
             if let (Some(net), false) = (g.net.as_mut(), self.skin_sent) {
-                if self.skin_png.len() <= crate::proto::MAX_SKIN {
-                    net.send_skin(&self.skin_png, self.settings.slim_arms || self.skin_slim);
+                if !self.skin_png.is_empty() && net.send_skins(&self.skin_png, self.skin_side, &self.skin_small, self.settings.slim_arms || self.skin_slim) {
+                    self.skin_sent = true;
                 }
-                self.skin_sent = true;
             }
             if let Some(pack) = g.server_pack.take() {
                 // Play with the server's blocks and items, not our own.
@@ -114,24 +115,40 @@ impl App {
                     g.say("USING THE SERVER'S CONTENT");
                 }
             }
+            // Other players' skins: how far each is, so that near ones are sharp and far ones small
+            // (see client/skins/budget.rs), and what arrived.
+            let me = g.player.pos;
+            let dists: BTreeMap<u16, f32> = g
+                .net
+                .as_ref()
+                .map(|n| {
+                    n.players
+                        .iter()
+                        .map(|(id, p)| {
+                            let (dx, dy, dz) = (p.pos[0] - me[0], p.pos[1] - me[1], p.pos[2] - me[2]);
+                            (*id, crate::math::sqrtf((dx * dx + dy * dy + dz * dz) as f32))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             for (id, png, slim) in g.skin_events.drain(..) {
-                // (A server could name a skin for every player number there is: a
-                // graphics card texture for each is not kept past a few hundred.)
-                if self.remote_skins.len() >= 256 && !self.remote_skins.contains_key(&id) {
-                    continue;
-                }
+                // (A server could name a skin for every player number there is: the hub keeps a few hundred.)
                 self.remote_slim.insert(id, slim);
-                if let Some(img) = crate::png::decode(&png).filter(|i| i.w == 64 && i.h == 64) {
-                    // A player's new skin goes over their old picture on the card.
-                    match self.remote_skins.get(&id) {
-                        Some(&tex) => r.update_texture(tex, 64, 64, &img.rgba),
-                        None => {
-                            let tex = r.add_texture(64, 64, &img.rgba);
-                            self.remote_skins.insert(id, tex);
-                        }
-                    }
-                }
+                self.skins.on_skin(id, png);
             }
+            self.skins.plan(real_dt, &dists, r, &mut self.remote_skins);
+        }
+        self.skins.pump(r, &mut self.remote_skins);
+        if let Some(own) = self.skins.take_own() {
+            self.skin_png = own.hd;
+            self.skin_side = own.side;
+            self.skin_small = own.small;
+            self.skin_sent = false;
+        }
+        if self.session.is_none() && !self.remote_skins.is_empty() {
+            // The game was left: the other players' skins go back to the card.
+            self.skins.forget_all(r, &mut self.remote_skins);
+            self.remote_slim.clear();
         }
         self.audio.tick(real_dt);
         self.update_voice(real_dt);

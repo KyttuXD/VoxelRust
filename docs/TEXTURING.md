@@ -673,7 +673,7 @@ The pack has no mob pictures, so these rules come from its entity boxes
 - **Undead and monsters** use the same rules with desaturated main colours, a
   `dark` colour for the cavities, bones `#e8deb8`, and eyes in a bright colour
   for contrast.
-- A **player skin** is the exception: 64 x 64, the usual layout, painted by the
+- A **player skin** is the exception: 64 x 64 (or HD, a multiple of 64 up to 4096), the usual layout, painted by the
   same script (see [Player skins](#player-skins)).
 
 ## HD textures

@@ -24,6 +24,8 @@ pub mod armor;
 mod fx;
 // The HD atlas on the card (content/hd).
 mod hd;
+// Textures of skins: sharp when 64 wide, smooth and mipmapped when HD.
+mod skin_tex;
 
 #[repr(C)]
 #[derive(Clone, Copy)]

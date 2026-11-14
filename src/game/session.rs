@@ -1796,8 +1796,9 @@ impl Session {
                 // (Remote players keep their emote on their own record in `net.players`.)
                 crate::netplay::Event::Emote(..) => {}
                 crate::netplay::Event::Skin(id, png, slim) => {
-                    // (Skins pile up only if the screen is not drawing: keep the newest.)
-                    if self.skin_events.len() >= 64 {
+                    // (Skins pile up only if the screen is not drawing: keep the newest, at most
+                    // 64 and 8 MiB of pictures.)
+                    while !self.skin_events.is_empty() && (self.skin_events.len() >= 64 || self.skin_events.iter().map(|e| e.1.len()).sum::<usize>() + png.len() > (8 << 20)) {
                         self.skin_events.remove(0);
                     }
                     self.skin_events.push((id, png, slim));

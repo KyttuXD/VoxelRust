@@ -218,22 +218,35 @@ fn creative_hand(hand: Option<Stack>, pick: Option<Stack>, over_list: bool, clic
 const SKIN_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "tga"];
 
 /// Read the picture at `path` and keep it as the custom skin (`skin.png` in
-/// the data folder). The error is a message for the player.
+/// the data folder). The error is a message for the player. A PNG that is
+/// already a square skin is kept as it is (nothing is packed again here: a big
+/// one would take seconds); any other picture is written as a PNG.
 fn import_skin(base: &str, path: &str) -> Result<(), String> {
     let bytes = sys::read_file_limit(path, crate::image::MAX_BYTES).ok_or_else(|| String::from("COULD NOT READ THAT FILE (OR IT IS TOO BIG)"))?;
-    let img = crate::image::decode(&bytes).ok_or_else(|| String::from("THAT IS NOT A PICTURE THE GAME CAN READ"))?;
-    let px = crate::client::skinfile::from_image(&img)?;
-    if sys::write_file(&alloc::format!("{}skin.png", base), &crate::png::encode(64, 64, &px)) {
+    let img = crate::image::decode(&bytes).ok_or_else(|| String::from("THAT IS NOT A PICTURE THE GAME CAN READ (UP TO 4096 X 4096)"))?;
+    let keep_as_is = bytes.starts_with(&[0x89, b'P', b'N', b'G']) && img.w == img.h && crate::skin_grid::valid_size(img.w, img.h);
+    let file = if keep_as_is {
+        bytes
+    } else {
+        let px = crate::client::skinfile::from_image(&img)?;
+        crate::png::encode(img.w, img.w, &px)
+    };
+    if sys::write_file(&alloc::format!("{}skin.png", base), &file) {
         Ok(())
     } else {
         Err(String::from("COULD NOT SAVE THE SKIN IN THE DATA FOLDER"))
     }
 }
 
-fn skin_pixels(base: &str, name: &str, player: &str) -> Option<Vec<u8>> {
+/// The skin to wear as (side, pixels): `skin.png` of the data folder for the
+/// custom one (any size a skin may be, see `skin_grid`), else a built-in one,
+/// or one a pack or mod brings.
+fn skin_pixels(base: &str, name: &str, player: &str) -> Option<(usize, Vec<u8>)> {
     if name == "custom" {
-        let img = crate::png::decode(&sys::read_file(&alloc::format!("{}skin.png", base))?)?;
-        return if img.w == 64 && img.h == 64 { Some(img.rgba) } else { None };
+        let img = crate::png::decode(&sys::read_file_limit(&alloc::format!("{}skin.png", base), crate::image::MAX_BYTES)?)?;
+        // (A file put there by hand in the old 64 x 32 layout is brought up to a square.)
+        let px = crate::client::skinfile::from_image(&img).ok()?;
+        return Some((img.w, px));
     }
     // `default` is one of the built-in skins, picked by the player's name; the others are chosen by name.
     // A built-in skin, or any skin a pack or mod brings a picture for (`skin_<name>`).
@@ -241,9 +254,10 @@ fn skin_pixels(base: &str, name: &str, player: &str) -> Option<Vec<u8>> {
     let named = if name != "default" { crate::pack_entities::skin_image(name) } else { None };
     let known = named.is_some() || crate::settings::SKINS.iter().any(|s| *s == name);
     if let (true, Some(img)) = (known, named) {
-        return Some(img.rgba);
+        return Some((img.w, img.rgba));
     }
-    Some(crate::pack_entities::skin_image(crate::pack_entities::default_skin_for(player))?.rgba)
+    let img = crate::pack_entities::skin_image(crate::pack_entities::default_skin_for(player))?;
+    Some((img.w, img.rgba))
 }
 
 /// Everything except the renderer and the frame's input, which are passed
@@ -329,6 +343,13 @@ struct App {
     /// Which other players have slim arms.
     remote_slim: BTreeMap<u16, bool>,
     skin_png: Vec<u8>,
+    /// The 64 x 64 PNG of the own skin and the side of `skin_png` (packed off the main thread, see `client/skins`).
+    skin_small: Vec<u8>,
+    skin_side: usize,
+    /// The side the own skin texture has on the card.
+    skin_tex_side: usize,
+    /// Other players' skins on the card, within a budget, and the packing of the own one.
+    skins: crate::client::skins::SkinHub,
     /// The skin picture is for slim arms (found from the picture, see `skinfile::is_slim`).
     skin_slim: bool,
     /// For pictures (`--show eat:F`): hold the hand at this point of eating.
@@ -1209,6 +1230,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         remote_skins: BTreeMap::new(),
         remote_slim: BTreeMap::new(),
         skin_png: Vec::new(),
+        skin_small: Vec::new(),
+        skin_side: 64,
+        skin_tex_side: 64,
+        skins: Default::default(),
         skin_slim: false,
         skin_sent: false,
         pack_paths,
