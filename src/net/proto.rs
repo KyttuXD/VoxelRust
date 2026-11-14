@@ -9,8 +9,11 @@ use alloc::vec::Vec;
 
 /// The protocol version: both sides must speak the same one (the build name
 /// and the release number do not matter for compatibility, see
-/// `net::version`). Version 12 added [`Msg::Info`].
-pub const VERSION: u16 = 12;
+/// `net::version`). Version 12 added [`Msg::Info`]. Version 13 gave the
+/// creature snapshot a size, bone overrides and a state text per creature
+/// (`game/creature_wire.rs`) and added the mods' message channel
+/// ([`channel::MODMSG`], `net/modmsg.rs`).
+pub const VERSION: u16 = 13;
 
 /// What a player may do on a server (the flags of [`Msg::Perms`]).
 pub const PERM_BUILD: u8 = 1;
@@ -46,6 +49,11 @@ pub mod channel {
     /// Messages of mods' scripts to the same mod's scripts elsewhere
     /// (`net_send` and `on_net`, see script/ext/net.rs); the key is `mod\x1fkey`.
     pub const SCRIPT: u8 = 4;
+    /// Messages of mods to the same mod on other machines (`send_message` and
+    /// `on_message`, see net/modmsg.rs): the key is `mod\x1fchannel`, the data
+    /// the receiver's number (two bytes, 0xFFFF for everyone) and the text.
+    /// Checked by the server; never kept.
+    pub const MODMSG: u8 = 5;
     /// From here up: the mods' own code, one channel each (see
     /// `Session::send_ext`).
     pub const NATIVE: u8 = 32;
@@ -588,6 +596,11 @@ mod tests {
             Msg::State { id: 4, channel: 3, keep: true, key: String::from("1 2 3"), data: b"chest".to_vec() },
             // The script channel's key has a separator in it, which must get through.
             Msg::State { id: 4, channel: channel::SCRIPT, keep: false, key: String::from("mymod\u{1f}score"), data: b"7".to_vec() },
+            // A mod's message: a receiver number in front of the text.
+            Msg::State { id: 4, channel: channel::MODMSG, keep: false, key: String::from("storm\u{1f}phase"), data: crate::modmsg::pack(0xFFFF, "rage 2").unwrap() },
+            Msg::State { id: 4, channel: channel::MODMSG, keep: false, key: String::from("storm\u{1f}phase"), data: crate::modmsg::pack(3, "").unwrap() },
+            // The creature snapshot with a size, bones and a state after the ten fields.
+            Msg::State { id: 1, channel: channel::MOBS, keep: false, key: String::new(), data: b"7 boomer 0 1.00 64.00 2.00 0.50 0 900 0|S12.00,40.00|M5000|O150,-30|B2:100,0,0,0,50,0,150;5:0,0,-300,0,0,0,100|Trage%7C2\n".to_vec() },
             Msg::Info { build: String::from("linux-server-x86_64"), release: 321, commit: String::from("5d7c83d") },
             Msg::Welcome { id: 3, seed: 42, time: 0.25, kind: String::from("somewhere 46.8 -121.7 30 75") },
             Msg::Refuse { reason: String::from("server full") },

@@ -10,6 +10,7 @@ pub mod font;
 pub mod icon;
 pub mod bbmodel;
 pub mod model;
+pub mod bone_pose;
 pub mod pack_entities;
 pub mod emotes;
 pub mod shader_defs;

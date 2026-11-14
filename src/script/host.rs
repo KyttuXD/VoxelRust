@@ -354,7 +354,13 @@ impl Host for SessionHost<'_> {
         if self.g.mobs.list.len() >= crate::entity::SCRIPT_CAP {
             return false;
         }
-        self.g.mobs.spawn(kind, [x, y.clamp(1.0, crate::chunk::CH as f64 + 20.0), z]);
+        let at = [x, y.clamp(1.0, crate::chunk::CH as f64 + 20.0), z];
+        let d = &crate::block::reg().entities[kind];
+        // A giant that does not fit there does not appear.
+        if !crate::entity::Mobs::room_for(&self.g.world, at, d.width as f64, d.height as f64) {
+            return false;
+        }
+        self.g.mobs.spawn(kind, at);
         true
     }
 

@@ -11,6 +11,8 @@ pub const HALF_WIDTH: f64 = 0.3;
 pub const HEIGHT: f64 = 1.8;
 pub const EYE: f64 = 1.62;
 const STEP_UP: f64 = 0.6;
+/// A body whose box holds more cells than this tests only the slab it moves through.
+const BIG_BOX: f64 = 1200.0;
 const EPS: f64 = 1e-4;
 // Close to Minecraft's numbers, in blocks and seconds: walking 4.317, sprinting
 // 5.612, a jump about 1.25 blocks high in 0.56 s, gravity 32, falling at most 78.
@@ -58,6 +60,9 @@ pub struct Player {
     /// Set while holding on to something climbable: the vertical speed
     /// (no gravity, no jumping). The session sets it each frame.
     pub climb: Option<f32>,
+    /// The tallest ledge it steps onto without jumping (0.6; more for the
+    /// big creatures of `creature_size`).
+    pub step_up: f64,
 }
 
 impl Player {
@@ -83,7 +88,23 @@ impl Player {
             lift: 0.0,
             crouch: 0.0,
             climb: None,
+            step_up: STEP_UP,
         }
+    }
+
+    /// A creature's body: as [`Player::with_size`], and one past the old size
+    /// limits steps up in proportion to its width.
+    pub fn with_creature_size(pos: [f64; 3], width: f64, height: f64) -> Player {
+        let mut p = Player::with_size(pos, width, height);
+        p.resize(width, height);
+        p
+    }
+
+    /// Change the box (a script resized the creature). Where it stands stays.
+    pub fn resize(&mut self, width: f64, height: f64) {
+        self.half_width = width * 0.5;
+        self.height = height;
+        self.step_up = if crate::creature_size::is_big(width as f32, height as f32) { crate::creature_size::step_up(width).max(STEP_UP) } else { STEP_UP };
     }
 
     pub fn eye(&self) -> [f64; 3] {
@@ -232,8 +253,8 @@ impl Player {
                 let mut stepped = false;
                 if grounded && !self.flying {
                     self.pos = before;
-                    if !self.slide(1, STEP_UP, get) && !self.slide(a, d, get) {
-                        self.slide(1, -STEP_UP - 0.01, get);
+                    if !self.slide(1, self.step_up, get) && !self.slide(a, d, get) {
+                        self.slide(1, -self.step_up - 0.01, get);
                         stepped = self.pos[1] > before[1] + 0.01;
                         if stepped {
                             self.on_ground = true;
@@ -254,8 +275,20 @@ impl Player {
         if d == 0.0 {
             return false;
         }
+        let old = self.pos;
         self.pos[a] += d;
-        let (mn, mx) = self.bounds(self.pos);
+        let (mut mn, mut mx) = self.bounds(self.pos);
+        // A huge body (a giant creature) tests only the slab it just moved
+        // through, not its whole box: the box may hold tens of thousands of
+        // cells. (Ordinary bodies test the whole box, as they always did.)
+        if self.half_width * self.half_width * 4.0 * self.height > BIG_BOX {
+            let (omn, omx) = self.bounds(old);
+            if d > 0.0 {
+                mn[a] = mn[a].max(omx[a]);
+            } else {
+                mx[a] = mx[a].min(omn[a]);
+            }
+        }
         match touching(get, mn, mx, a) {
             None => false,
             Some((lowest, highest)) => {
@@ -348,6 +381,38 @@ mod tests {
         for _ in 0..n {
             p.update(1.0 / 60.0, &inp, get);
         }
+    }
+
+    #[test]
+    fn a_giant_lands_and_steps_up_a_ledge_its_width_allows_but_a_small_body_does_not() {
+        // A floor at y 10 and, from z = -3 on, a ledge three blocks higher.
+        let get = |_x: i32, y: i32, z: i32| -> Block {
+            let top = if z <= -3 { 13 } else { 10 };
+            if y < top {
+                reg().wk.stone
+            } else {
+                0
+            }
+        };
+        let forward = Input { forward: 1.0, ..Default::default() };
+        let mut giant = Player::with_creature_size([0.5, 12.0, 20.5], 16.0, 40.0);
+        assert_eq!(giant.step_up, 4.0);
+        run(&mut giant, Input::default(), 2.0, &get);
+        assert!(giant.on_ground && (giant.pos[1] - 10.0).abs() < 1e-2, "y = {}", giant.pos[1]);
+        run(&mut giant, forward, 6.0, &get);
+        assert!((giant.pos[1] - 13.0).abs() < 0.05, "it climbed to y = {}", giant.pos[1]);
+        assert!(giant.pos[2] < 0.0);
+        // The same ledge stops an ordinary body (which keeps the old 0.6).
+        let mut small = Player::with_creature_size([0.5, 12.0, 20.5], 0.6, 1.8);
+        assert_eq!(small.step_up, 0.6);
+        run(&mut small, Input::default(), 2.0, &get);
+        run(&mut small, forward, 6.0, &get);
+        assert!((small.pos[1] - 10.0).abs() < 0.05 && small.pos[2] > -2.9, "{:?}", small.pos);
+        // Resizing changes how high it steps.
+        small.resize(20.0, 50.0);
+        assert_eq!(small.step_up, 5.0);
+        small.resize(1.0, 2.0);
+        assert_eq!(small.step_up, 0.6);
     }
 
     #[test]

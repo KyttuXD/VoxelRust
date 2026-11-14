@@ -51,7 +51,7 @@ How a ported mod differs from its compiled code:
   (`v<id>`, `p<id>`, `sd<id>`); vehicles are named by a stable number instead of a list position.
   Worlds saved by the compiled code (`<world>.vehicles.txt`) are read once by `world_file_read` and
   taken over. The shared-game messages are the same ideas (the host's game sends the whole list, the
-  others ask) over `net_send` and `on_net`; the vehicle's own model is drawn only in third person.
+  others ask) over `net_send` and `on_net` (a new mod would use `send_message` and `on_message`, which name the sender and are rationed by the server); the vehicle's own model is drawn only in third person.
 - **manfromthefog**: the same timer, stages, jumpscare and darkness. Random numbers come from the
   engine's `rand` instead of a fixed-seed hash (so a world does not repeat the same night). The
   timers are kept in the mod's saved state; the compiled code's `<world>.manfromthefog.txt` is read
@@ -80,13 +80,15 @@ has for it (the host calls marked *new* were added in this round for them and fo
 | orespawn: Kraken from a slain Sea Squid, the Kraken carrying the player off, summons | `on_entity_death`, `spawn_mob` (new), `hold_player` and `place_player` (new) |
 | orespawn: tree seeds, `/dungeon` | `on_item_use` with `aim()`, `on_command`, `set_block` |
 | orespawn: bespoke targeting and pets | **missing**: no way to give a creature a goal or a target (only to move it by hand each frame) |
-| witherstorm: the storm's body with one proxy creature to hit | `spawn_mob`, `mob_set_size`, `mob_set_pos`, `mob_hurt`, `mob_in_view`, `on_entity_hit` (new) |
+| witherstorm: the storm's body with one proxy creature to hit | `spawn_mob`, `set_creature_size` (up to 32 x 64 blocks, drawn and colliding at that size; `mob_set_size` only changes the box), `set_creature_health` (up to 1,000,000), `mob_set_pos`, `mob_hurt`, `mob_in_view`, `on_entity_hit` (new) |
+| orespawn, witherstorm: giants (a creature taller than 6 or wider than 3 blocks, more than 1000 health) in a shared game | `height` up to 64, `width` up to 32 and `health` up to 1,000,000 in the data; `set_creature_size`, `set_creature_health`; the host's snapshot carries size, health limit, tilt, bones and state to the other players (**closed**) |
 | witherstorm: flight and aiming, tractor beams, skulls, bite, wither sickness | maths in the script; `shoot`, `push_player`, `hurt`, `effect`, `clear_effect` (new) |
 | witherstorm: eating terrain in clusters, queued explosions | `scan_blocks` (40 000 cells a call, 2 000 results), `set_block`, `explode` |
 | witherstorm: tainting blocks and creatures | `scan_blocks`, `set_block`, `mobs_near`, `mob_remove`, `spawn_mob`; the creature's look variant is not reachable |
 | witherstorm: the Formidibomb, Super TNT, blade, Eye, Phasometer, amulet, cure | `on_item_use`, `aim()`, `explode`, `hud_frac_rect` and `hud_frac_text`, `clear_effect`; lit TNT with a fuse is **missing** |
 | witherstorm: the summoning ritual, the Super Beacon, `/witherstorm` | `on_block_place`, `scan_blocks`, `on_command` |
-| witherstorm: drawing the storm in pieces, heads, tentacles | `draw_model_posed` (new): one pose for a whole model; separate animation of parts is **missing** |
+| witherstorm: drawing the storm in pieces, heads, tentacles | `draw_model_posed` (new): one pose for a whole model; the parts of a creature's own model are moved apart with `set_bone` (rotation, offset and scale of a named bone, children follow; `model_bones` lists the names) and `set_creature_orientation` (pitch and roll of the whole model) (**closed**; a model drawn by `draw_model` still has only one pose) |
+| orespawn, witherstorm: effects of host-only logic seen by the other players (a boss's phase, a blast, a state) | `set_creature_state` / `creature_state` (64 bytes on a creature, sent with the snapshot), `send_message` / `send_message_to` and `on_message(channel, from, text)` (512 bytes, 8 a second, checked by the server) (**closed**) |
 | witherstorm: beams (`draw_quads`) | **missing** |
 | witherstorm: sparks, sky, shake, sounds | `draw_speck`, `force_sky` (rain only, not tint), `shake`, `play_sound` (not placed in space) |
 | witherstorm: saved state (`witherstorm.txt`) | `state_*` (512 keys of 4 096 bytes); a storm's whole record fits |
@@ -118,7 +120,7 @@ Missing host calls, in the order they would unblock the most:
    pets and the bosses' phases.
 3. **Drawing quads and beams** (`draw_beam(from, to, width, colour)`): witherstorm's tractor beams.
 4. **Lit TNT** (`prime_tnt(x, y, z, fuse)`): the Formidibomb and Super TNT (`explode` gives the blast but
-   not the burning fuse), and **parts of a model animated apart** (a pose for each named part).
+   not the burning fuse). (Parts of a model animated apart are done: `set_bone`.)
 5. **Bigger or streamed world scans** and a **sky tint**: the storm eating a whole hillside, and its dark sky.
 6. **A positioned sound** (`play_sound_at(id, x, y, z)`).
 

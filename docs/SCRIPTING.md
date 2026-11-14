@@ -224,6 +224,7 @@ not call scripts again.
 | `fn on_interact(reach: f64) -> bool` | the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is; `input()` says which buttons are down) | `true` if the click was used up |
 | `fn on_condition(name: String, args: String) -> bool` | an `/if` condition the game does not know | `true` or `false` if it is yours; return nothing if it is not |
 | `fn on_net(key: String, text: String)` | another player's copy of this mod sent a message with `net_send` | |
+| `fn on_message(channel: String, from: String, text: String)` | another player's copy of this mod sent a message with `send_message` or `send_message_to` (`from` is their player name; see "Other players") | |
 | `fn on_register()` | once, when the script file is read (before any world): the place to declare key bindings and switches | |
 | `fn on_key_down(id: String)` | a key binding this mod declared was pressed (while playing, not in a menu or a text box) | |
 | `fn on_key_up(id: String)` | that key was let go | |
@@ -328,14 +329,63 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 | Function | What it does |
 | --- | --- |
 | `mobs_near(x: f64, y: f64, z: f64, radius: f64, kind: &str) -> Vec<(i64, f64, f64, f64)>` | the living creatures of one kind (empty: any) within a radius, nearest first, as (id, x, y, z); at most 64 |
-| `spawn_mob(kind: &str, x: f64, y: f64, z: f64) -> i64` | make a creature appear and give its id, or -1 (no such kind, not allowed here, or the world is full of creatures: 300 at most) |
+| `spawn_mob(kind: &str, x: f64, y: f64, z: f64) -> i64` | make a creature appear and give its id, or -1 (no such kind, not allowed here, no room for a giant of that kind there, or the world is full of creatures: 300 at most) |
 | `mob_info(id: i64) -> (String, i64, f64, f64, f64)` | (kind, health, x, y, z) of a creature; the kind is empty if it is gone or dying |
 | `mob_set_pos(id: i64, x: f64, y: f64, z: f64)` | put a creature somewhere and stop it |
 | `mob_set_yaw(id: i64, yaw: f64)` | turn a creature (yaw 0 faces -z; its forward is (-sin yaw, -cos yaw)) |
-| `mob_set_size(id: i64, width: f64, height: f64)` | change the box a creature collides with (0.1 to 8 blocks); what it is drawn as does not change |
+| `mob_set_size(id: i64, width: f64, height: f64)` | change the box a creature collides with (0.1 to 8 blocks); what it is drawn as does not change (`set_creature_size` changes both, and goes further, see "Giants, model control and state") |
 | `mob_remove(id: i64)` | make a creature vanish at once: nothing drops, no `on_entity_death` |
 | `mob_hurt(id: i64, n: i64)` | hurt a creature as the player's blow would (drops and `on_entity_death` follow if it dies) |
 | `mob_in_view(max: f64) -> i64` | the id of the first creature on the player's look ray within `max` blocks (at most 100) with no block in the way, or -1 |
+
+### Giants, model control and state
+
+A creature may be far bigger than the data files allow for a kind (`height` up
+to 64 and `width` up to 32 blocks, `health` up to 1,000,000 there too), and a
+script may reshape a living one. The rules for the limits are the same for the
+data files, these calls and native mods (`g.mobs.set_size(id, w, h)`,
+`set_health`, `set_bone`, `clear_bones`, `set_orientation`, `set_state` on
+`Mobs`, see [MODDING.md](MODDING.md#giant-creatures-and-model-control)); a
+creature past the old limits (6 tall, 3 wide) is called a giant below.
+
+| Function | What it does |
+| --- | --- |
+| `set_creature_size(id: i64, width: f64, height: f64) -> bool` | give a creature its own size in blocks (width 0.1 to 32, height 0.1 to 64): it collides and is drawn at it. A giant steps up a quarter of its width (6 blocks at the most), walks straight at its goal instead of searching a path, reaches an enemy with its whole body, stays alive and drawn from further off the bigger it is, and only appears where its body fits. False if there is no such creature, or in a shared game when this player does not run the creatures |
+| `set_creature_health(id: i64, hp: i64, max_hp: i64) -> bool` | set a creature's health and its limit: the limit is kept to 1 to 1,000,000, the health to 0 (it dies) up to the limit. Healing effects stop at the limit. Same refusals as `set_creature_size` |
+| `set_bone(id: i64, bone: &str, rx: f64, ry: f64, rz: f64, ox: f64, oy: f64, oz: f64, scale: f64) -> bool` | on top of the creature's animation, turn the model's bone called `bone` (any case; see `model_bones`) by `rx`, `ry`, `rz` degrees about its pivot (added to what the animation does with it), move it by `ox`, `oy`, `oz` model units and scale it (0.01 to 100; 1 is as it is). The bone's children follow it. Call it every frame to move a bone; the override stays until changed or cleared. False (and nothing happens) for an unknown bone name (the game logs it once), no such creature, a creature that already overrides 64 other bones, 256 creatures that already have overrides, or more than 4096 `set_bone` calls in a frame |
+| `clear_bones(id: i64) -> bool` | take all of a creature's bone overrides away |
+| `set_creature_orientation(id: i64, pitch: f64, roll: f64) -> bool` | tilt the whole model about its centre, in degrees: a positive pitch lifts the nose, a positive roll leans the top toward the creature's left (the angles are kept to -3000 to 3000; `0, 0` puts it upright). Only how it is drawn changes (not its box) |
+| `model_bones(model_id: &str) -> Vec<String>` | the bone names of a model, in the model file's order and as written there (a model id, or a creature kind to ask for its model); empty if there is no such model |
+| `set_creature_state(id: i64, text: &str) -> bool` | keep a short text on a creature (64 bytes at most; control characters are dropped): the mod's own record of what it is doing. Same refusals as `set_creature_size` |
+| `creature_state(id: i64) -> String` | what `set_creature_state` left on a creature (empty if none, or no such creature) |
+
+Numbers that are not finite are an error (they switch the script off, like any
+bad argument); numbers that are too big or small are kept to the limits above.
+Bone names that the model does not have are no error, because mods are written
+against models that change.
+
+In a shared game the player who runs the creatures sends each creature's
+size, health limit, tilt, bone overrides and state to the others with the
+creatures themselves (only when they change, and in full about once a second
+for those who join later), so a giant is seen at its size and a mod's state is
+readable on every machine with `creature_state`. Bone overrides and tilt that
+a player sets for themselves are only seen on their own screen, until the host
+sends overrides for that creature; set them again from `on_update` (or from
+`on_message`, below) if they must last.
+
+```rust
+// A boss that rears up as its health falls, on every player's screen.
+fn on_update(dt: f32) {
+    for (id, x, y, z) in mobs_near(0.0, 70.0, 0.0, 200.0, "titan") {
+        let (kind, hp, px, py, pz) = mob_info(id);
+        if hp * 2 < 50000 {
+            set_creature_orientation(id, 25.0, 0.0);
+            set_bone(id, "head", 0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 1.3);
+            set_creature_state(id, "enraged");
+        }
+    }
+}
+```
 
 ### The player, input and the camera
 
@@ -425,6 +475,37 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 | Function | What it does |
 | --- | --- |
 | `net_send(key: &str, text: &str) -> bool` | send a message to this mod's scripts on the other players' games (`on_net`); false when the game is not shared or the key is over 64 bytes (the mod's name and the key together) or the text over 8000 |
+
+Messages with a channel and a player to answer (all the pieces are checked by
+the server, so a modified game cannot flood or confuse the others):
+
+| Function | What it does |
+| --- | --- |
+| `send_message(channel: &str, text: &str) -> bool` | send a message to this mod's scripts (and native code) on every other player's game; they hear it as `on_message(channel, from, text)`. `channel` is a name of your choosing (printable ASCII; with the mod's name at most 64 bytes together), the text at most 512 bytes without control characters (a newline and a tab are fine). Each player may send 8 a second; the server drops what is over. False when the game is not shared, the channel or text is not fit, or this player is over the rate. The sender does not hear its own message |
+| `send_message_to(player: &str, channel: &str, text: &str) -> bool` | the same, only to the player with that name (any case); false if no such player is in the game |
+
+`fn on_message(channel: String, from: String, text: String)` is called on the
+receiving machine, once for each message, with the sender's player name. It
+is how a mod whose logic runs only on the host (the player who runs the
+creatures) shows its effects on the clients: the host calls
+`send_message("boom", "10 70 3")`, each client answers in `on_message` with its
+own sounds, flashes and `set_bone` calls. A client may send too (to the host
+or to everyone); trust nothing in `text` more than you would trust a chat line.
+
+```rust
+fn on_entity_death(kind: String, x: f64, y: f64, z: f64) {
+    // The game that runs the creatures sees the death; everyone else is told.
+    if kind == "titan" {
+        send_message("titan_died", &format!("{:.0} {:.0} {:.0}", x, y, z));
+    }
+}
+
+fn on_message(channel: String, from: String, text: String) {
+    if channel == "titan_died" {
+        say(&format!("{} saw the titan fall at {}", from, text));
+    }
+}
+```
 
 ### Shots, sky, pushes
 

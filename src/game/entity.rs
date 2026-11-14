@@ -60,6 +60,9 @@ pub struct Mob {
     last_pos: [f64; 3],
     /// Stable number, used by multiplayer.
     pub id: u32,
+    /// What a script added: its own size, health limit, bone overrides, tilt
+    /// and state text (see `creature_extra`). `None` for almost every creature.
+    pub extra: Option<alloc::boxed::Box<crate::creature_extra::Extra>>,
 }
 
 /// How tough one animal is: its kind's health, give or take a quarter.
@@ -75,7 +78,12 @@ impl Mob {
             Some(v) => (v.model, v.tint, v.size),
             None => (d.model, d.tint, 1.0),
         };
-        (model, tint, d.height * size * self.growth() * self.swell())
+        // A script may have set its own size.
+        let height = match self.extra.as_ref().and_then(|e| e.size) {
+            Some((_, h)) => h,
+            None => d.height * size,
+        };
+        (model, tint, height * self.growth() * self.swell())
     }
 
     /// How much bigger a lit fuse has made it (1 = not at all).
@@ -165,6 +173,10 @@ pub struct Mobs {
     pub born: Vec<(u32, usize, [f64; 3])>,
     /// Creatures that died the same way (health ran out).
     pub died: Vec<(u32, usize, [f64; 3])>,
+    /// The bone names of models, for `Mobs::set_bone` (see `creature_api`).
+    pub bone_names: crate::creature_extra::BoneNames,
+    /// Snapshots sent so far (a full set of extras goes out every few).
+    pub snap_tick: u32,
     spawn_timer: f32,
     rng: u32,
     next_id: u32,
@@ -192,12 +204,15 @@ fn crop_start(b: Block) -> Block {
     start
 }
 
+/// Past this many bytes of snapshot, creatures' extras are left out (`|=`).
+const SNAPSHOT_BUDGET: usize = 40_000;
+
 /// The smallest size, in blocks, of what a swing or a shot can hit.
 const MIN_TARGET: f64 = 0.6;
 
 impl Mobs {
     pub fn new(seed: u32) -> Mobs {
-        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, last_biter: None, born: Vec::new(), died: Vec::new(), spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
+        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, last_biter: None, born: Vec::new(), died: Vec::new(), bone_names: Default::default(), snap_tick: 0, spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
     }
 
     fn rand(&mut self) -> u32 {
@@ -227,7 +242,7 @@ impl Mobs {
             None => crate::entity_variant::any(&d.x.variants, roll),
         };
         let size = (variant as usize).checked_sub(1).and_then(|i| d.x.variants.get(i)).map_or(1.0, |v| v.size);
-        let mut body = Player::with_size(pos, (d.width * size) as f64, (d.height * size) as f64);
+        let mut body = Player::with_creature_size(pos, (d.width * size) as f64, (d.height * size) as f64);
         body.speed_scale = d.speed / 4.4;
         body.yaw = (self.rand() % 628) as f32 / 100.0 - 3.14;
         let id = self.next_id;
@@ -267,6 +282,7 @@ impl Mobs {
             stuck: 0.0,
             last_pos: pos,
             id,
+            extra: None,
         });
         self.list.len() - 1
     }
@@ -281,7 +297,7 @@ impl Mobs {
         m.young = seconds;
         m.health = (d.health / 2).max(1);
         let yaw = m.body.yaw;
-        m.body = Player::with_size(pos, (d.width * scale) as f64, (d.height * scale) as f64);
+        m.body = Player::with_creature_size(pos, (d.width * scale) as f64, (d.height * scale) as f64);
         m.body.yaw = yaw;
         m.body.speed_scale = d.speed / 4.4;
         Some(i)
@@ -357,6 +373,10 @@ impl Mobs {
             if roll < d.weight {
                 let lift = if d.behavior == Behavior::Fly { 2.0 } else { 0.01 };
                 let at = [x as f64 + 0.5, y as f64 + lift, z as f64 + 0.5];
+                // A giant needs room for its whole body.
+                if !Mobs::room_for(world, at, d.width as f64, d.height as f64) {
+                    return;
+                }
                 self.spawn_in(i, at, Some(&biome));
                 // Herds come in twos and threes, sometimes with young.
                 if d.x.traits & traits::HERD != 0 {
@@ -544,6 +564,9 @@ impl Mobs {
             let t = d.x.traits;
             let (dx, dy, dz) = ((target[0] - m.body.pos[0]) as f32, (target[1] - m.body.pos[1]) as f32, (target[2] - m.body.pos[2]) as f32);
             let dist = sqrtf(dx * dx + dz * dz);
+            // A body past the old size limits: found by walking straight, reaching with its whole body.
+            let big = crate::creature_size::is_big(m.body.half_width as f32 * 2.0, m.body.height as f32);
+            let pad = if big { m.body.half_width as f32 } else { 0.0 };
             // Gone: dead, far away, fallen out of the world, or a night
             // creature caught by the morning out of the player's sight.
             let burned = d.night && day && !d.x.cave && (dist > 20.0 || roll % 600 == 0);
@@ -554,7 +577,7 @@ impl Mobs {
                     m.body.vel = [0.0; 3];
                     m.path.clear();
                 }
-            } else if m.health <= 0 || dist > 96.0 || m.body.pos[1] < -8.0 || burned || (d.behavior == Behavior::Hostile && !hostile_ok) {
+            } else if m.health <= 0 || dist > 96.0 + crate::creature_size::keep_extra(m.body.half_width as f32 * 2.0, m.body.height as f32) || m.body.pos[1] < -8.0 || burned || (d.behavior == Behavior::Hostile && !hostile_ok) {
                 if m.health <= 0 && self.died.len() < 64 {
                     self.died.push((m.id, m.kind, m.body.pos));
                 }
@@ -572,7 +595,7 @@ impl Mobs {
                     m.health += delta;
                     m.hurt = 0.35;
                 } else if delta > 0 {
-                    m.health = (m.health + delta).min(d.health.max(m.health));
+                    m.health = (m.health + delta).min(m.max_health().max(m.health));
                 }
             }
             // Drowning (game/effects/air.rs): swimmers and fliers do not.
@@ -595,17 +618,18 @@ impl Mobs {
                     // Grown: full size and strength from now on.
                     m.young = 0.0;
                     let (pos, yaw) = (m.body.pos, m.body.yaw);
-                    m.body = Player::with_size(pos, d.width as f64, d.height as f64);
+                    let (w, h) = m.natural_size();
+                    m.body = Player::with_creature_size(pos, w, h);
                     m.body.yaw = yaw;
                     m.body.speed_scale = d.speed / 4.4;
-                    m.health = spawn_health(d.health, roll);
+                    m.health = spawn_health(m.max_health(), roll);
                 }
             }
             let (px, pz) = (floord(m.body.pos[0]), floord(m.body.pos[2]));
             if !world.is_loaded(px, pz) {
                 // Frozen until its chunk comes back; but one left far outside what is
                 // loaded is just removed (it would stand in the air for ever).
-                if dist > 48.0 && !m.tamed {
+                if dist > 48.0 + crate::creature_size::keep_extra(m.body.half_width as f32 * 2.0, m.body.height as f32) && !m.tamed {
                     self.list.swap_remove(i);
                 } else {
                     i += 1;
@@ -812,8 +836,14 @@ impl Mobs {
                     None
                 };
                 if let Some(goal) = goal {
-                    let start = if path::standable(&solid, feet) { Some(feet) } else { path::ground_near(&solid, feet[0], feet[1], feet[2], 2) };
-                    m.path = start.and_then(|s| path::find_path(&solid, s, goal, 320)).unwrap_or_default();
+                    if big {
+                        // No single-cell search for a giant: it walks straight at the goal and
+                        // steps over what is in the way (its step height grows with its width).
+                        m.path = alloc::vec![goal];
+                    } else {
+                        let start = if path::standable(&solid, feet) { Some(feet) } else { path::ground_near(&solid, feet[0], feet[1], feet[2], 2) };
+                        m.path = start.and_then(|s| path::find_path(&solid, s, goal, 320)).unwrap_or_default();
+                    }
                     m.step = 0;
                 }
             }
@@ -825,7 +855,8 @@ impl Mobs {
             while m.step < m.path.len() {
                 let wp = m.path[m.step];
                 let (wx, wz) = ((wp[0] as f64 + 0.5 - m.body.pos[0]) as f32, (wp[2] as f64 + 0.5 - m.body.pos[2]) as f32);
-                if wx * wx + wz * wz < 0.12 && m.body.pos[1] > wp[1] as f64 - 0.3 {
+                let arrive = if big { pad * pad * 0.25 + 0.12 } else { 0.12 };
+                if wx * wx + wz * wz < arrive && (big || m.body.pos[1] > wp[1] as f64 - 0.3) {
                     m.step += 1;
                     continue;
                 }
@@ -838,7 +869,7 @@ impl Mobs {
             if attacks && dist < 6.0 && m.step >= m.path.len() {
                 // The path has run out: close in directly for the last steps.
                 m.body.yaw = atan2f(-dx, -dz);
-                if dist > 0.9 {
+                if dist > 0.9 + pad {
                     input.forward = 1.0;
                 }
             }
@@ -879,7 +910,7 @@ impl Mobs {
                 m.phase -= TAU;
             }
 
-            if attacks && dist < 1.3 && dy > -2.0 && dy < 1.6 && m.attack_cooldown <= 0.0 {
+            if attacks && dist < 1.3 + pad && dy > -2.0 && dy < (if big { m.body.height as f32 } else { 1.6 }) && m.attack_cooldown <= 0.0 {
                 m.attack_cooldown = 1.0;
                 damage += d.damage;
                 self.last_biter = Some(m.kind);
@@ -949,14 +980,29 @@ impl Mobs {
     }
 
     /// Every creature as text, for the other players of a shared game.
-    pub fn snapshot(&self) -> String {
+    /// A creature with something extra (size, bones, state: see
+    /// `creature_wire`) has it after its ten fields, in full when it changed
+    /// and every few snapshots, as `|=` (keep what you have) otherwise.
+    pub fn snapshot(&mut self) -> String {
         let r = reg();
+        self.snap_tick = self.snap_tick.wrapping_add(1);
+        let full = self.snap_tick % crate::creature_wire::FULL_EVERY == 0;
         let mut out = String::new();
-        for m in self.list.iter().take(64) {
+        for m in self.list.iter_mut().take(64) {
             out.push_str(&alloc::format!(
-                "{} {} {} {:.2} {:.2} {:.2} {:.2} {:.0} {} {}\n",
+                "{} {} {} {:.2} {:.2} {:.2} {:.2} {:.0} {} {}",
                 m.id, r.entities[m.kind].id, m.variant, m.body.pos[0], m.body.pos[1], m.body.pos[2], m.body.yaw, m.young, m.health, m.tamed as i32
             ));
+            if let Some(e) = m.extra.as_mut() {
+                // (A message may be 59000 bytes: past the budget creatures keep what they had.)
+                if out.len() < SNAPSHOT_BUDGET && (full || e.rev != e.sent_rev) {
+                    out.push_str(e.wire());
+                    e.sent_rev = e.rev;
+                } else {
+                    out.push_str("|=");
+                }
+            }
+            out.push('\n');
         }
         out
     }
@@ -968,6 +1014,10 @@ impl Mobs {
         let mut seen: Vec<u32> = Vec::new();
         // (A host sends at most 64; more is not believed, so a hostile one cannot fill the world.)
         for line in text.lines().take(64) {
+            let (line, tail) = match line.split_once('|') {
+                Some((head, tail)) => (head, Some(tail)),
+                None => (line, None),
+            };
             let w: Vec<&str> = line.split(' ').collect();
             let num = |k: usize| w.get(k).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
             let (id, kind) = match (w.first().and_then(|v| v.parse::<u32>().ok()), w.get(1).and_then(|id| r.entities.iter().position(|e| e.id == *id))) {
@@ -994,8 +1044,20 @@ impl Mobs {
             m.goal = Some(pos);
             m.body.yaw = yaw;
             m.young = num(7).unwrap_or(0.0) as f32;
-            m.health = num(8).unwrap_or(1.0) as i32;
+            m.health = (num(8).unwrap_or(1.0) as i32).min(crate::creature_size::MAX_HEALTH);
             m.tamed = num(9) == Some(1.0);
+            // The host's size, bones and state (nothing for creatures without).
+            let resized = match tail {
+                Some(t) => m.extra.get_or_insert_with(Default::default).apply_wire(crate::creature_wire::decode(t)),
+                None => m.extra.as_mut().map_or(false, |e| e.apply_none()),
+            };
+            if resized {
+                let (w, h) = m.natural_size();
+                m.body.resize(w, h);
+            }
+            if m.extra.as_ref().map_or(false, |e| e.is_plain()) {
+                m.extra = None;
+            }
             seen.push(id);
         }
         self.list.retain(|m| seen.contains(&m.id));

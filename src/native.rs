@@ -177,6 +177,10 @@ pub struct Native {
     /// A message another player's copy of this code sent with
     /// `Session::send_ext`.
     pub message: Option<fn(g: &mut Session, key: &str, text: &str)>,
+    /// A message another player's copy of this code sent with
+    /// `Session::send_mod_message`: its channel, the sender's player name and
+    /// the text (up to 512 bytes). See net/modmsg.rs.
+    pub on_message: Option<fn(g: &mut Session, channel: &str, from: &str, text: &str)>,
     /// About three times a second in a shared game: send what others need.
     pub share: Option<fn(g: &mut Session)>,
     /// The chest screen is opening for `Session::opened_ext`: the storage it
@@ -300,6 +304,7 @@ impl Native {
         effect_start: None,
         effect_end: None,
         message: None,
+        on_message: None,
         share: None,
         storage: None,
         on_block_break: None,

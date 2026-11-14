@@ -21,7 +21,10 @@ impl App {
         let behind = |p: [f32; 3], size: f32| p[0] * ahead.x + p[1] * ahead.y + p[2] * ahead.z < -size;
         for m in &g.mobs.list {
             let p = rel(m.body.pos);
-            if p[0] * p[0] + p[2] * p[2] > 72.0 * 72.0 || behind(p, 4.0) {
+            // The bounds of what is drawn grow with the creature: a giant is not dropped while only its middle is out of view.
+            let (bw, bh) = (m.body.half_width as f32 * 2.0, m.look().2.max(m.body.height as f32));
+            let (far, radius) = (72.0 + crate::creature_size::keep_extra(bw, bh), crate::creature_size::cull_radius(bw, bh));
+            if p[0] * p[0] + p[2] * p[2] > far * far || behind(p, radius) {
                 continue;
             }
             // A creature whose ground is not loaded stands still in mid-air: not drawn.
@@ -45,7 +48,7 @@ impl App {
                 at = rel(crate::client::pose_view::creature_at(kind, m.body.pos, m.body.yaw));
             }
             r.tex_override = r.entity_texture(m.tex());
-            r.draw_model(model, &pose, at, m.body.yaw, height, tint);
+            r.draw_model_with(model, &pose, m.bone_view(), at, m.body.yaw, height, tint);
         }
         // Props: blocks that are models (furniture, statues, plants). Only
         // those near enough to matter, and not the ones behind the camera.

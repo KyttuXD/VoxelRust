@@ -834,10 +834,10 @@ entity <id>
   model <model id>
   tint <r> <g> <b>          colour the model is multiplied by
   tex <picture>             the picture it is painted with (default: the model's own)
-  height <0.1..6>           blocks; the model is scaled to this height (default 1.8)
-  width <0.1..3>            blocks, for collision (default 0.6)
+  height <0.1..64>          blocks; the model is scaled to this height (default 1.8)
+  width <0.1..32>           blocks, for collision (default 0.6)
   speed <0..12>             blocks per second (default 2.5)
-  health <1..1000>          default 10
+  health <1..1000000>       default 10
   damage <0..100>           per hit, when it attacks (default 2)
   behavior wander | npc | hostile | swim | fly | villager
   biomes <names...>         where it appears; none = anywhere on the surface
@@ -931,6 +931,15 @@ tint. How the pictures are made, and how a pack replaces them, is in
 time at least 5 seconds. Young have half the health, grow steadily, and are
 shown as `Young <name>`. Young ones sometimes arrive with adults; they do
 not `give`, hunt or defend territory until grown.
+
+Giants: a creature may be up to 64 blocks tall, 32 wide and have up to
+1,000,000 health. One past the old limits (taller than 6 or wider than 3
+blocks) is walked straight at its goal (no single-cell path search), steps up
+ledges a quarter of its width high, reaches an enemy with its whole body, is
+kept (and drawn) from further off the bigger it is, and appears only where its
+whole body fits; its collisions are tested through the slab it moves into, so
+keep them few. A script may also resize a living creature
+(`set_creature_size`, `set_creature_health`, see [SCRIPTING.md](SCRIPTING.md#giants-model-control-and-state)).
 
 `explodes <power> <seconds> <range>`: for a `hostile` creature. When a
 player in survival mode stays within `range` blocks (0.5..16, also within 3

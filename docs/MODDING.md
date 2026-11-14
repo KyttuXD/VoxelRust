@@ -1131,6 +1131,39 @@ from inside these hooks: use the `ModApi` you are given. The example in
 [examples/hooks](../examples/hooks) has a binding that shows or hides a line
 beside the hearts.
 
+### Giant creatures, model control and messages
+
+Native code reaches the same limits and the same shared-game sending as scripts
+(`set_creature_size` and friends in [SCRIPTING.md](SCRIPTING.md#giants-model-control-and-state)); it
+calls them on `g.mobs` (a `Mobs`, from `game/creature_api.rs`), naming a
+creature by its stable `id`:
+
+| Call | What it does |
+| --- | --- |
+| `set_size(id, width, height) -> bool` | the creature's own size, kept to 0.1..32 wide and 0.1..64 tall (blocks); it collides and is drawn at it |
+| `set_health(id, hp, max_hp) -> bool` | health and its limit (the limit 1..1,000,000; the health 0..limit) |
+| `set_bone(id, bone_name, [rx, ry, rz], [ox, oy, oz], scale) -> BoneResult` | one bone of the model, on top of the animation (degrees about its pivot, model units, uniform scale); `UnknownBone` is logged once and ignored; 64 bones a creature, 256 creatures |
+| `clear_bones(id) -> bool` | |
+| `set_orientation(id, pitch, roll) -> bool` | tilt the whole model about its centre, degrees |
+| `set_state(id, text) -> bool`, `state_of(id) -> &str` | a text of up to 64 bytes on a creature |
+| `bone_names.names(model)` and `creature_api::model_bone_names(&mut mobs, id)` | the bone names of a model |
+
+A creature past the old size limits (6 tall, 3 wide) is "big": it is found by walking straight
+instead of a path search, steps up a quarter of its width, tests its collisions only through the
+slab it just moved into, and is kept alive and drawn from `creature_size::keep_extra` blocks
+further off. These are plain changes to the host's own state: in a shared game only the player who
+runs the creatures should call `set_size`, `set_health` and `set_state`, which the snapshot then
+sends to the others (bone overrides, tilt and state travel with it). The renderer reads a
+creature's overrides with `Mob::bone_view()` and draws with `Renderer::draw_model_with`.
+
+Messages: `g.send_mod_message(mod_name, channel, to, text) -> bool` (`to` is a player name, or `None`
+for everyone else) sends to the same mod's scripts and native code on the other machines; they
+arrive in the script's `on_message(channel, from, text)` and in the `Native` field
+`on_message: Option<fn(&mut Session, channel: &str, from: &str, text: &str)>`. At most 8 a second a
+player, 512 bytes of text without control characters, 64 bytes of mod name and channel together; the
+server drops what breaks these (see `net/modmsg.rs`). Existing hooks are unchanged and `Native::NONE`
+has `on_message: None`.
+
 ### Adding an event or a hook
 
 A new event is one row in `REGISTRY` in

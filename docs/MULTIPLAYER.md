@@ -105,7 +105,7 @@ empty name becomes `Player`. If someone on the server already has it, a
 number is added (`Bob` becomes `Bob2`).
 
 The server refuses a player whose game speaks a different version of the
-network protocol (currently version 12), and anyone beyond the player limit.
+network protocol (currently version 13), and anyone beyond the player limit.
 Only the protocol version decides: the build name (`linux-server-x86_64` for
 the public server, `linux-x86_64`, `windows-x86_64`, `macos-...` for games) and
 the release number do not, so a game and a server of different builds or
@@ -311,7 +311,7 @@ the code of such a mod.
 (`content::mod_runtime`, see [MODDING.md](MODDING.md#scripts-that-mods-bring));
 without an engine they are kept and not run.
 
-(Version 9 added poses and emotes.) The protocol: version 12 adds `Info` (server to client, right after `Welcome`: build name, release number and commit, for showing only) and fixes `State` keys, which lost the separator of the script channel's `mod\x1fkey`; the biggest `State` is now 59 000 bytes (it was over the message limit). Version 11 adds `Effects`: the status effects on a player (id, level and whole seconds left for each, 16 at most), sent by that player's game whenever the set changes, relayed with their id, and told to players who join later. It is for show (the name tag) and for mods; each game keeps its own effects. Version 10 adds `ModList` (server to client, after the pack),
+(Version 9 added poses and emotes.) The protocol: version 13 lets the creature snapshot carry, after a creature's ten fields, its own size, health limit, tilt, bone overrides and a state text of up to 64 bytes (see `game/creature_wire.rs`; a creature with none of these has the old line, and in between full sets a creature whose extras did not change says `|=`), and adds the mods' message channel: `State` on channel 5, key `mod\x1fchannel`, data a receiver number (two bytes, `0xFFFF` for everyone else) and up to 512 bytes of text; the server drops messages with a bad key or text and from a player who sends more than 8 a second (never kept, never relayed to the sender), and passes a message for one player to that player only (`net/modmsg.rs`). Version 12 adds `Info` (server to client, right after `Welcome`: build name, release number and commit, for showing only) and fixes `State` keys, which lost the separator of the script channel's `mod\x1fkey`; the biggest `State` is now 59 000 bytes (it was over the message limit). Version 11 adds `Effects`: the status effects on a player (id, level and whole seconds left for each, 16 at most), sent by that player's game whenever the set changes, relayed with their id, and told to players who join later. It is for show (the name tag) and for mods; each game keeps its own effects. Version 10 adds `ModList` (server to client, after the pack),
 `ModsWant` (client to server) and `ModPart` (server to client, one mod's
 bundle in pieces of up to 40,000 bytes). A mod's bundle is the
 `save::bundle` format with the paths inside the mod as names.

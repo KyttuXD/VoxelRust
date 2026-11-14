@@ -306,6 +306,16 @@ pub fn net_message(g: &mut Session, key: &str, text: &str) {
     run_in(g, &|m| m == mod_name, "on_net", alloc::vec![Value::str(key), Value::str(text)], |_| false);
 }
 
+/// A message another player's copy of a mod sent with `send_message`:
+/// `on_message(channel, from, text)` of that mod's scripts. (`from` is the
+/// sender's player name; the net layer has already checked the sizes.)
+pub fn mod_message(g: &mut Session, mod_name: &str, channel: &str, from: &str, text: &str) {
+    if !live() {
+        return;
+    }
+    run_in(g, &|m| m == mod_name, "on_message", alloc::vec![Value::str(channel), Value::str(from), Value::str(text)], |_| false);
+}
+
 /// An `/if` condition the game does not know: a script may answer it. `words`
 /// are the words of the condition (the first is its name). The first script
 /// to return `true` or `false` decides; one that returns nothing does not know it.

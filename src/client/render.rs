@@ -833,13 +833,22 @@ impl Renderer {
     /// [`Renderer::finish_world`]. `at` is relative to the camera, `tint`
     /// multiplies the texture (light level, team colour, hurt flash).
     pub fn draw_model(&mut self, model: usize, pose: &crate::model::Pose, at: [f32; 3], yaw: f32, height: f32, tint: [u8; 3]) {
+        self.draw_model_with(model, pose, None, at, yaw, height, tint)
+    }
+
+    /// As [`Renderer::draw_model`], with a creature's bone overrides and tilt
+    /// (`Mob::bone_view`) laid over the animation.
+    pub fn draw_model_with(&mut self, model: usize, pose: &crate::model::Pose, over: Option<(&crate::bone_pose::BoneTable, Option<(f32, f32)>)>, at: [f32; 3], yaw: f32, height: f32, tint: [u8; 3]) {
         self.ensure_model(model);
         let def = match self.models.get(model).and_then(|m| m.as_ref()) {
             Some(d) => d,
             None => return,
         };
         self.model_verts.clear();
-        def.quads(pose, at, yaw, height, false, &mut self.model_verts);
+        match over {
+            Some((bones, orient)) => def.quads_with(pose, Some(bones), orient, at, yaw, height, false, &mut self.model_verts),
+            None => def.quads(pose, at, yaw, height, false, &mut self.model_verts),
+        }
         let tex = if self.tex_override != 0 { self.tex_override } else { def.tex };
         self.tex_override = 0;
         let g = gl();

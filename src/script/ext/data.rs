@@ -81,7 +81,14 @@ pub struct ScriptData {
     pub storages: Vec<Storage>,
     /// Messages sent this frame (`net_send` allows a few).
     pub net_sent: u32,
+    /// How many messages this player may still send (`send_message`: 8 a second).
+    pub msg_bucket: crate::net::modmsg::Bucket,
+    /// `set_bone` calls made this frame (at most [`MAX_BONE_CALLS`]).
+    pub bone_calls: u32,
 }
+
+/// Most `set_bone` calls a frame, over all mods.
+pub const MAX_BONE_CALLS: u32 = 4096;
 
 /// The session's script data, made if there is none yet.
 pub fn data(g: &mut Session) -> &mut ScriptData {
@@ -113,4 +120,5 @@ pub fn new_frame(g: &mut Session) {
     d.rects.clear();
     d.texts.clear();
     d.net_sent = 0;
+    d.bone_calls = 0;
 }
