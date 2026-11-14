@@ -49,6 +49,11 @@ fn mods_dir() -> std::path::PathBuf {
     }
 }
 
+/// The module a mod's code is compiled as: its folder name in lower case, with "-" as "_".
+fn module_name(folder: &str) -> String {
+    folder.to_lowercase().replace('-', "_")
+}
+
 /// Find the code mods bring with them (`<mods dir>/<name>/code/mod.rs`) and
 /// write the list the game compiles in. Also, for the tests, the files of
 /// the mods that come with the game (those named in `<mods dir>/SHIPPED`).
@@ -70,15 +75,16 @@ fn embed_mods() {
         println!("cargo:warning=no mods folder at {} (set VOXELRUST_MODS_DIR): building with no native mods and no shipped mods", root.display());
     }
     let mut names: Vec<String> = std::fs::read_dir(&root).map(|r| r.flatten().filter(|e| e.path().join("code").join("mod.rs").is_file()).map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
-    names.retain(|n| n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && n.chars().next().map_or(false, |c| c.is_ascii_alphabetic()));
+    // A folder name may hold "-" (as "mlp-mod" does): the module is named with "_" in its place.
+    names.retain(|n| n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') && n.chars().next().map_or(false, |c| c.is_ascii_alphabetic()));
     names.sort();
     let mut out = String::new();
     for n in &names {
         let file = root.join(n).join("code").join("mod.rs");
         println!("cargo:rerun-if-changed={}", root.join(n).join("code").display());
-        writeln!(out, "#[path = {:?}]\npub mod {};", file.display().to_string(), n.to_lowercase()).unwrap();
+        writeln!(out, "#[path = {:?}]\npub mod {};", file.display().to_string(), module_name(n)).unwrap();
     }
-    writeln!(out, "pub static NATIVES: &[&crate::native::Native] = &[{}];", names.iter().map(|n| format!("&{}::NATIVE", n.to_lowercase())).collect::<Vec<_>>().join(", ")).unwrap();
+    writeln!(out, "pub static NATIVES: &[&crate::native::Native] = &[{}];", names.iter().map(|n| format!("&{}::NATIVE", module_name(n))).collect::<Vec<_>>().join(", ")).unwrap();
     // The shipped mods' own files, so the tests see the game as it ships.
     let shipped = std::fs::read_to_string(root.join("SHIPPED")).unwrap_or_default();
     println!("cargo:rerun-if-changed={}", root.join("SHIPPED").display());

@@ -989,6 +989,30 @@ Positions are screen pixels; multiply sizes by `scale()`.
 A mod's code states which interface it was written for with
 `api: API_VERSION` in its `Native`.
 
+### Player bodies
+
+`body` picks the model a player is drawn with: `fn(&Session, player: u16) ->
+Option<String>`. `player` is the player's number in a shared game (0 when
+playing alone, for the local player); the hook is asked for the local player
+and for every remote player drawn. Return the model id (`player`,
+`player_slim`, or a model the mod brings), or `None` to keep the game's own
+choice from the arms setting. It is generic: nothing in the game knows about
+any particular mod's bodies. A mod that does not set `body` (or returns
+`None`) gets exactly the game's behaviour. Hands: a body other than `player`
+and `player_slim` has no hand of its own, so it uses the hand for the arms.
+
+The game does not send the choice between players. A mod keeps its own state
+in its `Session` ext and sends it from its `share` hook with `Session::send_ext`
+on the mod channel, keep set, under a key that names the player, for example
+`body <own player number>` (the server keeps one entry per key and replays
+them to players who join later, so one shared key would overwrite every
+player's choice). It reads the others with its `message` hook, which gets the
+text and no sender, so the text carries the player number too. The server does
+not forget a player who leaves: the mod should ignore entries of players who
+are no longer in the game.
+Skins for a mod's body come from its `picture skin_<name>` lines, the same as
+the built-in skins.
+
 ### Stability
 
 `native::API_VERSION` (now 1) is the version of the hook interface. New hooks

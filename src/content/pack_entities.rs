@@ -45,7 +45,7 @@ pub fn default_skin_for(player: &str) -> &'static str {
     DEFAULT_SKINS[(h % DEFAULT_SKINS.len() as u32) as usize]
 }
 
-/// The picture name of a built-in skin: `skin_explorer`.
+/// The picture name of a skin: `skin_explorer` for a built-in one, `skin_<name>` for a mod's.
 pub fn skin_picture(skin: &str) -> String {
     format!("skin_{}", clean_name(skin))
 }
@@ -188,11 +188,15 @@ pub fn image(name: &str) -> Option<Image> {
     pack_image(name).or_else(|| mod_image(name)).or_else(|| builtin_image(name))
 }
 
-/// The 64 x 64 skin picture of a built-in skin (`explorer`...): a pack's if it
-/// has one of that size, else the game's own.
+/// The 64 x 64 skin picture of a skin (`explorer`..., or a mod's own: its
+/// `picture skin_<name>`): a pack's if it has one of that size, else the
+/// game's own, else a mod's of that size.
 pub fn skin_image(skin: &str) -> Option<Image> {
     let name = skin_picture(skin);
-    pack_image(&name).filter(|i| i.w == 64 && i.h == 64).or_else(|| builtin_image(&name))
+    pack_image(&name)
+        .filter(|i| i.w == 64 && i.h == 64)
+        .or_else(|| builtin_image(&name))
+        .or_else(|| mod_image(&name).filter(|i| i.w == 64 && i.h == 64))
 }
 
 /// A picture is usable for a model if it has the shape of the model's texture

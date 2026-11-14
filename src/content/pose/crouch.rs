@@ -5,7 +5,7 @@ use super::{Role, Root, Rig};
 /// How far the eyes drop, in blocks.
 pub const EYE_DROP: f64 = 0.28;
 /// What a crouching walker's speed is multiplied by.
-pub const SPEED: f32 = 0.4;
+pub const SPEED: f32 = 0.3;
 /// How fast the crouch comes and goes, per second.
 pub const RATE: f32 = 9.0;
 

@@ -361,9 +361,24 @@ fn minimap_arrow(r: &mut Renderer, cx: f32, cy: f32, yaw: f32, s: f32, col: Colo
     }
 }
 
-/// The player model and the first-person hand for classic or slim arms.
-fn arm_models(slim: bool) -> (&'static str, &'static str) {
-    if slim { ("player_slim", "hand_slim") } else { ("player", "hand") }
+/// The player model and the first-person hand for a body model. `player` and
+/// `player_slim` have their own hands; a mod's body (any other id) has none of
+/// its own, so it gets the hand that goes with the arms (`slim`).
+fn arm_models(body: &str, slim: bool) -> (&str, &'static str) {
+    let built_in = body == "player" || body == "player_slim";
+    let hand = if body == "player_slim" || (!built_in && slim) { "hand_slim" } else { "hand" };
+    (body, hand)
+}
+
+/// The body model id for `player`: a mod's choice if one makes it, else the
+/// game's own body for the arms (`slim`).
+fn body_for(g: &Session, player: u16, slim: bool) -> String {
+    crate::native::body_of(g, player).unwrap_or_else(|| String::from(if slim { "player_slim" } else { "player" }))
+}
+
+/// Our own player number in a shared game (0 when playing alone).
+fn own_id(g: &Session) -> u16 {
+    g.net.as_ref().map_or(0, |n| n.id)
 }
 
 /// The player's skin as 64 x 64 RGBA: a tinted copy of the default body, or
@@ -426,8 +441,14 @@ fn skin_pixels(base: &str, name: &str, player: &str) -> Option<Vec<u8>> {
         return if img.w == 64 && img.h == 64 { Some(img.rgba) } else { None };
     }
     // `default` is one of the built-in skins, picked by the player's name; the others are chosen by name.
-    let skin = if name != "default" && crate::settings::SKINS.iter().any(|s| *s == name) { name } else { crate::pack_entities::default_skin_for(player) };
-    Some(crate::pack_entities::skin_image(skin)?.rgba)
+    // A built-in skin, or any skin a pack or mod brings a picture for (`skin_<name>`).
+    // Decode the named skin once: it is both the test and the picture.
+    let named = if name != "default" { crate::pack_entities::skin_image(name) } else { None };
+    let known = named.is_some() || crate::settings::SKINS.iter().any(|s| *s == name);
+    if let (true, Some(img)) = (known, named) {
+        return Some(img.rgba);
+    }
+    Some(crate::pack_entities::skin_image(crate::pack_entities::default_skin_for(player))?.rgba)
 }
 
 /// Everything except the renderer and the frame's input, which are passed
@@ -1419,7 +1440,8 @@ impl App {
             let emoting = g.posing.emote.is_some();
             let emote_arm = !emoting || crate::content::pose::emote::shows_arm(&g.posing.body(g.activity()));
             if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried && lying.is_none() && emote_arm {
-                if let Some(hand) = reg().model(arm_models(self.settings.slim_arms).1) {
+                let body = body_for(g, own_id(g), self.settings.slim_arms);
+                if let Some(hand) = reg().model(arm_models(&body, self.settings.slim_arms).1) {
                     let v = g.player.vel;
                     let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
                     let held = if emoting { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(g.held().map(|h| h.0)) };
@@ -1636,7 +1658,8 @@ impl App {
                     continue;
                 }
                 let slim = self.remote_slim.get(id).copied().unwrap_or(false);
-                let model = match reg.model(arm_models(slim).0) {
+                let body = body_for(g, *id, slim);
+                let model = match reg.model(arm_models(&body, slim).0) {
                     Some(model) => model,
                     None => continue,
                 };
@@ -1660,7 +1683,8 @@ impl App {
             }
         }
         if self.third_person {
-            if let Some(model) = reg.model(arm_models(self.settings.slim_arms).0) {
+            let body = body_for(g, own_id(g), self.settings.slim_arms);
+            if let Some(model) = reg.model(arm_models(&body, self.settings.slim_arms).0) {
                 let drawn = crate::client::pose_view::local(g);
                 let l = (light_at(g.player.pos) * 255.0) as u8;
                 r.tex_override = self.skin_tex;
@@ -2278,7 +2302,11 @@ impl App {
                 }
                 4 => {
                     // A turning preview on the left, choices on the right.
-                    let model = reg().model(arm_models(st.slim_arms).0);
+                    let body = match self.session.as_ref() {
+                        Some(g) => body_for(g, own_id(g), st.slim_arms),
+                        None => String::from(if st.slim_arms { "player_slim" } else { "player" }),
+                    };
+                    let model = reg().model(arm_models(&body, st.slim_arms).0);
                     ui.panel(x, row(0), 100.0 * s, 150.0 * s);
                     if let Some(model) = model {
                         let pose = crate::model::Pose { phase: ui.clock * 3.0, stride: 0.5, ..Default::default() };
@@ -3022,7 +3050,8 @@ impl App {
 
         // A portrait of the player beside the panel, where there is room.
         if px > 70.0 * s {
-            if let Some(model) = reg().model(arm_models(self.settings.slim_arms).0) {
+            let body = body_for(g, own_id(g), self.settings.slim_arms);
+            if let Some(model) = reg().model(arm_models(&body, self.settings.slim_arms).0) {
                 ui.panel(px - 66.0 * s, py, 60.0 * s, 124.0 * s);
                 let pose = crate::model::Pose { phase: g.clock * 2.0, stride: 0.12, ..Default::default() };
                 ui.r.tex_override = self.skin_tex;

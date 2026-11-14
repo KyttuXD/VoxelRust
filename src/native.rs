@@ -134,6 +134,11 @@ pub struct Native {
     pub command: Option<fn(g: &mut Session, words: &[&str]) -> Option<String>>,
     /// An `/if` condition the game does not know.
     pub condition: Option<fn(g: &mut Session, words: &[&str]) -> Option<bool>>,
+    /// The body model a player is drawn with (`player`, `player_slim` or
+    /// another model id the mod brings), for the local player (`player` equal
+    /// to our own id, 0 when not in a shared game) or a remote one. `None`
+    /// keeps the game's choice. Asked for every drawn player, so keep it cheap.
+    pub body: Option<fn(g: &Session, player: u16) -> Option<String>>,
     /// The player killed a creature: its kind (an index into the registry's
     /// entities) and where it was. Not called for creatures that die some
     /// other way.
@@ -252,6 +257,7 @@ impl Native {
         interact: None,
         command: None,
         condition: None,
+        body: None,
         killed: None,
         hit: None,
         hurt: None,
@@ -283,6 +289,17 @@ impl Native {
         settings: None,
         serve: None,
     };
+}
+
+/// The body model id for `player`, from the first mod that picks one; `None`
+/// if none does (the game then uses `player` or `player_slim`).
+///
+/// An id the registry does not know (a model its mod did not bring, or one
+/// whose pack is off) is refused here, so the caller falls back to the game's
+/// own body rather than drawing nothing.
+pub fn body_of(g: &Session, player: u16) -> Option<String> {
+    let id = active().filter_map(|(_, n)| n.body).find_map(|body| body(g, player))?;
+    crate::content::block::reg().model(&id).is_some().then_some(id)
 }
 
 /// Every mod's code that was compiled in, switched on or not.

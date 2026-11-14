@@ -12,6 +12,13 @@ pub const HEIGHT: f64 = 1.8;
 pub const EYE: f64 = 1.62;
 const STEP_UP: f64 = 0.6;
 const EPS: f64 = 1e-4;
+// Close to Minecraft's numbers, in blocks and seconds: walking 4.317, sprinting
+// 5.612, a jump about 1.25 blocks high in 0.56 s, gravity 32, falling at most 78.
+const WALK: f32 = 4.317;
+const SPRINT: f32 = 5.612;
+const GRAVITY: f32 = 32.0;
+const TERMINAL: f32 = 78.4;
+const JUMP: f32 = 9.0;
 
 #[derive(Clone, Copy, Default)]
 pub struct Input {
@@ -125,7 +132,7 @@ impl Player {
         }
 
         if self.flying {
-            let speed = (if inp.sprint { 24.0 } else { 11.0 }) * self.speed_scale;
+            let speed = (if inp.sprint { 21.8 } else { 10.9 }) * self.speed_scale;
             let k = (10.0 * dt).min(1.0);
             let wy = (inp.jump as i32 - inp.descend as i32) as f32;
             self.vel[0] += (wx * speed - self.vel[0]) * k;
@@ -143,17 +150,17 @@ impl Player {
             }
         } else {
             // A crouch walks slowly, and does not sprint.
-            let pace = if self.crouch > 0.0 { 4.8 * (1.0 - (1.0 - crate::content::pose::crouch::SPEED) * self.crouch) } else if inp.sprint { 6.9 } else { 4.8 };
+            let pace = if self.crouch > 0.0 { WALK * (1.0 - (1.0 - crate::content::pose::crouch::SPEED) * self.crouch) } else if inp.sprint { SPRINT } else { WALK };
             let speed = pace * self.speed_scale;
-            let k = ((if self.on_ground { 14.0 } else { 3.5 }) * dt).min(1.0);
+            let k = ((if self.on_ground { 12.0 } else { 2.0 }) * dt).min(1.0);
             self.vel[0] += (wx * speed - self.vel[0]) * k;
             self.vel[2] += (wz * speed - self.vel[2]) * k;
             if let Some(up) = self.climb {
                 self.vel[1] = up;
             } else {
-                self.vel[1] = (self.vel[1] - 30.0 * dt).max(-60.0);
+                self.vel[1] = (self.vel[1] - GRAVITY * dt).max(-TERMINAL);
                 if inp.jump && self.on_ground {
-                    self.vel[1] = 8.8 * self.jump_scale;
+                    self.vel[1] = JUMP * self.jump_scale;
                 }
             }
         }

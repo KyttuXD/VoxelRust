@@ -347,7 +347,7 @@ pub struct Variant {
     pub name: String,
     pub model: usize,
     pub tint: [u8; 3],
-    /// Scale relative to the entity's height (a pony next to a horse).
+    /// Scale relative to the entity's height (a tall mount next to a horse).
     pub size: f32,
     /// Its picture (a mod's `picture` line, or `data/textures/entity/<tex>.png`; see `pack_entities`);
     /// empty = the model's own.
