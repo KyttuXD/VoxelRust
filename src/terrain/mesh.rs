@@ -296,6 +296,11 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                                         cnt += 1;
                                     }
                                 }
+                                // What gives off light is itself at full glow (lava, lamps), not as
+                                // dim as the air beside it.
+                                if r.emit[b as usize] >= 8 {
+                                    blo = 15 * cnt;
+                                }
                                 let occ = o1 as usize + o2 as usize + o3 as usize;
                                 let c = (f.shade * AO[occ] / 256).min(255) as u8;
                                 let mut p = [
@@ -629,5 +634,28 @@ mod tests {
         hole.set(8, 60, 8, r.flow[0][7]);
         let with_hole = hood(&hole, &e).water.len();
         assert_eq!(whole, with_hole, "walls are drawn around a flow inside the water");
+    }
+
+    #[test]
+    fn lava_lights_the_air_around_it() {
+        let r = reg();
+        let mut blk = alloc::vec![0 as Block; R * R * H];
+        // A roof over the whole area (so only block light is in play) and a lava cell below it.
+        for x in 0..R {
+            for z in 0..R {
+                blk[ri(x, 200, z)] = r.wk.stone;
+            }
+        }
+        let at = (R / 2, 100, R / 2);
+        blk[ri(at.0, at.1, at.2)] = r.wk.lava;
+        let light = compute_light(&blk);
+        let next = light[ri(at.0 + 1, at.1, at.2)] & 15;
+        let far = light[ri(at.0 + 5, at.1, at.2)] & 15;
+        assert!(next >= 10, "air beside lava is lit {next} of 15");
+        assert!(far >= 5 && far < next, "the light fades with distance: {far}");
+        let flow = r.flow[1][3];
+        blk[ri(at.0, at.1, at.2)] = flow;
+        let light = compute_light(&blk);
+        assert!(light[ri(at.0 + 1, at.1, at.2)] & 15 >= 8, "a lava flow does not light its surroundings");
     }
 }
