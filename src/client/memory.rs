@@ -30,12 +30,12 @@ const ATLAS_BYTES: usize = crate::textures::ATLAS * crate::textures::ATLAS * 4 *
 /// Fonts, clouds, the interface and skins.
 const UI_TEXTURE_BYTES: usize = 3 << 20;
 
-/// Main-memory bytes of skins: the PNGs the hub keeps, and the RGBA and PNG
-/// bytes of the decode jobs running now. The GPU copies are counted in
-/// `Renderer::skin_bytes`. Counted under pictures, so the soft budget sees
-/// them; the hard ceiling is not changed.
-fn skin_cpu_bytes() -> usize {
-    crate::client::skins::hub::kept_bytes().saturating_add(crate::client::skins::work::inflight_bytes())
+/// Main-memory bytes of skins: the PNGs the hub keeps (`kept`, from
+/// `SkinHub::kept_bytes`), and the RGBA and PNG bytes of the decode jobs
+/// running now. The GPU copies are counted in `Renderer::skin_bytes`. Counted
+/// under pictures, so the soft budget sees them; the hard ceiling is not changed.
+fn skin_cpu_bytes(kept: usize) -> usize {
+    kept.saturating_add(crate::client::skins::work::inflight_bytes())
 }
 
 pub struct MemWatch {
@@ -72,7 +72,7 @@ impl MemWatch {
     }
 
     /// Count what is held. Cheap, but not free: once a second is enough.
-    pub fn measure(&mut self, r: &Renderer, g: Option<&Session>, audio: &Audio) {
+    pub fn measure(&mut self, r: &Renderer, g: Option<&Session>, audio: &Audio, skin_kept: usize) {
         let b = &mut self.budget;
         // HD textures and skins the player chose raise the limit by what they cost
         // (nothing changes without them: the allowance is 0).
@@ -80,7 +80,7 @@ impl MemWatch {
         self.audio_bytes = audio.clip_bytes();
         b.set(Cat::Audio, self.audio_bytes);
         b.set(Cat::Meshes, r.vbo_bytes);
-        b.set(Cat::Textures, ATLAS_BYTES + UI_TEXTURE_BYTES + r.model_tex_bytes + r.hd_bytes + r.skin_bytes + skin_cpu_bytes() + crate::client::modui::with_ui(|u| u.images.bytes()).unwrap_or(0));
+        b.set(Cat::Textures, ATLAS_BYTES + UI_TEXTURE_BYTES + r.model_tex_bytes + r.hd_bytes + r.skin_bytes + skin_cpu_bytes(skin_kept) +crate::client::modui::with_ui(|u| u.images.bytes()).unwrap_or(0));
         b.set(Cat::Models, r.model_bytes());
         b.set(Cat::Other, BASE_BYTES);
         match g {
@@ -98,7 +98,7 @@ impl MemWatch {
     /// Call every frame. Counts now and then, and when over the limit gives
     /// something up (see the ladder). Returns whether what the game should use
     /// changed.
-    pub fn tick(&mut self, dt: f32, r: &Renderer, g: Option<&Session>, audio: &mut Audio, wanted: &Wanted) -> bool {
+    pub fn tick(&mut self, dt: f32, r: &Renderer, g: Option<&Session>, audio: &mut Audio, skin_kept: usize, wanted: &Wanted) -> bool {
         self.since_measure += dt;
         self.since_log += dt;
         self.since_trim += dt;
@@ -107,7 +107,7 @@ impl MemWatch {
         }
         let elapsed = self.since_measure;
         self.since_measure = 0.0;
-        self.measure(r, g, audio);
+        self.measure(r, g, audio, skin_kept);
         if self.log && self.since_log >= LOG_EVERY {
             self.since_log = 0.0;
             logf!("voxelrust: {}, held back: {}, trims {}, steps {}", self.budget.line(), self.ladder.describe(), self.trims, self.steps_taken);

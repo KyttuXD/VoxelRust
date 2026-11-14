@@ -70,7 +70,8 @@ impl App {
         let own = if self.skin_tex != 0 { crate::client::skins::budget::gpu_bytes(self.skin_tex_side) } else { 0 };
         r.skin_bytes = own + self.skins.gpu_bytes();
         crate::budget::set_allowance(crate::budget::Allow::Skins, own.saturating_sub(plain).saturating_add(self.skins.gpu_extra_bytes()));
-        self.mem.tick(dt, r, self.session.as_ref(), &mut self.audio, &wanted);
+        let skin_kept = self.skins.kept_bytes();
+        self.mem.tick(dt, r, self.session.as_ref(), &mut self.audio, skin_kept, &wanted);
         self.eff = self.mem.effective(&wanted);
         let distance = self.eff.distance;
         let mut died = false;

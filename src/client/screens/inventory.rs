@@ -226,7 +226,8 @@ impl App {
         // A portrait of the player beside the panel, where there is room, with
         // the four armour slots down its left side (client/screens/armor_slots.rs).
         if px > 70.0 * s {
-            let slim = self.slim();
+            // The fields, not self.slim(): g holds a mutable borrow of self.session.
+            let slim = self.settings.slim_arms || self.skin_slim;
             let body = body_for(g, own_id(g), slim);
             if let Some(model) = reg().model(arm_models(&body, slim).0) {
                 let slots = px > 94.0 * s;
