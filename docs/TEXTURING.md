@@ -1,12 +1,18 @@
 # Texturing blocks, items, creatures and players (OCD style)
 
 VoxelRust's pictures are drawn in the **OCD style**: flat, bold and simple,
-like the OCD texture pack. The game's older look (noisy, shaded, painted by
-code with `builtin` and `paint`) is gone: the painters now draw in the OCD
-style too (see [The painters](#the-painters)), so the game looks the same with
-and without the pack. New blocks and items are drawn by hand in the OCD style,
-and the painted pictures are replaced by pack pictures wherever one exists
-(see [Using the pack](#using-the-pack)).
+like the OCD texture pack, but with a look of their own, the
+[VoxelRust house style](#voxelrust-house-style) (cool shadows, warm lights,
+a glint and a shadow pixel in every block's corners, its own grain for each
+material). The game's older look (noisy, shaded, painted by code with
+`builtin` and `paint`) is gone: the painters draw in this style (see
+[The painters](#the-painters)). New blocks and items are drawn by hand in the
+same style, and the painted pictures are replaced by pack pictures wherever
+one exists (see [Using the pack](#using-the-pack): the real OCD pack still
+works with `--texture-pack`, and nothing of it is built into the game).
+
+Mod authors: read [VoxelRust house style](#voxelrust-house-style) to make
+your blocks and items look like they belong.
 
 ## The style in short
 
@@ -53,8 +59,9 @@ separate pictures only when they differ.
   the middle and its head or blade at the top. (The game finds the long axis
   of a picture itself and holds the handle in the fist, so diagonal pictures
   also work, but upright is the style.)
-- **Dark outline.** One pixel of near-black (`#1a1a1a` or the darkest tone of
-  the item) all round the shape. The outline is part of the picture, not a glow.
+- **Dark outline.** One pixel of ink (the house `#181622`, a near-black with a
+  hint of blue, or the darkest tone of the item) all round the shape, lighter
+  (`#3c3650`) where the shape's upper and left edge is lit. The outline is part of the picture, not a glow.
 - **Flat fills inside it:** one light colour for the lit face, one mid colour,
   one dark colour for the shaded edge. Handles are a dark brown with a lighter
   stripe; metal heads are grey with one white highlight pixel column.
@@ -120,19 +127,23 @@ metal, wood or stone recolours consistently.
 | `gear.rs` | | `gem ingot rail machine hull wings` |
 
 `painters/mod.rs` holds the registry of names (`BUILTINS`, `STYLES`) and the
-helpers: `framed` (fill and frame), `outlined` (an item's shape with its dark
-outline), `dark`, `lift`, `pale`, `rect`, `disc`. To add a picture, write it in
+helpers: `framed` (fill and frame), `sealed` and `sealed_grain` (fill, frame
+and the house corners, see below), `outlined` (an item's shape with its ink
+outline and rim light), `dark`, `lift`, `pale`, `glint`, `rect`, `disc`.
+`painters/house.rs` holds the house style's shared grain patterns. To add a picture, write it in
 the right file, add its name to the lists, and run the tests: they check that
 every name is painted, that every picture has at most eight colours, and that
 block faces (`FRAMED_BUILTINS`, `FRAMED_STYLES`) have the frame.
 
 What each one looks like:
 
-- **Block faces** are a fill with a frame (`dirt`, `sand`, `concrete` 92%,
-  `wool` 85%, `terracotta` 73%). `rock` adds two flatter patches, `polished`
-  a three-pixel shine, `farmland` furrows every fourth row, `magma` a dark
-  crust with four glowing blobs, `chest` a lid line and a latch, `workbench`
-  a grid, `door` two panels and a handle.
+- **Block faces** are a fill with a frame and the house corners (`dirt`,
+  `sand`, `concrete` 92%, `wool` 85%, `terracotta` 73%), each with its own
+  grain. `rock` adds chips in pairs, `polished` a four-pixel shine,
+  `farmland` slanting furrows, `magma` a dark crust with four glowing blobs
+  of three pixels, `chest` a lid line, a latch and rivets, `workbench` a grid
+  of nine cells with a glint in each, `door` three panels (two small over one
+  long) and a handle.
   The bigger crafting blocks (`benches.rs`): `bench5` is a frame round a 5 x 5
   grid of two-pixel cells with a lit middle one, `bench7` a 7 x 7 grid of
   one-pixel cells, `bench_side` a plate with a rail along the top and the
@@ -142,25 +153,35 @@ What each one looks like:
   (the pixels outside it are clear and never seen). `chest_front` has the lid line and
   the latch across it (`accent`), `chest_side` the lid line only, `chest_top` the
   lid's inset trim. The block takes the front through `front` (see DATA.md).
-- **Ores** (`ore`) are stone with four 2 x 2 blobs of the ore's colour, each with a
-  lighter pixel on top (the shipped ruby ore uses a palette: base, a dark
-  pixel at the bottom right, a light one on top); `ore_vein` crosses the stone with
-  two diagonal bands. Both take a `host` stone and several gem palettes. `cobble` is four stones with a light corner on each.
-- **Planks** are lighter slats in the colour, four rows, with the darker base
-  tone as gap and a staggered joint. **Bark** is a dark base with lighter
-  vertical bars; **rings** the cut end: a dark rim, then two tones in turn.
+- **Ores** (`ore`) are stone with four nuggets of three joined pixels in the
+  ore's colour, the first pixel lighter (the shipped ruby ore uses a palette:
+  base, a dark last pixel, a light first one), and a thin crack of darker
+  stone running between the nuggets; `ore_vein` crosses the stone with two
+  wavy bands (a lit row over a base row). Both take a `host` stone and several
+  gem palettes. `cobble` is five rounded stones with irregular seams and a
+  lit pixel on each; `bricks` step each row on by a quarter and have a lit
+  corner on every brick.
+- **Planks** are three upright boards (five, four and four wide) with the
+  darker tone as the seam, a joint at a different height in each board and a
+  nail head at the top and foot. **Bark** is a dark base with lighter
+  vertical bars broken into dashes; **rings** the round cut end: a dark rim
+  in the corners and sides, two tones in turn, a darker pith.
 - **Glass** is a white frame (alpha 235 for stained, solid for plain) round a
-  see-through fill (stained: your colour at alpha 105). **Leaves** are two
-  greens in a 2 x 2 check with some see-through cells (alpha 0, never half).
+  see-through fill (stained: your colour at alpha 105), both with two short
+  glints. **Leaves** are two greens in clumps three wide and two tall with
+  a scatter of see-through slits two pixels wide (alpha 0, never half).
   **Ice** stays solid; **water** is two blues at alpha 168 with a one-pixel
   ripple that travels down the tile over eight frames.
 - **Grass and leaves are green here**, not grey: the game only tints the
   grey pictures of a *pack* (see below), so the painted ones carry the green
   they should have. A picture of your own in grey needs no change.
-- **Tools** are upright with a dark outline: head on top, a two-pixel wooden
-  handle in columns 7 and 8; the colour you give is the metal (lit, mid and
-  shaded tone). The sword has a guard, grip and pommel; the bow's string is
-  on the right.
+- **Tools** are upright with an ink outline: head on top, a two-pixel wooden
+  haft in columns 7 and 8 bound with a dark wrap; the colour you give is the
+  metal (lit, mid and shaded tone). The pickaxe is a crescent, the axe is
+  bearded with its blade on the right, the shovel a spade with a T grip, the
+  hoe is hooked to the left, the sword a leaf blade with a fuller and a winged
+  guard; the bow's string is on the right (see
+  [The tools' shapes are ours](#the-tools-shapes-are-ours)).
 - **Food and gems** have a main colour, a lighter highlight at the top left,
   a darker lower edge and the outline. **Rails** are left without an outline.
 - **Plants** (flowers, tall grass, crops, mushrooms, vines, icicles, cobwebs,
@@ -190,11 +211,12 @@ by name (`accent=#ffffff`):
 | 3 | `light` | the lit tone: a head's lit edge, a gem's lit side, an ore blob's top left pixel |
 | 4 | `accent` | a second colour on top: a sword's fuller, a chest's latch, a door's handle, mortar of bricks |
 | 5 | `highlight` | the single brightest pixel (an ore blob's top left pixel wins over `light`) |
-| 6 | `outline` | the item outline instead of near-black `#1a1a1a` |
+| 6 | `outline` | the item outline instead of the house ink `#181622` (a palette's own outline is flat: no rim light) |
 
-A role that is not given is made from the base the old way (dark 73%, light a
-fifth of the way to white), so a one-colour palette and a six-colour one draw
-the same shapes. Colours are `#rrggbb` (six digits) or three numbers
+A role that is not given is made from the base by the house ratios (dark 73%
+leaning cool, light a fifth of the way to white leaning warm: see
+[VoxelRust house style](#voxelrust-house-style)), so a one-colour palette and a
+six-colour one draw the same shapes. Colours are `#rrggbb` (six digits) or three numbers
 `r g b`.
 
 **Declaring and using** (in `data/base.txt` or any pack; declare a palette
@@ -261,6 +283,77 @@ A pack can check a palette with `voxelrust --export-textures DIR` and look at
 the PNGs. The pure parts are in `src/content/palette.rs` (`Palette`,
 `Palette::at_in` / `sample` for the colour at a pixel, `light_of`, `dark_of`,
 `shade`, `parse_spec`, `declare`), tested without a game.
+
+## VoxelRust house style
+
+The game's own pictures are OCD-style (flat fills, few colours, a frame round
+blocks, an outline round items) but they are not the OCD pack's pixels: they
+follow one house style, so that a screenshot of the game is recognisable and
+the real OCD pack (`--texture-pack`) still looks different beside it. Mod
+authors who want their blocks and items to belong should follow the same rules.
+The painters in `src/content/painters/` implement them (shared pieces in
+`house.rs`); nothing is copied from the OCD pack.
+
+**1. Cool shadows, warm lights.** A darker tone is made by scaling the colour
+down with red falling a little further than blue (`scale`: red x 0.95, blue x
+1.05 of the plain ratio), so shadows lean blue-violet and never go grey. A
+lighter tone moves towards warm white (`lift`: red 24%, green 22%, blue 16% of
+the way; `pale`: 55/50/44%; `glint`: 14/13/9%). Never grey a colour to shade it.
+
+**2. The corners.** Every block face has a **glint** at (1, 1), the pixel just
+inside the frame's top left corner (the fill pushed 9-14% towards warm
+white), and a **shadow** at (14, 14), where the frame's colour comes in one
+pixel diagonally. A VoxelRust block is recognisable by those two pixels. Helper:
+`sealed(x, y, fill, frame_percent)` (or `sealed_grain` with a grain colour).
+The frame stays one unbroken ring, 70-92% of the fill.
+
+**3. A grain for each material class**, flat and in pairs or short runs, in a
+single colour 84-92% of the fill (never scattered single pixels everywhere,
+never random):
+
+| Class | Grain |
+| --- | --- |
+| Stone, rock | chips in pairs (horizontal, vertical, horizontal) and one lone chip; stone is a cool slate (`#747884`), deep stone a blue-violet (`#343648`) |
+| Earth (dirt, farmland, gravel) | flecks in short diagonals; dirt a warm ochre-brown (`#8a603e`); gravel pebbles are a flat stone with a bump on top; farmland furrows run slantwise |
+| Sand, sandstone | little crescent ripples; sandstone has wavy strata that step down halfway across |
+| Clay, snow | clay in three flat layers of different lengths; snow with four pale-blue sparkles and a dripping edge on its side |
+| Cloth (wool, banners) | rows of short stitches, every other row shifted by two |
+| Wood | upright planks (three boards, joints at different heights, a nail head at each end); bark in dashes; round log ends with a pith |
+| Stone masonry | bricks step each row on by a quarter of a brick (not half), mortar on the top and left of each brick, a lit corner on every brick; cobble is five rounded stones |
+| Ore | nuggets of three joined pixels (lit, base, dark) and a thin crack of darker host stone between them; veins are wavy bands |
+| Plants | tufts in short diagonals, leaves in clumps with two-pixel slits, flowers of four petals with one pale petal pixel |
+| Metal, gems, ingots | faceted: lit upper left, shaded lower right, one pale sparkle pixel on the lit facet; ingots have a stamped notch |
+| Glass, ice | a white frame, two short glints (upper left and lower right) |
+
+**4. Items**: the outline is the house ink `#181622` (not neutral black), and
+its pixels on the lit side (the shape lies to their right or below them and
+nothing to their left or above) are the **rim light** `#3c3650`. A palette's
+own `outline` colour is used flat. Helper: `outlined` does it for you.
+
+**5. Tools** keep the OCD proportions and stand upright, with a two-pixel haft
+in columns 7 and 8, a **binding** (a dark wrap) at two or three places on it,
+and a head of their own shape. Do not trace the pack's pictures: draw yours
+in `tool_shapes.rs`.
+
+**6. Colour families** per material (hue shifts from the OCD ones, so the two
+never match pixel for pixel): iron steel-blue `#ccd4e6`, copper a redder
+orange `#d87446`, ruby a cooler red `#e83668`, crystal a greener cyan
+`#7ce0f6`, oak a redder brown, sand apricot, snow a blue-white `#f8fbff`,
+clay blue `#96a6bc`, grass a bluer green. Keep a material recognisable: the
+hue stays in its family, only the temperature and the saturation move.
+
+**7. Limits that stay**: 16 x 16, at most eight colours (blocks two to five, the
+corners and the grain count), flat fills, a one-pixel frame on blocks, no
+anti-aliasing, no noise, fully see-through or fully solid pixels (glass and
+leaves excepted). Colours are tested: `painters/tests.rs` checks the eight
+colour limit, the frame, the corners and the rim light.
+
+**Matching the style in a mod**: use the painters (`paint rock ...`,
+`paint wool ...`, `paint ore palette ...`) and you get all of this for free.
+Drawing a picture by hand: start from the frame, put the glint at (1, 1) and
+the shadow at (14, 14), add one grain from the table, shade with a bluer dark
+and a warmer light. `--texture-pack` is unaffected: a pack's pictures replace
+the painted ones exactly as before.
 
 ## The OCD pack, measured
 
@@ -767,14 +860,17 @@ pictures.
   made by `tools/entity_textures.py`, nothing is painted by hand.
 
 
-## The tools' shapes come from the pack
+## The tools' shapes are ours
 
-The game's own tools, weapons and bows are painted from the pack's silhouettes,
-not from shapes of ours: `tools/ocd_shapes.py` reads the OCD pack's iron pickaxe,
-axe, shovel, hoe, sword, stick, arrow, bow (at rest and drawn) and crossbow and
-writes them as role pictures (outline, handle lit/shade, head light/mid/dark,
-highlight) into `src/content/painters/tool_shapes.rs`. The painters colour those
-roles from a palette, so every metal, wood and gem tool has the pack's exact shape
-(the hooked pickaxe, the bracket bow) in its own colours, and a palette with
-several colours or a gradient gives a multi-coloured head. Run
-`python3 tools/ocd_shapes.py "<pack>/assets/game/textures/item"` to regenerate.
+The game's own tools, weapons and bows are drawn from VoxelRust's own
+silhouettes in `src/content/painters/tool_shapes.rs`: role pictures (outline,
+haft lit/shade, binding, head light/mid/dark, highlight), each 16 lines of 16
+letters, drawn by hand for this game and not taken from any pack (there is no
+generator script: edit the file). The painters colour the roles from a
+palette, so every metal, wood and gem tool has the same shape (the crescent
+pickaxe, the bearded axe, the spade with its T grip, the hooked hoe, the leaf
+blade with winged guard, the bracket bow) in its own colours, and a palette
+with several colours or a gradient gives a multi-coloured head. The letters:
+`.` clear, `o` outline, `h` haft (lit), `H` haft (shade), `L` head light, `M`
+head mid, `D` head dark, `B` binding (the haft's wraps and a bow's grip, the
+dark tone of the base), `W` highlight (a sword's `accent` replaces it).

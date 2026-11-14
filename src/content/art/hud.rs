@@ -18,7 +18,7 @@
 type Px = [u8; 4];
 
 pub(super) const CLEAR: Px = [0, 0, 0, 0];
-pub(super) const OUTLINE: Px = [26, 26, 26, 255];
+pub(super) const OUTLINE: Px = [24, 22, 34, 255];
 const GLYPH: Px = [246, 246, 240, 255];
 
 /// The heart: `O` outline, `F` fill, `H` highlight. 9 wide, 8 tall.

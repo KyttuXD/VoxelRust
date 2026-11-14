@@ -13,9 +13,9 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
         // 14 pixels inside the frame: five cells of two with a line of one
         // between them (lines at 3, 6, 9 and 12). The middle cell is lit.
         "bench5" => {
-            if edge(x, y) || matches!(x, 3 | 6 | 9 | 12) || matches!(y, 3 | 6 | 9 | 12) {
+            if edge(x, y) || matches!(x, 3 | 6 | 9 | 12) || matches!(y, 3 | 6 | 9 | 12) || (x, y) == (14, 14) {
                 px(d)
-            } else if rect(x, y, 7, 7, 2, 2) {
+            } else if rect(x, y, 7, 7, 2, 2) || (x, y) == (1, 1) {
                 px(l)
             } else {
                 px(m)
@@ -26,7 +26,7 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
         "bench7" => {
             if edge(x, y) || (x % 2 == 0) || (y % 2 == 0) {
                 px(d)
-            } else if x == 7 && y == 7 {
+            } else if (x == 7 && y == 7) || (x == 1 && y == 1) {
                 px(l)
             } else {
                 px(m)
@@ -35,9 +35,9 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
         // A side: a plate with a rail along the top and the bottom and a
         // rivet in each corner between them.
         "bench_side" => {
-            if edge(x, y) || y == 3 || y == 12 {
+            if edge(x, y) || y == 3 || y == 12 || (x, y) == (14, 14) {
                 px(d)
-            } else if (x == 2 || x == 13) && (y == 1 || y == 14) {
+            } else if (x == 2 || x == 13) && (y == 1 || y == 14) || (x, y) == (1, 1) {
                 px(l)
             } else if y < 3 || y > 12 {
                 px(m)
