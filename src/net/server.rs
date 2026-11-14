@@ -43,8 +43,10 @@ struct Conn {
     joined: bool,
     /// Where this player last said they were, for telling newcomers.
     last_move: Option<([f64; 3], f32, f32, u16, u8)>,
-    skin: Vec<u8>,
-    skin_slim: bool,
+    /// This player's skin as the server keeps it (see `net::skinslot`).
+    skin: crate::net::skinslot::SkinSlot,
+    /// The protocol version their game said it speaks.
+    proto: u16,
     /// What this player's voice chat is set to (`VOICE_` flags); 0 until they say.
     voice_flags: u8,
     voice_bucket: crate::net_voice::Bucket,
@@ -444,6 +446,23 @@ impl Server {
         }
     }
 
+    /// Pass on the skin of the player at `from` to everyone else, the big
+    /// original to clients that take it and the 64 x 64 one to the others.
+    fn relay_skin(&mut self, from: usize) {
+        let id = self.conns[from].id;
+        let new = self.conns[from].skin.wire_for(id, crate::net::skinslot::HD_PROTOCOL);
+        let old = self.conns[from].skin.wire_for(id, 0);
+        for (k, c) in self.conns.iter_mut().enumerate() {
+            if k == from || !c.joined || c.gone {
+                continue;
+            }
+            let bytes = if c.proto >= crate::net::skinslot::HD_PROTOCOL { &new } else { &old };
+            if !bytes.is_empty() && c.stream.send_all(bytes, SEND_TIMEOUT).is_err() {
+                c.gone = true;
+            }
+        }
+    }
+
     fn broadcast(&mut self, msg: &Msg, except: u16) {
         let bytes = msg.encode();
         for c in self.conns.iter_mut().filter(|c| c.joined && !c.gone && c.id != except) {
@@ -507,6 +526,7 @@ impl Server {
         for c in self.conns.iter_mut() {
             c.voice_bucket.refill(dt);
             c.throttle.refill(dt);
+            c.skin.tick(dt);
         }
         for _ in 0..8 {
             match self.listener.accept(0) {
@@ -519,7 +539,7 @@ impl Server {
                         continue;
                     }
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new() });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new() });
                 }
                 _ => break,
             }
@@ -594,7 +614,8 @@ impl Server {
                         Msg::Chat { .. } => Some(Class::Chat),
                         Msg::State { channel: crate::proto::channel::MODMSG, .. } => Some(Class::Mod),
                         Msg::State { .. } => Some(Class::State),
-                        Msg::Skin { .. } => Some(Class::Skin),
+                        Msg::Skin { .. } | Msg::SkinBegin { .. } => Some(Class::Skin),
+                        Msg::SkinPart { .. } => Some(Class::SkinPart),
                         _ => None,
                     };
                     if let Some(class) = class {
@@ -618,7 +639,7 @@ impl Server {
                         if name.is_empty() {
                             name = String::from("Player");
                         }
-                        let refuse = if version != VERSION {
+                        let refuse = if version < crate::proto::MIN_VERSION || version > VERSION {
                             // Both versions, and who must update (the build name does not matter).
                             Some(crate::net::version::mismatch_reason(version, VERSION, &crate::net::version::local()))
                         } else if self.banned.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
@@ -652,6 +673,10 @@ impl Server {
                         let mut out = Msg::Welcome { id, seed: self.cfg.seed, time: self.time, kind: self.cfg.kind.clone() }.encode();
                         let me = crate::net::version::local();
                         out.extend(Msg::Info { build: me.build, release: me.release, commit: me.commit }.encode());
+                        // Clients that know big skins are told they may send them.
+                        if version >= crate::net::skinslot::HD_PROTOCOL {
+                            out.extend(Msg::SkinCaps { max_side: crate::skin_grid::MAX_SIDE as u16, max_bytes: crate::proto::MAX_SKIN as u32 }.encode());
+                        }
                         // The content pack first (even when empty), so the
                         // edits that follow are read with the right blocks.
                         let pack = &self.cfg.pack[..];
@@ -663,9 +688,7 @@ impl Server {
                         out.extend(Msg::ModList { mods: self.cfg.mods.iter().map(|m| m.info()).collect() }.encode());
                         for other in self.conns.iter().filter(|c| c.joined && !c.gone) {
                             out.extend(Msg::Join { id: other.id, name: other.name.clone() }.encode());
-                            if !other.skin.is_empty() {
-                                out.extend(Msg::Skin { id: other.id, png: other.skin.clone(), slim: other.skin_slim }.encode());
-                            }
+                            out.extend(other.skin.wire_for(other.id, version));
                             if let Some((pos, yaw, pitch, held, pose)) = other.last_move {
                                 out.extend(Msg::Move { id: other.id, pos, yaw, pitch, held, pose }.encode());
                             }
@@ -689,6 +712,7 @@ impl Server {
                             break;
                         }
                         self.conns[i].id = id;
+                        self.conns[i].proto = version;
                         self.conns[i].name = name.clone();
                         self.conns[i].joined = true;
                         self.send_perms(Some(i));
@@ -770,10 +794,20 @@ impl Server {
                             self.broadcast(&Msg::State { id, channel, keep, key, data }, id);
                         }
                     }
+                    // Skins are taken only if their header and size are a skin's, at most
+                    // once in five seconds, and relayed in the form each client knows.
                     Msg::Skin { png, slim, .. } if joined => {
-                        self.conns[i].skin = png.clone();
-                        self.conns[i].skin_slim = slim;
-                        self.broadcast(&Msg::Skin { id, png, slim }, id);
+                        if self.conns[i].skin.on_whole(png, slim) {
+                            self.relay_skin(i);
+                        }
+                    }
+                    Msg::SkinBegin { size, side, slim, .. } if joined => {
+                        let _ = self.conns[i].skin.on_begin(size, side, slim);
+                    }
+                    Msg::SkinPart { data, last, .. } if joined => {
+                        if self.conns[i].skin.on_part(&data, last) {
+                            self.relay_skin(i);
+                        }
                     }
                     Msg::Chat { text, .. } if joined && text.starts_with('/') => {
                         let name = self.conns[i].name.clone();
@@ -1003,7 +1037,7 @@ mod tests {
         // One still in use after the counter went round is not given out again.
         let mut s = Server::bind(plain_config()).unwrap();
         let stream = crate::sys::net::TcpStream::connect("127.0.0.1", s.port(), 2000).unwrap();
-        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Vec::new(), skin_slim: false, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new() });
+        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new() });
         s.next_id = 6;
         assert_eq!((s.fresh_id(), s.fresh_id()), (6, 8));
     }

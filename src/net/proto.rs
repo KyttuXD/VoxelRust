@@ -12,8 +12,14 @@ use alloc::vec::Vec;
 /// `net::version`). Version 12 added [`Msg::Info`]. Version 13 gave the
 /// creature snapshot a size, bone overrides and a state text per creature
 /// (`game/creature_wire.rs`) and added the mods' message channel
-/// ([`channel::MODMSG`], `net/modmsg.rs`).
-pub const VERSION: u16 = 13;
+/// ([`channel::MODMSG`], `net/modmsg.rs`). Version 14 added big (HD) skins in
+/// pieces ([`Msg::SkinCaps`], [`Msg::SkinBegin`], [`Msg::SkinPart`],
+/// `net/skinxfer.rs`).
+pub const VERSION: u16 = 14;
+/// The oldest protocol a server still lets in: version 13 clients know every
+/// message a 14 server sends them (it sends them the 64 x 64 version of a
+/// big skin, as a plain [`Msg::Skin`]).
+pub const MIN_VERSION: u16 = 13;
 
 /// What a player may do on a server (the flags of [`Msg::Perms`]).
 pub const PERM_BUILD: u8 = 1;
@@ -31,8 +37,14 @@ pub const VOICE_TALK: u8 = 2;
 pub const DEFAULT_PORT: u16 = 25590;
 /// Most bytes of pack text in one message.
 pub const MAX_PACK_PART: usize = 40_000;
-/// Largest skin image, in bytes of PNG.
-pub const MAX_SKIN: usize = 24_000;
+/// Largest skin image, in bytes of PNG, however it is sent (in one
+/// [`Msg::Skin`] or in pieces).
+pub const MAX_SKIN: usize = 1 << 20;
+/// Largest skin in one plain [`Msg::Skin`] (what clients of protocol 13 take
+/// too); bigger ones go in pieces.
+pub const MAX_SKIN_MSG: usize = 24_000;
+/// Most bytes of a skin in one [`Msg::SkinPart`].
+pub const MAX_SKIN_PART: usize = 40_000;
 /// Most bytes of shared state in one message. A message body may be
 /// [`MAX_BODY`] long in all, and the header of a state message (id, channel,
 /// key of up to 64 bytes) takes about 75 of those: more than this would be
@@ -109,6 +121,19 @@ pub enum Msg {
     /// A player's skin: a small PNG, and whether their arms are slim
     /// (sent by its owner, relayed with their id).
     Skin { id: u16, png: Vec<u8>, slim: bool },
+    /// From the server, right after [`Msg::Info`], to a client of protocol 14
+    /// or later: big skins are welcome, up to this many pixels on a side and
+    /// this many bytes of PNG. A client that never gets it sends skins of
+    /// 64 x 64 only.
+    SkinCaps { max_side: u16, max_bytes: u32 },
+    /// A skin that does not fit in one message is coming: `size` bytes of PNG
+    /// of a picture `side` x `side` pixels, in [`Msg::SkinPart`]s that follow
+    /// at once (one transfer at a time per player). Sent by its owner, relayed
+    /// with their id.
+    SkinBegin { id: u16, size: u32, side: u16, slim: bool },
+    /// The next piece of the skin that [`Msg::SkinBegin`] announced; `last`
+    /// ends it.
+    SkinPart { id: u16, last: bool, data: Vec<u8> },
     /// Voice chat: one 20 ms frame of ADPCM speech (see `client::voice::codec`).
     /// Sent by a talker (`id` ignored, the server knows who it is) and relayed
     /// by the server only to players in range, with `gain` (0..=255) already
@@ -302,10 +327,30 @@ impl Msg {
             Msg::Skin { id, png, slim } => {
                 w.u8(5);
                 w.u16(*id);
-                let n = png.len().min(MAX_SKIN);
+                let n = png.len().min(MAX_SKIN_MSG);
                 w.u16(n as u16);
                 w.0.extend_from_slice(&png[..n]);
                 w.u8(*slim as u8);
+            }
+            Msg::SkinCaps { max_side, max_bytes } => {
+                w.u8(23);
+                w.u16(*max_side);
+                w.u32(*max_bytes);
+            }
+            Msg::SkinBegin { id, size, side, slim } => {
+                w.u8(24);
+                w.u16(*id);
+                w.u32(*size);
+                w.u16(*side);
+                w.u8(*slim as u8);
+            }
+            Msg::SkinPart { id, last, data } => {
+                w.u8(25);
+                w.u16(*id);
+                w.u8(*last as u8);
+                let n = data.len().min(MAX_SKIN_PART);
+                w.u16(n as u16);
+                w.0.extend_from_slice(&data[..n]);
             }
             Msg::State { id, channel, keep, key, data } => {
                 w.u8(6);
@@ -440,11 +485,21 @@ impl Msg {
             5 => {
                 let id = r.u16()?;
                 let n = r.u16()? as usize;
-                if n > MAX_SKIN {
+                if n > MAX_SKIN_MSG {
                     return None;
                 }
                 let png = r.take(n)?.to_vec();
                 Msg::Skin { id, png, slim: r.u8()? != 0 }
+            }
+            23 => Msg::SkinCaps { max_side: r.u16()?, max_bytes: r.u32()? },
+            24 => Msg::SkinBegin { id: r.u16()?, size: r.u32()?, side: r.u16()?, slim: r.u8()? != 0 },
+            25 => {
+                let (id, last) = (r.u16()?, r.u8()? != 0);
+                let n = r.u16()? as usize;
+                if n > MAX_SKIN_PART {
+                    return None;
+                }
+                Msg::SkinPart { id, last, data: r.take(n)?.to_vec() }
             }
             6 => {
                 let (id, channel, keep, key) = (r.u16()?, r.u8()?, r.u8()? != 0, r.key()?);
@@ -595,6 +650,10 @@ mod tests {
             Msg::SetBlock { x: -100_000, y: 127, z: 5, block: 4095 },
             Msg::Chat { id: 2, text: String::from("hello there") },
             Msg::Skin { id: 4, png: alloc::vec![1, 2, 3, 250], slim: true },
+            Msg::SkinCaps { max_side: 4096, max_bytes: MAX_SKIN as u32 },
+            Msg::SkinBegin { id: 4, size: 123_456, side: 1024, slim: false },
+            Msg::SkinPart { id: 4, last: false, data: alloc::vec![9; MAX_SKIN_PART] },
+            Msg::SkinPart { id: 4, last: true, data: alloc::vec![1, 2, 3] },
             Msg::State { id: 4, channel: 3, keep: true, key: String::from("1 2 3"), data: b"chest".to_vec() },
             // The script channel's key has a separator in it, which must get through.
             Msg::State { id: 4, channel: channel::SCRIPT, keep: false, key: String::from("mymod\u{1f}score"), data: b"7".to_vec() },
@@ -644,6 +703,13 @@ mod tests {
         i.push(&bytes);
         match i.next() {
             Next::Msg(Msg::State { data, .. }) => assert_eq!(data.len(), MAX_STATE),
+            other => panic!("{other:?}"),
+        }
+        // A skin piece fits too, and one that is too long for its message is cut.
+        let mut i = Inbox::default();
+        i.push(&Msg::SkinPart { id: 1, last: false, data: alloc::vec![1; MAX_SKIN_PART + 500] }.encode());
+        match i.next() {
+            Next::Msg(Msg::SkinPart { data, .. }) => assert_eq!(data.len(), MAX_SKIN_PART),
             other => panic!("{other:?}"),
         }
         // A pack piece and a mod piece fit too.

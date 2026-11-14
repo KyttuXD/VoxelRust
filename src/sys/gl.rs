@@ -34,6 +34,9 @@ pub const FLOAT: u32 = 0x1406;
 pub const NEAREST: i32 = 0x2600;
 pub const LINEAR: i32 = 0x2601;
 pub const NEAREST_MIPMAP_LINEAR: i32 = 0x2702;
+pub const LINEAR_MIPMAP_LINEAR: i32 = 0x2703;
+/// Texture parameter (OpenGL 1.4): make the smaller pictures whenever the texture is written.
+pub const GENERATE_MIPMAP: u32 = 0x8191;
 pub const TEXTURE_MAG_FILTER: u32 = 0x2800;
 pub const TEXTURE_MIN_FILTER: u32 = 0x2801;
 pub const TEXTURE_WRAP_S: u32 = 0x2802;

@@ -11,6 +11,7 @@ pub mod picker;
 pub mod screens;
 pub mod skinfile;
 pub mod skinweb;
+pub mod skins;
 pub mod audio;
 pub mod update;
 pub mod update_key;

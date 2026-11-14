@@ -475,6 +475,8 @@ they keep access to its private items):
 | `client/frame/` | `input.rs` (keys, events), `update.rs`, `draw.rs`, `creatures.rs`, `hud.rs`, `scripted.rs` (line-up and showcase for pictures) |
 | `client/launch/` | `args.rs` (help text, options, parsing), `mods_load.rs` (reading packs and mods, importing, exporting textures), `server_run.rs` (the dedicated server and the hosted one) |
 
+Other folders of this kind (ordinary modules, not parts of `App`): `client/skins/` (the budget, workers and hub for HD skins, see [IMAGES.md](IMAGES.md)), `util/image/` (the picture code: decoders, the PNG encoder and its deflate), `net/` (`skinxfer.rs` and `skinslot.rs` for big skins on the wire).
+
 They are declared in `app.rs` with `#[path = "..."] mod name;`. Note that
 Rust compiles a crate as a whole; the gain from smaller files is mostly for
 people (and for the incremental compiler, which reuses more per function), not

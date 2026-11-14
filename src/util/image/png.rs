@@ -1,4 +1,5 @@
-//! PNG decoding and (uncompressed) encoding, zlib inflate, CRC-32, base64.
+//! PNG decoding, zlib inflate, CRC-32, base64. (The encoder is `png_encode.rs`,
+//! its compression `deflate.rs`.)
 //!
 //! The decoder always produces 8-bit RGBA with row 0 at the top. It handles
 //! every non-interlaced PNG: colour types 0, 2, 3, 4 and 6 at all their legal
@@ -18,9 +19,9 @@ pub struct Image {
 /// Largest accepted image side, in pixels.
 const MAX_SIDE: usize = 4096;
 /// Largest output [`inflate`] will produce.
-const MAX_INFLATE: usize = 64 << 20;
+const MAX_INFLATE: usize = 72 << 20;
 
-const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+pub(super) const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
 // ---------------------------------------------------------------- checksums
 
@@ -54,7 +55,7 @@ pub fn crc32(data: &[u8]) -> u32 {
     !crc_update(!0, data)
 }
 
-fn adler32(data: &[u8]) -> u32 {
+pub(super) fn adler32(data: &[u8]) -> u32 {
     let (mut a, mut b) = (1u32, 0u32);
     // 5552 bytes is the most that cannot overflow a u32 between reductions.
     for chunk in data.chunks(5552) {
@@ -333,7 +334,7 @@ fn inflate_blocks(zlib: &[u8], start: usize, limit: usize) -> Option<(Vec<u8>, u
 }
 
 /// Decompresses a zlib stream (header, deflate data, Adler-32). Gives `None`
-/// for corrupt input or output larger than 64 MB.
+/// for corrupt input or output larger than 72 MB.
 pub fn inflate(zlib: &[u8]) -> Option<Vec<u8>> {
     inflate_limited(zlib, MAX_INFLATE)
 }
@@ -535,7 +536,7 @@ pub fn decode(data: &[u8]) -> Option<Image> {
 
 // ------------------------------------------------------------------- encode
 
-fn push_chunk(out: &mut Vec<u8>, kind: &[u8; 4], body: &[u8]) {
+pub(super) fn push_chunk(out: &mut Vec<u8>, kind: &[u8; 4], body: &[u8]) {
     out.extend_from_slice(&(body.len() as u32).to_be_bytes());
     let start = out.len();
     out.extend_from_slice(kind);
@@ -544,46 +545,7 @@ fn push_chunk(out: &mut Vec<u8>, kind: &[u8; 4], body: &[u8]) {
     out.extend_from_slice(&crc.to_be_bytes());
 }
 
-/// Writes an 8-bit RGBA PNG without compression (stored deflate blocks).
-/// Pixels missing from a too-short `rgba` are written as transparent black.
-pub fn encode(w: usize, h: usize, rgba: &[u8]) -> Vec<u8> {
-    let stride = w * 4;
-    let mut raw = Vec::with_capacity(h * (stride + 1));
-    for y in 0..h {
-        raw.push(0); // filter: none
-        let have = rgba.get(y * stride..).unwrap_or(&[]);
-        let have = &have[..have.len().min(stride)];
-        raw.extend_from_slice(have);
-        raw.resize(raw.len() + stride - have.len(), 0);
-    }
-
-    let mut z = Vec::with_capacity(raw.len() + raw.len() / 65535 * 5 + 16);
-    z.extend_from_slice(&[0x78, 0x01]);
-    if raw.is_empty() {
-        z.extend_from_slice(&[1, 0, 0, 0xFF, 0xFF]);
-    }
-    let blocks = (raw.len() + 65534) / 65535;
-    for (i, block) in raw.chunks(65535).enumerate() {
-        z.push((i + 1 == blocks) as u8);
-        let len = block.len() as u16;
-        z.extend_from_slice(&len.to_le_bytes());
-        z.extend_from_slice(&(!len).to_le_bytes());
-        z.extend_from_slice(block);
-    }
-    z.extend_from_slice(&adler32(&raw).to_be_bytes());
-
-    let mut out = Vec::with_capacity(z.len() + 64);
-    out.extend_from_slice(&SIGNATURE);
-    let mut ihdr = [0u8; 13];
-    ihdr[..4].copy_from_slice(&(w as u32).to_be_bytes());
-    ihdr[4..8].copy_from_slice(&(h as u32).to_be_bytes());
-    ihdr[8] = 8; // bit depth
-    ihdr[9] = 6; // colour type: RGBA
-    push_chunk(&mut out, b"IHDR", &ihdr);
-    push_chunk(&mut out, b"IDAT", &z);
-    push_chunk(&mut out, b"IEND", &[]);
-    out
-}
+pub use super::png_encode::encode;
 
 // ------------------------------------------------------------------- base64
 

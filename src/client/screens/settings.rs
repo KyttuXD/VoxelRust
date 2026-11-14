@@ -130,8 +130,8 @@ impl App {
                         st.skin = String::from(if (i as usize) < list.len() { list[i as usize] } else { "custom" });
                         skin_changed = true;
                     }
-                    ui.text(cx, row(1) + 2.0 * s, "YOUR OWN: A 64 X 64 PICTURE IN", ui::DIM);
-                    ui.text(cx, row(2) - 6.0 * s, "THE USUAL SKIN LAYOUT (64 X 32 TOO).", ui::DIM);
+                    ui.text(cx, row(1) + 2.0 * s, "YOUR OWN: A PICTURE UP TO 4096 X 4096", ui::DIM);
+                    ui.text(cx, row(2) - 6.0 * s, "(A MULTIPLE OF 64; 64 X 32 TOO).", ui::DIM);
                     if ui.button(cx, row(3) - 4.0 * s, cw, bh, "CHOOSE A SKIN FILE...") {
                         skin_pick = true;
                     }

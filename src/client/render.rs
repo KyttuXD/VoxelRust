@@ -22,6 +22,8 @@ use core::ffi::c_void;
 pub mod armor;
 // Particles and translucent quads of mods (game/fx).
 mod fx;
+// Textures of skins: sharp when 64 wide, smooth and mipmapped when HD.
+mod skin_tex;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
