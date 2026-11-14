@@ -374,7 +374,7 @@ struct App {
     skin_url: String,
     picker: crate::client::picker::Picker,
     /// Name tags to draw this frame: screen position and text.
-    tags: Vec<(f32, f32, String)>,
+    tags: Vec<(f32, f32, String, f32)>,
     /// The map screen: centre in "unit" map coordinates (0..1) and zoom.
     /// Whose screen the map key has opened (a mod's code).
     map_native: Option<usize>,
@@ -517,12 +517,18 @@ impl App {
         let mut s = s;
         s.who = crate::settings::clean_name(&self.settings.player_name, 16);
         self.session = Some(s);
+        self.skin_sent = false; // a new session knows nothing of our skin yet
         self.distance = self.settings.distance;
         self.set_screen(Screen::Game);
     }
 
     fn close_world(&mut self, r: &mut Renderer) {
         self.loading_since = 0.0;
+        // Other players' skins belong to the players of that visit (their numbers are used again
+        // on the next one): forget them, so nobody wears someone else's skin.
+        let stale: Vec<u32> = self.remote_skins.values().copied().collect();
+        r.delete_textures(&stale);
+        self.remote_skins.clear();
         // The map's selection, name box and view belong to the world it was in.
         self.full = None;
         if let Some(mut s) = self.session.take() {

@@ -79,10 +79,11 @@ impl App {
             let under_map = if self.settings.minimap && self.minimap.tex != 0 { 70.0 * s } else { 0.0 };
             crate::client::effects_hud::list(r, g, w, 4.0 * s + under_map, s);
         }
-        for (x, y, name) in &self.tags {
-            let tw = Renderer::text_width(name, s);
-            r.rect(x - tw * 0.5 - 2.0 * s, y - 2.0 * s, tw + 4.0 * s, 11.0 * s, [0, 0, 0, 110]);
-            r.label(x - tw * 0.5, *y, s, name, WHITE);
+        for (x, y, name, shrink) in &self.tags {
+            let ts = s * shrink;
+            let tw = Renderer::text_width(name, ts);
+            r.rect(x - tw * 0.5 - 2.0 * ts, y - 2.0 * ts, tw + 4.0 * ts, 11.0 * ts, [0, 0, 0, 110]);
+            r.label(x - tw * 0.5, *y, ts, name, WHITE);
         }
         // Voice chat: your microphone, and who is talking.
         {

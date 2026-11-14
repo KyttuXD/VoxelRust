@@ -17,6 +17,7 @@ impl App {
                 let mut g = g;
                 g.who = crate::settings::clean_name(&self.settings.player_name, 16);
                 self.session = Some(g);
+                self.skin_sent = false;
                 self.distance = self.settings.distance;
                 self.set_screen(Screen::Game);
                 true
@@ -206,6 +207,7 @@ impl App {
                 let mut g = g;
                 g.who = crate::settings::clean_name(&self.settings.player_name, 16);
                 self.session = Some(g);
+                self.skin_sent = false;
                 self.distance = self.settings.distance;
                 self.set_screen(Screen::Game);
             }

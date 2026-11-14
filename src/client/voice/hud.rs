@@ -44,12 +44,12 @@ const TALKING: Color = [120, 220, 255, 255];
 /// Draw the voice indicators. `talkers` are the upper-case names of the
 /// players who are talking now; `tags` the name tags drawn this frame (screen
 /// x, y and upper-case name), which get a speaker beside them.
-pub fn draw(r: &mut Renderer, s: f32, h: f32, mic: Mic, talkers: &[&str], tags: &[(f32, f32, String)]) {
+pub fn draw(r: &mut Renderer, s: f32, h: f32, mic: Mic, talkers: &[&str], tags: &[(f32, f32, String, f32)]) {
     // Beside the name tags of those who are talking.
-    for (x, y, name) in tags {
+    for (x, y, name, shrink) in tags {
         if talkers.iter().any(|t| *t == name.as_str()) {
-            let tw = Renderer::text_width(name, s);
-            speaker_icon(r, x + tw * 0.5 + 4.0 * s, *y, s, TALKING);
+            let tw = Renderer::text_width(name, s * shrink);
+            speaker_icon(r, x + tw * 0.5 + 4.0 * s * shrink, *y, s * shrink, TALKING);
         }
     }
     // At the left of the screen, low enough to clear the frame rate and debug text.

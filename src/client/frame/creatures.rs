@@ -6,7 +6,7 @@ use super::*;
 impl App {
     /// Draw every creature near the camera, and the player's own body when
     /// the camera is outside it.
-    pub(super) fn draw_creatures(&self, r: &mut Renderer, g: &Session, cam: &Camera, tags: &mut Vec<(f32, f32, String)>) {
+    pub(super) fn draw_creatures(&self, r: &mut Renderer, g: &Session, cam: &Camera, tags: &mut Vec<(f32, f32, String, f32)>) {
         let reg = reg();
         let look = crate::game::fx::sky::current(g);
         let (_, _, day) = crate::render::sky_colors(look.time_of(g.time));
@@ -141,13 +141,19 @@ impl App {
                 let mut held_quads = Vec::new();
                 crate::client::hand::on_body(held, crate::client::hand::white_tile(), 0.0, at, p.yaw, crate::player::HEIGHT as f32, &mut held_quads);
                 r.draw_quads(&held_quads, None);
-                if let Some((sx, sy)) = r.project(cam, [at[0], at[1] + 2.15, at[2]]) {
+                // A name is as big as it is up close until it is far, then smaller, and not shown at all
+                // beyond a hundred blocks (it was the same size and in the way).
+                let dist = crate::math::sqrtf(at[0] * at[0] + at[1] * at[1] + at[2] * at[2]);
+                let shrink = (16.0 / dist.max(1.0)).clamp(0.55, 1.0);
+                if dist < 100.0 {
+                  if let Some((sx, sy)) = r.project(cam, [at[0], at[1] + 2.15, at[2]]) {
                     // Their strongest news under the name: an effect they have (and how many more).
                     let mut label = p.name.to_ascii_uppercase();
                     if let Some(d) = p.effects.first().and_then(|e| reg.fx.get(&e.0)) {
                         label.push_str(&alloc::format!(" ({}{})", d.name.to_ascii_uppercase(), if p.effects.len() > 1 { alloc::format!(" +{}", p.effects.len() - 1) } else { String::new() }));
                     }
-                    tags.push((sx, sy, label));
+                    tags.push((sx, sy, label, shrink));
+                  }
                 }
             }
         }
