@@ -18,8 +18,26 @@
 
 use crate::client::modui::hudcmd::{self, Cmd, Frame, Prim};
 use crate::render::Color;
+use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::sync::atomic::{AtomicPtr, Ordering};
+
+/// Where the player's mods are when `--mods-dir` names a folder other than the data folder's `mods`
+/// (set once at start; an earlier value is left to leak on purpose, nobody frees what a reader may hold).
+static MODS_DIR: AtomicPtr<String> = AtomicPtr::new(core::ptr::null_mut());
+
+/// Say where the mods' folders are (no trailing slash); empty means the data folder's own `mods`.
+pub fn set_mods_dir(dir: &str) {
+    let p = Box::into_raw(Box::new(String::from(dir.trim_end_matches(|c| c == '/' || c == '\\'))));
+    MODS_DIR.store(p, Ordering::Release);
+}
+
+fn mods_dir() -> Option<&'static str> {
+    let p = MODS_DIR.load(Ordering::Acquire);
+    // Safety: set from a leaked box and never freed.
+    if p.is_null() { None } else { Some(unsafe { &*p }.as_str()).filter(|d| !d.is_empty()) }
+}
 
 /// Pictures one mod may name, and all mods together.
 pub const MAX_PER_MOD: usize = 16;
@@ -173,6 +191,9 @@ pub fn load(data_dir: &str, owner: &str, file: &str) -> Option<Pixels> {
     }
     let safe_owner = !owner.is_empty() && owner.len() <= 40 && owner.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')) && !owner.starts_with('.');
     let mut paths: Vec<String> = Vec::new();
+    if let (true, Some(dir)) = (safe_owner, mods_dir()) {
+        paths.push(alloc::format!("{}/{}/{}", dir, owner, file));
+    }
     if safe_owner && !data_dir.is_empty() {
         paths.push(alloc::format!("{}mods/{}/{}", data_dir, owner, file));
         for key in crate::sys::list_dir(&alloc::format!("{}tmp/mods/", data_dir)).into_iter().take(8) {

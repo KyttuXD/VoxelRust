@@ -1290,6 +1290,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let own_sounds = app.audio.load_folder(&base);
     // The sound and music files of mods are found in their own folders.
     app.audio.set_mods_dir(&app.mods_dir);
+    crate::client::modui::hud_image::set_mods_dir(&app.mods_dir);
     app.refresh_mem_limit();
     if !own_sounds.is_empty() {
         logf!("voxelrust: own sounds from {}sounds/: {}", base, own_sounds.join(" "));

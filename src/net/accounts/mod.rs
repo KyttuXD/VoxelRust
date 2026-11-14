@@ -33,7 +33,7 @@ mod tests;
 pub const ACCOUNTS_SINCE: u16 = 14;
 /// The oldest protocol version a server still lets in: as a guest, with a name that has no
 /// account (an older game cannot log in).
-pub const OLDEST_ACCEPTED: u16 = 13;
+pub const OLDEST_ACCEPTED: u16 = crate::proto::MIN_VERSION;
 
 /// Whether a server accepts a client that speaks this protocol version.
 pub fn version_accepted(version: u16) -> bool {
