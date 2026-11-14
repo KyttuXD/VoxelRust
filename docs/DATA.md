@@ -132,8 +132,10 @@ tall_grass deepstone clay sun moon wand`, all drawn flat in the OCD style
 pink and black checkerboard.
 
 **`paint` styles for blocks:** `concrete wool terracotta glass rock polished
-bricks tiles planks bark rings leaves blossom farmland magma door glassdoor`.
-(`rings` is the cut end of a log; `glass`, `leaves`, `blossom` and
+bricks tiles planks bark rings leaves blossom farmland magma door glassdoor
+ocd_bark ocd_rings ocd_planks ocd_leaves palm_bark palm_rings palm_planks palm_fronds
+cardboard screen`. (The `ocd_` and `palm_` styles draw wood in the shapes of the OCD
+pack's trees, see TEXTURING.md. `rings` is the cut end of a log; `glass`, `leaves`, `blossom` and
 `glassdoor` have holes.) One line per colour is how
 the base data makes sixteen colours of several materials and six kinds of
 wood.

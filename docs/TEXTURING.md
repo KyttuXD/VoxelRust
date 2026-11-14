@@ -125,6 +125,9 @@ metal, wood or stone recolours consistently.
 | `tools.rs` | `wand` | `stick pick axe shovel hoe sword bow crossbow arrow` |
 | `food.rs` | | `meat fruit fishfood loaf pizza wedge root tuber jar egg sack cookie pie bowl seeds sheaf` |
 | `gear.rs` | | `gem ingot rail machine hull wings` |
+| `ocd_wood.rs` | | `ocd_bark ocd_rings ocd_planks ocd_leaves` |
+| `palm_wood.rs` | | `palm_bark palm_rings palm_planks palm_fronds` |
+| `cardboard_and_screens.rs` | | `cardboard screen` |
 
 `painters/mod.rs` holds the registry of names (`BUILTINS`, `STYLES`) and the
 helpers: `framed` (fill and frame), `sealed` and `sealed_grain` (fill, frame
@@ -166,6 +169,25 @@ What each one looks like:
   nail head at the top and foot. **Bark** is a dark base with lighter
   vertical bars broken into dashes; **rings** the round cut end: a dark rim
   in the corners and sides, two tones in turn, a darker pith.
+- **Wood the OCD pack has no picture of** (`ocd_wood.rs`, `palm_wood.rs`) is
+  drawn in the pack's own shapes, so it stands beside the pack's oak, spruce
+  and birch. The pack's trees are one picture of two or three flat colours: a
+  bark of four lighter bars two pixels wide on a dark ground and frame, a cut
+  end of rings in two tones, planks of four horizontal slats, leaves as four
+  squares with a clear cross. `ocd_bark` is the bars with a dark knot in each
+  bar (high on one pair, low on the next); `ocd_rings` the cut end, **round**
+  (frame, outer ring, inner ring, a two pixel pith); `ocd_planks` the four
+  slats with a joint in each, at a different place in each; `ocd_leaves` the
+  four squares with a rim, a lit pixel in the corner and the clear cross (cut
+  out, never half see-through). The maple uses these four. The palm adds to
+  them: `palm_bark` has the ring scars of a palm trunk (two rows of a darker
+  tone across the bars, rows 5 and 11), `palm_rings` a fibre dot on the outer
+  ring, `palm_planks` joints in other places, and `palm_fronds` is a frond
+  instead of squares: a two pixel rib down the middle, leaflets drooping from
+  it in bands, each with a lit top row, a fill row and a shaded foot, clear
+  between. All use the palette's `dark` for the frame, else 63% of the colour.
+  `cardboard` (a box face: flutes, a strip of tape) and `screen` (dark glass in
+  a bezel with a glare and a power light) replace two flat fills.
 - **Glass** is a white frame (alpha 235 for stained, solid for plain) round a
   see-through fill (stained: your colour at alpha 105), both with two short
   glints. **Leaves** are two greens in clumps three wide and two tall with
@@ -692,6 +714,26 @@ are still there, drawn in the pack's style from its iron tools in the ruby
 colour. So are the tin, silver, copper, emberite, frostite and other metal
 tools. The ruby gem and ore are not matched to anything in the pack, and keep
 the game's own pictures until someone draws OCD ones.
+
+**What the OCD pack has no picture of.** Texture ids found with
+`--export-textures` (which writes the game's own pictures, packs aside)
+compared with the pack's folders (`ocd` and `ocd tiems`): of the 990 textures of
+the base game and every shipped mod, the pack matches 248. The 742 it does not:
+
+| Group | Ids | How the game fills them in |
+| --- | --- | --- |
+| Palm and maple wood | `palm_side palm_top palm_planks palm_leaves`, `maple_side maple_top maple_planks maple_leaves` | The OCD-shaped painters (see [The painters](#the-painters)): `palm_*` and `ocd_*` styles. Palm stairs, slabs and fences use `palm_planks`. |
+| Chests and doors | `<wood or colour>_chest`, `_chest_side`, `_chest_top`; `oak_glass_door` and the other glass doors; `maple_door`, `palm_door`, `blossom_door` | `chest_front`, `chest_side`, `chest_top`, `door`, `glassdoor` in the wood's colour (the pack has no chests, and doors for only some woods). |
+| HUD | `heart_*`, `effect_*`, `hud_bubble*`, `moon`, `sun`, `wand` | `art/hud.rs`, `art/status.rs`, `sky.rs`, `tools.rs`. |
+| Rails, crafting and cooking blocks | `*_rail*`, `bench5_*`, `bench7_*`, `oven_*`, `blast_front`, `heavy_tnt_*`, `counter_top`, `cupboard`, `marble_tiles`, `slate_bricks`, `cardboard`, `screen`, `white` | the matching painters in `blocks.rs`, `benches.rs`, `explosives.rs`, `stone.rs`, `cardboard_and_screens.rs`; the rails are the trains mod's own pictures. |
+| Foods, sweets and holidays | `apple_pie`, `pizza`, `salad`, `tomato*`, `candy*`, `gift_*`, `fir_needles`, `holly`, `grave_stone`, `gingerbread*` and the like | `food.rs`, `plants.rs` and the others, in the house style. |
+| Vehicle icons, ruby, copper ingot, berries | `icon_*`, `ruby`, `ruby_ore`, `copper_ingot`, `berries`, `tearoftheman`, `cave_vine`, `crystal_cluster` | `gear.rs`, `ores.rs`, `food.rs`, `plants.rs`. |
+| OreSpawn and Witherstorm | 501 ids (`osb_*`, `osc_*`, `osa_*`...) | The two mods ship their own pictures; they are not repainted. |
+
+The painted pictures are in the house style, so beside the pack's blocks they
+are a little more detailed (a glint and a shadow pixel in the corners, a grain of
+the material); the wood, `cardboard` and `screen` above are drawn closer to the
+pack's flat look because they stand right beside its trees.
 
 **Your own pictures win.** A file in the data folder's `textures/` folder
 (`<id>.png`, also `.jpg`, `.gif`, `.bmp` or `.tga`, any size, fitted to 16 x

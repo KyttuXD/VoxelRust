@@ -140,14 +140,19 @@ WOODS = [("oak", "Oak", None, None, None),
          ("blossom", "Blossom", (86, 56, 60), (214, 150, 150), ("blossom", (240, 150, 190))),
          ("acacia", "Acacia", (138, 110, 92), (196, 140, 100), ("leaves", (110, 150, 50))),
          ("dark_oak", "Dark Oak", (58, 40, 24), (96, 70, 40), ("leaves", (48, 100, 40)))]
+# The woods the OCD pack has no picture of are drawn in the pack's own shapes (painters/ocd_wood.rs,
+# painters/palm_wood.rs): styles for bark, the cut end, planks and leaves. The rest use the generic painters.
+OCD_SHAPED = {"maple": ("ocd_bark", "ocd_rings", "ocd_planks", "ocd_leaves"),
+              "palm": ("palm_bark", "palm_rings", "palm_planks", "palm_fronds")}
 for id, _, bark, wood, leaf in WOODS:
+    st_bark, st_rings, st_planks, st_leaves = OCD_SHAPED.get(id, ("bark", "rings", "planks", None))
     if bark:
-        tex(f"{id}_side", "paint bark %d %d %d" % bark)
-        tex(f"{id}_top", "paint rings %d %d %d" % wood)
+        tex(f"{id}_side", "paint %s %d %d %d" % ((st_bark,) + bark))
+        tex(f"{id}_top", "paint %s %d %d %d" % ((st_rings,) + wood))
     if wood:
-        tex(f"{id}_planks", "paint planks %d %d %d" % wood)
+        tex(f"{id}_planks", "paint %s %d %d %d" % ((st_planks,) + wood))
     if leaf:
-        tex(f"{id}_leaves", "paint %s %d %d %d" % (leaf[0], *leaf[1]))
+        tex(f"{id}_leaves", "paint %s %d %d %d" % (st_leaves or leaf[0], *leaf[1]))
 
 CHESTS = [("oak", "Oak", (176, 136, 84))] + [(i, n, wd) for i, n, _, wd, _ in WOODS if i != "oak"] + \
          [(i, n, c) for i, n, c in COLOURS]
@@ -576,9 +581,9 @@ w("""
 tex("ceramic", "flat 240 240 236 noise 4")
 tex("steel", "flat 176 180 190 noise 6")
 tex("counter_top", "paint polished 208 204 196")
-tex("screen", "flat 24 28 40 noise 3")
+tex("screen", "paint screen 24 28 40")
 tex("books", "paint bricks 150 70 60")
-tex("cardboard", "flat 196 160 110 noise 7")
+tex("cardboard", "paint cardboard 196 160 110")
 tex("pizza_top", "paint pizza 214 60 44")
 tex("cake_top", "paint cookie 250 240 244")
 tex("bread_crust", "paint loaf 196 136 70")

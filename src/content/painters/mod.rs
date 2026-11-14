@@ -17,6 +17,7 @@
 //! are the registry: a test checks that each name is painted by some file.
 
 pub mod benches;
+pub mod cardboard_and_screens;
 pub mod blocks;
 pub mod explosives;
 pub mod food;
@@ -24,7 +25,9 @@ pub mod gear;
 pub mod glass;
 pub mod house;
 pub mod liquids;
+pub mod ocd_wood;
 pub mod ores;
+pub mod palm_wood;
 pub mod plants;
 pub mod sky;
 pub mod stone;
@@ -68,12 +71,12 @@ pub const STYLES: &[&str] = &[
     "concrete", "wool", "terracotta", "glass", "rock", "polished", "bricks", "tiles", "planks", "bark", "rings", "leaves", "blossom", "stick", "pick", "axe", "shovel", "hoe", "sword", "gem", "meat", "fruit", "fishfood",
     "rail", "machine", "hull", "wings", "chest", "chest_front", "chest_side", "chest_top", "workbench", "mushroom", "cluster", "icicle", "magma", "vine", "web", "glassdoor", "bow", "crossbow", "arrow", "ingot", "door", "farmland", "crop1", "crop2", "crop3",
     "crop4", "seeds", "sheaf", "loaf", "pizza", "wedge", "root", "tuber", "jar", "egg", "sack", "cookie", "pie", "bowl", "ore", "ore_vein", "tnt_side", "tnt_top", "tnt_bottom", "powder",
-    "flint_steel", "bench5", "bench7", "bench_side",
+    "flint_steel", "bench5", "bench7", "bench_side", "ocd_bark", "ocd_rings", "ocd_planks", "ocd_leaves", "palm_bark", "palm_rings", "palm_planks", "palm_fronds", "cardboard", "screen",
 ];
 
 /// Styles whose picture is a block face: they have the one-pixel frame
 /// (checked by a test). The rest are items, plants and glass.
-pub const FRAMED_STYLES: &[&str] = &["concrete", "wool", "terracotta", "rock", "polished", "chest", "workbench", "magma", "farmland", "door", "ore", "ore_vein", "tnt_side", "tnt_top", "tnt_bottom", "bench5", "bench7", "bench_side"];
+pub const FRAMED_STYLES: &[&str] = &["concrete", "wool", "terracotta", "rock", "polished", "chest", "workbench", "magma", "farmland", "door", "ore", "ore_vein", "tnt_side", "tnt_top", "tnt_bottom", "bench5", "bench7", "bench_side", "ocd_bark", "ocd_planks", "palm_bark", "palm_planks", "cardboard", "screen"];
 
 /// Fixed pictures with the frame, likewise.
 pub const FRAMED_BUILTINS: &[&str] = &[
@@ -103,6 +106,8 @@ pub fn paint_pal(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
     blocks::paint(style, pal, x, y)
         .or_else(|| stone::paint(style, pal, x, y))
         .or_else(|| wood::paint(style, pal, x, y))
+        .or_else(|| ocd_wood::paint(style, pal, x, y))
+        .or_else(|| palm_wood::paint(style, pal, x, y))
         .or_else(|| ores::paint(style, pal, x, y))
         .or_else(|| plants::paint(style, pal, x, y))
         .or_else(|| glass::paint(style, pal, x, y))
@@ -111,6 +116,7 @@ pub fn paint_pal(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
         .or_else(|| gear::paint(style, pal, x, y))
         .or_else(|| explosives::paint(style, pal, x, y))
         .or_else(|| benches::paint(style, pal, x, y))
+        .or_else(|| cardboard_and_screens::paint(style, pal, x, y))
 }
 
 // ---- Colour helpers.
