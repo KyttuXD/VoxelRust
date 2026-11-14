@@ -1048,3 +1048,9 @@ of [DATA.md](DATA.md#effects) cover (damage, healing, speed, jump, melee
 damage, hunger, absorption, night vision): those need code, and
 code needs a rebuild. What a pack can do is run the episodes and scripts
 described above.
+
+## Memory
+
+Long sounds and model files are read again from their files when they are
+needed, and let go when memory is short, so a mod can bring many of them: see
+[MEMORY.md](MEMORY.md). The files must stay in place while the game runs.

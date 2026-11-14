@@ -4,6 +4,8 @@
 
 use alloc::vec::Vec;
 
+pub mod clip;
+
 /// The rate the mixer runs at.
 pub const RATE: u32 = 22050;
 /// Longest sound taken, in seconds, and biggest file, in bytes.

@@ -133,7 +133,7 @@ pub struct SoundDef {
     pub caption: String,
     /// A recorded sound (read from a sound file) instead of a made one:
     /// mono, 16-bit, at the mixer's rate.
-    pub clip: Option<Vec<i16>>,
+    pub clip: Option<crate::wav::clip::Clip>,
 }
 
 /// Something a pack makes happen: when `event` occurs (to `what`, if
@@ -498,7 +498,22 @@ pub const TOOLS: [&str; 5] = ["none", "pick", "axe", "shovel", "hoe"];
 #[derive(Clone, Debug)]
 pub struct ModelSpec {
     pub id: String,
+    /// The model file's text, or empty when it is read again from `file` when
+    /// wanted (model files can be big and most are never drawn).
     pub text: String,
+    /// Where the file is (see `util/data/reread`).
+    pub file: String,
+}
+
+impl ModelSpec {
+    /// The model file's text (read now if it is not kept).
+    pub fn source(&self) -> Option<alloc::borrow::Cow<'_, str>> {
+        if !self.text.is_empty() {
+            return Some(alloc::borrow::Cow::Borrowed(self.text.as_str()));
+        }
+        let bytes = crate::util::data::reread::read(&self.file)?;
+        Some(alloc::borrow::Cow::Owned(String::from_utf8_lossy(&bytes).into_owned()))
+    }
 }
 
 /// Every file under `data/` except base.txt, embedded at build time.
@@ -925,7 +940,7 @@ struct Parser<'a> {
     /// `ore` and `plant` lines, kept the same way.
     rules: Vec<(String, Vec<String>)>,
     /// Sound files read while parsing: the sound's id and its samples.
-    clips: Vec<(String, Vec<i16>)>,
+    clips: Vec<(String, crate::wav::clip::Clip)>,
     /// `picture` lines: a creature picture's name and its PNG file.
     pictures: Vec<(String, Vec<u8>)>,
     warnings: Vec<String>,
@@ -1072,19 +1087,23 @@ impl Parser<'_> {
                 // Inside an entity, `model <id>` names the model it uses.
                 "model" if !(matches!(cur, Cur::Entity(_) | Cur::Section(_)) && args.len() == 1) => {
                     cur = Cur::None;
-                    let text = match (args.first(), args.get(1), args.get(2)) {
+                    let keep = crate::util::data::reread::keeping();
+                    // (text, file): the text is let go once it is known to be there; the
+                    // model is read again from its file when it is first drawn.
+                    let found: Option<(String, String)> = match (args.first(), args.get(1), args.get(2)) {
                         (Some(_), Some(&"builtin"), Some(name)) => {
-                            embedded::file(&alloc::format!("models/{}.bbmodel", name)).map(|b| String::from_utf8_lossy(b).into_owned())
+                            let path = alloc::format!("models/{}.bbmodel", name);
+                            embedded::file(&path).map(|b| (if keep { String::from_utf8_lossy(b).into_owned() } else { String::new() }, path))
                         }
                         (Some(_), Some(&"file"), Some(_)) => {
                             let path = alloc::format!("{}{}", dir_of(file), args[2..].join(" "));
-                            (self.load)(&path).map(|b| String::from_utf8_lossy(&b).into_owned())
+                            (self.load)(&path).map(|b| (if keep { String::from_utf8_lossy(&b).into_owned() } else { String::new() }, path))
                         }
                         _ => None,
                     };
-                    match text {
-                        Some(text) => {
-                            let spec = ModelSpec { id: args[0].to_string(), text };
+                    match found {
+                        Some((text, path)) => {
+                            let spec = ModelSpec { id: args[0].to_string(), text, file: path };
                             match self.models.iter().position(|m| m.id == spec.id) {
                                 Some(i) => self.models[i] = spec,
                                 None => self.models.push(spec),
@@ -1189,7 +1208,8 @@ impl Parser<'_> {
                         match (self.load)(&path).and_then(|b| crate::wav::decode(&b)) {
                             Some(samples) => {
                                 self.clips.retain(|c| c.0 != words[1]);
-                                self.clips.push((words[1].clone(), samples));
+                                // (Long ones are let go here and decoded again when played.)
+                                self.clips.push((words[1].clone(), crate::wav::clip::Clip::new(&path, samples)));
                                 words.remove(4);
                                 words[3] = String::from("clip");
                             }

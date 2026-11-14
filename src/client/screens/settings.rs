@@ -279,6 +279,17 @@ impl App {
         self.set_screen(if self.session.is_some() { Screen::Pause } else { Screen::Title });
     }
 
+    /// Choose the memory limit: the bigger one when there are mods (or a server's content).
+    pub(super) fn refresh_mem_limit(&mut self) {
+        let mut any = self.server_content;
+        for p in &self.pack_paths {
+            if let Some(folder) = p.strip_suffix("/*") {
+                any |= mods_in(&alloc::format!("{}/", folder)).iter().any(|m| !self.settings.mods_off.split(',').any(|o| o == mod_name(m)));
+            }
+        }
+        self.mem.set_mods(any);
+    }
+
     /// Read the pack files again and switch to them without restarting.
     pub(super) fn reload_packs(&mut self, r: &mut Renderer) {
         if self.session.as_ref().map_or(false, |g| g.net.is_some()) {
@@ -310,6 +321,7 @@ impl App {
         r.load_models();
         self.pack_text = text;
         self.server_content = false;
+        self.refresh_mem_limit();
         self.status = note;
     }
 }

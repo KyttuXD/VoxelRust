@@ -45,11 +45,11 @@ impl App {
             underwater = crate::block::is_water(head);
             let env = Env {
                 time: g.time,
-                distance: self.distance,
+                distance: self.eff.distance,
                 clouds: self.settings.clouds,
                 underwater,
                 clock: g.clock,
-                far_distance: if self.settings.far_distance > self.distance { self.settings.far_distance } else { 0 },
+                far_distance: if self.eff.far > self.eff.distance { self.eff.far } else { 0 },
                 rain: g.sky.rain,
                 flash: g.flash,
                 vision: crate::game::effects::apply::night_vision(&g.fx, &crate::game::effects::apply::lookup),

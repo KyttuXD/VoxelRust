@@ -217,7 +217,10 @@ pub(super) fn server_content(pack: &[u8]) -> Registry {
         }
     }
     let refs: Vec<(&str, &str)> = sources.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    // (Their files live only in memory, so their sounds cannot be decoded again later.)
+    crate::util::data::reread::keep_all(true);
     let mut registry = Registry::from_sources(&refs, &mut |p| files.iter().find(|f| f.0.strip_prefix("file:") == Some(p)).map(|f| f.1.clone()));
+    crate::util::data::reread::keep_all(false);
     // What a server sends may define things, but the lines kept for the
     // mods' own code (addresses to fetch from, for one) stay our own.
     registry.lines = block::reg().lines.clone();

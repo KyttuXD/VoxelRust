@@ -101,6 +101,8 @@ pub struct Renderer {
     /// Pictures of creatures and players by name (see `pack_entities`), uploaded when first asked for.
     entity_tex: alloc::collections::BTreeMap<alloc::string::String, u32>,
     model_verts: Vec<crate::model::ModelVert>,
+    /// Bytes of model and creature pictures on the card (for the memory budget).
+    pub model_tex_bytes: usize,
     pass: Option<Pass>,
 }
 
@@ -292,6 +294,7 @@ impl Renderer {
             tex_override: 0,
             entity_tex: alloc::collections::BTreeMap::new(),
             model_verts: Vec::new(),
+            model_tex_bytes: 0,
             pass: None,
         }
     }
@@ -1192,7 +1195,10 @@ impl Renderer {
             return *t;
         }
         let t = match crate::pack_entities::image(name) {
-            Some(img) => self.add_texture(img.w, img.h, &img.rgba),
+            Some(img) => {
+                self.model_tex_bytes += img.w * img.h * 4;
+                self.add_texture(img.w, img.h, &img.rgba)
+            }
             None => 0,
         };
         self.entity_tex.insert(alloc::string::String::from(name), t);
@@ -1210,14 +1216,28 @@ impl Renderer {
         old.extend(self.models.iter().flatten().map(|m| m.tex));
         self.delete_textures(&old);
         self.entity_tex.clear();
+        self.model_tex_bytes = 0;
         self.models = (0..r.models.len()).map(|_| None).collect();
         self.model_tried = alloc::vec![false; r.models.len()];
+    }
+
+    /// Bytes held by the models: those parsed so far, and the text of the model files that is kept.
+    pub fn model_bytes(&self) -> usize {
+        let parsed: usize = self.models.iter().flatten().map(|d| d.model.cubes.len() * core::mem::size_of::<crate::bbmodel::Cube>() + d.model.bones.len() * core::mem::size_of::<crate::bbmodel::Bone>() + 512).sum();
+        parsed + reg().models.iter().map(|m| m.text.len() + m.id.len() + m.file.len() + 64).sum::<usize>()
     }
 
     /// Parse model `i` of the registry and upload its picture. `None` (and a line in the log) if it will not parse.
     fn parse_model(&mut self, i: usize) -> Option<crate::model::ModelDef> {
         let spec = reg().models.get(i)?;
-        match crate::model::ModelDef::from_bbmodel(&spec.id, &spec.text) {
+        let Some(text) = spec.source() else {
+            logf!("voxelrust: data: model {}: cannot read {}", spec.id, spec.file);
+            return None;
+        };
+        let parsed = crate::model::ModelDef::from_bbmodel(&spec.id, &text);
+        // (The file's text is let go here: only the parsed model is kept.)
+        drop(text);
+        match parsed {
             Ok(mut def) => {
                 // The picture named after the model (a pack's or the game's own, see
                 // `pack_entities`) comes before the one inside the model file, if it has the same shape.
@@ -1226,6 +1246,12 @@ impl Renderer {
                     (Some(img), _) | (None, Some(img)) => make_texture(img.w, img.h, &img.rgba, gl::NEAREST, gl::CLAMP_TO_EDGE),
                     (None, None) => make_texture(1, 1, &[255, 255, 255, 255], gl::NEAREST, gl::CLAMP_TO_EDGE),
                 };
+                // The picture lives on the card now; the decoded copy is not needed.
+                self.model_tex_bytes += match (&named, &def.model.texture) {
+                    (Some(img), _) | (None, Some(img)) => img.w * img.h * 4,
+                    (None, None) => 4,
+                };
+                def.model.texture = None;
                 // (Making a texture binds it: the batch must bind its own again.)
                 self.batch_tex = 0;
                 Some(def)
@@ -1259,8 +1285,10 @@ impl Renderer {
                         }
                         let Some(tex) = self.models[j].as_ref().map(|d| d.tex) else { continue };
                         let spec = &reg().models[j];
-                        if let Ok(mut copy) = crate::model::ModelDef::from_bbmodel(&spec.id, &spec.text) {
+                        let Some(text) = spec.source() else { continue };
+                        if let Ok(mut copy) = crate::model::ModelDef::from_bbmodel(&spec.id, &text) {
                             copy.tex = tex;
+                            copy.model.texture = None;
                             self.models[i] = Some(copy);
                             break;
                         }

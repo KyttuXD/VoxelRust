@@ -184,6 +184,8 @@ impl App {
                 alloc::format!("JOBS {} ON {} THREADS   TIME {:.2}", g.pool.in_flight, g.pool.thread_count(), g.time),
                 gl::get_string(gl::RENDERER),
             ];
+            let mem = self.mem.lines();
+            let lines: Vec<String> = lines.into_iter().chain(mem).collect();
             for (i, l) in lines.iter().enumerate() {
                 r.label(4.0 * s, 4.0 * s + i as f32 * 10.0 * s, s, l, WHITE);
             }

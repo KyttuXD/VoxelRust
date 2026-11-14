@@ -1172,7 +1172,7 @@ mod tests {
         assert_eq!(r.models[lurker.model].id, "player");
         assert_eq!(r.models[r.entities[kind("cow")].model].id, "cow");
         for m in &r.models {
-            crate::model::ModelDef::from_bbmodel(&m.id, &m.text).unwrap();
+            crate::model::ModelDef::from_bbmodel(&m.id, &m.source().unwrap()).unwrap();
         }
     }
 

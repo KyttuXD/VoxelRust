@@ -138,7 +138,11 @@ impl App {
                             self.set_screen(Screen::Pause);
                         }
                         self.keys = [false; 512];
+                        self.unfocused = true;
                     }
+                    sdl::WINEV_FOCUS_GAINED => self.unfocused = false,
+                    sdl::WINEV_MINIMIZED | sdl::WINEV_HIDDEN => self.minimised = true,
+                    sdl::WINEV_RESTORED | sdl::WINEV_SHOWN => self.minimised = false,
                     _ => {}
                 },
                 sdl::EV_KEYDOWN => {

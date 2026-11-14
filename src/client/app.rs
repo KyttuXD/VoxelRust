@@ -225,6 +225,12 @@ struct App {
     settings_path: String,
     base: String,
     threads: usize,
+    /// The memory budget (client/memory) and what it lets the game use now.
+    mem: crate::client::memory::MemWatch,
+    eff: crate::budget::Effective,
+    /// The window is not in front / is minimised: the loop slows down (client/pacing).
+    unfocused: bool,
+    minimised: bool,
     screen: Screen,
     session: Option<Session>,
     /// Which text field has the keyboard (0 = none).
@@ -491,6 +497,8 @@ impl App {
             drop(pool);
             world.free_meshes(r);
         }
+        // The world's memory goes back to the system rather than sitting in the allocator.
+        crate::sys::heap::trim();
         // Nothing of the world left may go on sounding.
         self.audio.silence();
         // A game hosted from the menu ends when its host leaves.
@@ -934,6 +942,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
     // (The settings are read properly further down; which mods are off is
     // needed now.)
     let mods_off: String = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| crate::settings::Settings::parse(&String::from_utf8_lossy(&b)).mods_off).unwrap_or_default();
+    // Long sounds and model files are read again from their files when wanted (see util/data/reread).
+    crate::util::data::reread::set_reader(read_mod_file);
     let (first, mut pack_text) = load_content(&pack_paths, &mods_off);
     block::install(first);
     phases.mark("content: base data and mods parsed");
@@ -1083,7 +1093,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     unsafe { (api.SDL_StartTextInput)() };
     let mut inp = UiInput::default();
 
-    let threads = opts.threads.unwrap_or_else(|| thread::cpu_count().saturating_sub(1).clamp(1, 8));
+    let threads = opts.threads.unwrap_or_else(|| thread::cpu_count().saturating_sub(1).clamp(1, 6));
     let mut app = App {
         window,
         audio: if scripted { Audio::silent() } else { Audio::new() },
@@ -1093,6 +1103,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         settings_path,
         base: base.clone(),
         threads,
+        mem: crate::client::memory::MemWatch::new(false, opts.log.is_some()),
+        eff: crate::budget::Effective { distance: 8, far: 0, lod_real: 0, lod_trees: 0, lod_detail: 0 },
+        unfocused: false,
+        minimised: false,
         screen: Screen::Title,
         session: None,
         focus: 0,
@@ -1180,6 +1194,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     app.status.clear();
     // Sounds the player has put in the data folder's `sounds/` folder replace the game's own.
     let own_sounds = app.audio.load_folder(&base);
+    app.refresh_mem_limit();
     if !own_sounds.is_empty() {
         logf!("voxelrust: own sounds from {}sounds/: {}", base, own_sounds.join(" "));
     }
@@ -1490,15 +1505,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
         if frame_count % 30 == 0 {
             unsafe { (api.SDL_GL_SetSwapInterval)((app.settings.vsync && !scripted) as c_int) };
         }
-        // Do not spin the CPU in menus, and honour the frame-rate limit.
+        // Do not spin the CPU in menus, with the window behind others or minimised, and honour
+        // the frame-rate limit (client/pacing).
         let in_menu = !matches!(app.screen, Screen::Game | Screen::Inventory);
-        let limit = if in_menu && !scripted { 60 } else { app.settings.max_fps };
-        if limit > 0 && (in_menu || !app.settings.vsync) {
-            let spent = sys::now() - frame_start;
-            let want = 1.0 / limit as f64;
-            if spent < want {
-                unsafe { (api.SDL_Delay)(((want - spent) * 1000.0) as u32) };
-            }
+        let facts = crate::client::pacing::Facts { in_menu, focused: !app.unfocused, minimised: app.minimised, vsync: app.settings.vsync, max_fps: app.settings.max_fps, scripted };
+        let wait = crate::client::pacing::wait_ms(crate::client::pacing::cap(&facts), sys::now() - frame_start);
+        if wait > 0 {
+            unsafe { (api.SDL_Delay)(wait) };
         }
         #[cfg(target_arch = "wasm32")]
         return Ok(true);
@@ -1536,6 +1549,7 @@ pub fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     for i in 0..argc.max(0) as usize {
         args.push(unsafe { sys::from_cstr(*argv.add(i)) });
     }
+    sys::heap::tune();
     match run(args) {
         Ok(()) => 0,
         Err(msg) => {

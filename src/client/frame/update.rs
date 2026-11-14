@@ -44,7 +44,17 @@ impl App {
         self.toggle_fly = false;
         self.leave = false;
         self.drop_item = false;
-        let distance = self.distance;
+        // What the memory budget allows (client/memory): the settings are left alone.
+        let wanted = crate::budget::Wanted {
+            distance: self.distance,
+            far: self.settings.far_distance,
+            lod_real: self.settings.lod_real,
+            lod_trees: self.settings.lod_trees,
+            lod_detail: self.settings.lod_detail,
+        };
+        self.mem.tick(dt, r, self.session.as_ref(), &mut self.audio, &wanted);
+        self.eff = self.mem.effective(&wanted);
+        let distance = self.eff.distance;
         let mut died = false;
         if let Some(g) = self.session.as_mut() {
             // The player may move once the chunks right around them are in;
@@ -63,8 +73,8 @@ impl App {
                 }
             }
             if playing && g.playable {
-                g.set_lod(self.settings.lod_real, self.settings.lod_trees, self.settings.lod_detail);
-                g.update(dt, &controls, distance, self.settings.far_distance, r, &mut self.audio);
+                g.set_lod(self.eff.lod_real, self.eff.lod_trees, self.eff.lod_detail);
+                g.update(dt, &controls, distance, self.eff.far, r, &mut self.audio);
                 if g.flags != self.settings.flags {
                     g.flags = self.settings.flags.clone();
                 }
@@ -100,6 +110,7 @@ impl App {
                     r.load_models();
                     self.pack_text = crate::client::pack_text::PackText::ready(pack);
                     self.server_content = true;
+                    self.mem.set_mods(true);
                     g.say("USING THE SERVER'S CONTENT");
                 }
             }

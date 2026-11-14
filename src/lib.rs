@@ -28,7 +28,7 @@ pub mod script;
 pub mod mods {
     include!(concat!(env!("OUT_DIR"), "/native_mods.rs"));
 }
-pub use util::{audio as wav, image, math};
+pub use util::{audio as wav, budget, image, math};
 pub use util::data::{json, settings};
 pub use util::hash::sha256;
 pub use util::image::png;
