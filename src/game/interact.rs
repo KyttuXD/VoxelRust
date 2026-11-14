@@ -333,6 +333,9 @@ mod tests {
 
     #[test]
     fn a_bed_is_two_blocks_long_the_way_you_face_and_breaks_as_one() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let bed = reg().block("red_bed").unwrap();
         let head = reg().block("red_bed_head").unwrap();
         // (yaw in quarter turns, where the head ends up relative to the foot)
@@ -376,6 +379,9 @@ mod tests {
 
     #[test]
     fn big_props_take_their_room_and_break_as_one() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let mut w = world();
         let p = Player::new([2.5, 121.0, 2.5]);
         let hit = aim(&w, [8.5, 126.0, 8.5], DOWN);
@@ -455,6 +461,9 @@ mod tests {
 
     #[test]
     fn seeds_need_tilled_soil() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let mut w = world();
         let p = Player::new([2.5, 121.0, 2.5]);
         let hit = aim(&w, [8.5, 124.0, 8.5], DOWN);

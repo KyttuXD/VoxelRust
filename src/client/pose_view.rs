@@ -135,7 +135,7 @@ mod tests {
     #[test]
     fn creatures_sit_on_seats_and_lie_in_beds_only_when_still() {
         let reg = crate::block::reg();
-        let seat = reg.blocks.iter().position(|b| b.x.seat > 0);
+        let seat = reg.blocks.iter().position(|b| b.x.seat > 0 && b.x.seat < 16); // a seat as tall as a block has no air above its top to stand in
         let bed = reg.blocks.iter().position(|b| b.usable == Usable::Bed);
         if let Some(s) = seat {
             let get = move |_: i32, y: i32, _: i32| if y == 10 { s as Block } else { 0 };

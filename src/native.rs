@@ -297,6 +297,18 @@ pub fn shipped() -> &'static [(&'static str, &'static [u8])] {
     crate::mods::SHIPPED
 }
 
+/// For a test that needs the content of the mods (creatures, colours, farming,
+/// tools of more metals...): says so and returns true when this build has no
+/// shipped mods, so the test can return at once. The core alone has none of it.
+#[cfg(test)]
+pub fn skip_without_mods() -> bool {
+    let none = shipped().is_empty();
+    if none {
+        std::eprintln!("SKIPPED: needs the mods (build with --features native-mods and VOXELRUST_MODS_DIR)");
+    }
+    none
+}
+
 /// Outside the tests there are no shipped mods to hand out.
 #[cfg(not(test))]
 pub fn shipped() -> &'static [(&'static str, &'static [u8])] {

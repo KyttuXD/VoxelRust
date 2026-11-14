@@ -300,7 +300,7 @@ block("big_chest", "Big Chest", "oak_chest", cat="Storage", hardness=1.6, use="c
 w("shaped big_chest 1 \"PPPPP\" \"P...P\" \"P.C.P\" \"P...P\" \"PPPPP\" with P @planks C oak_chest")
 block("bed_frame", "Four-poster Bed Frame", "planks", cat="Furniture", hardness=1.0, tool="axe",
       box=["0 0 0 2 16 2", "14 0 0 16 16 2", "0 0 14 2 16 16", "14 0 14 16 16 16", "0 3 0 16 6 16",
-           "0 14 0 16 16 2", "0 14 14 16 16 16", "0 14 2 2 16 14", "14 14 2 16 16 14"])
+           "0 14 0 16 16 2", "0 14 14 16 16 16"])  # a block takes 8 boxes at most: 4 posts, the mattress and the head and foot rails
 w("shaped bed_frame 1 \"S...S\" \"SPPPS\" \"SPPPS\" \"S...S\" with S stick P @planks")
 block("banquet_table", "Banquet Table", "planks", cat="Furniture", hardness=1.4, tool="axe",
       box=["0 13 0 16 16 16", "6 3 6 10 13 10", "2 0 2 14 3 14"])

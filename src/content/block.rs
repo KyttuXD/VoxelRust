@@ -2559,6 +2559,9 @@ impl Registry {
 mod tests {
     #[test]
     fn the_better_the_ore_the_harder_the_tool_hits() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let damage = |id: &str| reg().items.iter().find(|i| i.id == id).unwrap().x.damage;
         for kind in ["pick", "axe", "shovel"] {
             let tiers = ["wood", "stone", "copper", "iron", "crystal", "ruby"].map(|m| damage(&alloc::format!("{m}_{kind}")));
@@ -2648,6 +2651,9 @@ mod tests {
 
     #[test]
     fn fences_and_walls_connect_to_cubes_and_their_own_kind() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let r = reg();
         let (fence, wall) = (r.block("planks_fence").unwrap(), r.block("stone_wall").unwrap());
         let stone = r.wk.stone;
@@ -2689,6 +2695,9 @@ mod tests {
 
     #[test]
     fn drops_recipes_and_categories_come_from_data() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let r = reg();
         let item = |id: &str| r.items.iter().position(|i| i.id == id).unwrap();
         assert_eq!(def(r.wk.stone).drop, Some(item("cobble")));
@@ -2719,7 +2728,7 @@ mod tests {
 
     #[test]
     fn variants_name_their_biomes_and_creatures_can_explode() {
-        let pack = "model m builtin pig\nentity bang\n  name Bang\n  model m\n  explodes 2.5 1.5 3\n  variant Dry biomes desert savanna\n  variant Wet biomes swamp model m size 1.2 tex x\n  variant Odd\nentity dud\n  name Dud\n  model m\n  explodes 2\n  variant Bad model nothing_real\n";
+        let pack = "model m builtin grazer\nentity bang\n  name Bang\n  model m\n  explodes 2.5 1.5 3\n  variant Dry biomes desert savanna\n  variant Wet biomes swamp model m size 1.2 tex x\n  variant Odd\nentity dud\n  name Dud\n  model m\n  explodes 2\n  variant Bad model nothing_real\n";
         let r = Registry::from_sources(&[("base.txt", BASE_DATA), ("p", pack)], &mut |_| None);
         let e = r.entities.iter().find(|e| e.id == "bang").expect("bang");
         assert_eq!(e.x.explodes, Some((2.5, 1.5, 3.0)));

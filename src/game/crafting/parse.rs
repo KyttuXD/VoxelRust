@@ -231,7 +231,7 @@ mod tests {
         let tall = parse("shaped plane 1 I I I I I I with I iron_ingot").unwrap();
         assert_eq!((tall.min_side(), tall.needs_table()), (7, true));
         assert_eq!(parse("shaped plane 1 I with I iron_ingot").unwrap().min_side(), 2);
-        assert_eq!(parse("shaped pick 1 III .S. .S. with I iron_ingot S stick").unwrap().min_side(), 3);
+        assert_eq!(parse("shaped iron_pick 1 III .S. .S. with I iron_ingot S stick").unwrap().min_side(), 3);
         assert_eq!(parse("craft plane 1 stick 5").unwrap().min_side(), 3);
         assert_eq!(parse("craft plane 1 stick 10").unwrap().min_side(), 2);
     }

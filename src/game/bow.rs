@@ -337,6 +337,9 @@ mod tests {
 
     #[test]
     fn the_base_bows_have_their_three_pictures() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let r = reg();
         for id in ["bow", "longbow", "crossbow"] {
             let item = r.items.iter().find(|i| i.id == id).expect(id);

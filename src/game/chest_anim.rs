@@ -89,7 +89,9 @@ impl ChestAnim {
                         // Whatever stage the world shows is where it starts
                         // (a chest another player left half open too).
                         self.lids.push(Lid { cell, stage, target: OPEN, timer: 0.0 });
-                        out.push(Change { cell, stage, noise: if stage < OPEN { Some(Noise::Open) } else { None } });
+                        if stage < OPEN {
+                            out.push(Change { cell, stage, noise: Some(Noise::Open) });
+                        }
                     }
                 }
             }
@@ -110,6 +112,10 @@ impl ChestAnim {
                 l.timer -= STEP;
                 l.stage = if l.stage < l.target { l.stage + 1 } else { l.stage - 1 };
                 out.push(Change { cell: l.cell, stage: l.stage, noise: None });
+            }
+            // Time left over when it got there must not count towards the next move.
+            if l.stage == l.target {
+                l.timer = 0.0;
             }
         }
         self.lids.retain(|l| l.stage != 0 || l.target != 0);
@@ -326,7 +332,9 @@ mod tests {
                 }
             }
         }
-        assert!(chests >= 20, "{chests}");
+        // The colours mod brings sixteen more chests; without it there is the oak's alone.
+        let wanted = if r.block("red_chest").is_some() { 20 } else { 1 };
+        assert!(chests >= wanted, "{chests}");
     }
 
     #[test]

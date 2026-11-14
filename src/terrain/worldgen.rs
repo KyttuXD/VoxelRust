@@ -1057,6 +1057,9 @@ mod tests {
 
     #[test]
     fn savanna_and_forest_grow_their_own_trees() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         use crate::chunk::ChunkData;
         let r = reg();
         let (acacia, dark) = (r.wk.acacia_log, r.wk.dark_oak_log);

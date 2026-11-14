@@ -12,6 +12,9 @@ fn with_pack(pack: &str) -> Registry {
 
 #[test]
 fn base_data_has_no_complaints_about_recipes() {
+    if crate::native::skip_without_mods() {
+        return;
+    }
     let r = reg();
     let bad: alloc::vec::Vec<&String> = r.warnings.iter().filter(|w| w.contains("recipe") || w.contains("group")).collect();
     assert!(bad.is_empty(), "{:#?}", bad);
@@ -38,6 +41,9 @@ fn every_recipe_makes_an_item_that_exists_from_items_that_exist() {
 
 #[test]
 fn every_shaped_recipe_is_well_formed_and_the_well_known_ones_are_there() {
+    if crate::native::skip_without_mods() {
+        return;
+    }
     let r = reg();
     let shaped = r.grid_recipes.iter().filter(|rc| matches!(rc.pattern, Pattern::Shaped { .. })).count();
     assert!(shaped > 100, "{}", shaped);
@@ -182,6 +188,9 @@ fn every_bench_has_a_recipe_from_the_tier_below() {
 
 #[test]
 fn some_showcase_recipes_need_the_bigger_grids() {
+    if crate::native::skip_without_mods() {
+        return;
+    }
     let r = reg();
     let sides: alloc::vec::Vec<usize> = r.grid_recipes.iter().map(|rc| rc.min_side()).collect();
     assert!(sides.iter().filter(|&&s| s == 5).count() >= 3, "5 x 5 recipes");

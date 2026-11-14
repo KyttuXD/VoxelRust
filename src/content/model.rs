@@ -450,9 +450,9 @@ mod tests {
         let swim = draw(Body::steady(Kind::Swim));
         assert!(swim.1[2] - swim.0[2] > 1.2 && swim.1[1] - swim.0[1] < 1.3, "{swim:?}");
         // A creature that is not built like a person does not take the poses.
-        let cow_text = String::from_utf8_lossy(crate::block::embedded::file("models/cow.bbmodel").expect("cow model")).into_owned();
-        let cow = ModelDef::from_bbmodel("cow", &cow_text).unwrap();
-        assert!(!cow.rig.humanoid);
+        let cow_text = String::from_utf8_lossy(crate::block::embedded::file("models/grazer.bbmodel").expect("grazer model")).into_owned();
+        let grazer = ModelDef::from_bbmodel("grazer", &cow_text).unwrap();
+        assert!(!grazer.rig.humanoid);
     }
 
     #[test]

@@ -361,6 +361,9 @@ mod tests {
 
     #[test]
     fn the_base_game_has_tnt_and_what_lights_it() {
+        if crate::native::skip_without_mods() {
+            return;
+        }
         let r = reg();
         let tnt = r.blocks.iter().position(|b| b.id == "tnt").expect("a tnt block") as Block;
         assert_eq!(power_of(tnt), Some(2.5));
