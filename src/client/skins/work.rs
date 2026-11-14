@@ -265,6 +265,15 @@ mod tests {
     }
 
     #[test]
+    fn a_4096_skin_of_noise_is_halved_to_fit_the_real_wire_limit() {
+        let px = noisy(4096);
+        let (hd, side, _) = pack_own(4096, &px, MAX_SKIN);
+        assert!(hd.len() <= MAX_SKIN, "{} bytes", hd.len());
+        assert!(side < 4096 && side >= 64 && side.is_power_of_two(), "side {}", side);
+        assert_eq!(side_of_png(&hd), Some(side));
+    }
+
+    #[test]
     fn a_custom_skin_file_is_unpacked_by_a_load_job() {
         let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let px = noisy(64);

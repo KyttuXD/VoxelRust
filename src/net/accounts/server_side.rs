@@ -37,7 +37,7 @@ impl Server {
 
     /// Say something to connection `i`, dropping it if it cannot be reached.
     fn tell(&mut self, i: usize, msg: &Msg) {
-        if self.conns[i].stream.send_all(&msg.encode(), SEND_TIMEOUT).is_err() {
+        if self.conns[i].send_bytes(&msg.encode(), SEND_TIMEOUT).is_err() {
             self.conns[i].gone = true;
         }
     }
@@ -455,7 +455,7 @@ impl Server {
             out.extend(Msg::State { id: 0, channel: crate::proto::channel::PLAYER, keep: false, key: String::from("you"), data: spot_text(s).into_bytes() }.encode());
         }
         out.extend(health);
-        if self.conns[i].stream.send_all(&out, 4_000).is_err() {
+        if self.conns[i].send_bytes(&out, 4_000).is_err() {
             self.conns[i].gone = true;
             return false;
         }

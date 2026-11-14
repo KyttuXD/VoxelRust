@@ -384,6 +384,11 @@ against `std` so that plain `cargo test` works.) With `--features native-mods` t
 the tests of the mods (see [Mod code](#mod-code)); `cargo test --lib` passes
 both with and without the feature.
 
+While working, `scripts/test-changed.sh` runs only the tests of the modules that
+changed against `HEAD` (or against any commit given); a change outside `src/`
+runs everything, and `scripts/test-changed.sh --full` is the whole run (about
+7 s once built, the same as CI). One debug run is the check: CI runs debug.
+
 ## Faster builds
 
 The game is one crate of about 60,000 lines with no dependencies, so every

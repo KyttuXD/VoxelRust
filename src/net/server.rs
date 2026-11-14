@@ -65,6 +65,9 @@ struct Conn {
     skin: crate::net::skinslot::SkinSlot,
     /// Skins of other players waiting to be sent to this one, a few pieces a tick.
     skin_out: crate::net::skinqueue::SkinQueue,
+    /// Bytes accepted for this connection but not yet taken by the socket (skin pieces,
+    /// and whatever else was sent meanwhile, behind them so messages never interleave).
+    out: crate::net::skinqueue::OutBuf,
     /// The protocol version their game said it speaks.
     proto: u16,
     /// What this player's voice chat is set to (`VOICE_` flags); 0 until they say.
@@ -163,6 +166,34 @@ const MAX_STRANGERS: usize = 24;
 /// Seconds without a word from a player before they are dropped.
 const IDLE_SECONDS: f32 = 60.0;
 
+impl Conn {
+    /// Send to this player. While skin pieces (or anything else) wait for the socket, the
+    /// bytes go behind them and the tick sends them, so a slow receiver never holds the
+    /// server up and messages never mix; otherwise they go at once.
+    fn send_bytes(&mut self, bytes: &[u8], timeout_ms: u32) -> Result<(), NetError> {
+        if self.out.is_empty() {
+            return self.stream.send_all(bytes, timeout_ms);
+        }
+        if self.out.push(bytes) {
+            Ok(())
+        } else {
+            Err(NetError::Timeout)
+        }
+    }
+
+    /// Give the socket what it will take of the bytes waiting. False once it is hopeless.
+    fn pump_out(&mut self, dt: f32) -> bool {
+        if self.out.is_empty() {
+            return true;
+        }
+        let n = match self.stream.send_nowait(self.out.rest()) {
+            Ok(n) => n,
+            Err(_) => return false,
+        };
+        self.out.sent(n, dt)
+    }
+}
+
 impl Server {
     pub fn bind(cfg: Config) -> Result<Server, NetError> {
         let listener = TcpListener::bind(cfg.port)?;
@@ -242,7 +273,7 @@ impl Server {
                 continue;
             }
             let bytes = Msg::Perms { flags: self.flags_for(&self.conns[k].name) }.encode();
-            if self.conns[k].stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+            if self.conns[k].send_bytes(&bytes, SEND_TIMEOUT).is_err() {
                 self.conns[k].gone = true;
             }
         }
@@ -444,7 +475,7 @@ impl Server {
             "/kick" | "/ban" => match online(self, arg(1)) {
                 Some(k) => {
                     let bytes = Msg::Refuse { reason: String::from("an operator removed you from the server") }.encode();
-                    let _ = self.conns[k].stream.send_all(&bytes, SEND_TIMEOUT);
+                    let _ = self.conns[k].send_bytes(&bytes, SEND_TIMEOUT);
                     self.conns[k].gone = true;
                     if arg(0).eq_ignore_ascii_case("/ban") {
                         self.banned.push(String::from(arg(1)));
@@ -506,7 +537,7 @@ impl Server {
     fn send_to(&mut self, to: u16, msg: &Msg) {
         let bytes = msg.encode();
         for c in self.conns.iter_mut().filter(|c| c.joined && !c.gone && c.id == to) {
-            if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+            if c.send_bytes(&bytes, SEND_TIMEOUT).is_err() {
                 c.gone = true;
             }
         }
@@ -535,7 +566,7 @@ impl Server {
     fn broadcast(&mut self, msg: &Msg, except: u16) {
         let bytes = msg.encode();
         for c in self.conns.iter_mut().filter(|c| c.joined && !c.gone && c.id != except) {
-            if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+            if c.send_bytes(&bytes, SEND_TIMEOUT).is_err() {
                 c.gone = true;
             }
         }
@@ -571,7 +602,7 @@ impl Server {
             if let Some(gain) = g {
                 let bytes = Msg::Voice { id, seq, gain, frame: frame.to_vec() }.encode();
                 // A short wait: a listener who cannot keep up is dropped like any other.
-                if self.conns[k].stream.send_all(&bytes, 500).is_err() {
+                if self.conns[k].send_bytes(&bytes, 500).is_err() {
                     self.conns[k].gone = true;
                 }
             }
@@ -612,7 +643,7 @@ impl Server {
                         continue;
                     }
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: crate::net::skinslot::SkinSlot::deferred(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default(), chunks: Default::default() });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: crate::net::skinslot::SkinSlot::deferred(), skin_out: Default::default(), out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default(), chunks: Default::default() });
                 }
                 _ => break,
             }
@@ -735,7 +766,7 @@ impl Server {
                             }
                         };
                         if let Some(reason) = refuse {
-                            let _ = self.conns[i].stream.send_all(&Msg::Refuse { reason }.encode(), SEND_TIMEOUT);
+                            let _ = self.conns[i].send_bytes(&Msg::Refuse { reason }.encode(), SEND_TIMEOUT);
                             self.conns[i].gone = true;
                             break;
                         }
@@ -875,7 +906,7 @@ impl Server {
                         log.push(alloc::format!("{} ran {}", name, accounts_flow::loggable(&text)));
                         let reply = self.command(&name, &text);
                         let bytes = Msg::Chat { id: 0, text: reply }.encode();
-                        if self.conns[i].stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+                        if self.conns[i].send_bytes(&bytes, SEND_TIMEOUT).is_err() {
                             self.conns[i].gone = true;
                         }
                     }
@@ -924,22 +955,29 @@ impl Server {
         // clients of protocol 14 and later know the message; the others are not sent it).
         let refusal = Msg::SkinRefused.encode();
         for c in self.conns.iter_mut().filter(|c| !c.gone) {
-            if c.skin.take_refused() && crate::net::skinslot::sends_refusal(c.proto) && c.stream.send_all(&refusal, SKIN_SEND_TIMEOUT).is_err() {
+            if c.skin.take_refused() && crate::net::skinslot::sends_refusal(c.proto) && c.send_bytes(&refusal, SKIN_SEND_TIMEOUT).is_err() {
                 c.gone = true;
             }
         }
         // Land that was asked for and has been made.
         self.chunk_tick();
-        // A few pieces of skins for whoever is waiting for them.
-        for c in self.conns.iter_mut().filter(|c| !c.gone && !c.skin_out.is_empty()) {
-            let mut batch = Vec::new();
-            c.skin_out.take(crate::net::skinqueue::PER_TICK, &mut batch);
-            for bytes in batch {
-                if c.stream.send_all(&bytes, SKIN_SEND_TIMEOUT).is_err() {
-                    c.gone = true;
-                    c.skin_out.clear();
-                    break;
+        // A few pieces of skins for whoever is waiting for them: queued behind what the socket
+        // has not taken yet, and handed over without waiting.
+        for c in self.conns.iter_mut().filter(|c| !c.gone) {
+            if c.out.len() < crate::net::skinqueue::PER_TICK && !c.skin_out.is_empty() {
+                let mut batch = Vec::new();
+                c.skin_out.take(crate::net::skinqueue::PER_TICK, &mut batch);
+                for bytes in batch {
+                    if !c.out.push(&bytes) {
+                        c.gone = true;
+                        c.skin_out.clear();
+                        break;
+                    }
                 }
+            }
+            if !c.gone && !c.pump_out(dt) {
+                c.gone = true;
+                c.skin_out.clear();
             }
         }
         // A few pieces of mods for whoever is downloading them.
@@ -955,7 +993,7 @@ impl Server {
                 } else if let Some(front) = c.mod_out.front_mut() {
                     front.1 = end;
                 }
-                if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+                if c.send_bytes(&bytes, SEND_TIMEOUT).is_err() {
                     c.gone = true;
                     break;
                 }
@@ -1165,7 +1203,7 @@ mod tests {
         // One still in use after the counter went round is not given out again.
         let mut s = Server::bind(plain_config()).unwrap();
         let stream = crate::sys::net::TcpStream::connect("127.0.0.1", s.port(), 2000).unwrap();
-        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default(), chunks: Default::default() });
+        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), skin_out: Default::default(), out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default(), chunks: Default::default() });
         s.next_id = 6;
         assert_eq!((s.fresh_id(), s.fresh_id()), (6, 8));
     }

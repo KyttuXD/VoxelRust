@@ -100,7 +100,7 @@ impl Server {
         }
         let c = &mut self.conns[i];
         c.chunks.done(cx, cz);
-        if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+        if c.send_bytes(&bytes, SEND_TIMEOUT).is_err() {
             c.gone = true;
         }
     }

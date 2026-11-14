@@ -121,6 +121,67 @@ impl SkinQueue {
     }
 }
 
+/// Seconds a connection may take no byte at all, with some waiting, before it is let go.
+pub const STALL_SECONDS: f32 = 20.0;
+/// Most bytes that may wait in an [`OutBuf`].
+pub const MAX_OUT: usize = 12 << 20;
+
+/// Bytes bound for one connection that its socket has not taken yet. While
+/// any wait here, everything else for the connection is added behind them (so
+/// messages never mix), and the tick gives the socket what it will take.
+#[derive(Default)]
+pub struct OutBuf {
+    data: Vec<u8>,
+    at: usize,
+    stalled: f32,
+}
+
+impl OutBuf {
+    pub fn is_empty(&self) -> bool {
+        self.at >= self.data.len()
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len() - self.at.min(self.data.len())
+    }
+
+    /// Add bytes behind the ones waiting. False when too much waits.
+    pub fn push(&mut self, bytes: &[u8]) -> bool {
+        if self.len().saturating_add(bytes.len()) > MAX_OUT {
+            return false;
+        }
+        if self.is_empty() {
+            self.data.clear();
+            self.at = 0;
+        }
+        self.data.extend_from_slice(bytes);
+        true
+    }
+
+    /// The bytes still to go.
+    pub fn rest(&self) -> &[u8] {
+        &self.data[self.at.min(self.data.len())..]
+    }
+
+    /// `n` bytes were taken by the socket after `dt` seconds. False once the
+    /// socket has taken nothing for [`STALL_SECONDS`] with bytes waiting.
+    pub fn sent(&mut self, n: usize, dt: f32) -> bool {
+        self.at = self.at.saturating_add(n).min(self.data.len());
+        if self.is_empty() {
+            self.data.clear();
+            self.at = 0;
+            self.stalled = 0.0;
+            return true;
+        }
+        if n > 0 {
+            self.stalled = 0.0;
+        } else {
+            self.stalled += dt;
+        }
+        self.stalled < STALL_SECONDS
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,5 +236,22 @@ mod tests {
         assert_eq!(pushed, 8);
         q.clear();
         assert!(q.is_empty() && q.waiting() == 0);
+    }
+
+    #[test]
+    fn an_out_buffer_keeps_order_and_gives_up_on_a_stalled_socket() {
+        let mut o = OutBuf::default();
+        assert!(o.push(b"abcdef") && o.push(b"gh"));
+        assert_eq!(o.rest(), b"abcdefgh");
+        assert!(o.sent(3, 0.05));
+        assert_eq!(o.rest(), b"defgh");
+        for _ in 0..39 {
+            assert!(o.sent(0, 0.5));
+        }
+        assert!(!o.sent(0, 0.5), "20 s without a byte");
+        let mut o = OutBuf::default();
+        o.push(b"xyz");
+        assert!(o.sent(3, 0.0) && o.is_empty());
+        assert!(!OutBuf::default().push(&alloc::vec![0u8; MAX_OUT + 1]));
     }
 }

@@ -607,6 +607,25 @@ impl TcpStream {
         }
     }
 
+    /// Send what the socket takes right now, without waiting: the number of
+    /// bytes taken (0 when its buffer is full).
+    pub fn send_nowait(&mut self, data: &[u8]) -> Result<usize, NetError> {
+        loop {
+            let n = os::sock_send(self.fd, data);
+            if n >= 0 {
+                return Ok(n as usize);
+            }
+            let e = os::last_err();
+            if e == os::E_INTR {
+                continue;
+            }
+            if would_block(e) {
+                return Ok(0);
+            }
+            return Err(io_error(e));
+        }
+    }
+
     /// Send everything or fail. `timeout_ms` is how long the peer may go
     /// without taking any data before this gives up.
     pub fn send_all(&mut self, data: &[u8], timeout_ms: u32) -> Result<(), NetError> {
