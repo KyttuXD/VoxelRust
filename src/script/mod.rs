@@ -57,6 +57,8 @@ mod mods_tests;
 mod tests_qol;
 #[cfg(test)]
 mod tests_audit;
+#[cfg(test)]
+mod tests_world_hooks;
 
 use crate::script::ast::{Name, Program};
 use crate::script::error::ScriptError;
@@ -89,6 +91,12 @@ pub const HOOKS: &[HookDoc] = &[
     HookDoc { name: "on_block_place", params: &["x", "y", "z", "id"], what: "the player is about to place a block; return false to stop it" },
     HookDoc { name: "on_entity_spawn", params: &["kind"], what: "a creature appeared; return false to take it away again" },
     HookDoc { name: "on_entity_death", params: &["kind", "x", "y", "z"], what: "a creature died (any cause)" },
+    HookDoc { name: "on_chunk_generated", params: &["cx", "cz", "seed"], what: "a chunk was just generated (not loaded from a save): place structures with `set_block` (4096 writes at most per call; `rand_chunk` makes it repeatable)" },
+    HookDoc { name: "on_block_placed", params: &["x", "y", "z", "id", "cause"], what: "a block was placed, whatever the cause (`player`, `script`, `remote`, `fall`, `fluid`, `other`)" },
+    HookDoc { name: "on_creature_death", params: &["id", "kind", "x", "y", "z", "killer"], what: "a creature died: its id, kind, place and who killed it (the player's name, a creature's id or a cause such as `lava`, `script`)" },
+    HookDoc { name: "on_creature_removed", params: &["id", "kind", "reason"], what: "a creature left the world: `killed`, `despawned`, `unloaded` or `scripted`" },
+    HookDoc { name: "on_creature_interact", params: &["id", "kind", "item"], what: "the player right-clicked a creature (item is what they hold, or empty); return false to cancel the game's own handling" },
+    HookDoc { name: "on_creature_sunburn", params: &["id", "kind"], what: "a night creature would burn in daylight; return false to let it live (asked again after 20 seconds)" },
     HookDoc { name: "on_entity_hit", params: &["id", "kind", "x", "y", "z"], what: "the player hit a creature (it may have died of it): its id (see `mob_info`), its kind and where it was" },
     HookDoc { name: "on_player_hurt", params: &["amount", "cause"], what: "the player is about to take damage; return the amount to apply instead (0 or false cancels)" },
     HookDoc { name: "on_chat", params: &["text"], what: "the player typed a line (commands too); return false to swallow it" },

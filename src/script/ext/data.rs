@@ -81,6 +81,8 @@ pub struct ScriptData {
     pub storages: Vec<Storage>,
     /// Messages sent this frame (`net_send` allows a few).
     pub net_sent: u32,
+    /// A screen a script asked to open (`open_crafting`, `open_inventory`).
+    pub screen: Option<super::screens::ScreenRequest>,
 }
 
 /// The session's script data, made if there is none yet.

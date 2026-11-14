@@ -27,6 +27,8 @@ pub mod chest_anim;
 pub mod explosion;
 pub mod primed;
 pub mod events;
+pub mod mob_hooks;
+pub mod world_hooks;
 pub mod hooks;
 pub mod effects;
 pub mod crafting;

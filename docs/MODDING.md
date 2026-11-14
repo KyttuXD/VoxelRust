@@ -1004,6 +1004,12 @@ also passed to the mod's `on_event` hook.
 | `place` (`blockplace`) | the player places a block | block id | `on_block_place`: `false` stops it | `fn(&mut Session, cell: [i32; 3], Block) -> bool` |
 | `entityspawn` | a creature appears | entity id | `on_entity_spawn`: `false` removes it again | `fn(&mut Session, kind: usize) -> bool` |
 | `entitydeath` | a creature dies | entity id | no, `on_entity_death` after | `fn(&mut Session, kind: usize, at: [f64; 3])` |
+| (world generation) | a chunk was just generated (not loaded from a save) | | `chunk_generated`: place structures in it (4096 writes a call, a couple of chunks a frame, only for whoever runs the world) | `fn(&mut Session, cx: i32, cz: i32, seed: u32)` |
+| (any placement) | a block was placed: `player`, `script`, `remote`, `fall`, `fluid` or `other` (not air, a frame later, two hooks deep at most) | | `on_block_placed` | `fn(&mut Session, cell: [i32; 3], Block, cause: &str)` |
+| (creatures) | a creature died, with who killed it (a player's name, a creature's id, `lava`, `script`, `other`) | | `on_creature_death` | `fn(&mut Session, id: u32, kind: usize, at: [f64; 3], killer: &str)` |
+| (creatures) | a creature left the world: `killed`, `despawned`, `unloaded`, `scripted` | | `on_creature_removed` | `fn(&mut Session, id: u32, kind: usize, reason: &str)` |
+| (creatures) | the player right-clicked a creature | | `on_creature_interact`: `false` cancels the game's handling | `fn(&mut Session, id: u32, kind: usize, item: Option<usize>) -> bool` |
+| (creatures) | a night creature would burn in daylight | | `on_creature_sunburn`: `false` lets it live (asked again after 20 seconds) | `fn(&mut Session, id: u32, kind: usize) -> bool` |
 | `playerhurt` | the player takes damage | cause | `on_player_hurt`: may change `amount`; `false` or 0 cancels | `fn(&mut Session, amount: &mut i32, cause: &str) -> bool` |
 | `chat`, `command` | the player types a line | first word / command name | `on_chat`: `false` swallows the line (commands too) | `fn(&mut Session, line: &str) -> bool` |
 | `useitem` (`itemuse`) | the player right clicks with an item that has a script | item id | `on_item_use`: asked for any held item, once per press; `false` stops the use | `fn(&mut Session, item: usize) -> bool` |

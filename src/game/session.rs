@@ -1325,6 +1325,9 @@ impl Session {
     /// told, and decide what becomes of it. Returns whether it died.
     pub(crate) fn strike(&mut self, i: usize, amount: i32, from: [f64; 3]) -> bool {
         if self.runs_the_world() {
+            if let Some(id) = self.mobs.list.get(i).map(|m| m.id) {
+                self.mobs.blame_for(id, crate::game::mob_hooks::PLAYER_KILLER);
+            }
             return self.mobs.hurt(i, amount, from);
         }
         let (id, health) = match self.mobs.list.get_mut(i) {
@@ -2551,6 +2554,12 @@ impl Session {
                 if self.target.as_ref().map_or(true, |hit| t < hit.dist) {
                     use crate::entity::Interaction;
                     self.cooldown[1] = 0.5;
+                    // A mod may take the click for itself (`on_creature_interact`).
+                    if let Some((mid, mkind)) = self.mobs.list.get(i).map(|m| (m.id, m.kind)) {
+                        if !crate::game::hooks::creature_interact(self, mid, mkind, held.map(|h| h.0)) {
+                            return;
+                        }
+                    }
                     let inv = &self.inv;
                     match self.mobs.interact(i, held.map(|h| h.0), &|item| inv.count(item as u16)) {
                         Interaction::Give(item, n) => {
@@ -2838,7 +2847,10 @@ impl Session {
                             return;
                         }
                     }
-                    if interact::place_at(&mut self.world, &self.player, it, &hit) {
+                    self.world.log.cause = crate::terrain::world_log::cause::PLAYER;
+                    let placed = interact::place_at(&mut self.world, &self.player, it, &hit);
+                    self.world.log.cause = "";
+                    if placed {
                         let placed = it.place.map(|b| block::def(b).x.sound.as_str()).filter(|n| !n.is_empty()).unwrap_or("place");
                         audio.play_named(placed, 1.0);
                         if let Some(b) = it.place {

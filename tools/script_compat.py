@@ -64,9 +64,9 @@ CAPS = [
     ("player", r"g\.player\.|g\.seat|g\.shake|g\.flash|g\.health|g\.sleeping", ["player_look", "set_look", "hold_player", "place_player", "flash", "shake", "push_player", "player_health"]),
     ("commands", r"command:\s*Some", ["on_command"]),
     ("per-frame", r"\bupdate:\s*Some|on_tick:\s*Some", ["on_update", "on_tick"]),
-    ("clicks", r"interact:\s*Some|on_item_use", ["on_interact", "on_item_use"]),
-    ("block hooks", r"on_block_(place|break)", ["on_block_place", "on_block_break"]),
-    ("damage hooks", r"\bhurt:\s*Some|killed:\s*Some|\bhit:\s*Some|on_entity_death|on_player_hurt", ["on_player_hurt", "on_entity_death"]),
+    ("clicks", r"interact:\s*Some|on_item_use|on_creature_interact", ["on_interact", "on_item_use", "on_creature_interact"]),
+    ("block hooks", r"on_block_(place|break|placed)", ["on_block_place", "on_block_break", "on_block_placed"]),
+    ("damage hooks", r"\bhurt:\s*Some|killed:\s*Some|\bhit:\s*Some|on_entity_death|on_player_hurt|on_creature_(death|removed|sunburn)", ["on_player_hurt", "on_entity_death", "on_creature_death", "on_creature_removed", "on_creature_sunburn"]),
     ("explosions", r"before_explode|after_explode|explosion::explode", ["on_explode", "explode"]),
     ("conditions", r"condition:\s*Some", ["on_condition"]),
     ("HUD", r"on_draw_hud", ["hud_frac_rect", "hud_frac_text"]),
@@ -82,7 +82,8 @@ CAPS = [
     ("sky", r"forced_sky|g\.sky", ["force_sky"]),
     ("effects", r"effect_apply|effect_tick|effects::apply", ["effect"]),
     ("pathfinding", r"path::find_path|ground_near", ["find_path"]),
-    ("custom screens", r"map_screen|map_open|settings:\s*Some|terrain_form|\bui\.", None),
+    ("custom screens", r"map_screen|map_open|settings:\s*Some|terrain_form|\bui\.", ["open_crafting", "open_inventory"]),
+    ("structures", r"chunk_generated", ["on_chunk_generated", "rand_chunk"]),
     ("world generation", r"terrain_open|terrain_parse|dimension_terrain|terrain_label|worldgen::Source", None),
     ("HTTP", r"\bhttp\b|HttpClient|fetch_tile|https?://", None),
 ]
@@ -192,7 +193,7 @@ def print_markdown(infos):
 
 def print_functions():
     ext = os.path.join(ROOT, "src/script/ext")
-    order = ["world", "mobs", "player", "draw", "bodies", "storage", "pack", "files", "net", "effects"]
+    order = ["world", "mobs", "player", "draw", "bodies", "storage", "pack", "files", "net", "effects", "structures", "screens"]
     titles = {
         "world": "The world (read only)",
         "mobs": "Creatures",
@@ -204,6 +205,8 @@ def print_functions():
         "files": "Files in `tmp`",
         "net": "Other players",
         "effects": "Shots, sky, pushes",
+        "structures": "Structures as the world is generated",
+        "screens": "Opening the game's screens",
     }
     for key in order:
         rows = table_rows(os.path.join(ext, key + ".rs"))

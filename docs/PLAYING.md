@@ -1088,6 +1088,15 @@ marked "From the Earth mod").
   the creatures whose id contains the name (`creatures,looks:boomer`)
   instead of one of each. Hostile creatures show only in survival worlds.
 
+`--step [SECONDS]` sets how much game time each frame of a scripted run
+(`--screenshot`, `--bench`, with or without `--run`) lasts. It is the same
+for everything at once: the day's clock, mod timers and the scripts'
+`on_tick` and `on_update` `dt`, and the creatures. Without `--step` a
+scripted frame passes no time (so pictures are repeatable and nothing that
+runs on a clock moves: that is unchanged); `--step` on its own, with no
+number, is 1/60 of a second, a frame at sixty frames a second. The longest
+step is 0.1. In a shared game the real clock is used.
+
 `--version` prints, for example, `voxelrust 0.1.0 (linux-x86_64, commit
 5f38cb02e2e3)`. The first word in brackets is the build name (see
 [BUILDING.md](BUILDING.md#build-names-and-updating)); the commit is the one

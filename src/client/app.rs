@@ -28,6 +28,8 @@ mod args;
 mod mods_load;
 #[path = "launch/server_run.rs"]
 mod server_run;
+#[path = "launch/step.rs"]
+mod scripted_step;
 #[path = "frame/input.rs"]
 mod frame_input;
 #[path = "frame/update.rs"]
@@ -1438,7 +1440,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         // Scripted runs freeze time so pictures are repeatable, except
         // online, where the conversation with the server needs a clock.
         let online = app.session.as_ref().map_or(false, |g| g.net.is_some());
-        app.update(&mut r, if scripted && !online { opts.step.unwrap_or(0.0) } else { dt }, dt);
+        app.update(&mut r, scripted_step::frame_dt(scripted && !online, opts.step, dt), dt);
         app.draw(&mut r, &inp);
         if !first_frame_logged {
             first_frame_logged = true;

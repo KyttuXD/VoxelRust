@@ -102,6 +102,8 @@ pub struct World {
     /// Finished `Job::Task`s: tag, what was asked, and the answer. Whoever
     /// asked takes its own out.
     pub task_results: Vec<(u32, Vec<u8>, Vec<u8>)>,
+    /// New chunks and placed blocks, for the mod hooks (see `world_log`).
+    pub log: crate::terrain::world_log::WorldLog,
     offsets: Vec<(i32, i32)>,
     offsets_radius: i32,
     urgent: Vec<(i32, i32)>,
@@ -128,6 +130,7 @@ impl World {
             changed: Vec::new(),
             log_edits: false,
             task_results: Vec::new(),
+            log: Default::default(),
             offsets: Vec::new(),
             offsets_radius: -1,
             urgent: Vec::new(),
@@ -190,10 +193,23 @@ impl World {
         if ok && changed && self.changed.len() < 8192 {
             self.changed.push([x, y, z]);
         }
+        if ok && changed {
+            let why = self.log.cause;
+            self.log.note_placed([x, y, z], b, why);
+        }
         if ok && changed && self.log_edits {
             self.edit_log.push((x, y, z, b));
             self.remember(x, y, z, b);
         }
+        ok
+    }
+
+    /// As [`World::set_block`], noting `why` (see `world_log::cause`) as the
+    /// cause for `on_block_placed`.
+    pub fn set_block_cause(&mut self, why: &'static str, x: i32, y: i32, z: i32, b: Block) -> bool {
+        let before = core::mem::replace(&mut self.log.cause, why);
+        let ok = self.set_block(x, y, z, b);
+        self.log.cause = before;
         ok
     }
 
@@ -210,8 +226,14 @@ impl World {
             return;
         }
         self.remember(x, y, z, b);
-        if self.set_block_inner(x, y, z, b) && self.changed.len() < 8192 {
-            self.changed.push([x, y, z]);
+        let before = self.get(x, y, z);
+        if self.set_block_inner(x, y, z, b) {
+            if self.changed.len() < 8192 {
+                self.changed.push([x, y, z]);
+            }
+            if before != b {
+                self.log.note_placed([x, y, z], b, crate::terrain::world_log::cause::REMOTE);
+            }
         }
     }
 
@@ -305,6 +327,7 @@ impl World {
                         if c.data.is_none() {
                             c.data = Some(Arc::new(data));
                             c.dirty = true;
+                            self.log.note_generated(cx, cz);
                         }
                     }
                 }

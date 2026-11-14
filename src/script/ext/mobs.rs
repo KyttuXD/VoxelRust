@@ -19,8 +19,8 @@ pub const FUNCTIONS: &[(&str, &str)] = &[
     ("mob_set_pos(id: i64, x: f64, y: f64, z: f64)", "put a creature somewhere and stop it"),
     ("mob_set_yaw(id: i64, yaw: f64)", "turn a creature (yaw 0 faces -z; its forward is (-sin yaw, -cos yaw))"),
     ("mob_set_size(id: i64, width: f64, height: f64)", "change the box a creature collides with (0.1 to 8 blocks); what it is drawn as does not change"),
-    ("mob_remove(id: i64)", "make a creature vanish at once: nothing drops, no `on_entity_death`"),
-    ("mob_hurt(id: i64, n: i64)", "hurt a creature as the player's blow would (drops and `on_entity_death` follow if it dies)"),
+    ("mob_remove(id: i64)", "make a creature vanish at once: nothing drops, no `on_entity_death` or `on_creature_death` (`on_creature_removed` hears it, with the reason `scripted`)"),
+    ("mob_hurt(id: i64, n: i64)", "hurt a creature as the player's blow would (drops and `on_entity_death` follow if it dies; `on_creature_death` names `script` as the killer)"),
     ("mob_in_view(max: f64) -> i64", "the id of the first creature on the player's look ray within `max` blocks (at most 100) with no block in the way, or -1"),
 ];
 
@@ -118,6 +118,7 @@ pub fn call(g: &mut Session, _ctx: &Ctx, name: &str, args: &[Value]) -> Result<V
             want(name, args, 1)?;
             if let (true, Some(i)) = (may_change(g), index_of(g, int(name, args, 0)?)) {
                 g.mobs.list[i].health = 0;
+                g.mobs.list[i].remove_reason = crate::game::mob_hooks::reason::SCRIPTED;
             }
             Ok(Value::Unit)
         }
@@ -126,6 +127,8 @@ pub fn call(g: &mut Session, _ctx: &Ctx, name: &str, args: &[Value]) -> Result<V
             let n = int(name, args, 1)?.clamp(0, 1000) as i32;
             if let (true, Some(i)) = (may_change(g), index_of(g, int(name, args, 0)?)) {
                 let from = g.mobs.list[i].body.pos;
+                let id = g.mobs.list[i].id;
+                g.mobs.blame_for(id, "script");
                 g.mobs.hurt(i, n, [from[0], from[1], from[2] + 1.0]);
             }
             Ok(Value::Unit)

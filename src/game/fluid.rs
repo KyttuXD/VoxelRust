@@ -51,7 +51,7 @@ fn at(w: &World, c: [i32; 3], d: [i32; 3]) -> ([i32; 3], Block) {
 }
 
 fn set(w: &mut World, p: [i32; 3], b: Block) {
-    w.set_block(p[0], p[1], p[2], b);
+    w.set_block_cause(crate::terrain::world_log::cause::FLUID, p[0], p[1], p[2], b);
 }
 
 /// Put liquid into a cell it may take, noting what it washed away.
@@ -60,7 +60,7 @@ fn flood(w: &mut World, p: [i32; 3], b: Block, washed: &mut Vec<([i32; 3], Block
     if !fluid_rules::can_flow_into(old) {
         return;
     }
-    if w.set_block(p[0], p[1], p[2], b) && old != AIR && washed.len() < 256 {
+    if w.set_block_cause(crate::terrain::world_log::cause::FLUID, p[0], p[1], p[2], b) && old != AIR && washed.len() < 256 {
         washed.push((p, old));
     }
 }

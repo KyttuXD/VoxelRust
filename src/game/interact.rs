@@ -209,7 +209,7 @@ pub fn fall_step(world: &mut World, c: [i32; 3]) -> bool {
         return false;
     }
     world.set_block(c[0], c[1], c[2], AIR);
-    world.set_block(c[0], c[1] - 1, c[2], b);
+    world.set_block_cause(crate::terrain::world_log::cause::FALL, c[0], c[1] - 1, c[2], b);
     true
 }
 

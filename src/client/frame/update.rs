@@ -158,6 +158,22 @@ impl App {
             self.craft.table_side = what.craft_side().unwrap_or(3);
             self.set_screen(if what == block::Usable::Chest { Screen::Chest } else { Screen::Craft });
         }
+        // A script asked for the crafting grid or the pack (`open_crafting`, `open_inventory`).
+        if let Some(ask) = self.session.as_mut().and_then(|g| crate::script::ext::screens::take_request(g)) {
+            if self.screen == Screen::Game {
+                use crate::script::ext::screens::ScreenRequest;
+                match ask {
+                    ScreenRequest::Craft(side) => {
+                        self.chest_ext = None;
+                        self.at_oven = false;
+                        self.at_furnace = false;
+                        self.craft.table_side = side;
+                        self.set_screen(Screen::Craft);
+                    }
+                    ScreenRequest::Inventory => self.set_screen(Screen::Inventory),
+                }
+            }
+        }
         // The chest being looked into has its lid up (game/chest_anim.rs).
         let looking = if self.screen == Screen::Chest && self.chest_ext.is_none() { Some(self.chest_at) } else { None };
         if let Some(g) = self.session.as_mut() {
