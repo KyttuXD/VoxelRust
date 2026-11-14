@@ -52,10 +52,14 @@ pub fn split(opaque: &mut Vec<Vertex>) -> HdMesh {
 /// there are sections) are moved to where the sections begin once the HD quads are gone, and the
 /// result's second part has a bit for each section that had HD faces.
 pub fn split_sections(opaque: &mut Vec<Vertex>, starts: &mut [u32]) -> (HdMesh, u16) {
-    let t = match table::current() {
-        Some(t) => t,
-        None => return (HdMesh::default(), 0),
-    };
+    match table::current() {
+        Some(t) => split_sections_with(opaque, starts, t),
+        None => (HdMesh::default(), 0),
+    }
+}
+
+/// [`split_sections`] with a given table.
+pub fn split_sections_with(opaque: &mut Vec<Vertex>, starts: &mut [u32], t: &Table) -> (HdMesh, u16) {
     if !opaque.chunks_exact(4).any(|q| t.get(tile_of(q[0].uv)).is_some()) {
         return (HdMesh::default(), 0);
     }
@@ -148,6 +152,28 @@ mod tests {
                 assert_eq!(tile_of(v.uv), tile as usize, "{tile}");
             }
         }
+    }
+
+    #[test]
+    fn section_starts_follow_the_quads_that_stay_and_sections_with_hd_faces_are_marked() {
+        let t = table();
+        // Section 0: normal + HD; section 1: only HD faces; section 2: nothing; section 3: normal.
+        let mut v: Vec<Vertex> = Vec::new();
+        v.extend_from_slice(&quad(4, [1, 255], [1, 255]));
+        v.extend_from_slice(&quad(3, [1, 255], [1, 255]));
+        v.extend_from_slice(&quad(3, [1, 255], [1, 255]));
+        v.extend_from_slice(&quad(5, [1, 255], [1, 255]));
+        let mut starts = [0u32, 8, 12, 12, 16];
+        let (hd, mask) = split_sections_with(&mut v, &mut starts, &t);
+        assert_eq!(v.len(), 8, "two normal quads stay");
+        assert_eq!(starts, [0, 4, 4, 4, 8], "starts count only the quads that stayed");
+        assert_eq!(mask, 0b11, "sections 0 and 1 had HD faces");
+        assert_eq!(hd.runs, [8, 0, 0, 0]);
+        // Without any HD quad nothing changes.
+        let mut v2: Vec<Vertex> = quad(4, [1, 255], [1, 255]).to_vec();
+        let mut st2 = [0u32, 4];
+        let (hd2, m2) = split_sections_with(&mut v2, &mut st2, &t);
+        assert!(hd2.is_empty() && m2 == 0 && st2 == [0, 4] && v2.len() == 4);
     }
 
     #[test]
