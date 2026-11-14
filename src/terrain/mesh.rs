@@ -283,6 +283,12 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                             if opaque(nb) || (nb == b && d.kind != Kind::Cube) || (liquid && f.n[1] != 0 && crate::block::same_fluid(b, nb)) {
                                 continue;
                             }
+                            // Beside the same liquid at another level, a side is only seen
+                            // where this one stands higher: inside a body of water (a
+                            // hole where a block was broken) no walls show.
+                            if liquid && f.n[1] == 0 && crate::block::same_fluid(b, nb) && liquid_top(nb, reg_.cell(nx, ny + 1, nz).0) >= top {
+                                continue;
+                            }
                             let mut quad = [Vertex { pos: [0; 4], col: [0; 4], uv: [0; 2], luv: [0; 2] }; 4];
                             let mut bright = [0u32; 4];
                             for (k, &(cu, cv)) in CORNERS.iter().enumerate() {
@@ -615,5 +621,26 @@ mod tests {
         // No faces between the two cells of the column: fewer than two single cells' worth.
         let single = hood(&c, &e).water.len();
         assert!(stacked.water.len() < 2 * single + 4, "{} vs {}", stacked.water.len(), single);
+    }
+
+    #[test]
+    fn no_walls_show_inside_a_body_of_water() {
+        // A lake with a hole where a block was broken, now filled with a flow:
+        // it stands as tall as the water around it, so nothing may be drawn between them.
+        let r = reg();
+        let e = ChunkData::new();
+        let mut lake = ChunkData::new();
+        for x in 6..11 {
+            for z in 6..11 {
+                for y in 58..62 {
+                    lake.set(x, y, z, r.wk.water);
+                }
+            }
+        }
+        let whole = hood(&lake, &e).water.len();
+        let mut hole = lake.clone();
+        hole.set(8, 60, 8, r.flow[0][7]);
+        let with_hole = hood(&hole, &e).water.len();
+        assert_eq!(whole, with_hole, "walls are drawn around a flow inside the water");
     }
 }
