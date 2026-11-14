@@ -145,6 +145,8 @@ pub struct Session {
     pub shots: Vec<Shot>,
     /// Items on the ground.
     pub drops: Vec<Dropped>,
+    /// Liquids waiting their turn to flow (see game::fluid).
+    pub fluid: crate::game::fluid::Queue,
     /// Lit TNT and the sparks of explosions (see `game::primed`).
     pub primed: crate::primed::Primed,
     /// Seconds each `when every N` script has left.
@@ -527,6 +529,7 @@ impl Session {
             ev: Default::default(),
             shots: Vec::new(),
             drops: Vec::new(),
+            fluid: Default::default(),
             primed: Default::default(),
             script_timers: Vec::new(),
             started: false,
@@ -1483,7 +1486,7 @@ impl Session {
             self.world.changed = pending.split_off(600);
         }
         // Water and lava move on from whatever just changed (see game::fluid).
-        crate::game::fluid::tick(&mut self.world, &pending);
+        self.fluid.run(&mut self.world, &pending, step);
         for c in pending {
             // TNT next to lava or fire catches.
             crate::primed::react(self, c);

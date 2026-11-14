@@ -1,4 +1,4 @@
-//! Water and lava that flow.
+//! Water and lava that flow (water: a quarter of a second a block, lava a second and a half; plants are washed away; two sources make a third; lava meeting water sets to obsidian or cobblestone).
 //!
 //! A liquid cell is one block per level: the source (level 8, the blocks
 //! `water` and `lava`), and flows at levels 1 to 7 (`water_3`, `lava_5`, and
@@ -6,7 +6,9 @@
 //! down per block sideways, so it reaches 7 blocks from a source; lava runs
 //! two levels down per block, so it reaches 3.
 //!
-//! Nothing is simulated on a timer. When a block changes, the liquid cells
+//! Flow takes time: a cell is looked at a quarter of a second after what
+//! feeds it changed for water, a second and a half for lava (see [`Queue`]).
+//! When a block changes, the liquid cells
 //! around it are looked at again (see [`tick`]): each flow works out its
 //! level from what feeds it, drains to air when nothing does, and spreads
 //! into air it can reach. A source never changes. Changes made here are
@@ -15,6 +17,7 @@
 
 use crate::block::{self, reg, Block, AIR};
 use crate::world::World;
+use alloc::collections::BTreeMap;
 
 /// The four sideways neighbours.
 const SIDES: [[i32; 3]; 4] = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]];
@@ -28,6 +31,11 @@ fn loss(lava: bool) -> u8 {
     } else {
         1
     }
+}
+
+/// Whether a liquid may take the cell: air, and plants, which it washes away.
+fn open(b: Block) -> bool {
+    b == AIR || reg().kind[b as usize] == crate::block::Kind::Cross
 }
 
 fn at(w: &World, c: [i32; 3], d: [i32; 3]) -> ([i32; 3], Block) {
@@ -45,7 +53,9 @@ pub fn step(w: &mut World, c: [i32; 3]) {
     let Some((lava, level)) = block::fluid_of(w.get(c[0], c[1], c[2])) else { return };
     // Lava that touches water hardens to stone; water is never changed by it.
     if lava && [UP, DOWN, SIDES[0], SIDES[1], SIDES[2], SIDES[3]].iter().any(|&d| matches!(block::fluid_of(at(w, c, d).1), Some((false, _)))) {
-        set(w, c, r.wk.stone);
+        // A source turns to obsidian (stone if the game has none), a flow to cobblestone.
+        let hard = if level == 8 { r.block("obsidian").unwrap_or(r.wk.stone) } else { r.block("cobble").unwrap_or(r.wk.stone) };
+        set(w, c, hard);
         return;
     }
     if level == 8 {
@@ -60,6 +70,15 @@ pub fn step(w: &mut World, c: [i32; 3]) {
             if k == lava {
                 best = best.max(l.saturating_sub(loss(lava)));
             }
+        }
+    }
+    // Water with two sources beside it, over something firm, becomes a source too.
+    if !lava {
+        let sources = SIDES.iter().filter(|&&d| matches!(block::fluid_of(at(w, c, d).1), Some((false, 8)))).count();
+        let (_, under) = at(w, c, DOWN);
+        if sources >= 2 && (block::is_solid(under) || matches!(block::fluid_of(under), Some((false, 8)))) {
+            set(w, c, r.wk.water);
+            return;
         }
     }
     if best == 0 {
@@ -79,7 +98,7 @@ pub fn step(w: &mut World, c: [i32; 3]) {
 fn spread(w: &mut World, c: [i32; 3], lava: bool, level: u8) {
     let r = reg();
     let (below, under) = at(w, c, DOWN);
-    if under == AIR {
+    if open(under) {
         set(w, below, r.flow[lava as usize][7]);
         return;
     }
@@ -92,7 +111,7 @@ fn spread(w: &mut World, c: [i32; 3], lava: bool, level: u8) {
     }
     for d in SIDES {
         let (p, nb) = at(w, c, d);
-        if nb == AIR {
+        if open(nb) {
             set(w, p, r.flow[lava as usize][(level - step) as usize]);
         }
     }
@@ -107,6 +126,50 @@ pub fn tick(w: &mut World, changed: &[[i32; 3]]) {
             let p = [c[0] + d[0], c[1] + d[1], c[2] + d[2]];
             if block::fluid_of(w.get(p[0], p[1], p[2])).is_some() {
                 step(w, p);
+            }
+        }
+    }
+}
+
+/// Cells waiting to be looked at again, each with the time it is due.
+#[derive(Default)]
+pub struct Queue {
+    now: f32,
+    due: BTreeMap<[i32; 3], f32>,
+}
+
+/// Seconds a liquid takes to move one step.
+const WATER_DELAY: f32 = 0.25;
+const LAVA_DELAY: f32 = 1.5;
+/// Most cells looked at in one go, and most waiting.
+const PER_TICK: usize = 300;
+const WAITING: usize = 6000;
+
+impl Queue {
+    /// Note what changed (liquid cells in and around it wait their turn), advance the
+    /// clock by `dt`, and work on every cell whose time has come.
+    pub fn run(&mut self, w: &mut World, changed: &[[i32; 3]], dt: f32) {
+        self.now += dt;
+        let around = [[0, 0, 0], UP, DOWN, SIDES[0], SIDES[1], SIDES[2], SIDES[3]];
+        for &c in changed {
+            for d in around {
+                let p = [c[0] + d[0], c[1] + d[1], c[2] + d[2]];
+                let Some((lava, _)) = block::fluid_of(w.get(p[0], p[1], p[2])) else { continue };
+                if self.due.len() >= WAITING || self.due.contains_key(&p) {
+                    continue;
+                }
+                // Lava meeting water sets at once; otherwise each kind has its pace.
+                let touches_water = lava && [UP, DOWN, SIDES[0], SIDES[1], SIDES[2], SIDES[3]].iter().any(|&e| block::is_water(at(w, p, e).1));
+                let wait = if lava && !touches_water { LAVA_DELAY } else if lava { 0.0 } else { WATER_DELAY };
+                self.due.insert(p, self.now + wait);
+            }
+        }
+        let now = self.now;
+        let ready: alloc::vec::Vec<[i32; 3]> = self.due.iter().filter(|(_, &t)| t <= now).map(|(&c, _)| c).take(PER_TICK).collect();
+        for c in ready {
+            self.due.remove(&c);
+            if w.is_loaded(c[0], c[2]) {
+                step(w, c);
             }
         }
     }
@@ -264,5 +327,56 @@ mod tests {
             }
         }
         assert_eq!(block::fluid_of(AIR), None);
+    }
+
+    /// Run the timed flow for `seconds`.
+    fn run_for(w: &mut World, q: &mut Queue, seconds: f32) {
+        for _ in 0..(seconds / 0.05) as i32 {
+            let pending = core::mem::take(&mut w.changed);
+            q.run(w, &pending, 0.05);
+        }
+    }
+
+    #[test]
+    fn water_takes_time_to_spread_and_lava_more() {
+        let mut w = floor();
+        let mut q = Queue::default();
+        w.set_block(4, 120, 4, reg().wk.water);
+        w.set_block(12, 120, 12, reg().wk.lava);
+        run_for(&mut w, &mut q, 0.4);
+        assert!(level_at(&w, [5, 120, 4]).is_some(), "water has not moved a block in 0.4 s");
+        assert!(level_at(&w, [8, 120, 4]).is_none(), "water ran too far too fast");
+        assert!(level_at(&w, [11, 120, 12]).is_none(), "lava is quicker than water");
+        run_for(&mut w, &mut q, 4.0);
+        assert!(level_at(&w, [11, 120, 12]).is_some(), "lava never spread");
+        assert!(level_at(&w, [7, 120, 4]).is_some(), "water stopped short of 3 blocks");
+    }
+
+    #[test]
+    fn water_washes_plants_away() {
+        let mut w = floor();
+        w.set_block(9, 120, 8, reg().wk.tall_grass);
+        w.set_block(8, 120, 8, reg().wk.water);
+        settle(&mut w);
+        assert!(block::is_water(state(&w, [9, 120, 8])), "the grass held the water back");
+    }
+
+    #[test]
+    fn two_sources_make_a_third() {
+        let mut w = floor();
+        w.set_block(6, 120, 8, reg().wk.water);
+        w.set_block(8, 120, 8, reg().wk.water);
+        settle(&mut w);
+        assert_eq!(level_at(&w, [7, 120, 8]), Some((false, 8)));
+    }
+
+    #[test]
+    fn a_lava_source_met_by_water_is_not_left_as_lava() {
+        let mut w = floor();
+        w.set_block(8, 120, 8, reg().wk.lava);
+        w.set_block(9, 120, 8, reg().wk.water);
+        settle(&mut w);
+        assert!(block::fluid_of(state(&w, [8, 120, 8])).is_none());
+        assert!(state(&w, [8, 120, 8]) != AIR);
     }
 }

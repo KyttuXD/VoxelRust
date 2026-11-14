@@ -144,6 +144,10 @@ impl Player {
         } else if self.in_water {
             let speed = (if inp.sprint { 3.4 } else { 2.4 }) * self.speed_scale;
             let k = (5.0 * dt).min(1.0);
+            // Running water carries you along, toward where it is lower.
+            let (px, pz) = current(get, [floord(self.pos[0]), floord(self.pos[1] + 0.4), floord(self.pos[2])]);
+            self.vel[0] += px * 6.0 * dt;
+            self.vel[2] += pz * 6.0 * dt;
             self.vel[0] += (wx * speed - self.vel[0]) * k;
             self.vel[2] += (wz * speed - self.vel[2]) * k;
             self.vel[1] -= 7.0 * dt;
@@ -294,6 +298,34 @@ fn touching(get: &dyn Fn(i32, i32, i32) -> Block, mn: [f64; 3], mx: [f64; 3], a:
         }
     }
     found
+}
+
+/// Which way the liquid in cell `c` runs, as a push of at most 1 along x and z:
+/// toward neighbours where it is shallower, or open air over a drop.
+fn current(get: &dyn Fn(i32, i32, i32) -> Block, c: [i32; 3]) -> (f32, f32) {
+    let Some((_, level)) = crate::block::fluid_of(get(c[0], c[1], c[2])) else { return (0.0, 0.0) };
+    if level >= 8 {
+        return (0.0, 0.0);
+    }
+    let (mut x, mut z) = (0.0f32, 0.0f32);
+    for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        let n = get(c[0] + dx, c[1], c[2] + dz);
+        let lower = match crate::block::fluid_of(n) {
+            Some((_, l)) => level as f32 - l as f32,
+            None if !crate::block::is_solid(n) => level as f32,
+            None => 0.0,
+        };
+        if lower > 0.0 {
+            x += dx as f32 * lower;
+            z += dz as f32 * lower;
+        }
+    }
+    let len = sqrtf(x * x + z * z);
+    if len > 1.0 {
+        (x / len, z / len)
+    } else {
+        (x, z)
+    }
 }
 
 #[cfg(test)]
