@@ -146,6 +146,10 @@ impl App {
                 let l = (light_at(g.player.pos) * 255.0) as u8;
                 r.tex_override = self.skin_tex;
                 r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                // Armour worn (only the player's own is known to this copy of the game).
+                if g.inv.worn.iter().any(|w| w.is_some()) {
+                    r.draw_model_armor(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l], &crate::client::render::armor::looks(&g.inv.worn));
+                }
                 let busy = drawn.pose.body.walk_weight() < 0.5 || drawn.pose.body.emote != 0;
                 let held = if busy { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(g.held().map(|h| h.0)) };
                 let mut held_quads = Vec::new();

@@ -209,7 +209,7 @@ not call scripts again.
 | `fn on_entity_spawn(kind: String) -> bool` | a creature appeared (`kind` is its id) | `false` takes it away |
 | `fn on_entity_death(kind: String, x: f64, y: f64, z: f64)` | a creature died, whatever the cause | |
 | `fn on_entity_hit(id: i64, kind: String, x: f64, y: f64, z: f64)` | the player hit a creature (it may have died of it): its id (the one `mob_info` and the other creature calls take), its kind and where it was | |
-| `fn on_player_hurt(amount: i64, cause: String) -> i64` | the player is about to take damage (`fall`, `drown`, `hunger`, `block`, `arrow`, `command`, `other`, or the id of the creature that bit) | the amount to take instead; `0` or `false` cancels. The first script to answer decides |
+| `fn on_player_hurt(amount: i64, cause: String) -> i64` | the player is about to take damage (`fall`, `drown`, `hunger`, `block`, `arrow`, `explosion`, `effect` for poison, fire and the like, `command`, `other`, or the id of the creature that bit; armour has already taken its share of a creature's blow, an `arrow` or an `explosion`) | the amount to take instead; `0` or `false` cancels. The first script to answer decides |
 | `fn on_chat(text: String) -> bool` | the player typed a line (commands too, with their `/`) | `false` swallows it |
 | `fn on_item_use(item: String) -> bool` | the player pressed use holding an item (once per press) | `false` stops it |
 | `fn on_craft(item: String)` | the player crafted something | |
@@ -217,6 +217,7 @@ not call scripts again.
 | `fn on_effect_start(id: String, level: i64)` | a status effect started on the player (not when it is only made longer or stronger) | |
 | `fn on_effect_tick(id: String, secs_left: f32, level: i64)` | about once a second for each status effect the player has | |
 | `fn on_effect_end(id: String)` | an effect ran out, was put out by water or was cleared (death included) | |
+| `fn on_armor_change(slot: i64)` | a worn armour piece was put on, taken off, set by `set_armor` or broke (`slot` 0 head, 1 chest, 2 legs, 3 feet) | |
 | `fn on_command(name: String, args: String) -> bool` | a `/command` the game does not know (`name` without the `/`, lower case; `args` the rest of the line) | `true` if it is yours; a string is shown as the reply |
 | `fn on_explode(x: f64, y: f64, z: f64, power: f64, source: String) -> bool` | an explosion is about to happen (`source` is `tnt`, `command`, a creature's id, or `mod<N>`) | `false` cancels; a number changes the power (0.5 to 8) |
 | `fn on_update(dt: f32)` | once a frame, after the game has moved the creatures and before the player moves: the place to move things, to carry the player (`hold_player`) and to ask for pictures | |
@@ -434,6 +435,118 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 | `mob_set_vel(id: i64, x: f64, y: f64, z: f64)` | set a creature's velocity in blocks a second (up to 60 in each direction): a push or a leap |
 | `clear_effect(id: &str) -> bool` | take a status effect off the player (a cure); false if they did not have it |
 | `push_player(x: f64, y: f64, z: f64)` | add to the player's velocity in blocks a second (up to 40 in each direction) |
+
+### Armour, wear, item data and tags
+
+Armour has four worn slots (`head`, `chest`, `legs`, `feet`), shown beside the
+player's picture in the inventory screen. A piece is an item with `armor <slot>
+<defense> [toughness]` in its data ([DATA.md](DATA.md#items)). Each point of
+defense takes 4 percent off a creature's blow, an arrow or a blast (toughness
+helps more against big blows), never more than 80 percent in all, and each such
+blow wears every worn piece by one use. Falls, drowning, hunger, blocks, status
+effects and `hurt()` are not helped by armour. Items with `durability <uses>`
+wear out: a tool by one use for each block it breaks, a weapon for each hit, a
+bow for each shot, armour for each blow it takes; at the last use the item
+breaks. Nothing wears in creative mode. Two worn stacks of one item laid in the
+crafting grid make one with the uses left of both and 5 percent of a new one's
+on top.
+
+Calls that take a `slot` number it as: `0` to `35` the pack (`0` to `8` the
+hotbar), `-1` the item in hand, `100` to `126` the slots of the chest that is
+open (while its screen is showing), `200` to `203` the worn pieces (head to feet).
+A slot that does not exist or holds nothing is not an error: the call says no
+(`false`, `-1`, an empty string).
+
+Every stack can also carry item data: up to 8 keys (each 1 to 16 letters, digits,
+`_`, `-` or `.`) with values of up to 64 bytes and no control characters. It is
+kept with the stack wherever it goes: in the pack, in chests, lying on the
+ground, in a world's save; stacks with different data (or different wear) never
+merge. It is also a mod's per-slot state. At most 4096 different maps are alive
+at one time (a charge counting 0 to 100 on one item makes 101 maps, so keep
+counters coarse). A bad key or value is an error in the script; running out of
+room is `false`.
+
+| Function | What it does |
+| --- | --- |
+| `get_armor(slot: &str) -> String` | the id of the piece worn in `head`, `chest`, `legs` or `feet` (empty if none) |
+| `set_armor(slot: &str, item: &str, count: i64) -> bool` | wear an item in a slot (a count of 0 or an empty id takes the piece off); what was worn goes to the pack or the ground; false if the item is not armour for that slot (`armor <slot>` in its data) or the slot is wrong |
+| `armor_defense() -> f64` | the defense points the player has: worn pieces and the `armor` attribute |
+| `armor_toughness() -> f64` | the toughness of what is worn |
+| `item_damage(slot: i64, amount: i64) -> bool` | wear the item in a slot by `amount` uses (0 to 60000); true if it broke (it is gone then); nothing wears in creative or for an item with no `durability` |
+| `item_wear(slot: i64) -> i64` | uses spent of the item in a slot (0 when new or when it does not wear; -1 if the slot is empty) |
+| `item_durability(slot: i64) -> i64` | the uses the item in a slot has when new (0 if it does not wear or the slot is empty) |
+| `repair_item(slot: i64, amount: i64) -> bool` | give back up to `amount` uses to the item in a slot; false if it was not worn |
+| `item_get(slot: i64, key: &str) -> String` | a value kept on the item in a slot (empty if it has none under that key) |
+| `item_set(slot: i64, key: &str, value: &str) -> bool` | keep a value on the item in a slot; false if the slot is empty, the item already has 8 other keys, or there are too many different maps |
+| `item_clear(slot: i64, key: &str) -> bool` | take a key off the item in a slot; false if it was not there |
+| `item_keys(slot: i64) -> Vec<String>` | the keys kept on the item in a slot |
+| `has_tag(item: &str, tag: &str) -> bool` | whether an item has the `tag <name>` mark in its data |
+| `item_tag_value(item: &str, tag: &str) -> f64` | the number of an item's tag (1 if it was given none; 0 if the item lacks the tag) |
+
+```rust
+// A sword that is charged by killing: the charge is kept on the stack itself.
+fn on_entity_death(kind: String, x: f64, y: f64, z: f64) {
+    if has_tag(&held_item(), "charged_blade") {
+        let n = item_get(-1, "charge").parse::<i64>().unwrap_or(0);
+        item_set(-1, "charge", &format!("{}", (n + 1).min(10)));
+    }
+}
+
+// Spend a use of the hand's item with a flourish, and note the helmet coming off.
+fn on_armor_change(slot: i64) {
+    if slot == 0 && get_armor("head") == "" {
+        say("YOUR HEAD IS BARE");
+    }
+}
+```
+
+### Attributes, and asking about effects
+
+The player's most health is 20 (ten hearts) unless an attribute changes it. An
+attribute has a base (`set_attribute`) and modifiers a mod adds under an id of
+its own; the value is `(base + all "add" amounts) x (1 + all "multiply" amounts)`,
+so modifiers stack the same in any order, and is held to the attribute's range.
+They are kept with the world (the player's save). A hit point is half a heart:
+`max_health` 40 gives twenty hearts, drawn as two rows of ten (up to 100 health,
+five rows); absorption stays a row of yellow hearts above them. Health above a
+new, smaller maximum is brought down. Creatures' own most health is not an
+attribute of this kind (see `mob_*`).
+
+| Attribute | Base | Range | What it is |
+| --- | --- | --- | --- |
+| `max_health` | 20 | 2 to 100 | the most health, in half hearts; also what healing, eating and resting fill to |
+| `walk_speed` | 1 | 0.1 to 4 | multiplies walking, swimming and flying speed (with status effects) |
+| `jump_height` | 1 | 0 to 4 | multiplies the speed of a jump |
+| `armor` | 0 | 0 to 40 | defense points, on top of what is worn |
+| `damage` | 1 | 0 to 10 | multiplies what the player's blows do to creatures |
+
+| Function | What it does |
+| --- | --- |
+| `set_attribute(name: &str, value: f64) -> bool` | set the base of an attribute; false if the number is not finite |
+| `reset_attribute(name: &str) -> bool` | put an attribute's base back to its default (the modifiers stay) |
+| `get_attribute(name: &str) -> f64` | an attribute's value now: base and modifiers together |
+| `add_attribute_modifier(id: &str, name: &str, amount: f64, mode: &str) -> bool` | add a modifier under an id of the mod's own (1 to 32 letters, digits, `_`, `-`, `.`); `mode` is `add` or `multiply`; the same id again replaces it; at most 32 modifiers; false when refused |
+| `remove_attribute_modifier(id: &str) -> bool` | take a modifier away; false if there was none of that id |
+| `player_max_health() -> i64` | the most health the player has now |
+| `effect_secs(who: &str, id: &str) -> f64` | seconds left of a status effect on `"player"` or `"target"` (0 if it is not active) |
+| `list_effects(who: &str) -> Vec<String>` | the ids of the status effects active on `"player"` or `"target"` |
+| `effect_defined(id: &str) -> bool` | whether a status effect of that id exists (built in, or an `effect` of the data) |
+
+With `effect_level` (the strength), `effect_secs` (the time left), `list_effects`
+and `on_effect_start` / `on_effect_tick` / `on_effect_end`, a mod needs no timers
+of its own for status effects, and effects defined in a pack's data
+([DATA.md](DATA.md#effects)) are ordinary ids to all of them.
+
+```rust
+// A ring of vitality: ten more hearts while it is the item in hand.
+fn on_update(dt: f32) {
+    if held_item() == "vitality_ring" {
+        add_attribute_modifier("vitality_ring", "max_health", 20.0, "add");
+    } else {
+        remove_attribute_modifier("vitality_ring");
+    }
+}
+```
 
 ### Lines and sections for scripts
 

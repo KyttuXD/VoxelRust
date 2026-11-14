@@ -17,6 +17,10 @@ use crate::world::{GpuMesh, MeshSink, World};
 use alloc::vec::Vec;
 use core::ffi::c_void;
 
+/// Worn armour drawn over a player model.
+#[path = "render/armor.rs"]
+pub mod armor;
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct V2 {

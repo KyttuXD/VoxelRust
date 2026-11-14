@@ -195,6 +195,8 @@ pub struct Session {
     pub mode: GameMode,
     pub kind: worldgen::WorldKind,
     pub health: i32,
+    /// Changes to the most health, walking speed and the like (game/gear/attributes.rs).
+    pub attrs: crate::game::gear::attributes::Attributes,
     /// 0 (starving) ..= 20 (full); survival only.
     pub hunger: i32,
     hunger_clock: f32,
@@ -241,6 +243,9 @@ pub struct Dropped {
     vel: [f32; 3],
     pub item: u16,
     pub count: u16,
+    /// Its wear and item data, as a stack carries them.
+    pub wear: u16,
+    pub data: u16,
     /// Seconds it has lain there (it cannot be picked up at once, and
     /// is gone after five minutes).
     age: f32,
@@ -457,6 +462,7 @@ impl Session {
         player.yaw = floats("yaw").first().copied().unwrap_or(0.0) as f32;
         player.pitch = (floats("pitch").first().copied().unwrap_or(0.0) as f32).clamp(-1.55, 1.55);
         player.flying = kv(&meta, "flying") == Some("1") && mode == GameMode::Creative;
+        let attrs = crate::game::gear::attributes::Attributes::load(kv(&meta, "attrs").unwrap_or(""));
         let inv = match kv(&meta, "inventory") {
             Some(text) => Inventory::load(text),
             None => starting_inventory(mode),
@@ -574,7 +580,8 @@ impl Session {
             selected: kv(&meta, "selected").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(HOTBAR - 1),
             mode,
             kind,
-            health: kv(&meta, "health").and_then(|v| v.parse::<i32>().ok()).unwrap_or(MAX_HEALTH).clamp(1, MAX_HEALTH),
+            health: kv(&meta, "health").and_then(|v| v.parse::<i32>().ok()).unwrap_or(attrs.max_health()).clamp(1, attrs.max_health()),
+            attrs,
             hunger: kv(&meta, "hunger").and_then(|v| v.parse::<i32>().ok()).unwrap_or(MAX_HUNGER).clamp(0, MAX_HUNGER),
             hunger_clock: 0.0,
             fx: crate::game::effects::Effects::from_text(kv(&meta, "effects").unwrap_or(""), kv(&meta, "absorb").and_then(|v| v.parse::<i32>().ok()).unwrap_or(0), &crate::game::effects::apply::lookup),
@@ -758,7 +765,7 @@ impl Session {
             "creative" => self.mode == GameMode::Creative,
             "survival" => self.mode == GameMode::Survival,
             "riding" => self.riding_mob.is_some() || self.carried,
-            "hurt" => self.health < MAX_HEALTH,
+            "hurt" => self.health < self.max_health(),
             "hungry" => self.hunger < MAX_HUNGER,
             // `effect ID [LEVEL]`: that status effect is active (at that level or more).
             "effect" => self.fx.level(w(1)) >= w(2).parse::<i32>().unwrap_or(1).max(1),
@@ -1022,21 +1029,21 @@ impl Session {
             }
             // /drop: toss the held item a little way ahead, as Q does.
             "/drop" => {
-                match self.inv.take_one(self.selected) {
+                match self.inv.take_one_stack(self.selected) {
                     Some(item) => {
                         let dir = forward(self.player.yaw, self.player.pitch);
                         let eye = self.player.eye();
                         if self.drops.len() >= 128 {
                             self.drops.remove(0);
                         }
-                        self.drops.push(Dropped { pos: [eye[0], eye[1] - 0.3, eye[2]], vel: [dir.x * 5.0, dir.y * 5.0 + 2.0, dir.z * 5.0], item, count: 1, age: 0.0 });
+                        self.drops.push(Dropped { pos: [eye[0], eye[1] - 0.3, eye[2]], vel: [dir.x * 5.0, dir.y * 5.0 + 2.0, dir.z * 5.0], item: item.item, count: 1, wear: item.wear, data: item.data, age: 0.0 });
                         String::from("dropped")
                     }
                     None => String::from("NOTHING IN HAND"),
                 }
             }
             "/heal" => {
-                self.health = (self.health + arg(1).parse::<i32>().unwrap_or(4)).clamp(1, MAX_HEALTH);
+                self.health = (self.health + arg(1).parse::<i32>().unwrap_or(4)).clamp(1, self.max_health());
                 String::new()
             }
             "/feed" => {
@@ -1343,10 +1350,15 @@ impl Session {
     /// Set an item down in the world at `pos`, thrown with `vel` (at most 128
     /// lie about; the oldest goes).
     pub fn drop_item(&mut self, pos: [f64; 3], vel: [f32; 3], item: u16, count: u16) {
+        self.drop_stack(pos, vel, Stack::new(item, count));
+    }
+
+    /// As [`Session::drop_item`] for a stack that may be worn or carry data.
+    pub fn drop_stack(&mut self, pos: [f64; 3], vel: [f32; 3], stack: Stack) {
         if self.drops.len() >= 128 {
             self.drops.remove(0);
         }
-        self.drops.push(Dropped { pos, vel, item, count, age: 0.0 });
+        self.drops.push(Dropped { pos, vel, item: stack.item, count: stack.count, wear: stack.wear, data: stack.data, age: 0.0 });
     }
 
     /// Hurt the player by `amount` at the end of this frame (survival only;
@@ -1895,6 +1907,8 @@ impl Session {
         if let Some(kind) = attacker {
             crate::game::effects::apply::on_bitten(self, kind);
         }
+        // Worn armour takes its share of a creature's blow, a shot or a blast, and wears.
+        let amount = self.armor_blow(amount, &cause, attacker.is_some(), audio);
         let amount = self.fx.absorb_hit(amount);
         if amount <= 0 {
             self.hurt_flash = 0.2;
@@ -1925,7 +1939,7 @@ impl Session {
         self.player.pos = self.spawn;
         self.player.vel = [0.0; 3];
         self.peak_y = self.spawn[1];
-        self.health = MAX_HEALTH;
+        self.health = self.max_health();
         self.hunger = MAX_HUNGER;
         self.air = MAX_AIR;
         self.dead = false;
@@ -2021,14 +2035,14 @@ impl Session {
         // Dropping the held item: it is tossed a little way ahead, falls,
         // and can be picked up again by walking over it.
         if c.drop && !self.dead {
-            if let Some(item) = self.inv.take_one(self.selected) {
+            if let Some(item) = self.inv.take_one_stack(self.selected) {
                 let dir = forward(self.player.yaw, self.player.pitch);
                 let eye = self.player.eye();
                 if self.drops.len() >= 128 {
                     self.drops.remove(0);
                 }
-                self.drops.push(Dropped { pos: [eye[0], eye[1] - 0.3, eye[2]], vel: [dir.x * 5.0, dir.y * 5.0 + 2.0, dir.z * 5.0], item, count: 1, age: 0.0 });
-                crate::game::events::item_dropped(self, item as usize);
+                self.drops.push(Dropped { pos: [eye[0], eye[1] - 0.3, eye[2]], vel: [dir.x * 5.0, dir.y * 5.0 + 2.0, dir.z * 5.0], item: item.item, count: 1, wear: item.wear, data: item.data, age: 0.0 });
+                crate::game::events::item_dropped(self, item.item as usize);
             }
         }
         let (px, py, pz) = (self.player.pos[0], self.player.pos[1], self.player.pos[2]);
@@ -2049,7 +2063,7 @@ impl Session {
                 // A partly fitting stack gives what fits and keeps lying
                 // there with the rest (it must not be taken whole as well).
                 let (item, before) = (d.item, d.count);
-                let left = self.inv.add(item, before);
+                let left = self.inv.add_stack(Stack { item, count: before, wear: d.wear, data: d.data });
                 if left < before {
                     audio.play(Sound::Pop, 0.6);
                     crate::game::events::item_picked(self, item as usize);
@@ -2146,7 +2160,8 @@ impl Session {
         {
             use crate::game::effects::apply as fxa;
             self.player.speed_scale *= fxa::speed_scale(&self.fx, &fxa::lookup);
-            self.player.jump_scale = fxa::jump_scale(&self.fx, &fxa::lookup);
+            self.player.speed_scale *= self.attrs.value(crate::game::gear::attributes::WALK_SPEED);
+            self.player.jump_scale = fxa::jump_scale(&self.fx, &fxa::lookup) * self.attrs.value(crate::game::gear::attributes::JUMP_HEIGHT);
             self.player.lift = crate::game::effects::body::lift_speed(&self.fx, &fxa::lookup);
             fxa::step(self, dt, audio);
         }
@@ -2428,7 +2443,7 @@ impl Session {
         }
         // Slow healing once things have been quiet for a while, if fed.
         self.since_damage += dt;
-        if self.health < MAX_HEALTH && self.since_damage > 6.0 && self.hunger > 6 {
+        if self.health < self.max_health() && self.since_damage > 6.0 && self.hunger > 6 {
             self.regen += dt;
             if self.regen >= 3.0 {
                 self.regen = 0.0;
@@ -2481,6 +2496,7 @@ impl Session {
             let (damage, speed) = crate::game::bow::scaled(damage, speed, power);
             self.loose(damage, speed, AIR, [230, 220, 200]);
             audio.play_named("bow", 0.4 + 0.5 * power);
+            self.wear_held(1, audio);
         } else {
             self.say("OUT OF AMMUNITION");
         }
@@ -2613,7 +2629,9 @@ impl Session {
                     self.mob_hit(mid, kind, at);
                     let blow = crate::game::effects::apply::melee_damage(&self.fx, &crate::game::effects::apply::lookup, item.x.damage.max(3));
                     crate::game::effects::apply::on_strike(self, i, &item.id);
+                    let blow = crate::game::gear::session_gear::scaled_blow(blow, self.attrs.value(crate::game::gear::attributes::DAMAGE));
                     let killed = self.strike(i, if creative { 1000 } else { blow }, eye);
+                    self.wear_held(1, audio);
                     audio.play(if killed { Sound::Pop } else { Sound::Hurt }, 0.8);
                     self.fire("hit", &reg().entities[kind].id);
                     // A guest of someone else's world is handed the drop at once.
@@ -2674,10 +2692,11 @@ impl Session {
                             interact::remove(&mut self.world, cell);
                             audio.play_named(if d.x.sound.is_empty() { "break" } else { &d.x.sound }, 1.0);
                             self.fire("break", &d.id);
+                            self.wear_held(1, audio);
                             // A broken chest hands over what was inside.
                             if let Some(inside) = self.chests.remove(&cell) {
                                 for s in inside.slots.iter().flatten() {
-                                    self.give_or_drop(s.item, s.count);
+                                    self.give_stack_or_drop(*s);
                                 }
                             }
                             self.rng = self.rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
@@ -2739,10 +2758,10 @@ impl Session {
                     return;
                 }
                 // Food set out on a table: eat it there.
-                if aimed.x.eat > 0 && (creative || self.hunger < MAX_HUNGER || self.health < MAX_HEALTH) {
+                if aimed.x.eat > 0 && (creative || self.hunger < MAX_HUNGER || self.health < self.max_health()) {
                     self.cooldown[1] = 0.5;
                     self.hunger = (self.hunger + aimed.x.eat as i32).min(MAX_HUNGER);
-                    self.health = (self.health + aimed.x.eat as i32 / 2).min(MAX_HEALTH);
+                    self.health = (self.health + aimed.x.eat as i32 / 2).min(self.max_health());
                     interact::remove(&mut self.world, hit.cell);
                     audio.play(Sound::Pop, 0.8);
                     return;
@@ -2764,10 +2783,11 @@ impl Session {
                     self.cooldown[1] = 0.3;
                     self.world.set_block(hit.cell[0], hit.cell[1], hit.cell[2], to);
                     audio.play(Sound::Break, 0.7);
+                    self.wear_held(1, audio);
                     return;
                 }
             }
-            if item.food > 0 && !creative && (self.hunger < MAX_HUNGER || self.health < MAX_HEALTH) && !c.break_held {
+            if item.food > 0 && !creative && (self.hunger < MAX_HUNGER || self.health < self.max_health()) && !c.break_held {
                 // Eating takes a moment, with the button held (game/eating.rs).
                 let index = held.map_or(0, |h| h.0) as u16;
                 let drink = crate::game::eating::is_drink(&item.id);
@@ -2775,7 +2795,7 @@ impl Session {
                     crate::game::eating::Bite::Done => {
                         self.cooldown[1] = 0.4;
                         self.hunger = (self.hunger + item.food).min(MAX_HUNGER);
-                        self.health = (self.health + item.food / 2).min(MAX_HEALTH);
+                        self.health = (self.health + item.food / 2).min(self.max_health());
                         self.inv.take_one(self.selected);
                         audio.play(Sound::Pop, 0.8);
                         self.fire("eat", &item.id);
@@ -2866,7 +2886,7 @@ impl Session {
                         } else {
                             self.inv.slots[..HOTBAR].iter().position(|s| s.is_none()).unwrap_or(self.selected)
                         };
-                        self.inv.slots[slot] = Some(Stack { item: i as u16, count: reg().items[i].stack });
+                        self.inv.slots[slot] = Some(Stack::new(i as u16, reg().items[i].stack));
                         self.selected = slot;
                     }
                     None => {}
@@ -2920,7 +2940,7 @@ impl Session {
             sys::write_file_atomic(&self.vars_path, vars.as_bytes());
         }
         let text = alloc::format!(
-            "seed={}\ndim={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\neffects={}\nabsorb={}\ninventory={}\n",
+            "seed={}\ndim={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\neffects={}\nabsorb={}\ninventory={}\nattrs={}\n",
             self.base_seed,
             self.dim,
             self.kind.to_text(),
@@ -2941,6 +2961,7 @@ impl Session {
             self.fx.to_text(),
             self.fx.absorb,
             self.inv.save(),
+            self.attrs.save(),
         );
         let ok = sys::write_file_atomic(&self.meta_path, text.as_bytes()) && !self.store.write_failed;
         crate::game::hooks::world_saved(self);

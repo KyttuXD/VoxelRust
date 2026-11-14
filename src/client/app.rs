@@ -7,7 +7,7 @@ use crate::inventory::{Stack, HOTBAR, SLOTS};
 use crate::math::{floord, sinf, PI, TAU};
 use crate::player::Input;
 use crate::render::{Camera, Color, Env, Renderer, WHITE};
-use crate::session::{self, Controls, GameMode, NewWorld, Session, MAX_HEALTH};
+use crate::session::{self, Controls, GameMode, NewWorld, Session};
 use crate::settings::{Action, Settings, ACTIONS};
 use crate::sys::{self, gl, sdl, thread};
 use crate::ui::{self, Ui, UiInput};
@@ -764,6 +764,7 @@ pub(crate) fn draw_slot(r: &mut Renderer, x: f32, y: f32, size: f32, s: f32, sta
         // (A small slot, as in a 7 x 7 grid, has a thinner margin.)
         let m = (3.0 * s).min(size * 0.15);
         draw_item(r, x + m, y + m, size - 2.0 * m, st.item as usize, WHITE);
+        crate::client::wear_bar::draw(r, x, y, size, s, &st);
         if st.count > 1 {
             let t = alloc::format!("{}", st.count);
             let tw = Renderer::text_width(&t, s);
@@ -1289,7 +1290,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         if let Some(want) = opts.show.split(',').find_map(|w| w.strip_prefix("craft:")) {
             app.screen = Screen::Craft;
             let r = reg();
-            let one = |it: u16| Some(crate::inventory::Stack { item: it, count: 1 });
+            let one = |it: u16| Some(crate::inventory::Stack::new(it, 1));
             if let Some(rc) = r.grid_recipes.iter().find(|rc| r.items[rc.out.0 as usize].id == want) {
                 // The bench or workshop the recipe needs (a table at least).
                 app.craft.table_side = rc.min_side().max(3);
@@ -1612,8 +1613,8 @@ pub fn main(argc: c_int, argv: *const *const c_char) -> c_int {
 mod tests {
     #[test]
     fn a_click_on_the_creative_list_picks_up_or_lets_go_but_not_both() {
-        let stone = Stack { item: 3, count: 64 };
-        let dirt = Stack { item: 4, count: 1 };
+        let stone = Stack::new(3, 64);
+        let dirt = Stack::new(4, 1);
         // Empty hand on a palette cell: the item is picked up, and stays.
         assert_eq!(creative_hand(None, Some(stone), true, true), Some(stone));
         // Carrying something and clicking a palette cell: thrown away.

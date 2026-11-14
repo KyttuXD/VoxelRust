@@ -55,8 +55,8 @@ impl App {
             let hy = y0 - 12.0 * s;
             // Hearts, drawn from the heart pictures (green, dark, blue by effect).
             if !crate::client::effects_hud::hearts(r, g, x0, hy, s) {
-                for i in 0..MAX_HEALTH / 2 {
-                    heart(r, x0 + i as f32 * 9.0 * s, hy, s, (g.health - i * 2).clamp(0, 2));
+                for c in crate::game::gear::hearts::layout(g.health, g.max_health()) {
+                    heart(r, x0 + c.col as f32 * 9.0 * s, hy - c.row as f32 * 8.0 * s, s, c.fill as i32);
                 }
             }
             // Hunger, as ten drumstick-coloured pips on the right.
@@ -68,7 +68,9 @@ impl App {
                     r.rect(x + s, hy + s, if fill == 2 { 6.0 } else { 3.0 } * s, 5.0 * s, [214, 142, 62, 255]);
                 }
             }
-            crate::client::effects_hud::bubbles(r, g, x0 + HOTBAR as f32 * slot, hy - 9.0 * s, s);
+            // (More than ten hearts make more rows; the bubbles go above the top one.)
+            let extra_rows = crate::game::gear::hearts::rows(g.max_health()).saturating_sub(1) as f32;
+            crate::client::effects_hud::bubbles(r, g, x0 + HOTBAR as f32 * slot, hy - 9.0 * s - extra_rows * 9.0 * s, s);
         }
         // What mods put on the HUD (their drawing commands, lines in the slots, toasts).
         crate::client::modui::hud_draw::draw(r, w, h, s, &crate::client::modui::hud::Geometry { hotbar_x: x0, hotbar_y: y0, survival });

@@ -234,7 +234,7 @@ The newer events, which fire in the same way:
 | `entityspawn` | a creature appears (by itself, from an egg, from breeding) | entity id |
 | `entitydeath` | a creature dies, whatever the cause | entity id |
 | `entityhurt` | you strike a creature (it may die of it) | entity id |
-| `playerhurt` | you take damage in survival, after armour and mods | the cause: `fall`, `drown`, `hunger`, `block`, `arrow`, `command`, `other`, or the id of the creature that bit |
+| `playerhurt` | you take damage in survival, after armour and mods | the cause: `fall`, `drown`, `hunger`, `block`, `arrow`, `explosion`, `effect`, `command`, `other`, or the id of the creature that bit |
 | `respawn` | you come back after dying | none |
 | `chat` | you say something (a line not starting with `/`) | its first word |
 | `command` | you type a `/command` | its name without the `/` |
@@ -1008,6 +1008,7 @@ also passed to the mod's `on_event` hook.
 | `chat`, `command` | the player types a line | first word / command name | `on_chat`: `false` swallows the line (commands too) | `fn(&mut Session, line: &str) -> bool` |
 | `useitem` (`itemuse`) | the player right clicks with an item that has a script | item id | `on_item_use`: asked for any held item, once per press; `false` stops the use | `fn(&mut Session, item: usize) -> bool` |
 | `craft` | the player crafts | output item id | no, `on_craft` after | `fn(&mut Session, out: usize)` |
+| (armour) | a worn piece was put on, taken off, set by code or broke | (none) | no, `on_armor_change` after | `fn(&mut Session, slot: usize)` (0 head .. 3 feet) |
 | `every N` | every N seconds | seconds | no, `on_tick` runs every frame | `fn(&mut Session, dt: f32)` |
 | (every event) | any event above or `/fire` | the event's | `on_event` hears it, cannot cancel | `fn(&mut Session, name: &str, what: &str)` |
 | `start` | a world is opened | none | `on_world_load` once the world is open | `fn(&mut Session)` |
@@ -1076,6 +1077,21 @@ until version 2, treat the signatures of the newer `on_...` hooks as likely to
 grow by an argument, and prefer `..Native::NONE` so that new fields do not
 break your code. Event names in scripts are kept for good: an event is never
 renamed without leaving the old name as an alias.
+
+### Armour, wear, item data and attributes from native code
+
+A mod's code reaches the same things the script calls do, directly on the
+`Session`: `g.inv.worn` (the four worn slots), `g.set_worn(slot, stack)`,
+`g.put_on_armor(pack_slot)`, `g.take_off_armor(slot)`, `g.armor_points()`
+(defense and toughness), `g.wear_held(uses, audio)`, `g.slot_mut(n)` (a stack
+by the slot numbers scripts use), `g.attrs` (`game::gear::attributes`: base and
+modifiers of `max_health`, `walk_speed`, `jump_height`, `armor`, `damage`) and
+`g.max_health()`. A `Stack` has `wear` (uses spent) and `data` (a handle to its
+item data map, see `game::gear::item_data`: `with_key`, `get`, `without_key`);
+`Stack::new(item, count)` makes a plain one and `s.with_count(n)` changes only
+the count. Stacks merge only with `same_kind`. The hook `on_armor_change` of
+`Native` is called after a piece changes. Items have `x.armor`, `x.durability`
+and `x.tags` in the registry. See [SCRIPTING.md](SCRIPTING.md#armour-wear-item-data-and-tags).
 
 ### Example
 

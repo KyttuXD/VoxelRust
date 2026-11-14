@@ -199,6 +199,13 @@ pub struct Native {
     /// `command`, `other` or the id of the creature that bit. `false` (or an
     /// amount of 0) cancels it. Runs after `hurt`.
     pub on_player_hurt: Option<fn(g: &mut Session, amount: &mut i32, cause: &str) -> bool>,
+    /// A worn armour piece was put on, taken off, set by code or broke:
+    /// `slot` is 0 head, 1 chest, 2 legs, 3 feet. The code reads and sets
+    /// what is worn through `g.inv.worn`, `Session::set_worn` and
+    /// `Session::armor_points`, wears items with `game::gear::wear`, and
+    /// keeps item data with `game::gear::item_data` (the same as the script
+    /// calls `get_armor`, `set_armor`, `item_damage` and `item_set`).
+    pub on_armor_change: Option<fn(g: &mut Session, slot: usize)>,
     /// The player typed a line (commands too). `false` swallows it.
     pub on_chat: Option<fn(g: &mut Session, line: &str) -> bool>,
     /// The player pressed the use button holding item `item` (once per
@@ -300,6 +307,7 @@ impl Native {
         on_entity_spawn: None,
         on_entity_death: None,
         on_player_hurt: None,
+        on_armor_change: None,
         on_chat: None,
         on_item_use: None,
         on_craft: None,

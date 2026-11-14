@@ -312,6 +312,8 @@ fn hurt_things(g: &mut Session, info: &ExplosionInfo) {
                     // So that a mod's `hurt` hook can tell who it was.
                     g.mobs.last_biter = Some(k);
                 }
+                // (Armour takes a share of a blast; see game/gear/armor.rs.)
+                g.ev.pending_cause = alloc::string::String::from("explosion");
                 g.hurt_later(damage);
             }
             if !g.player.flying && knock > 0.0 {

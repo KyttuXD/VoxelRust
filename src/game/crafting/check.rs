@@ -16,7 +16,7 @@ pub fn canonical(recipe: &GridRecipe) -> (usize, Vec<Slot>) {
     let mut cells: Vec<Slot> = alloc::vec![None; side * side];
     for (cell, ing) in recipe.layout(side) {
         if let (Some(&item), Some(slot)) = (ing.items.first(), cells.get_mut(cell)) {
-            *slot = Some(Stack { item, count: ing.need });
+            *slot = Some(Stack::new(item, ing.need));
         }
     }
     (side, cells)

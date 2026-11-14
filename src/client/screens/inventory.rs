@@ -52,7 +52,7 @@ impl App {
                 draw_slot(ui.r, x, y, cell, s, chest.slots[i], hot);
                 if hot {
                     if let Some(st) = chest.slots[i] {
-                        tip = Some(r.items[st.item as usize].name.clone());
+                        tip = Some(crate::game::gear::wear::tooltip(&r.items[st.item as usize].name, &st));
                     }
                     if click_l || click_r {
                         chest.click(i, &mut g.cursor, click_r);
@@ -107,11 +107,11 @@ impl App {
                     let hot = ui.hot(x, y, cell, cell);
                     match list.get(idx) {
                         Some(&item) => {
-                            draw_slot(ui.r, x, y, cell, s, Some(Stack { item: item as u16, count: 1 }), hot);
+                            draw_slot(ui.r, x, y, cell, s, Some(Stack::new(item as u16, 1)), hot);
                             if hot {
                                 tip = Some(r.items[item].name.clone());
                                 if click_l || click_r {
-                                    pick = Some(Stack { item: item as u16, count: if click_l { r.items[item].stack } else { 1 } });
+                                    pick = Some(Stack::new(item as u16, if click_l { r.items[item].stack } else { 1 }));
                                 }
                             }
                         }
@@ -223,16 +223,28 @@ impl App {
             }
         }
 
-        // A portrait of the player beside the panel, where there is room.
+        // A portrait of the player beside the panel, where there is room, with
+        // the four armour slots down its left side (client/screens/armor_slots.rs).
         if px > 70.0 * s {
             let body = body_for(g, own_id(g), self.settings.slim_arms);
             if let Some(model) = reg().model(arm_models(&body, self.settings.slim_arms).0) {
-                ui.panel(px - 66.0 * s, py, 60.0 * s, 124.0 * s);
+                let slots = px > 94.0 * s;
+                let (pl, pwid) = if slots { (px - 90.0 * s, 84.0 * s) } else { (px - 66.0 * s, 60.0 * s) };
+                ui.panel(pl, py, pwid, 124.0 * s);
+                let cx = pl + pwid - 30.0 * s;
                 let pose = crate::model::Pose { phase: g.clock * 2.0, stride: 0.12, ..Default::default() };
                 ui.r.tex_override = self.skin_tex;
-                ui.r.draw_model_2d(model, &pose, px - 36.0 * s, py + 112.0 * s, PI - 0.45, 96.0 * s);
+                ui.r.draw_model_2d(model, &pose, cx, py + 112.0 * s, PI - 0.45, 96.0 * s);
+                if g.inv.worn.iter().any(|w| w.is_some()) {
+                    ui.r.draw_model_2d_armor(model, &pose, cx, py + 112.0 * s, PI - 0.45, 96.0 * s, &crate::client::render::armor::looks(&g.inv.worn));
+                }
                 let name = self.settings.player_name.to_ascii_uppercase();
-                ui.centered(px - 36.0 * s, py + 114.0 * s, 1.0, &name, WHITE);
+                ui.centered(cx, py + 114.0 * s, 1.0, &name, WHITE);
+                if slots {
+                    if let Some(t) = crate::client::screens::armor_slots::draw(ui, g, pl + 4.0 * s, py + 6.0 * s, 20.0 * s, click_l, click_r) {
+                        tip = Some(t);
+                    }
+                }
             }
         }
 
@@ -249,16 +261,23 @@ impl App {
             }
             if hot {
                 if let Some(st) = g.inv.slots[i] {
-                    tip = Some(r.items[st.item as usize].name.clone());
+                    tip = Some(crate::game::gear::wear::tooltip(&r.items[st.item as usize].name, &st));
                 }
                 if click_l || click_r {
-                    g.inv.click(i, &mut g.cursor, click_r);
+                    // Shift-click, or right click with an empty hand, puts armour on.
+                    let armour_here = g.inv.slots[i].map_or(false, |st| crate::game::gear::armor::piece(st.item).is_some());
+                    let shift = self.keys[225] || self.keys[229];
+                    if armour_here && g.cursor.is_none() && (shift || click_r) {
+                        g.put_on_armor(i);
+                    } else {
+                        g.inv.click(i, &mut g.cursor, click_r);
+                    }
                     ui.clicked_any = true;
                 }
             }
         }
         // Clicking outside the panel with something in hand drops it.
-        if (click_l || click_r) && !ui.hot(px, py, pw, ph) {
+        if (click_l || click_r) && !ui.hot(px, py, pw, ph) && !ui.clicked_any {
             g.cursor = None;
         }
         if let Some(t) = tip {
