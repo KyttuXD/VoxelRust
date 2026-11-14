@@ -7,6 +7,7 @@ pub mod effects_hud;
 pub mod ui;
 pub mod fullmap;
 pub mod picker;
+pub mod screens;
 pub mod skinfile;
 pub mod audio;
 pub mod update;

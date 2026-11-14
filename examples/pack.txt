@@ -142,9 +142,11 @@ item amethyst_wand
   turns stone amethyst
   turns cobble stone
 
-# Recipes: by hand, at a crafting table, and in an oven.
-recipe glowberry_seeds 2 glowberry 1
-craft amethyst_hatch 2 amethyst 3
+# Recipes: in the crafting grid (a shapeless one fits the 2 x 2 grid of the
+# inventory screen; a shaped one is a pattern, here in a table's 3 x 3 grid),
+# and in an oven.
+craft glowberry_seeds 2 glowberry 1
+shaped amethyst_hatch 2 "A.A" ".A." with A amethyst
 bake hot_coals 1 coal 4
 
 # The terrain: amethyst in deep stone (about one block in 400 between

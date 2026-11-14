@@ -579,6 +579,10 @@ block stone_lantern
 craft stone_lantern 1 stone 3 lamp 1
 ```
 
+(`craft` is a shapeless recipe: the four items go anywhere in the crafting
+grid. A `shaped` line fixes the pattern, as in `shaped stone_lantern 1 ".S."
+"SLS" ".S." with S stone L lamp`; see [Recipes](DATA.md#recipes).)
+
 - Give the block at least one `box` line. The boxes are not drawn; they are
   the solid shape, used for collision and for aiming (with none, the block is
   solid as a whole block). For something to walk
@@ -687,8 +691,8 @@ It shows:
 - a crop in three stages (`on`, `grows`, `also`) with its seeds and fruit;
 - a wand that turns one block into another and hits hard (`turns`,
   `damage`);
-- recipes by hand, at a crafting table and in an oven (`recipe`, `craft`,
-  `bake`);
+- recipes for the crafting grid, shaped or shapeless, and in an oven or a
+  furnace (`shaped`, `craft`, `group`, `bake`, `smelt`);
 - an ore in the stone and a wild plant (`ore`, `plant`);
 - a creature with traits, variants, young, a glow, something it gives and a
   food it likes;

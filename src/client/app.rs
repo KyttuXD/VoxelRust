@@ -492,6 +492,8 @@ struct App {
     mods_scroll: i32,
     form_mod_path: String,
     at_furnace: bool,
+    /// The crafting grid and recipe book of the inventory and table screens.
+    craft: crate::client::screens::crafting::CraftScreen,
     /// Seconds and frames counted while timing full screen.
     tune: (f32, u32),
     worlds_scroll: i32,
@@ -547,6 +549,13 @@ impl App {
                         s.inv.add(c.item, c.count);
                     }
                 }
+            }
+        }
+        // Whatever lies in the crafting grid goes back in too.
+        if self.screen != screen {
+            match self.session.as_mut() {
+                Some(s) => self.craft.put_away(&mut s.inv),
+                None => self.craft = Default::default(),
             }
         }
         self.screen = screen;
@@ -666,6 +675,8 @@ impl App {
         // The map's selection, name box and view belong to the world it was in.
         self.full = None;
         if let Some(mut s) = self.session.take() {
+            // Items lying in the crafting grid are saved with the inventory.
+            self.craft.put_away(&mut s.inv);
             if !self.scripted && !s.save() {
                 logf!("voxelrust: some files of world `{}` could not be written", s.name);
             }
@@ -2649,10 +2660,26 @@ impl App {
             // The wheel scrolls a row at a time; the bar at the side shows
             // where in the list this is, and can be dragged.
             ui.scrollbar(px + pw - 4.5 * s, uy, 3.0 * s, upper_rows as f32 * cell, &mut self.inv_scroll, upper_rows, total_rows);
+        } else if !(at_table && (self.at_oven || self.at_furnace)) {
+            // The crafting grid, and the recipe book (client/screens/crafting.rs).
+            ui.text(gx, py + 6.0 * s, if at_table { "CRAFTING TABLE" } else { "CRAFTING - A TABLE HAS A BIGGER GRID" }, ui::DIM);
+            let frame = super::screens::crafting::Frame {
+                gx,
+                uy,
+                width: cols as f32 * cell,
+                cell,
+                rows: upper_rows,
+                at_table,
+                shift: self.keys[225] || self.keys[229],
+            };
+            if let Some(t) = super::screens::crafting::draw(ui, g, &mut self.craft, &frame) {
+                tip = Some(t);
+            }
         } else {
+            // An oven's or a furnace's list: click a recipe to make it.
             let at_oven = at_table && self.at_oven;
             let at_furnace = at_table && self.at_furnace;
-            ui.text(gx, py + 6.0 * s, if at_furnace { "FURNACE (CLICK SOMETHING TO SMELT IT)" } else if at_oven { "OVEN (CLICK SOMETHING TO BAKE IT)" } else if at_table { "CRAFTING TABLE (CLICK A RECIPE)" } else { "MAKE BY HAND - A CRAFTING TABLE MAKES MORE" }, ui::DIM);
+            ui.text(gx, py + 6.0 * s, if at_furnace { "FURNACE (CLICK SOMETHING TO SMELT IT)" } else { "OVEN (CLICK SOMETHING TO BAKE IT)" }, ui::DIM);
             // Recipes you can make now come first.
             let can = |rc: &block::Recipe| rc.inputs.iter().all(|&(i, n)| g.inv.count(i as u16) >= n as u32);
             // By hand only the simplest things; a table offers everything.
@@ -2941,7 +2968,7 @@ fn hand_view_of(g: &session::Session, held: crate::client::hand::Held, speed: f3
     }
 }
 
-fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Color) {
+pub(crate) fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Color) {
     let it = &reg().items[index];
     // A spawn egg shows the creature itself, standing in half an eggshell.
     if let Some(e) = it.x.egg.and_then(|k| reg().entities.get(k)) {
@@ -2983,7 +3010,7 @@ fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Co
     }
 }
 
-fn draw_slot(r: &mut Renderer, x: f32, y: f32, size: f32, s: f32, stack: Option<Stack>, hot: bool) {
+pub(crate) fn draw_slot(r: &mut Renderer, x: f32, y: f32, size: f32, s: f32, stack: Option<Stack>, hot: bool) {
     // A slot is a shallow well: dark top and left, light bottom and right.
     let (ix, iy, iw) = (x + s, y + s, size - 2.0 * s);
     r.rect(ix, iy, iw, iw, if hot { [92, 126, 204, 240] } else { [44, 47, 58, 225] });
@@ -3394,6 +3421,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         mods_scroll: 0,
         form_mod_path: String::new(),
         at_furnace: false,
+        craft: Default::default(),
         tune: (0.0, 0),
         worlds_scroll: 0,
         edit_world: String::new(),

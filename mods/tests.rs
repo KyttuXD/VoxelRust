@@ -140,3 +140,15 @@ fn the_wildlife_mod_has_its_species_with_looks_and_working_models() {
     }
     assert!(new.iter().filter(|e| e.x.baby.is_some()).count() >= 8);
 }
+
+#[test]
+fn the_recipes_of_every_shipped_mod_can_be_told_apart() {
+    // Two things must never be made from the same arrangement of items.
+    let r = load(&shipped());
+    let name = |i: usize| r.items[r.grid_recipes[i].out.0 as usize].id.clone();
+    let bad: Vec<String> = crate::crafting::check::clashes(&r.grid_recipes).iter().map(|&(a, b)| format!("{} / {}", name(a), name(b))).collect();
+    assert!(bad.is_empty(), "{bad:#?}");
+    for rc in &r.grid_recipes {
+        assert_eq!(crate::crafting::check::problem(rc), None, "{}", r.items[rc.out.0 as usize].id);
+    }
+}

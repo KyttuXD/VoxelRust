@@ -15,3 +15,4 @@ pub mod primed;
 pub mod events;
 pub mod hooks;
 pub mod effects;
+pub mod crafting;

@@ -224,24 +224,55 @@ recipes need (see [Furnaces](#furnaces)).
 
 ### Crafting
 
-Press E. In survival the upper part of the inventory lists what you can make;
-recipes you have the ingredients for come first, and pointing at one shows
-what it needs. Click a recipe to make it. A long list scrolls with the mouse
-wheel or by dragging the scroll bar at its right edge.
+Press E. In survival the upper part of the inventory screen is a **2 x 2
+crafting grid** with the result to the right of an arrow. Put items in the
+cells (left click puts down a stack, right click one item) and the result
+appears; click it to take it. Taking the result uses up one of each
+ingredient, and the result goes onto the mouse (clicking again stacks more of
+the same on it). Shift-click the result to make as many as the grid holds
+and the inventory has room for; shift-click a cell to send its items to the
+inventory; **CLEAR** sends everything back. Whatever is in the grid when you
+close the screen goes back into the inventory.
 
-- **By hand** only a few things can be made: planks from logs, sticks, a
-  wooden pickaxe, the crafting table (4 planks), flour and dough.
-- **At a crafting table** (place it, then right click it) everything that is
-  not baked is offered: tools, hoes, swords, stairs, slabs, fences, walls,
+- A **shaped** recipe needs its pattern: a pickaxe is three heads over two
+  sticks. The pattern may sit anywhere in the grid and may be turned left to
+  right (an axe is the same either way round), but it cannot be turned
+  upside down and nothing else may be in the grid.
+- A **shapeless** recipe needs only the right items, in any places (planks
+  from a log, a coloured chest from a chest and wool).
+- Some ingredients are **any of a kind**: any planks make sticks, a table or
+  a bed's boards.
+- A few big recipes (vehicles) ask for a lot of one thing, more than the
+  grid has cells for. They then take one cell for each kind of item, and
+  that cell has to hold the whole amount (for example 10 iron ore in one
+  stack).
+- **By hand** (2 x 2) you can make what fits four cells: planks from logs,
+  sticks, the crafting table (4 planks in a square), stone bricks, wool from
+  string, flour and dough.
+- **At a crafting table** (place it, then right click it) there is a 3 x 3
+  grid for everything else: tools, hoes, swords, stairs, slabs, fences, walls,
   doors, beds, glass, coloured blocks, chests, rails, vehicles, the oven and
   so on.
-- **At an oven** (right click it) the baking recipes are offered; see
-  [The oven and baking](#the-oven-and-baking).
-- **At a furnace** the smelting recipes are offered; see
+- **The recipe book**: the BOOK button next to the grid lists what the items
+  you carry (and what is already in the grid) can make. Click a recipe and
+  the grid is filled for you from the inventory; **CAN MAKE** switches the
+  list to every recipe, and the ones you lack the items for are dim: clicking
+  one lays out what you have and shows what is missing as faint ghost items.
+  Pointing at a recipe shows what it needs.
+- In creative the inventory screen keeps its item list; the crafting table
+  still has the grid.
+- **At an oven** (right click it) the baking recipes are offered as a list to
+  click; see [The oven and baking](#the-oven-and-baking).
+- **At a furnace** the smelting recipes are offered as a list to click; see
   [Furnaces](#furnaces).
 
-There is no crafting grid: nothing is laid out in a pattern. The lists are
-the recipe book.
+A few recipes, for a taste (the rest are in the recipe book): the pickaxe
+(`III` over `.S.` over `.S.`, I the head and S a stick), the axe (`II`,
+`IS`, `.S`), the shovel (head over two sticks), the hoe (`II`, `.S`, `.S`),
+the sword (two heads over a stick), stairs (`M..`, `MM.`, `MMM`: 4 stairs),
+slabs (a row of 3: 6 slabs), a door (two columns of three), a chest (a ring
+of 8 planks), a furnace (a ring of 8 cobble), a bed (three wool over three
+planks).
 
 In the inventory, left click picks up or puts down a whole stack, right click
 picks up half or puts down one. Clicking outside the panel throws away what
@@ -263,8 +294,8 @@ digging under them brings them down.
 Each of the six woods has a door (two blocks high), a trapdoor and a gate.
 Right click opens and shuts them. A door needs room for both halves; opening
 or breaking either half does the same to the other. At a crafting table: 6
-planks make a door, 3 planks make 2 trapdoors, 2 planks and 4 sticks make a
-gate. They are in the Doors tab in creative.
+planks (two columns of three) make a door, 6 planks (two rows of three) make
+2 trapdoors, 2 planks between 4 sticks make a gate. They are in the Doors tab in creative.
 
 Each wood also has four more doors, all two blocks high:
 

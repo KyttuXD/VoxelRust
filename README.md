@@ -22,8 +22,8 @@ own procedurally painted textures and its own terrain generator.
   The world is 256 blocks high.
 - **Survival and creative modes.** Survival has health, hunger, falling,
   drowning, mining times with cracks spreading over the block, tools, hoes
-  and swords in six materials, drops, crafting by hand and at a crafting
-  table, furnaces, bows, chests, and monsters at night and in caves. Creative
+  and swords in six materials, drops, crafting in a 2 x 2 and a 3 x 3 grid with a recipe book
+  at a crafting table, furnaces, bows, chests, and monsters at night and in caves. Creative
   has flying (press jump twice), instant building, area tools, and an item
   list with picture tabs and block icons drawn as isometric cubes, including
   a spawn egg for every creature.
@@ -220,8 +220,9 @@ Worlds and settings live in the data folder and are not touched. Details:
   each chunk is one column of that height, so there is no building above
   256 or digging below 0. Invented terrain tops out at height 114; the rest
   is room to build, and for mountains in Earth worlds.
-- There is no crafting grid. Recipes are lists you click to make; the lists
-  are the recipe book.
+- The crafting grid is 2 x 2 in the inventory and 3 x 3 at a table, with
+  shaped and shapeless recipes, but there is no recipe-book unlocking and no
+  tags beyond the `group` lines of the data.
 - Doors do not animate: a door switches at once between its shut shape and
   its open shape.
 - Rivers do not flow. Water is animated but stays where it is.

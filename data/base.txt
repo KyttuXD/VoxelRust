@@ -2051,212 +2051,217 @@ item cooked_fish
   food 6
 
 # ---- Recipes (survival mode) ----
-#   recipe <item> <count> <ingredient> <count> [<ingredient> <count> ...]
-#   recipe ...   can be made by hand;   craft ...   needs a crafting table
-recipe planks 4 log 1
-recipe pine_planks 4 pine_log 1
-recipe birch_planks 4 birch_log 1
-recipe maple_planks 4 maple_log 1
-recipe palm_planks 4 palm_log 1
-recipe blossom_planks 4 blossom_log 1
-recipe acacia_planks 4 acacia_log 1
-recipe dark_oak_planks 4 dark_oak_log 1
-recipe stick 4 planks 2
-recipe crafting_table 1 planks 4
-recipe wood_pick 1 planks 3 stick 2
-craft stone_stairs 4 stone 3
-craft stone_slab 2 stone 1
-craft cobble_stairs 4 cobble 3
-craft cobble_slab 2 cobble 1
-craft stone_bricks_stairs 4 stone_bricks 3
-craft stone_bricks_slab 2 stone_bricks 1
-craft brick_stairs 4 brick 3
-craft brick_slab 2 brick 1
-craft sandstone_stairs 4 sandstone 3
-craft sandstone_slab 2 sandstone 1
-craft marble_stairs 4 marble 3
-craft marble_slab 2 marble 1
-craft slate_stairs 4 slate 3
-craft slate_slab 2 slate 1
-craft granite_stairs 4 granite 3
-craft granite_slab 2 granite 1
-craft basalt_stairs 4 basalt 3
-craft basalt_slab 2 basalt 1
-craft marble_tiles_stairs 4 marble_tiles 3
-craft marble_tiles_slab 2 marble_tiles 1
-craft slate_bricks_stairs 4 slate_bricks 3
-craft slate_bricks_slab 2 slate_bricks 1
-craft planks_stairs 4 planks 3
-craft planks_slab 2 planks 1
-craft pine_planks_stairs 4 pine_planks 3
-craft pine_planks_slab 2 pine_planks 1
-craft birch_planks_stairs 4 birch_planks 3
-craft birch_planks_slab 2 birch_planks 1
-craft maple_planks_stairs 4 maple_planks 3
-craft maple_planks_slab 2 maple_planks 1
-craft palm_planks_stairs 4 palm_planks 3
-craft palm_planks_slab 2 palm_planks 1
-craft blossom_planks_stairs 4 blossom_planks 3
-craft blossom_planks_slab 2 blossom_planks 1
-craft acacia_planks_stairs 4 acacia_planks 3
-craft acacia_planks_slab 2 acacia_planks 1
-craft dark_oak_planks_stairs 4 dark_oak_planks 3
-craft dark_oak_planks_slab 2 dark_oak_planks 1
-craft stone_wall 2 stone 1
-craft cobble_wall 2 cobble 1
-craft stone_bricks_wall 2 stone_bricks 1
-craft brick_wall 2 brick 1
-craft sandstone_wall 2 sandstone 1
-craft marble_wall 2 marble 1
-craft slate_wall 2 slate 1
-craft granite_wall 2 granite 1
-craft basalt_wall 2 basalt 1
-craft marble_tiles_wall 2 marble_tiles 1
-craft slate_bricks_wall 2 slate_bricks 1
-craft planks_fence 3 planks 2
-craft pine_planks_fence 3 pine_planks 2
-craft birch_planks_fence 3 birch_planks 2
-craft maple_planks_fence 3 maple_planks 2
-craft palm_planks_fence 3 palm_planks 2
-craft blossom_planks_fence 3 blossom_planks 2
-craft acacia_planks_fence 3 acacia_planks 2
-craft dark_oak_planks_fence 3 dark_oak_planks 2
-craft wood_pick 1 planks 3 stick 2
-craft wood_axe 1 planks 3 stick 2
-craft wood_shovel 1 planks 1 stick 2
-craft stone_pick 1 cobble 3 stick 2
-craft stone_axe 1 cobble 3 stick 2
-craft stone_shovel 1 cobble 1 stick 2
-craft copper_pick 1 copper_ore 3 stick 2
-craft copper_axe 1 copper_ore 3 stick 2
-craft copper_shovel 1 copper_ore 1 stick 2
-craft iron_pick 1 iron_ore 3 stick 2
-craft iron_axe 1 iron_ore 3 stick 2
-craft iron_shovel 1 iron_ore 1 stick 2
-craft crystal_pick 1 crystal 3 stick 2
-craft crystal_axe 1 crystal 3 stick 2
-craft crystal_shovel 1 crystal 1 stick 2
-craft ruby_pick 1 ruby 3 stick 2
-craft ruby_axe 1 ruby 3 stick 2
-craft ruby_shovel 1 ruby 1 stick 2
-craft oak_chest 1 planks 8
-craft pine_chest 1 pine_planks 8
-craft birch_chest 1 birch_planks 8
-craft maple_chest 1 maple_planks 8
-craft palm_chest 1 palm_planks 8
-craft blossom_chest 1 blossom_planks 8
-craft acacia_chest 1 acacia_planks 8
-craft dark_oak_chest 1 dark_oak_planks 8
-craft white_chest 1 oak_chest 1 white_wool 1
-craft light_gray_chest 1 oak_chest 1 light_gray_wool 1
-craft gray_chest 1 oak_chest 1 gray_wool 1
-craft black_chest 1 oak_chest 1 black_wool 1
-craft brown_chest 1 oak_chest 1 brown_wool 1
-craft red_chest 1 oak_chest 1 red_wool 1
-craft orange_chest 1 oak_chest 1 orange_wool 1
-craft yellow_chest 1 oak_chest 1 yellow_wool 1
-craft lime_chest 1 oak_chest 1 lime_wool 1
-craft green_chest 1 oak_chest 1 green_wool 1
-craft cyan_chest 1 oak_chest 1 cyan_wool 1
-craft light_blue_chest 1 oak_chest 1 light_blue_wool 1
-craft blue_chest 1 oak_chest 1 blue_wool 1
-craft purple_chest 1 oak_chest 1 purple_wool 1
-craft magenta_chest 1 oak_chest 1 magenta_wool 1
-craft pink_chest 1 oak_chest 1 pink_wool 1
+# Recipes are laid out in the crafting grid (2 x 2 in the inventory screen,
+# 3 x 3 at a crafting table):
+#   craft  <item> <count> <ingredient> <count> [<ingredient> <count> ...]    shapeless
+#   shaped <item> <count> <row> [<row> ...] with <letter> <ingredient> [<letter> <ingredient> ...]
+#   group  <name> <item> [<item> ...]       @name in a recipe means any of them
+# This file writes plain `craft` lines; tools/craft_convert.py turns the ones
+# with a well-known shape (tools, stairs, doors, beds ...) into `shaped` ones.
+group planks planks pine_planks birch_planks maple_planks palm_planks blossom_planks acacia_planks dark_oak_planks
+craft planks 4 log 1
+craft pine_planks 4 pine_log 1
+craft birch_planks 4 birch_log 1
+craft maple_planks 4 maple_log 1
+craft palm_planks 4 palm_log 1
+craft blossom_planks 4 blossom_log 1
+craft acacia_planks 4 acacia_log 1
+craft dark_oak_planks 4 dark_oak_log 1
+shaped stick 4 "M" "M" with M @planks
+shaped crafting_table 1 "MM" "MM" with M @planks
+shaped wood_pick 1 "III" ".S." ".S." with I @planks S stick
+shaped stone_stairs 4 "M.." "MM." "MMM" with M stone
+shaped stone_slab 6 "MMM" with M stone
+shaped cobble_stairs 4 "M.." "MM." "MMM" with M cobble
+shaped cobble_slab 6 "MMM" with M cobble
+shaped stone_bricks_stairs 4 "M.." "MM." "MMM" with M stone_bricks
+shaped stone_bricks_slab 6 "MMM" with M stone_bricks
+shaped brick_stairs 4 "M.." "MM." "MMM" with M brick
+shaped brick_slab 6 "MMM" with M brick
+shaped sandstone_stairs 4 "M.." "MM." "MMM" with M sandstone
+shaped sandstone_slab 6 "MMM" with M sandstone
+shaped marble_stairs 4 "M.." "MM." "MMM" with M marble
+shaped marble_slab 6 "MMM" with M marble
+shaped slate_stairs 4 "M.." "MM." "MMM" with M slate
+shaped slate_slab 6 "MMM" with M slate
+shaped granite_stairs 4 "M.." "MM." "MMM" with M granite
+shaped granite_slab 6 "MMM" with M granite
+shaped basalt_stairs 4 "M.." "MM." "MMM" with M basalt
+shaped basalt_slab 6 "MMM" with M basalt
+shaped marble_tiles_stairs 4 "M.." "MM." "MMM" with M marble_tiles
+shaped marble_tiles_slab 6 "MMM" with M marble_tiles
+shaped slate_bricks_stairs 4 "M.." "MM." "MMM" with M slate_bricks
+shaped slate_bricks_slab 6 "MMM" with M slate_bricks
+shaped planks_stairs 4 "M.." "MM." "MMM" with M planks
+shaped planks_slab 6 "MMM" with M planks
+shaped pine_planks_stairs 4 "M.." "MM." "MMM" with M pine_planks
+shaped pine_planks_slab 6 "MMM" with M pine_planks
+shaped birch_planks_stairs 4 "M.." "MM." "MMM" with M birch_planks
+shaped birch_planks_slab 6 "MMM" with M birch_planks
+shaped maple_planks_stairs 4 "M.." "MM." "MMM" with M maple_planks
+shaped maple_planks_slab 6 "MMM" with M maple_planks
+shaped palm_planks_stairs 4 "M.." "MM." "MMM" with M palm_planks
+shaped palm_planks_slab 6 "MMM" with M palm_planks
+shaped blossom_planks_stairs 4 "M.." "MM." "MMM" with M blossom_planks
+shaped blossom_planks_slab 6 "MMM" with M blossom_planks
+shaped acacia_planks_stairs 4 "M.." "MM." "MMM" with M acacia_planks
+shaped acacia_planks_slab 6 "MMM" with M acacia_planks
+shaped dark_oak_planks_stairs 4 "M.." "MM." "MMM" with M dark_oak_planks
+shaped dark_oak_planks_slab 6 "MMM" with M dark_oak_planks
+shaped stone_wall 6 "MMM" "MMM" with M stone
+shaped cobble_wall 6 "MMM" "MMM" with M cobble
+shaped stone_bricks_wall 6 "MMM" "MMM" with M stone_bricks
+shaped brick_wall 6 "MMM" "MMM" with M brick
+shaped sandstone_wall 6 "MMM" "MMM" with M sandstone
+shaped marble_wall 6 "MMM" "MMM" with M marble
+shaped slate_wall 6 "MMM" "MMM" with M slate
+shaped granite_wall 6 "MMM" "MMM" with M granite
+shaped basalt_wall 6 "MMM" "MMM" with M basalt
+shaped marble_tiles_wall 6 "MMM" "MMM" with M marble_tiles
+shaped slate_bricks_wall 6 "MMM" "MMM" with M slate_bricks
+shaped planks_fence 3 "MSM" "MSM" with M planks S stick
+shaped pine_planks_fence 3 "MSM" "MSM" with M pine_planks S stick
+shaped birch_planks_fence 3 "MSM" "MSM" with M birch_planks S stick
+shaped maple_planks_fence 3 "MSM" "MSM" with M maple_planks S stick
+shaped palm_planks_fence 3 "MSM" "MSM" with M palm_planks S stick
+shaped blossom_planks_fence 3 "MSM" "MSM" with M blossom_planks S stick
+shaped acacia_planks_fence 3 "MSM" "MSM" with M acacia_planks S stick
+shaped dark_oak_planks_fence 3 "MSM" "MSM" with M dark_oak_planks S stick
+shaped wood_axe 1 "II" "IS" ".S" with I @planks S stick
+shaped wood_shovel 1 "I" "S" "S" with I @planks S stick
+shaped stone_pick 1 "III" ".S." ".S." with I cobble S stick
+shaped stone_axe 1 "II" "IS" ".S" with I cobble S stick
+shaped stone_shovel 1 "I" "S" "S" with I cobble S stick
+shaped copper_pick 1 "III" ".S." ".S." with I copper_ore S stick
+shaped copper_axe 1 "II" "IS" ".S" with I copper_ore S stick
+shaped copper_shovel 1 "I" "S" "S" with I copper_ore S stick
+shaped iron_pick 1 "III" ".S." ".S." with I iron_ore S stick
+shaped iron_axe 1 "II" "IS" ".S" with I iron_ore S stick
+shaped iron_shovel 1 "I" "S" "S" with I iron_ore S stick
+shaped crystal_pick 1 "III" ".S." ".S." with I crystal S stick
+shaped crystal_axe 1 "II" "IS" ".S" with I crystal S stick
+shaped crystal_shovel 1 "I" "S" "S" with I crystal S stick
+shaped ruby_pick 1 "III" ".S." ".S." with I ruby S stick
+shaped ruby_axe 1 "II" "IS" ".S" with I ruby S stick
+shaped ruby_shovel 1 "I" "S" "S" with I ruby S stick
+shaped oak_chest 1 "MMM" "M.M" "MMM" with M planks
+shaped pine_chest 1 "MMM" "M.M" "MMM" with M pine_planks
+shaped birch_chest 1 "MMM" "M.M" "MMM" with M birch_planks
+shaped maple_chest 1 "MMM" "M.M" "MMM" with M maple_planks
+shaped palm_chest 1 "MMM" "M.M" "MMM" with M palm_planks
+shaped blossom_chest 1 "MMM" "M.M" "MMM" with M blossom_planks
+shaped acacia_chest 1 "MMM" "M.M" "MMM" with M acacia_planks
+shaped dark_oak_chest 1 "MMM" "M.M" "MMM" with M dark_oak_planks
+shaped white_chest 1 "CW" with C oak_chest W white_wool
+shaped light_gray_chest 1 "CW" with C oak_chest W light_gray_wool
+shaped gray_chest 1 "CW" with C oak_chest W gray_wool
+shaped black_chest 1 "CW" with C oak_chest W black_wool
+shaped brown_chest 1 "CW" with C oak_chest W brown_wool
+shaped red_chest 1 "CW" with C oak_chest W red_wool
+shaped orange_chest 1 "CW" with C oak_chest W orange_wool
+shaped yellow_chest 1 "CW" with C oak_chest W yellow_wool
+shaped lime_chest 1 "CW" with C oak_chest W lime_wool
+shaped green_chest 1 "CW" with C oak_chest W green_wool
+shaped cyan_chest 1 "CW" with C oak_chest W cyan_wool
+shaped light_blue_chest 1 "CW" with C oak_chest W light_blue_wool
+shaped blue_chest 1 "CW" with C oak_chest W blue_wool
+shaped purple_chest 1 "CW" with C oak_chest W purple_wool
+shaped magenta_chest 1 "CW" with C oak_chest W magenta_wool
+shaped pink_chest 1 "CW" with C oak_chest W pink_wool
 craft cooked_meat 1 raw_meat 1 coal 1
 craft cooked_fish 1 raw_fish 1 coal 1
 craft stone 1 cobble 1 coal 1
-craft stone_bricks 4 stone 4
+shaped stone_bricks 4 "MM" "MM" with M stone
 craft glass 2 sand 2 coal 1
 craft brick 2 clay 2 coal 1
-craft sandstone 1 sand 4
+shaped sandstone 1 "MM" "MM" with M sand
 craft lamp 1 glass 1 crystal 1
 craft lantern 2 lamp 1 iron_ore 1
-craft planks_table 1 planks 3
+shaped planks_table 1 "MMM" ".M." with M planks
 craft planks_post 2 planks 1
 craft glass_pane 4 glass 1
-craft marble_tiles 4 marble 4
-craft slate_bricks 4 slate 4
+shaped marble_tiles 4 "MM" "MM" with M marble
+shaped slate_bricks 4 "MM" "MM" with M slate
 craft white_concrete 4 sand 2 gravel 2 white_wool 1
 craft white_terracotta 4 clay 4 white_wool 1
 craft white_glass 4 glass 4 white_wool 1
-craft white_concrete_stairs 4 white_concrete 3
-craft white_concrete_slab 2 white_concrete 1
+shaped white_concrete_stairs 4 "M.." "MM." "MMM" with M white_concrete
+shaped white_concrete_slab 6 "MMM" with M white_concrete
 craft light_gray_concrete 4 sand 2 gravel 2 light_gray_wool 1
 craft light_gray_terracotta 4 clay 4 light_gray_wool 1
 craft light_gray_glass 4 glass 4 light_gray_wool 1
-craft light_gray_concrete_stairs 4 light_gray_concrete 3
-craft light_gray_concrete_slab 2 light_gray_concrete 1
+shaped light_gray_concrete_stairs 4 "M.." "MM." "MMM" with M light_gray_concrete
+shaped light_gray_concrete_slab 6 "MMM" with M light_gray_concrete
 craft gray_concrete 4 sand 2 gravel 2 gray_wool 1
 craft gray_terracotta 4 clay 4 gray_wool 1
 craft gray_glass 4 glass 4 gray_wool 1
-craft gray_concrete_stairs 4 gray_concrete 3
-craft gray_concrete_slab 2 gray_concrete 1
+shaped gray_concrete_stairs 4 "M.." "MM." "MMM" with M gray_concrete
+shaped gray_concrete_slab 6 "MMM" with M gray_concrete
 craft black_concrete 4 sand 2 gravel 2 black_wool 1
 craft black_terracotta 4 clay 4 black_wool 1
 craft black_glass 4 glass 4 black_wool 1
-craft black_concrete_stairs 4 black_concrete 3
-craft black_concrete_slab 2 black_concrete 1
+shaped black_concrete_stairs 4 "M.." "MM." "MMM" with M black_concrete
+shaped black_concrete_slab 6 "MMM" with M black_concrete
 craft brown_concrete 4 sand 2 gravel 2 brown_wool 1
 craft brown_terracotta 4 clay 4 brown_wool 1
 craft brown_glass 4 glass 4 brown_wool 1
-craft brown_concrete_stairs 4 brown_concrete 3
-craft brown_concrete_slab 2 brown_concrete 1
+shaped brown_concrete_stairs 4 "M.." "MM." "MMM" with M brown_concrete
+shaped brown_concrete_slab 6 "MMM" with M brown_concrete
 craft red_concrete 4 sand 2 gravel 2 red_wool 1
 craft red_terracotta 4 clay 4 red_wool 1
 craft red_glass 4 glass 4 red_wool 1
-craft red_concrete_stairs 4 red_concrete 3
-craft red_concrete_slab 2 red_concrete 1
+shaped red_concrete_stairs 4 "M.." "MM." "MMM" with M red_concrete
+shaped red_concrete_slab 6 "MMM" with M red_concrete
 craft orange_concrete 4 sand 2 gravel 2 orange_wool 1
 craft orange_terracotta 4 clay 4 orange_wool 1
 craft orange_glass 4 glass 4 orange_wool 1
-craft orange_concrete_stairs 4 orange_concrete 3
-craft orange_concrete_slab 2 orange_concrete 1
+shaped orange_concrete_stairs 4 "M.." "MM." "MMM" with M orange_concrete
+shaped orange_concrete_slab 6 "MMM" with M orange_concrete
 craft yellow_concrete 4 sand 2 gravel 2 yellow_wool 1
 craft yellow_terracotta 4 clay 4 yellow_wool 1
 craft yellow_glass 4 glass 4 yellow_wool 1
-craft yellow_concrete_stairs 4 yellow_concrete 3
-craft yellow_concrete_slab 2 yellow_concrete 1
+shaped yellow_concrete_stairs 4 "M.." "MM." "MMM" with M yellow_concrete
+shaped yellow_concrete_slab 6 "MMM" with M yellow_concrete
 craft lime_concrete 4 sand 2 gravel 2 lime_wool 1
 craft lime_terracotta 4 clay 4 lime_wool 1
 craft lime_glass 4 glass 4 lime_wool 1
-craft lime_concrete_stairs 4 lime_concrete 3
-craft lime_concrete_slab 2 lime_concrete 1
+shaped lime_concrete_stairs 4 "M.." "MM." "MMM" with M lime_concrete
+shaped lime_concrete_slab 6 "MMM" with M lime_concrete
 craft green_concrete 4 sand 2 gravel 2 green_wool 1
 craft green_terracotta 4 clay 4 green_wool 1
 craft green_glass 4 glass 4 green_wool 1
-craft green_concrete_stairs 4 green_concrete 3
-craft green_concrete_slab 2 green_concrete 1
+shaped green_concrete_stairs 4 "M.." "MM." "MMM" with M green_concrete
+shaped green_concrete_slab 6 "MMM" with M green_concrete
 craft cyan_concrete 4 sand 2 gravel 2 cyan_wool 1
 craft cyan_terracotta 4 clay 4 cyan_wool 1
 craft cyan_glass 4 glass 4 cyan_wool 1
-craft cyan_concrete_stairs 4 cyan_concrete 3
-craft cyan_concrete_slab 2 cyan_concrete 1
+shaped cyan_concrete_stairs 4 "M.." "MM." "MMM" with M cyan_concrete
+shaped cyan_concrete_slab 6 "MMM" with M cyan_concrete
 craft light_blue_concrete 4 sand 2 gravel 2 light_blue_wool 1
 craft light_blue_terracotta 4 clay 4 light_blue_wool 1
 craft light_blue_glass 4 glass 4 light_blue_wool 1
-craft light_blue_concrete_stairs 4 light_blue_concrete 3
-craft light_blue_concrete_slab 2 light_blue_concrete 1
+shaped light_blue_concrete_stairs 4 "M.." "MM." "MMM" with M light_blue_concrete
+shaped light_blue_concrete_slab 6 "MMM" with M light_blue_concrete
 craft blue_concrete 4 sand 2 gravel 2 blue_wool 1
 craft blue_terracotta 4 clay 4 blue_wool 1
 craft blue_glass 4 glass 4 blue_wool 1
-craft blue_concrete_stairs 4 blue_concrete 3
-craft blue_concrete_slab 2 blue_concrete 1
+shaped blue_concrete_stairs 4 "M.." "MM." "MMM" with M blue_concrete
+shaped blue_concrete_slab 6 "MMM" with M blue_concrete
 craft purple_concrete 4 sand 2 gravel 2 purple_wool 1
 craft purple_terracotta 4 clay 4 purple_wool 1
 craft purple_glass 4 glass 4 purple_wool 1
-craft purple_concrete_stairs 4 purple_concrete 3
-craft purple_concrete_slab 2 purple_concrete 1
+shaped purple_concrete_stairs 4 "M.." "MM." "MMM" with M purple_concrete
+shaped purple_concrete_slab 6 "MMM" with M purple_concrete
 craft magenta_concrete 4 sand 2 gravel 2 magenta_wool 1
 craft magenta_terracotta 4 clay 4 magenta_wool 1
 craft magenta_glass 4 glass 4 magenta_wool 1
-craft magenta_concrete_stairs 4 magenta_concrete 3
-craft magenta_concrete_slab 2 magenta_concrete 1
+shaped magenta_concrete_stairs 4 "M.." "MM." "MMM" with M magenta_concrete
+shaped magenta_concrete_slab 6 "MMM" with M magenta_concrete
 craft pink_concrete 4 sand 2 gravel 2 pink_wool 1
 craft pink_terracotta 4 clay 4 pink_wool 1
 craft pink_glass 4 glass 4 pink_wool 1
-craft pink_concrete_stairs 4 pink_concrete 3
-craft pink_concrete_slab 2 pink_concrete 1
+shaped pink_concrete_stairs 4 "M.." "MM." "MMM" with M pink_concrete
+shaped pink_concrete_slab 6 "MMM" with M pink_concrete
 
 # ---- Models and creatures ----
 #   model <id> builtin <name>            a model shipped with the game
@@ -2389,7 +2394,7 @@ item string
   name String
   icon string
   category Materials
-craft white_wool 1 string 4
+shaped white_wool 1 "MM" "MM" with M string
 
 # ---- Sounds ----
 # Every sound is made on the spot from a burst of noise and a gliding tone.
@@ -2512,9 +2517,9 @@ block oak_gate_open
   box 14 0 7 16 16 9
   toggle oak_gate
   drops oak_gate
-craft oak_door 1 planks 6
-craft oak_trapdoor 2 planks 3
-craft oak_gate 1 planks 2 stick 4
+shaped oak_door 1 "MM" "MM" "MM" with M planks
+shaped oak_trapdoor 2 "MMM" "MMM" with M planks
+shaped oak_gate 1 "SMS" "SMS" with M planks S stick
 texture pine_door paint door 122 88 56
 block pine_door
   name Pine Door
@@ -2578,9 +2583,9 @@ block pine_gate_open
   box 14 0 7 16 16 9
   toggle pine_gate
   drops pine_gate
-craft pine_door 1 pine_planks 6
-craft pine_trapdoor 2 pine_planks 3
-craft pine_gate 1 pine_planks 2 stick 4
+shaped pine_door 1 "MM" "MM" "MM" with M pine_planks
+shaped pine_trapdoor 2 "MMM" "MMM" with M pine_planks
+shaped pine_gate 1 "SMS" "SMS" with M pine_planks S stick
 texture birch_door paint door 214 196 150
 block birch_door
   name Birch Door
@@ -2644,9 +2649,9 @@ block birch_gate_open
   box 14 0 7 16 16 9
   toggle birch_gate
   drops birch_gate
-craft birch_door 1 birch_planks 6
-craft birch_trapdoor 2 birch_planks 3
-craft birch_gate 1 birch_planks 2 stick 4
+shaped birch_door 1 "MM" "MM" "MM" with M birch_planks
+shaped birch_trapdoor 2 "MMM" "MMM" with M birch_planks
+shaped birch_gate 1 "SMS" "SMS" with M birch_planks S stick
 texture maple_door paint door 190 140 96
 block maple_door
   name Maple Door
@@ -2710,9 +2715,9 @@ block maple_gate_open
   box 14 0 7 16 16 9
   toggle maple_gate
   drops maple_gate
-craft maple_door 1 maple_planks 6
-craft maple_trapdoor 2 maple_planks 3
-craft maple_gate 1 maple_planks 2 stick 4
+shaped maple_door 1 "MM" "MM" "MM" with M maple_planks
+shaped maple_trapdoor 2 "MMM" "MMM" with M maple_planks
+shaped maple_gate 1 "SMS" "SMS" with M maple_planks S stick
 texture palm_door paint door 196 170 120
 block palm_door
   name Palm Door
@@ -2776,9 +2781,9 @@ block palm_gate_open
   box 14 0 7 16 16 9
   toggle palm_gate
   drops palm_gate
-craft palm_door 1 palm_planks 6
-craft palm_trapdoor 2 palm_planks 3
-craft palm_gate 1 palm_planks 2 stick 4
+shaped palm_door 1 "MM" "MM" "MM" with M palm_planks
+shaped palm_trapdoor 2 "MMM" "MMM" with M palm_planks
+shaped palm_gate 1 "SMS" "SMS" with M palm_planks S stick
 texture blossom_door paint door 214 150 150
 block blossom_door
   name Blossom Door
@@ -2842,9 +2847,9 @@ block blossom_gate_open
   box 14 0 7 16 16 9
   toggle blossom_gate
   drops blossom_gate
-craft blossom_door 1 blossom_planks 6
-craft blossom_trapdoor 2 blossom_planks 3
-craft blossom_gate 1 blossom_planks 2 stick 4
+shaped blossom_door 1 "MM" "MM" "MM" with M blossom_planks
+shaped blossom_trapdoor 2 "MMM" "MMM" with M blossom_planks
+shaped blossom_gate 1 "SMS" "SMS" with M blossom_planks S stick
 texture acacia_door paint door 196 140 100
 block acacia_door
   name Acacia Door
@@ -2908,9 +2913,9 @@ block acacia_gate_open
   box 14 0 7 16 16 9
   toggle acacia_gate
   drops acacia_gate
-craft acacia_door 1 acacia_planks 6
-craft acacia_trapdoor 2 acacia_planks 3
-craft acacia_gate 1 acacia_planks 2 stick 4
+shaped acacia_door 1 "MM" "MM" "MM" with M acacia_planks
+shaped acacia_trapdoor 2 "MMM" "MMM" with M acacia_planks
+shaped acacia_gate 1 "SMS" "SMS" with M acacia_planks S stick
 texture dark_oak_door paint door 96 70 40
 block dark_oak_door
   name Dark Oak Door
@@ -2974,9 +2979,9 @@ block dark_oak_gate_open
   box 14 0 7 16 16 9
   toggle dark_oak_gate
   drops dark_oak_gate
-craft dark_oak_door 1 dark_oak_planks 6
-craft dark_oak_trapdoor 2 dark_oak_planks 3
-craft dark_oak_gate 1 dark_oak_planks 2 stick 4
+shaped dark_oak_door 1 "MM" "MM" "MM" with M dark_oak_planks
+shaped dark_oak_trapdoor 2 "MMM" "MMM" with M dark_oak_planks
+shaped dark_oak_gate 1 "SMS" "SMS" with M dark_oak_planks S stick
 block white_bed
   name White Bed
   tex white_wool planks planks
@@ -3007,7 +3012,7 @@ block white_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft white_bed 1 white_wool 3 planks 3
+shaped white_bed 1 "WWW" "PPP" with P @planks W white_wool
 block light_gray_bed
   name Light Gray Bed
   tex light_gray_wool planks planks
@@ -3038,7 +3043,7 @@ block light_gray_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft light_gray_bed 1 light_gray_wool 3 planks 3
+shaped light_gray_bed 1 "WWW" "PPP" with P @planks W light_gray_wool
 block gray_bed
   name Gray Bed
   tex gray_wool planks planks
@@ -3069,7 +3074,7 @@ block gray_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft gray_bed 1 gray_wool 3 planks 3
+shaped gray_bed 1 "WWW" "PPP" with P @planks W gray_wool
 block black_bed
   name Black Bed
   tex black_wool planks planks
@@ -3100,7 +3105,7 @@ block black_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft black_bed 1 black_wool 3 planks 3
+shaped black_bed 1 "WWW" "PPP" with P @planks W black_wool
 block brown_bed
   name Brown Bed
   tex brown_wool planks planks
@@ -3131,7 +3136,7 @@ block brown_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft brown_bed 1 brown_wool 3 planks 3
+shaped brown_bed 1 "WWW" "PPP" with P @planks W brown_wool
 block red_bed
   name Red Bed
   tex red_wool planks planks
@@ -3162,7 +3167,7 @@ block red_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft red_bed 1 red_wool 3 planks 3
+shaped red_bed 1 "WWW" "PPP" with P @planks W red_wool
 block orange_bed
   name Orange Bed
   tex orange_wool planks planks
@@ -3193,7 +3198,7 @@ block orange_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft orange_bed 1 orange_wool 3 planks 3
+shaped orange_bed 1 "WWW" "PPP" with P @planks W orange_wool
 block yellow_bed
   name Yellow Bed
   tex yellow_wool planks planks
@@ -3224,7 +3229,7 @@ block yellow_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft yellow_bed 1 yellow_wool 3 planks 3
+shaped yellow_bed 1 "WWW" "PPP" with P @planks W yellow_wool
 block lime_bed
   name Lime Bed
   tex lime_wool planks planks
@@ -3255,7 +3260,7 @@ block lime_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft lime_bed 1 lime_wool 3 planks 3
+shaped lime_bed 1 "WWW" "PPP" with P @planks W lime_wool
 block green_bed
   name Green Bed
   tex green_wool planks planks
@@ -3286,7 +3291,7 @@ block green_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft green_bed 1 green_wool 3 planks 3
+shaped green_bed 1 "WWW" "PPP" with P @planks W green_wool
 block cyan_bed
   name Cyan Bed
   tex cyan_wool planks planks
@@ -3317,7 +3322,7 @@ block cyan_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft cyan_bed 1 cyan_wool 3 planks 3
+shaped cyan_bed 1 "WWW" "PPP" with P @planks W cyan_wool
 block light_blue_bed
   name Light Blue Bed
   tex light_blue_wool planks planks
@@ -3348,7 +3353,7 @@ block light_blue_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft light_blue_bed 1 light_blue_wool 3 planks 3
+shaped light_blue_bed 1 "WWW" "PPP" with P @planks W light_blue_wool
 block blue_bed
   name Blue Bed
   tex blue_wool planks planks
@@ -3379,7 +3384,7 @@ block blue_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft blue_bed 1 blue_wool 3 planks 3
+shaped blue_bed 1 "WWW" "PPP" with P @planks W blue_wool
 block purple_bed
   name Purple Bed
   tex purple_wool planks planks
@@ -3410,7 +3415,7 @@ block purple_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft purple_bed 1 purple_wool 3 planks 3
+shaped purple_bed 1 "WWW" "PPP" with P @planks W purple_wool
 block magenta_bed
   name Magenta Bed
   tex magenta_wool planks planks
@@ -3441,7 +3446,7 @@ block magenta_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft magenta_bed 1 magenta_wool 3 planks 3
+shaped magenta_bed 1 "WWW" "PPP" with P @planks W magenta_wool
 block pink_bed
   name Pink Bed
   tex pink_wool planks planks
@@ -3472,7 +3477,7 @@ block pink_bed_head
   box 0 6 0 16 9 16
   box 3 9 4 13 11 12
   box 0 9 0 16 16 3
-craft pink_bed 1 pink_wool 3 planks 3
+shaped pink_bed 1 "WWW" "PPP" with P @planks W pink_wool
 
 # Doors come hung on the edge of their block (the plain ones above), set in
 # its middle (`_mid`), glazed, sliding (it slides into the wall beside it)
@@ -5269,8 +5274,8 @@ block white_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft white_couch 1 white_wool 3 planks 2
-craft white_armchair 1 white_wool 2 planks 2
+craft white_couch 1 white_wool 3 @planks 2
+craft white_armchair 1 white_wool 2 @planks 2
 block light_gray_couch
   name Light Gray Couch
   tex light_gray_wool
@@ -5295,8 +5300,8 @@ block light_gray_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft light_gray_couch 1 light_gray_wool 3 planks 2
-craft light_gray_armchair 1 light_gray_wool 2 planks 2
+craft light_gray_couch 1 light_gray_wool 3 @planks 2
+craft light_gray_armchair 1 light_gray_wool 2 @planks 2
 block gray_couch
   name Gray Couch
   tex gray_wool
@@ -5321,8 +5326,8 @@ block gray_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft gray_couch 1 gray_wool 3 planks 2
-craft gray_armchair 1 gray_wool 2 planks 2
+craft gray_couch 1 gray_wool 3 @planks 2
+craft gray_armchair 1 gray_wool 2 @planks 2
 block black_couch
   name Black Couch
   tex black_wool
@@ -5347,8 +5352,8 @@ block black_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft black_couch 1 black_wool 3 planks 2
-craft black_armchair 1 black_wool 2 planks 2
+craft black_couch 1 black_wool 3 @planks 2
+craft black_armchair 1 black_wool 2 @planks 2
 block brown_couch
   name Brown Couch
   tex brown_wool
@@ -5373,8 +5378,8 @@ block brown_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft brown_couch 1 brown_wool 3 planks 2
-craft brown_armchair 1 brown_wool 2 planks 2
+craft brown_couch 1 brown_wool 3 @planks 2
+craft brown_armchair 1 brown_wool 2 @planks 2
 block red_couch
   name Red Couch
   tex red_wool
@@ -5399,8 +5404,8 @@ block red_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft red_couch 1 red_wool 3 planks 2
-craft red_armchair 1 red_wool 2 planks 2
+craft red_couch 1 red_wool 3 @planks 2
+craft red_armchair 1 red_wool 2 @planks 2
 block orange_couch
   name Orange Couch
   tex orange_wool
@@ -5425,8 +5430,8 @@ block orange_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft orange_couch 1 orange_wool 3 planks 2
-craft orange_armchair 1 orange_wool 2 planks 2
+craft orange_couch 1 orange_wool 3 @planks 2
+craft orange_armchair 1 orange_wool 2 @planks 2
 block yellow_couch
   name Yellow Couch
   tex yellow_wool
@@ -5451,8 +5456,8 @@ block yellow_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft yellow_couch 1 yellow_wool 3 planks 2
-craft yellow_armchair 1 yellow_wool 2 planks 2
+craft yellow_couch 1 yellow_wool 3 @planks 2
+craft yellow_armchair 1 yellow_wool 2 @planks 2
 block lime_couch
   name Lime Couch
   tex lime_wool
@@ -5477,8 +5482,8 @@ block lime_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft lime_couch 1 lime_wool 3 planks 2
-craft lime_armchair 1 lime_wool 2 planks 2
+craft lime_couch 1 lime_wool 3 @planks 2
+craft lime_armchair 1 lime_wool 2 @planks 2
 block green_couch
   name Green Couch
   tex green_wool
@@ -5503,8 +5508,8 @@ block green_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft green_couch 1 green_wool 3 planks 2
-craft green_armchair 1 green_wool 2 planks 2
+craft green_couch 1 green_wool 3 @planks 2
+craft green_armchair 1 green_wool 2 @planks 2
 block cyan_couch
   name Cyan Couch
   tex cyan_wool
@@ -5529,8 +5534,8 @@ block cyan_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft cyan_couch 1 cyan_wool 3 planks 2
-craft cyan_armchair 1 cyan_wool 2 planks 2
+craft cyan_couch 1 cyan_wool 3 @planks 2
+craft cyan_armchair 1 cyan_wool 2 @planks 2
 block light_blue_couch
   name Light Blue Couch
   tex light_blue_wool
@@ -5555,8 +5560,8 @@ block light_blue_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft light_blue_couch 1 light_blue_wool 3 planks 2
-craft light_blue_armchair 1 light_blue_wool 2 planks 2
+craft light_blue_couch 1 light_blue_wool 3 @planks 2
+craft light_blue_armchair 1 light_blue_wool 2 @planks 2
 block blue_couch
   name Blue Couch
   tex blue_wool
@@ -5581,8 +5586,8 @@ block blue_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft blue_couch 1 blue_wool 3 planks 2
-craft blue_armchair 1 blue_wool 2 planks 2
+craft blue_couch 1 blue_wool 3 @planks 2
+craft blue_armchair 1 blue_wool 2 @planks 2
 block purple_couch
   name Purple Couch
   tex purple_wool
@@ -5607,8 +5612,8 @@ block purple_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft purple_couch 1 purple_wool 3 planks 2
-craft purple_armchair 1 purple_wool 2 planks 2
+craft purple_couch 1 purple_wool 3 @planks 2
+craft purple_armchair 1 purple_wool 2 @planks 2
 block magenta_couch
   name Magenta Couch
   tex magenta_wool
@@ -5633,8 +5638,8 @@ block magenta_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft magenta_couch 1 magenta_wool 3 planks 2
-craft magenta_armchair 1 magenta_wool 2 planks 2
+craft magenta_couch 1 magenta_wool 3 @planks 2
+craft magenta_armchair 1 magenta_wool 2 @planks 2
 block pink_couch
   name Pink Couch
   tex pink_wool
@@ -5659,25 +5664,25 @@ block pink_armchair
   box 2 7 11 14 15 14
   box 1 7 2 3 11 11
   box 13 7 2 15 11 11
-craft pink_couch 1 pink_wool 3 planks 2
-craft pink_armchair 1 pink_wool 2 planks 2
-craft chair 2 planks 3 stick 2
-craft stool 2 planks 1 stick 2
-craft park_bench 1 planks 3
-craft desk 1 planks 4
-craft shelf 2 planks 1
-craft bookshelf 1 planks 6
-craft cupboard 1 oak_chest 1 planks 2
+craft pink_couch 1 pink_wool 3 @planks 2
+craft pink_armchair 1 pink_wool 2 @planks 2
+shaped chair 2 "M." "MM" "SS" with M @planks S stick
+shaped stool 2 ".M." "S.S" with M @planks S stick
+shaped park_bench 1 "MMM" "S.S" with M @planks S stick
+shaped desk 1 "MMM" "M.M" with M @planks
+shaped shelf 2 "M.M" with M @planks
+shaped bookshelf 1 "MMM" "..." "MMM" with M @planks
+shaped cupboard 1 "PCP" with C oak_chest P @planks
 craft wardrobe 1 oak_chest 1 oak_door 1
 craft counter 1 oak_chest 1 stone 1
 craft sink_counter 1 counter 1 iron_ingot 2
 craft stove 1 oven 1 iron_ingot 3
 craft fridge 1 iron_ingot 6 ice 1
 craft television 1 glass 2 iron_ingot 2 crystal 1
-craft floor_lamp 1 lamp 1 stick 2
-craft toilet 1 marble 3
-craft bathtub 1 marble 5
-craft bathroom_sink 1 marble 2
+shaped floor_lamp 1 "L" "S" "S" with L lamp S stick
+shaped toilet 1 "M." "MM" with M marble
+shaped bathtub 1 "M.M" "MMM" with M marble
+shaped bathroom_sink 1 "MM" with M marble
 craft towel_rail 1 white_wool 1 stick 1
 block plate
   name Plate
@@ -5744,7 +5749,7 @@ block fruit_bowl
   box 5 2 5 11 4 11
 craft plate 4 clay 2
 craft plated_pizza 1 plate 1 pizza 1
-craft pizza_box 1 pizza 1 planks 1
+craft pizza_box 1 pizza 1 @planks 1
 craft cake_block 1 cake 1
 craft bread_block 1 bread 1
 craft fruit_bowl 1 plate 1 apple 3
@@ -5814,11 +5819,11 @@ item copper_ingot
   category Materials
 smelt copper_ingot 1 copper_ore 1 coal 1
 smelt copper_ingot 3 copper_ore 2 coal 2
-craft furnace 1 cobble 8
-craft blast_furnace 1 furnace 1 iron_ingot 5 stone_bricks 3
-craft kiln 1 brick 8
-craft smoker 1 oven 1 log 4
-craft campfire 1 log 3 stick 3 coal 1
+shaped furnace 1 "MMM" "M.M" "MMM" with M cobble
+shaped blast_furnace 1 "III" "IFI" "SSS" with F furnace I iron_ingot S stone_bricks
+shaped kiln 1 "MMM" "M.M" "MMM" with M brick
+shaped smoker 1 ".L." "LOL" ".L." with L log O oven
+shaped campfire 1 ".S." "SCS" "LLL" with C coal L log S stick
 smelt glass 4 sand 4 coal 1
 smelt stone 4 cobble 4 coal 1
 smelt brick 4 clay 4 coal 1
@@ -5865,10 +5870,10 @@ item crossbow
   category Tools
   stack 1
   shoots 13 54 1.8 arrow
-craft arrow 4 stick 1 gravel 1
-craft bow 1 stick 3 string 3
+shaped arrow 4 "G" "S" with G gravel S stick
+shaped bow 1 "SM." "S.M" "SM." with M string S stick
 craft longbow 1 bow 1 stick 2 string 2
-craft crossbow 1 bow 1 iron_ingot 2 planks 2
+craft crossbow 1 bow 1 iron_ingot 2 @planks 2
 
 # ---- Farming ----
 #   item ... turns <block> <block>   right click turns one block into another
@@ -6092,8 +6097,8 @@ item wood_sword
   category Tools
   stack 1
   damage 6
-craft wood_hoe 1 planks 2 stick 2
-craft wood_sword 1 planks 2 stick 1
+shaped wood_hoe 1 "II" ".S" ".S" with I @planks S stick
+shaped wood_sword 1 "I" "I" "S" with I @planks S stick
 texture stone_hoe paint hoe 136 138 144
 texture stone_sword paint sword 136 138 144
 item stone_hoe
@@ -6110,8 +6115,8 @@ item stone_sword
   category Tools
   stack 1
   damage 7
-craft stone_hoe 1 cobble 2 stick 2
-craft stone_sword 1 cobble 2 stick 1
+shaped stone_hoe 1 "II" ".S" ".S" with I cobble S stick
+shaped stone_sword 1 "I" "I" "S" with I cobble S stick
 texture copper_hoe paint hoe 206 124 80
 texture copper_sword paint sword 206 124 80
 item copper_hoe
@@ -6128,8 +6133,8 @@ item copper_sword
   category Tools
   stack 1
   damage 8
-craft copper_hoe 1 copper_ore 2 stick 2
-craft copper_sword 1 copper_ore 2 stick 1
+shaped copper_hoe 1 "II" ".S" ".S" with I copper_ore S stick
+shaped copper_sword 1 "I" "I" "S" with I copper_ore S stick
 texture iron_hoe paint hoe 214 214 220
 texture iron_sword paint sword 214 214 220
 item iron_hoe
@@ -6146,8 +6151,8 @@ item iron_sword
   category Tools
   stack 1
   damage 10
-craft iron_hoe 1 iron_ore 2 stick 2
-craft iron_sword 1 iron_ore 2 stick 1
+shaped iron_hoe 1 "II" ".S" ".S" with I iron_ore S stick
+shaped iron_sword 1 "I" "I" "S" with I iron_ore S stick
 texture crystal_hoe paint hoe 130 226 240
 texture crystal_sword paint sword 130 226 240
 item crystal_hoe
@@ -6164,8 +6169,8 @@ item crystal_sword
   category Tools
   stack 1
   damage 12
-craft crystal_hoe 1 crystal 2 stick 2
-craft crystal_sword 1 crystal 2 stick 1
+shaped crystal_hoe 1 "II" ".S" ".S" with I crystal S stick
+shaped crystal_sword 1 "I" "I" "S" with I crystal S stick
 texture ruby_hoe paint hoe 226 60 110
 texture ruby_sword paint sword 226 60 110
 item ruby_hoe
@@ -6182,8 +6187,8 @@ item ruby_sword
   category Tools
   stack 1
   damage 15
-craft ruby_hoe 1 ruby 2 stick 2
-craft ruby_sword 1 ruby 2 stick 1
+shaped ruby_hoe 1 "II" ".S" ".S" with I ruby S stick
+shaped ruby_sword 1 "I" "I" "S" with I ruby S stick
 
 # ---- Cooking ----
 #   bake <item> <count> <ingredient> <count> ...   a recipe that needs an oven
@@ -6198,7 +6203,7 @@ block oven
   tool pick
   use oven
   light 6
-craft oven 1 cobble 8 coal 1
+shaped oven 1 "MMM" "MCM" "MMM" with C coal M cobble
 texture flour paint sack 240 236 226
 item flour
   name Flour
@@ -6334,8 +6339,8 @@ item cake
   category Food
   food 12
   stack 16
-recipe flour 1 wheat 2
-recipe dough 1 flour 2
+craft flour 1 wheat 2
+craft dough 1 flour 2
 craft cheese 1 milk 2
 craft tomato_sauce 1 tomato 2
 craft salad 1 tomato 1 carrot 1

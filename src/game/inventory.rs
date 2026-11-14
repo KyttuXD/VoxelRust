@@ -20,8 +20,44 @@ pub struct Inventory {
     pub slots: [Slot; SLOTS],
 }
 
-fn stack_limit(item: u16) -> u16 {
+/// How many of an item fit in one slot.
+pub fn stack_limit(item: u16) -> u16 {
     reg().items.get(item as usize).map_or(64, |i| i.stack.max(1))
+}
+
+/// A mouse click on one slot (`here`) while `cursor` is what the mouse
+/// carries; see [`Inventory::click`]. Also used for the crafting grid.
+pub fn click_slot(here: &mut Slot, cursor: &mut Slot, right: bool) {
+    match (*cursor, *here, right) {
+        (None, None, _) => {}
+        (None, Some(s), false) => {
+            *cursor = Some(s);
+            *here = None;
+        }
+        (None, Some(s), true) => {
+            let take = (s.count + 1) / 2;
+            *cursor = Some(Stack { item: s.item, count: take });
+            *here = if s.count > take { Some(Stack { item: s.item, count: s.count - take }) } else { None };
+        }
+        (Some(c), None, false) => {
+            *here = Some(c);
+            *cursor = None;
+        }
+        (Some(c), None, true) => {
+            *here = Some(Stack { item: c.item, count: 1 });
+            *cursor = if c.count > 1 { Some(Stack { item: c.item, count: c.count - 1 }) } else { None };
+        }
+        (Some(c), Some(s), _) if c.item == s.item => {
+            let limit = stack_limit(s.item);
+            let n = if right { 1 } else { c.count }.min(limit.saturating_sub(s.count));
+            *here = Some(Stack { item: s.item, count: s.count + n });
+            *cursor = if c.count > n { Some(Stack { item: c.item, count: c.count - n }) } else { None };
+        }
+        (Some(c), Some(s), _) => {
+            *here = Some(c);
+            *cursor = Some(s);
+        }
+    }
 }
 
 impl Default for Inventory {
@@ -104,39 +140,8 @@ impl Inventory {
     /// Left: pick up, put down, merge or swap. Right: pick up half, or put
     /// down one.
     pub fn click(&mut self, slot: usize, cursor: &mut Slot, right: bool) {
-        let here = match self.slots.get_mut(slot) {
-            Some(h) => h,
-            None => return,
-        };
-        match (*cursor, *here, right) {
-            (None, None, _) => {}
-            (None, Some(s), false) => {
-                *cursor = Some(s);
-                *here = None;
-            }
-            (None, Some(s), true) => {
-                let take = (s.count + 1) / 2;
-                *cursor = Some(Stack { item: s.item, count: take });
-                *here = if s.count > take { Some(Stack { item: s.item, count: s.count - take }) } else { None };
-            }
-            (Some(c), None, false) => {
-                *here = Some(c);
-                *cursor = None;
-            }
-            (Some(c), None, true) => {
-                *here = Some(Stack { item: c.item, count: 1 });
-                *cursor = if c.count > 1 { Some(Stack { item: c.item, count: c.count - 1 }) } else { None };
-            }
-            (Some(c), Some(s), _) if c.item == s.item => {
-                let limit = stack_limit(s.item);
-                let n = if right { 1 } else { c.count }.min(limit.saturating_sub(s.count));
-                *here = Some(Stack { item: s.item, count: s.count + n });
-                *cursor = if c.count > n { Some(Stack { item: c.item, count: c.count - n }) } else { None };
-            }
-            (Some(c), Some(s), _) => {
-                *here = Some(c);
-                *cursor = Some(s);
-            }
+        if let Some(here) = self.slots.get_mut(slot) {
+            click_slot(here, cursor, right);
         }
     }
 

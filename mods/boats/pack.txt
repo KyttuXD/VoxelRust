@@ -36,7 +36,7 @@ vehicle cargo_boat
   seat 0.9
   storage
 
-craft boat 1 planks 5
+shaped boat 1 "M.M" "MMM" with M @planks
 craft cargo_boat 1 boat 1 oak_chest 1
 
 texture icon_speedboat paint hull 220 220 230
@@ -67,4 +67,4 @@ vehicle ferry
   storage
 
 craft speedboat 1 boat 1 iron_ingot 3
-craft ferry 1 cargo_boat 1 planks 8 iron_ingot 4
+craft ferry 1 cargo_boat 1 @planks 8 iron_ingot 4
