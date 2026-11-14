@@ -1261,3 +1261,9 @@ down one.
 The Windows archive has `SDL2.dll` beside the program and the Mac apps have
 the SDL2 framework inside them, so nothing else need be installed. On Linux
 the game uses the system's SDL2 package.
+
+## Small movement and map notes
+
+- **Dropping:** a tap of the drop key (Q) drops one item; hold it and, after a short pause, items keep dropping, faster the longer you hold.
+- **Sprint jumps:** jumping while sprinting springs you forward (about 7.5 blocks a second, as in Minecraft) and you keep that speed in the air.
+- **Other players on the maps:** on the full map each player you know about is a light-blue dot with their name; on the minimap they are arrows, and a player outside its picture is a dot on the edge in their direction.

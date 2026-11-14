@@ -307,6 +307,8 @@ pub struct FullMap {
 
 /// What the screen needs from the game each frame.
 pub struct Frame<'a> {
+    /// The other players the game knows the whereabouts of: name and place (x, z).
+    pub others: &'a [(String, [f32; 2])],
     pub seed: u32,
     pub world: u64,
     pub explored: &'a alloc::collections::BTreeSet<(i32, i32)>,
@@ -463,6 +465,14 @@ pub fn screen(fm: &mut FullMap, ui: &mut Ui, f: &Frame, waypoints: &mut Vec<Wayp
         }
     }
 
+    // The other players, with their names.
+    for (name, at) in f.others {
+        let p = to_screen(at[0], at[1]);
+        if p[0] > mx && p[0] < mx + side && p[1] > my && p[1] < my + side {
+            ui.r.rect(p[0] - 3.0 * s, p[1] - 3.0 * s, 6.0 * s, 6.0 * s, [110, 220, 255, 255]);
+            ui.text(p[0] + 6.0 * s, p[1] - 4.0 * s, &name.to_ascii_uppercase(), [180, 235, 255, 255]);
+        }
+    }
     // The player.
     let pp = to_screen(f.player[0], f.player[1]);
     ui.r.rect(pp[0] - 3.0 * s, pp[1] - 3.0 * s, 6.0 * s, 6.0 * s, [255, 70, 60, 255]);

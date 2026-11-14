@@ -160,6 +160,11 @@ impl App {
                     let (ox, oz) = to_map(p.pos[0] as f32, p.pos[2] as f32);
                     if ox > mx && ox < mx + size && oz > my && oz < my + size {
                         minimap_arrow(r, ox, oz, p.yaw, s, [110, 220, 255, 255]);
+                    } else {
+                        // Out of the picture: a dot on its edge, in the direction they are.
+                        let (ex, ez) = (ox.clamp(mx + 2.0 * s, mx + size - 2.0 * s), oz.clamp(my + 2.0 * s, my + size - 2.0 * s));
+                        r.rect(ex - 2.0 * s, ez - 2.0 * s, 4.0 * s, 4.0 * s, [16, 18, 24, 255]);
+                        r.rect(ex - 1.5 * s, ez - 1.5 * s, 3.0 * s, 3.0 * s, [110, 220, 255, 255]);
                     }
                 }
             }

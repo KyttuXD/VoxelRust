@@ -25,6 +25,18 @@ impl App {
         let playing = online || matches!(self.screen, Screen::Game | Screen::Inventory | Screen::Dead | Screen::Chat | Screen::Map | Screen::FullMap | Screen::Craft | Screen::Chest | Screen::Emote);
         let in_game = self.screen == Screen::Game;
         let k = |a: Action| in_game && self.keys[(self.settings.key(a) as usize).min(511)];
+        // Holding the drop key keeps dropping: after a short pause one item at a time, faster the longer it is held.
+        if k(Action::Drop) && self.focus == 0 {
+            self.drop_hold += dt;
+            self.drop_gap -= dt;
+            if self.drop_hold > 0.4 && self.drop_gap <= 0.0 {
+                self.drop_item = true;
+                self.drop_gap = if self.drop_hold > 1.6 { 0.05 } else if self.drop_hold > 0.9 { 0.09 } else { 0.14 };
+            }
+        } else {
+            self.drop_hold = 0.0;
+            self.drop_gap = 0.0;
+        }
         let controls = Controls {
             input: Input {
                 forward: k(Action::Forward) as i32 as f32 - k(Action::Back) as i32 as f32,

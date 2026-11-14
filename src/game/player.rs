@@ -21,6 +21,8 @@ const SPRINT: f32 = 5.612;
 const GRAVITY: f32 = 32.0;
 const TERMINAL: f32 = 78.4;
 const JUMP: f32 = 9.0;
+/// What a jump from a sprint adds to the speed along the way you run, blocks a second.
+const SPRINT_JUMP_BOOST: f32 = 2.0;
 
 #[derive(Clone, Copy, Default)]
 pub struct Input {
@@ -202,7 +204,10 @@ impl Player {
             // A crouch walks slowly, and does not sprint.
             let pace = if self.crouch > 0.0 { WALK * (1.0 - (1.0 - crate::content::pose::crouch::SPEED) * self.crouch) } else if inp.sprint { SPRINT } else { WALK };
             let speed = pace * self.speed_scale;
-            let k = ((if self.on_ground { 12.0 } else { 2.0 }) * dt).min(1.0);
+            // On the ground the pace is taken up quickly. In the air what speed there is is kept
+            // (faster than the pace, from a sprinting jump, it is lost only slowly).
+            let in_air_fast = !self.on_ground && sqrtf(self.vel[0] * self.vel[0] + self.vel[2] * self.vel[2]) > speed * 1.02;
+            let k = ((if self.on_ground { 12.0 } else if in_air_fast { 0.4 } else { 2.0 }) * dt).min(1.0);
             self.vel[0] += (wx * speed - self.vel[0]) * k;
             self.vel[2] += (wz * speed - self.vel[2]) * k;
             if let Some(up) = self.climb {
@@ -211,6 +216,13 @@ impl Player {
                 self.vel[1] = (self.vel[1] - GRAVITY * dt).max(-TERMINAL);
                 if inp.jump && self.on_ground {
                     self.vel[1] = JUMP * self.jump_scale;
+                    // A sprinting jump springs forward: the speed it leaves the ground with is more
+                    // than the sprint (about 7.5 blocks a second), as in Minecraft.
+                    let dl = sqrtf(wx * wx + wz * wz);
+                    if inp.sprint && self.crouch <= 0.0 && dl > 0.1 {
+                        self.vel[0] += wx / dl * SPRINT_JUMP_BOOST * self.speed_scale;
+                        self.vel[2] += wz / dl * SPRINT_JUMP_BOOST * self.speed_scale;
+                    }
                 }
             }
         }
@@ -565,5 +577,39 @@ mod tests {
         for v in &went {
             assert!(*v > 3.6 && *v < 4.4, "walked {v} blocks a second: {went:?}");
         }
+    }
+
+    #[test]
+    fn a_sprinting_jump_goes_farther_than_a_walking_one_and_keeps_its_speed_in_the_air() {
+        let w = world(&[]);
+        let hop = |sprint: bool| {
+            let mut p = Player::new([2.5, 121.0, 2.5]);
+            run(&mut p, Input::default(), 1.0, &w);
+            // Run up to speed first.
+            let go = Input { forward: 1.0, sprint, ..Default::default() };
+            for _ in 0..120 {
+                p.update(1.0 / 60.0, &go, &w);
+            }
+            let start = p.pos;
+            let jump = Input { forward: 1.0, sprint, jump: true, ..Default::default() };
+            let mut peak = 0.0f32;
+            let mut left = false;
+            for _ in 0..90 {
+                p.update(1.0 / 60.0, &jump, &w);
+                let hs = (p.vel[0] * p.vel[0] + p.vel[2] * p.vel[2]).sqrt();
+                if !p.on_ground {
+                    left = true;
+                    peak = peak.max(hs);
+                } else if left {
+                    break;
+                }
+            }
+            (((p.pos[0] - start[0]).powi(2) + (p.pos[2] - start[2]).powi(2)).sqrt(), peak)
+        };
+        let (walk_d, walk_v) = hop(false);
+        let (run_d, run_v) = hop(true);
+        assert!(run_v > 6.8 && run_v < 8.6, "a sprinting jump leaves at {run_v}");
+        assert!(run_d > walk_d * 1.4, "a sprint jump went {run_d}, a walking one {walk_d} (speeds {run_v}, {walk_v})");
+        assert!(run_d > 3.4, "{run_d}");
     }
 }

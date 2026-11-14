@@ -10,7 +10,9 @@ impl App {
             Some(g) if self.settings.minimap => g,
             _ => return,
         };
+        let others: Vec<(String, [f32; 2])> = g.net.as_ref().map(|n| n.players.values().filter(|p| p.seen).map(|p| (p.name.clone(), [p.pos[0] as f32, p.pos[2] as f32])).collect()).unwrap_or_default();
         let frame = crate::client::fullmap::Frame {
+            others: &others,
             seed: g.world.seed,
             world: crate::client::fullmap::world_key(g.world.seed, &g.name),
             explored: &g.explored,
@@ -28,7 +30,9 @@ impl App {
     /// Paint the full map while it is open.
     pub(super) fn work_full_map(&mut self, r: &mut Renderer) {
         let (Some(g), Some(full)) = (self.session.as_ref(), self.full.as_mut()) else { return };
+        let others: Vec<(String, [f32; 2])> = g.net.as_ref().map(|n| n.players.values().filter(|p| p.seen).map(|p| (p.name.clone(), [p.pos[0] as f32, p.pos[2] as f32])).collect()).unwrap_or_default();
         let frame = crate::client::fullmap::Frame {
+            others: &others,
             seed: g.world.seed,
             world: crate::client::fullmap::world_key(g.world.seed, &g.name),
             explored: &g.explored,
@@ -90,7 +94,9 @@ impl App {
             self.full = Some(crate::client::fullmap::FullMap::new(st.map_zoom.max(0) as usize, st.map_follow, st.map_grid, st.map_waypoints));
         }
         let (Some(g), Some(full)) = (self.session.as_mut(), self.full.as_mut()) else { return };
+        let others: Vec<(String, [f32; 2])> = g.net.as_ref().map(|n| n.players.values().filter(|p| p.seen).map(|p| (p.name.clone(), [p.pos[0] as f32, p.pos[2] as f32])).collect()).unwrap_or_default();
         let frame = crate::client::fullmap::Frame {
+            others: &others,
             seed: g.world.seed,
             world: crate::client::fullmap::world_key(g.world.seed, &g.name),
             explored: &g.explored,

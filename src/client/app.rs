@@ -294,6 +294,9 @@ struct App {
     toggle_fly: bool,
     leave: bool,
     drop_item: bool,
+    /// Seconds the drop key has been held, and until the next item it drops.
+    drop_hold: f32,
+    drop_gap: f32,
     /// When the jump key was last pressed, to notice a double tap.
     last_jump_tap: f64,
     quit: bool,
@@ -1210,6 +1213,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         toggle_fly: false,
         leave: false,
         drop_item: false,
+        drop_hold: 0.0,
+        drop_gap: 0.0,
         last_jump_tap: 0.0,
         quit: false,
         fps: 0.0,
