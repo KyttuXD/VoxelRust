@@ -426,6 +426,10 @@ impl<F: FileIo> ChunkStore for RegionStore<F> {
         region.blobs[Self::slot(cx, cz)] = Some(encode(data));
         region.dirty = true;
     }
+
+    fn persistent(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]

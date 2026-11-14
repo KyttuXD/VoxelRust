@@ -20,7 +20,7 @@ impl World {
                 total += CHUNK_BYTES;
             }
         }
-        total += self.far.len() * ENTRY;
+        total += self.far.len() * ENTRY + self.far_tops.len() * (ENTRY + 4 * 256);
         for list in self.overlay.values() {
             total += ENTRY + list.capacity() * core::mem::size_of::<(i32, i32, i32, crate::block::Block)>();
         }
