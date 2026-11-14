@@ -486,7 +486,7 @@ struct App {
     /// Pack files read at start-up, for reading again on request.
     pack_paths: Vec<String>,
     /// The packs in use, bundled; empty when there are none.
-    pack_text: Vec<u8>,
+    pack_text: crate::client::pack_text::PackText,
     /// Playing with content a server sent rather than our own packs.
     server_content: bool,
     /// Set by the settings button or `/reload`; acted on between frames.
@@ -599,7 +599,12 @@ impl App {
                 }
             }
         };
-        self.skin_tex = r.add_texture(64, 64, &px);
+        // The texture made the last time is written over, not left on the card.
+        if self.skin_tex == 0 {
+            self.skin_tex = r.add_texture(64, 64, &px);
+        } else {
+            r.update_texture(self.skin_tex, 64, 64, &px);
+        }
         self.skin_png = crate::png::encode(64, 64, &px);
         self.skin_sent = false;
     }
@@ -639,7 +644,7 @@ impl App {
             }
         }
         logf!("voxelrust: full screen timed at {:.0} FPS; resolution {}", fps, if self.settings.fullscreen_mode == 2 { "set to 1280x800" } else { "kept" });
-        sys::write_file(&self.settings_path, self.settings.to_text().as_bytes());
+        sys::write_file_atomic(&self.settings_path, self.settings.to_text().as_bytes());
     }
 
     /// Put the window in the full-screen state the settings ask for.
@@ -706,7 +711,7 @@ impl App {
         self.close_world(r);
         let name = crate::settings::clean_world_name(&self.form_host, 24);
         let port = crate::proto::DEFAULT_PORT;
-        let (server, edits) = match open_server(if name.is_empty() { "shared" } else { &name }, None, None, port, 16, &self.base, &self.pack_text, &self.settings) {
+        let (server, edits) = match open_server(if name.is_empty() { "shared" } else { &name }, None, None, port, 16, &self.base, self.pack_text.bytes(read_mod_file), &self.settings) {
             Ok(v) => v,
             Err(e) => {
                 self.status = e.to_ascii_uppercase();
@@ -892,7 +897,7 @@ impl App {
     fn close_picker(&mut self, chosen: Option<String>) -> bool {
         self.settings.picker_dir = self.picker.dir.clone();
         if !self.scripted {
-            sys::write_file(&self.settings_path, self.settings.to_text().as_bytes());
+            sys::write_file_atomic(&self.settings_path, self.settings.to_text().as_bytes());
         }
         self.set_screen(Screen::Settings);
         if let Some(path) = chosen {
@@ -929,7 +934,7 @@ impl App {
             self.settings.player_name = String::from("Player");
         }
         if !self.scripted {
-            sys::write_file(&self.settings_path, self.settings.to_text().as_bytes());
+            sys::write_file_atomic(&self.settings_path, self.settings.to_text().as_bytes());
         }
         self.set_screen(if self.session.is_some() { Screen::Pause } else { Screen::Title });
     }
@@ -1120,7 +1125,7 @@ impl App {
             }
             if let Some(pack) = g.server_pack.take() {
                 // Play with the server's blocks and items, not our own.
-                if pack != self.pack_text {
+                if pack.as_slice() != self.pack_text.bytes(read_mod_file) {
                     let new = server_content(&pack);
                     logf!("voxelrust: using the server's content ({} bytes of packs, {} block states)", pack.len(), new.blocks.len());
                     for w in &new.warnings {
@@ -1129,7 +1134,7 @@ impl App {
                     g.reload_content(new, r);
                     r.rebuild_atlas();
                     r.load_models();
-                    self.pack_text = pack;
+                    self.pack_text = crate::client::pack_text::PackText::ready(pack);
                     self.server_content = true;
                     g.say("USING THE SERVER'S CONTENT");
                 }
@@ -1137,8 +1142,14 @@ impl App {
             for (id, png, slim) in g.skin_events.drain(..) {
                 self.remote_slim.insert(id, slim);
                 if let Some(img) = crate::png::decode(&png).filter(|i| i.w == 64 && i.h == 64) {
-                    let tex = r.add_texture(64, 64, &img.rgba);
-                    self.remote_skins.insert(id, tex);
+                    // A player's new skin goes over their old picture on the card.
+                    match self.remote_skins.get(&id) {
+                        Some(&tex) => r.update_texture(tex, 64, 64, &img.rgba),
+                        None => {
+                            let tex = r.add_texture(64, 64, &img.rgba);
+                            self.remote_skins.insert(id, tex);
+                        }
+                    }
                 }
             }
         }
@@ -1266,7 +1277,7 @@ impl App {
             r.finish_world(&cam, &env);
             // The hand and what it holds, in their own close-up pass.
             if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried {
-                if let Some(hand) = reg().models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).1) {
+                if let Some(hand) = reg().model(arm_models(self.settings.slim_arms).1) {
                     let v = g.player.vel;
                     let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
                     let held = crate::client::hand::held_of(g.held().map(|h| h.0));
@@ -1466,7 +1477,7 @@ impl App {
                     continue;
                 }
                 let slim = self.remote_slim.get(id).copied().unwrap_or(false);
-                let model = match reg.models.iter().position(|m| m.id == arm_models(slim).0) {
+                let model = match reg.model(arm_models(slim).0) {
                     Some(model) => model,
                     None => continue,
                 };
@@ -1489,7 +1500,7 @@ impl App {
             }
         }
         if self.third_person {
-            if let Some(model) = reg.models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).0) {
+            if let Some(model) = reg.model(arm_models(self.settings.slim_arms).0) {
                 let v = g.player.vel;
                 let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
                 let pose = crate::model::Pose {
@@ -2097,7 +2108,7 @@ impl App {
                 }
                 4 => {
                     // A turning preview on the left, choices on the right.
-                    let model = ui.r.models.iter().position(|m| m.id == arm_models(st.slim_arms).0);
+                    let model = reg().model(arm_models(st.slim_arms).0);
                     ui.panel(x, row(0), 100.0 * s, 150.0 * s);
                     if let Some(model) = model {
                         let pose = crate::model::Pose { phase: ui.clock * 3.0, stride: 0.5, ..Default::default() };
@@ -2231,7 +2242,7 @@ impl App {
 
     fn save_servers(&self) {
         let text: String = self.servers.iter().map(|(n, a)| alloc::format!("{} {}\n", n, a)).collect();
-        sys::write_file(&alloc::format!("{}servers.txt", self.base), text.as_bytes());
+        sys::write_file_atomic(&alloc::format!("{}servers.txt", self.base), text.as_bytes());
     }
 
     fn join_address(&mut self, r: &mut Renderer, address: &str) -> bool {
@@ -2539,7 +2550,7 @@ impl App {
             self.settings.map_grid = full.grid;
             self.settings.map_waypoints = full.show_waypoints;
             if !self.scripted {
-                sys::write_file(&self.settings_path, self.settings.to_text().as_bytes());
+                sys::write_file_atomic(&self.settings_path, self.settings.to_text().as_bytes());
             }
         }
         self.set_screen(Screen::Game);
@@ -2794,7 +2805,7 @@ impl App {
 
         // A portrait of the player beside the panel, where there is room.
         if px > 70.0 * s {
-            if let Some(model) = r.models.iter().position(|m| m.id == arm_models(self.settings.slim_arms).0) {
+            if let Some(model) = reg().model(arm_models(self.settings.slim_arms).0) {
                 ui.panel(px - 66.0 * s, py, 60.0 * s, 124.0 * s);
                 let pose = crate::model::Pose { phase: g.clock * 2.0, stride: 0.12, ..Default::default() };
                 ui.r.tex_override = self.skin_tex;
@@ -3126,6 +3137,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     if let Some(path) = &opts.log {
         sys::log_to_file(path);
     }
+    let mut phases = crate::client::startup::Phases::new();
     let api = sdl::sdl();
     if let Some(path) = &opts.write_icon {
         // Needs SDL only for writing the file.
@@ -3271,8 +3283,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
     // (The settings are read properly further down; which mods are off is
     // needed now.)
     let mods_off: String = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| crate::settings::Settings::parse(&String::from_utf8_lossy(&b)).mods_off).unwrap_or_default();
-    let (first, pack_text) = load_content(&pack_paths, &mods_off);
+    let (first, mut pack_text) = load_content(&pack_paths, &mods_off);
     block::install(first);
+    phases.mark("content: base data and mods parsed");
     // Pictures the player has edited replace the game's own: textures/<id>.png.
     sys::make_dir(&alloc::format!("{}textures/", base));
     crate::textures::set_override_dir(&alloc::format!("{}textures/", base));
@@ -3288,6 +3301,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             logf!("voxelrust: texture pack{} {}: {} pictures", if list.len() == 1 { "" } else { "s" }, list.join(", "), n);
         }
     }
+    phases.mark("texture packs indexed");
     if let Some(dir) = &opts.export_textures {
         let n = export_textures(reg(), dir)?;
         logf!("voxelrust: wrote {} textures to {}", n, dir);
@@ -3312,7 +3326,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
     }
     if opts.server {
-        return run_server(&opts, &base, &pack_text);
+        return run_server(&opts, &base, pack_text.bytes(read_mod_file));
     }
     let scripted_early = opts.screenshot.is_some() || opts.bench.is_some();
     let settings_path = alloc::format!("{}settings.txt", base);
@@ -3403,10 +3417,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
         return Err(alloc::format!("could not create an OpenGL context: {}", sdl::error()));
     }
     gl::load()?;
+    phases.mark("window and OpenGL context");
     logf!("voxelrust: OpenGL {} on {}", gl::get_string(gl::VERSION), gl::get_string(gl::RENDERER));
     crate::icon::set_window_icon(window);
     let mut r = Renderer::new();
+    phases.mark("renderer: atlas painted and uploaded, fonts, clouds");
     r.load_models();
+    phases.mark("models parsed and uploaded");
     let (mut ww, mut wh) = (w, h);
     unsafe { (api.SDL_GetWindowSize)(window, &mut ww, &mut wh) };
     r.w = ww.max(1);
@@ -3515,6 +3532,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             start(&base, &app.settings);
         }
     }
+    phases.mark("audio folder, skin and mods started");
 
     // Going straight into a world: asked for by name, or a scripted run.
     let menu_only = ["title", "worlds", "newworld", "multiplayer", "picker"].iter().any(|s| opts.show.contains(s)) || (opts.show.contains("settings") && opts.world.is_none());
@@ -3648,6 +3666,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mut unloaded_frames = 0u32;
     let mut last = sys::now();
     let mut settled_frames = 0u32;
+    let mut first_frame_logged = false;
     let mut bench: Option<(u32, f64, f64)> = None; // frames left, start, worst frame
     let load_start = sys::now();
     // The main loop and what follows it are a closure, left at the loop's
@@ -3674,6 +3693,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         let online = app.session.as_ref().map_or(false, |g| g.net.is_some());
         app.update(&mut r, if scripted && !online { opts.step.unwrap_or(0.0) } else { dt }, dt);
         app.draw(&mut r, &inp);
+        if !first_frame_logged {
+            first_frame_logged = true;
+            phases.mark("first frame drawn");
+        }
         app.auto_tune(real_dt, r.w);
 
         if scripted {
@@ -3794,7 +3817,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
 
     app.close_world(&mut r);
     if !scripted {
-        sys::write_file(&app.settings_path, app.settings.to_text().as_bytes());
+        sys::write_file_atomic(&app.settings_path, app.settings.to_text().as_bytes());
     }
     // Close the sound device before SDL goes.
     drop(core::mem::replace(&mut app.audio, Audio::silent()));
@@ -3953,7 +3976,7 @@ fn all_mods(pack_paths: &[String]) -> Vec<String> {
     names
 }
 
-fn load_content(pack_paths: &[String], off: &str) -> (Registry, Vec<u8>) {
+fn load_content(pack_paths: &[String], off: &str) -> (Registry, crate::client::pack_text::PackText) {
     let mut sources: Vec<(String, String)> = alloc::vec![(String::from("base.txt"), String::from(block::BASE_DATA))];
     let is_off = |name: &str| off.split(',').any(|o| o == name);
     // The mods built into the program come first.
@@ -3987,49 +4010,20 @@ fn load_content(pack_paths: &[String], off: &str) -> (Registry, Vec<u8>) {
         }
     }
     let refs: Vec<(&str, &str)> = sources.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
-    // Remember every file the packs pull in (textures, models, includes).
-    let mut used: Vec<(String, Vec<u8>)> = Vec::new();
+    // Remember which files the packs pull in (textures, models, includes), to send to
+    // players who join: only their names, the bundle reads them if it is ever made.
+    let mut used: Vec<String> = Vec::new();
+    let mut seen: alloc::collections::BTreeSet<String> = alloc::collections::BTreeSet::new();
     let registry = Registry::from_sources(&refs, &mut |p| {
         let data = read_mod_file(p);
-        if let Some(d) = &data {
-            if !used.iter().any(|u| u.0 == p) {
-                used.push((String::from(p), d.clone()));
-            }
+        if data.is_some() && seen.insert(String::from(p)) {
+            used.push(String::from(p));
         }
         data
     });
-    (registry, pack_bundle(&sources[1..], &used))
-}
-
-/// The packs and the files they use as one blob a server can send. Folder
-/// names are replaced by `p0/`, `p1/`...: players need the files, not to
-/// know where the host keeps them.
-fn pack_bundle(packs: &[(String, String)], used: &[(String, Vec<u8>)]) -> Vec<u8> {
-    if packs.is_empty() {
-        return Vec::new();
-    }
-    let dir = |p: &str| String::from(&p[..p.rfind(|c| c == '/' || c == '\\').map_or(0, |i| i + 1)]);
-    let mut dirs: Vec<String> = Vec::new();
-    for (p, _) in packs {
-        let d = dir(p);
-        if !dirs.contains(&d) {
-            dirs.push(d);
-        }
-    }
-    // Longest first, so a folder inside another keeps its own name.
-    dirs.sort_by(|a, b| b.len().cmp(&a.len()));
-    let rename = |p: &str| match dirs.iter().position(|d| p.starts_with(d.as_str())) {
-        Some(i) => alloc::format!("p{}/{}", i, &p[dirs[i].len()..]),
-        None => alloc::format!("x/{}", p.replace(|c| c == '/' || c == '\\' || c == ':', "_")),
-    };
-    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-    for (p, text) in packs {
-        files.push((alloc::format!("pack:{}", rename(p)), text.as_bytes().to_vec()));
-    }
-    for (p, data) in used {
-        files.push((alloc::format!("file:{}", rename(p)), data.clone()));
-    }
-    crate::save::bundle(&files)
+    drop(refs);
+    let packs: Vec<(String, String)> = sources.into_iter().skip(1).collect();
+    (registry, crate::client::pack_text::PackText::lazy(packs, used))
 }
 
 /// The content a server dictates: the built-in data and what it sent.
@@ -4181,14 +4175,14 @@ fn server_loop(mut server: crate::server::Server, edits_path: String, quiet: boo
         if save_timer > 20.0 && server.dirty {
             save_timer = 0.0;
             server.dirty = false;
-            if !sys::write_file(&edits_path, server.save_text().as_bytes()) {
+            if !sys::write_file_atomic(&edits_path, server.save_text().as_bytes()) {
                 logf!("voxelrust: could not write {}", edits_path);
             }
         }
         sys::sleep_ms(4);
     }
     if server.dirty {
-        sys::write_file(&edits_path, server.save_text().as_bytes());
+        sys::write_file_atomic(&edits_path, server.save_text().as_bytes());
     }
     update_ready_and_empty(&server)
 }

@@ -274,7 +274,7 @@ impl FileIo for DiskIo {
         crate::sys::read_file(path)
     }
     fn write(&mut self, path: &str, data: &[u8]) -> bool {
-        crate::sys::write_file(path, data)
+        crate::sys::write_file_atomic(path, data)
     }
 }
 

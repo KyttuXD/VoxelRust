@@ -703,6 +703,32 @@ pub fn write_file(path: &str, data: &[u8]) -> bool {
     }
 }
 
+/// Write a file so that it is never half written: the data goes to
+/// `<path>.tmp` first, which then replaces the file in one step. A crash or a
+/// killed process in the middle of a world save leaves the old file, not a
+/// cut-off one (`write_file` empties the file before it writes). Where a
+/// file cannot be moved over another (a browser), or the move fails, it is
+/// written in place.
+pub fn write_file_atomic(path: &str, data: &[u8]) -> bool {
+    #[cfg(any(all(unix, not(target_arch = "wasm32")), windows))]
+    {
+        let tmp = alloc::format!("{}.tmp", path);
+        if write_file(&tmp, data) {
+            let (f, t) = (cstr(&tmp), cstr(path));
+            #[cfg(all(unix, not(target_arch = "wasm32")))]
+            let moved = unsafe { rename(f.as_ptr() as *const c_char, t.as_ptr() as *const c_char) == 0 };
+            #[cfg(windows)]
+            // 1 = replace an existing file.
+            let moved = unsafe { MoveFileExA(f.as_ptr() as *const c_char, t.as_ptr() as *const c_char, 1) != 0 };
+            if moved {
+                return true;
+            }
+        }
+        remove_file(&tmp);
+    }
+    write_file(path, data)
+}
+
 /// Seconds since SDL started, from the high-resolution counter.
 pub fn now() -> f64 {
     let api = sdl::sdl();

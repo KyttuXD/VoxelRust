@@ -123,7 +123,7 @@ pub fn build(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8) -> MeshD
     // Plain white texel, full sky light: colour comes from the vertices and
     // brightness from the time of day, like everything else.
     let r = reg();
-    let white = r.tiles.iter().position(|t| t.id == "white").unwrap_or(0) as i32;
+    let white = r.tile("white").unwrap_or(0) as i32;
     let uv = [((white % 16) * 256 + 128) as i16, ((white / 16) * 256 + 128) as i16];
     let luv = [8i16, 15 * 16 + 8];
     let mut out = MeshData { opaque: Vec::with_capacity(n * n * 12), water: Vec::new(), glass: Vec::new(), ymin: i32::MAX, ymax: 0, props: Vec::new() };
@@ -366,7 +366,7 @@ pub fn build_real(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8, edi
     }
     // Quads, as in `build`: boxes from the ground up.
     let r = reg();
-    let white = r.tiles.iter().position(|t| t.id == "white").unwrap_or(0) as i32;
+    let white = r.tile("white").unwrap_or(0) as i32;
     let uv = [((white % 16) * 256 + 128) as i16, ((white / 16) * 256 + 128) as i16];
     let luv = [8i16, 15 * 16 + 8];
     let mut out = MeshData { opaque: Vec::with_capacity(n * n * 16), water: Vec::new(), glass: Vec::new(), ymin: i32::MAX, ymax: 0, props: Vec::new() };

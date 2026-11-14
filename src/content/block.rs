@@ -650,6 +650,10 @@ pub struct Registry {
     pub sun_tile: u16,
     pub moon_tile: u16,
     by_id: BTreeMap<String, Block>,
+    /// Texture and model numbers by id, for the lookups made every frame
+    /// (see [`Registry::tile`] and [`Registry::model`]).
+    tile_by_id: BTreeMap<String, usize>,
+    model_by_id: BTreeMap<String, usize>,
     /// Problems found while reading the data, for the log.
     pub warnings: Vec<String>,
 }
@@ -693,11 +697,24 @@ pub fn install(r: Registry) {
     }
 }
 
+/// The registry that was current before the active one's predecessor. See [`replace`].
+static RETIRED: AtomicPtr<Registry> = AtomicPtr::new(core::ptr::null_mut());
+
 /// Swap in a new registry while the game runs (packs reloaded, or sent by a
-/// server). The old one is deliberately never freed: references to it may
-/// still be in use, on this thread or a worker.
+/// server). References to the old one may still be in use for a little while
+/// (on this thread, or a worker finishing a job), so it is not freed at
+/// once: it is kept for one more replacement, and the one before that, which
+/// nothing can have been holding for two whole reloads, is freed. (Each
+/// reload used to leak the whole registry, models and sound clips included.)
 pub fn replace(r: Registry) {
-    REG.store(Box::into_raw(Box::new(r)), Ordering::Release);
+    let old = REG.swap(Box::into_raw(Box::new(r)), Ordering::AcqRel);
+    let older = RETIRED.swap(old, Ordering::AcqRel);
+    if !older.is_null() {
+        // SAFETY: it came from `Box::into_raw` here or in `install`, was
+        // replaced two reloads ago, and was never handed out since (`reg`
+        // only hands out the active one).
+        unsafe { drop(Box::from_raw(older)) };
+    }
 }
 
 #[inline]
@@ -2310,7 +2327,19 @@ impl Registry {
             }
         }
         let fx = crate::content::effects::build(&raw_effects, &tiles, &mut warnings);
+        let index_of = |ids: &mut dyn Iterator<Item = &String>| {
+            let mut map: BTreeMap<String, usize> = BTreeMap::new();
+            for (i, id) in ids.enumerate() {
+                // (The first of two of the same id wins, as a search would find it.)
+                map.entry(id.clone()).or_insert(i);
+            }
+            map
+        };
+        let tile_by_id = index_of(&mut tiles.iter().map(|t| &t.id));
+        let model_by_id = index_of(&mut models.iter().map(|m| &m.id));
         let mut registry = Registry {
+            tile_by_id,
+            model_by_id,
             fluid,
             flow,
             opaque: blocks.iter().map(|b| (b.kind == Kind::Cube) as u8).collect(),
@@ -2366,6 +2395,17 @@ impl Registry {
 
     pub fn block(&self, id: &str) -> Option<Block> {
         self.by_id.get(id).copied()
+    }
+
+    /// The number of the texture with this id (a search over hundreds of
+    /// names made fast: it is asked for every frame).
+    pub fn tile(&self, id: &str) -> Option<usize> {
+        self.tile_by_id.get(id).copied()
+    }
+
+    /// The number of the model with this id.
+    pub fn model(&self, id: &str) -> Option<usize> {
+        self.model_by_id.get(id).copied()
     }
 
     /// Name of a state for save files, e.g. `stone_stairs` or `stone_stairs@5`.
