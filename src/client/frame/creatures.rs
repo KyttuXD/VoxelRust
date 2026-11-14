@@ -140,8 +140,8 @@ impl App {
             }
         }
         if self.third_person {
-            let body = body_for(g, own_id(g), self.settings.slim_arms);
-            if let Some(model) = reg.model(arm_models(&body, self.settings.slim_arms).0) {
+            let body = body_for(g, own_id(g), self.slim());
+            if let Some(model) = reg.model(arm_models(&body, self.slim()).0) {
                 let drawn = crate::client::pose_view::local(g);
                 let l = (light_at(g.player.pos) * 255.0) as u8;
                 r.tex_override = self.skin_tex;

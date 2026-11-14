@@ -102,7 +102,7 @@ pub fn eat_motion(eat: f32, drink: bool) -> Motion {
     // Each bite dips the food toward the mouth a little.
     let bite = if up >= 1.0 { (sinf(e * 8.0 * PI)) * 0.012 } else { 0.0 };
     let tip = if drink { 1.05 } else { 0.55 };
-    Motion { rx: tip * k, rz: -0.12 * k, off: [-0.20 * k, 0.16 * k + bite, 0.30 * k] }
+    Motion { rx: tip * k, rz: -0.12 * k, off: [-0.20 * k, 0.06 * k + bite, -0.12 * k] }
 }
 
 /// The hand coming up and in to draw a bow, and pulling back as the string

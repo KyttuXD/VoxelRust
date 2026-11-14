@@ -150,6 +150,13 @@ fn minimap_arrow(r: &mut Renderer, cx: f32, cy: f32, yaw: f32, s: f32, col: Colo
 /// The player model and the first-person hand for a body model. `player` and
 /// `player_slim` have their own hands; a mod's body (any other id) has none of
 /// its own, so it gets the hand that goes with the arms (`slim`).
+impl App {
+    /// Slim arms: asked for in the settings, or what the skin picture is made for.
+    pub(crate) fn slim(&self) -> bool {
+        self.settings.slim_arms || self.skin_slim
+    }
+}
+
 fn arm_models(body: &str, slim: bool) -> (&str, &'static str) {
     let built_in = body == "player" || body == "player_slim";
     let hand = if body == "player_slim" || (!built_in && slim) { "hand_slim" } else { "hand" };
@@ -318,6 +325,10 @@ struct App {
     /// Which other players have slim arms.
     remote_slim: BTreeMap<u16, bool>,
     skin_png: Vec<u8>,
+    /// The skin picture is for slim arms (found from the picture, see `skinfile::is_slim`).
+    skin_slim: bool,
+    /// For pictures (`--show eat:F`): hold the hand at this point of eating.
+    show_eat: Option<f32>,
     skin_sent: bool,
     /// Pack files read at start-up, for reading again on request.
     pack_paths: Vec<String>,
@@ -661,7 +672,7 @@ fn label_coloured(r: &mut Renderer, x: f32, y: f32, s: f32, line: &str, alpha: u
         };
         if code.is_some() || c.is_none() {
             if !run.is_empty() {
-                r.label(at, y, s, &run, [col[0], col[1], col[2], alpha]);
+                r.label_cased(at, y, s, &run, [col[0], col[1], col[2], alpha]);
                 at += Renderer::text_width(&run, s);
                 run.clear();
             }
@@ -1186,6 +1197,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         remote_skins: BTreeMap::new(),
         remote_slim: BTreeMap::new(),
         skin_png: Vec::new(),
+        skin_slim: false,
         skin_sent: false,
         pack_paths,
         mods_dir,
@@ -1195,6 +1207,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         want_reload: false,
         at_oven: false,
         show_walking: opts.show.contains("walking"),
+        // "eat:F": the first-person hand held F (0 to 1) of the way through eating, for pictures.
+        show_eat: opts.show.split(',').find_map(|w| w.strip_prefix("eat:")).and_then(|f| f.parse::<f32>().ok()).map(|f| f.clamp(0.0, 1.0)),
         show_looks: opts.show.split(',').find_map(|w| w.strip_prefix("looks:")).map(String::from),
         mods_scroll: 0,
         video_detail: 0,

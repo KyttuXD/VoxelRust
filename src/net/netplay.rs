@@ -226,7 +226,7 @@ impl Client {
                             }
                         } else {
                             let who = self.players.get(&id).map_or("?", |p| p.name.as_str());
-                            events.push(Event::Chat(alloc::format!("<{}> {}", who, text).to_ascii_uppercase()));
+                            events.push(Event::Chat(alloc::format!("<{}> {}", who.to_ascii_uppercase(), text)));
                         }
                     }
                     Msg::Time { time } => events.push(Event::Time(crate::net::limits::clean_time(time))),

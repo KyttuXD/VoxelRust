@@ -1577,12 +1577,21 @@ impl Renderer {
     }
 
     pub fn text(&mut self, x: f32, y: f32, scale: f32, s: &str, col: Color) {
+        self.text_in_case(x, y, scale, s, col, false);
+    }
+
+    /// Text that keeps its lower-case letters (chat); everything else is drawn in capitals.
+    pub fn text_cased(&mut self, x: f32, y: f32, scale: f32, s: &str, col: Color) {
+        self.text_in_case(x, y, scale, s, col, true);
+    }
+
+    fn text_in_case(&mut self, x: f32, y: f32, scale: f32, s: &str, col: Color, cased: bool) {
         self.set_tex(self.font, gl::QUADS);
         let (cw, ch) = (font::CELL as f32 / font::TEX_W as f32, font::CELL as f32 / font::TEX_H as f32);
         let size = font::CELL as f32 * scale;
         let mut cx = x;
         for c in s.chars() {
-            let gi = font::glyph_index(c);
+            let gi = if cased { font::glyph_index_cased(c) } else { font::glyph_index(c) };
             let (u, v) = ((gi % 16) as f32 * cw, (gi / 16) as f32 * ch);
             self.quad(
                 [[cx, y, 0.0], [cx + size, y, 0.0], [cx + size, y + size, 0.0], [cx, y + size, 0.0]],
@@ -1591,6 +1600,12 @@ impl Renderer {
             );
             cx += font::ADVANCE * scale;
         }
+    }
+
+    /// As [`Renderer::label`], keeping lower-case letters.
+    pub fn label_cased(&mut self, x: f32, y: f32, scale: f32, s: &str, col: Color) {
+        self.text_cased(x + scale, y + scale, scale, s, [0, 0, 0, 170]);
+        self.text_cased(x, y, scale, s, col);
     }
 
     /// Text with a dark drop shadow, readable over any background.

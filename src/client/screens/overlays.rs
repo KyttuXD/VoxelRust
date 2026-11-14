@@ -8,7 +8,7 @@ impl App {
         let s = ui.s;
         let (w, h) = (ui.w(), ui.h());
         let y = h - 40.0 * s;
-        if ui.text_field(20, 4.0 * s, y, w * 0.6, 14.0 * s, &mut self.form_chat, 100, ui::any_char) {
+        if ui.text_field_case(20, 4.0 * s, y, w * 0.6, 14.0 * s, &mut self.form_chat, 100, ui::any_char, ui::FieldCase::Cased) {
             let text = core::mem::take(&mut self.form_chat);
             let name = self.settings.player_name.clone();
             let command = text.trim().to_ascii_lowercase();

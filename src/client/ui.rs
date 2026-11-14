@@ -213,6 +213,12 @@ impl Ui<'_> {
     /// A one-line text box. Click to focus; returns true when Enter is
     /// pressed while it has the focus.
     pub fn text_field(&mut self, id: u32, x: f32, y: f32, w: f32, h: f32, value: &mut String, max: usize, allow: fn(char) -> bool) -> bool {
+        self.text_field_case(id, x, y, w, h, value, max, allow, FieldCase::Plain)
+    }
+
+    /// A text field with a say about case: capitals only for names, or keeping
+    /// lower-case letters for chat (see [`FieldCase`]).
+    pub fn text_field_case(&mut self, id: u32, x: f32, y: f32, w: f32, h: f32, value: &mut String, max: usize, allow: fn(char) -> bool, case: FieldCase) -> bool {
         if self.inp.clicked[1] {
             if self.hot(x, y, w, h) {
                 *self.focus = id;
@@ -226,6 +232,7 @@ impl Ui<'_> {
         if focused {
             let typed: String = self.inp.text.chars().chain(self.inp.paste.chars().filter(|c| *c != '\n' && *c != '\r')).collect();
             for c in typed.chars() {
+                let c = if case == FieldCase::Upper { c.to_ascii_uppercase() } else { c };
                 if !allow(c) {
                     continue;
                 }
@@ -271,7 +278,12 @@ impl Ui<'_> {
         } else if focused {
             shown.push('_');
         }
-        self.r.label(x + 4.0 * self.s, y + (h - 7.0 * self.s) * 0.5, self.s, &shown, WHITE);
+        let ty = y + (h - 7.0 * self.s) * 0.5;
+        if case == FieldCase::Cased {
+            self.r.label_cased(x + 4.0 * self.s, ty, self.s, &shown, WHITE);
+        } else {
+            self.r.label(x + 4.0 * self.s, ty, self.s, &shown, WHITE);
+        }
         entered
     }
 }
@@ -297,6 +309,15 @@ mod tests {
         // It rests at the start for a moment.
         assert_eq!(marquee(label, 12, 0.0), marquee(label, 12, 0.4));
     }
+}
+
+/// How a text field treats case: as typed but drawn in capitals (the default), forced to
+/// capitals (player names), or kept as typed and drawn with lower-case letters (chat).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FieldCase {
+    Plain,
+    Upper,
+    Cased,
 }
 
 /// Characters allowed in names of worlds and players.

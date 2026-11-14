@@ -87,12 +87,16 @@ impl App {
             let emoting = g.posing.emote.is_some();
             let emote_arm = !emoting || crate::content::pose::emote::shows_arm(&g.posing.body(g.activity()));
             if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried && lying.is_none() && emote_arm {
-                let body = body_for(g, own_id(g), self.settings.slim_arms);
-                if let Some(hand) = reg().model(arm_models(&body, self.settings.slim_arms).1) {
+                let body = body_for(g, own_id(g), self.slim());
+                if let Some(hand) = reg().model(arm_models(&body, self.slim()).1) {
                     let v = g.player.vel;
                     let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
                     let held = if emoting { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(g.held().map(|h| h.0)) };
                     let mut view = hand_view_of(g, held, speed);
+                    if let Some(f) = self.show_eat {
+                        view.eat = f;
+                        view.swing = 0.0;
+                    }
                     if let Some((_, t)) = g.posing.emote {
                         // A wave: the hand swings to and fro.
                         view.swing = (0.4 + 0.35 * sinf(t * 9.0)).max(0.001);

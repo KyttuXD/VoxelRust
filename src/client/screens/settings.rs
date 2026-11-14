@@ -106,11 +106,12 @@ impl App {
                 }
                 4 => {
                     // A turning preview on the left, choices on the right.
+                    let slim = st.slim_arms || self.skin_slim;
                     let body = match self.session.as_ref() {
-                        Some(g) => body_for(g, own_id(g), st.slim_arms),
-                        None => String::from(if st.slim_arms { "player_slim" } else { "player" }),
+                        Some(g) => body_for(g, own_id(g), slim),
+                        None => String::from(if slim { "player_slim" } else { "player" }),
                     };
-                    let model = reg().model(arm_models(&body, st.slim_arms).0);
+                    let model = reg().model(arm_models(&body, slim).0);
                     ui.panel(x, row(0), 100.0 * s, 150.0 * s);
                     if let Some(model) = model {
                         let pose = crate::model::Pose { phase: ui.clock * 3.0, stride: 0.5, ..Default::default() };
@@ -133,7 +134,7 @@ impl App {
                     if ui.button(cx, row(4) - 2.0 * s, cw, bh, "IMPORT FROM WEB ADDRESS...") {
                         skin_web = true;
                     }
-                    skin_changed |= ui.toggle(cx, row(5) + 4.0 * s, cw, bh, "SLIM ARMS (ALEX SKINS)", &mut st.slim_arms);
+                    skin_changed |= ui.toggle(cx, row(5) + 4.0 * s, cw, bh, "FORCE SLIM ARMS (AUTO OTHERWISE)", &mut st.slim_arms);
                 }
                 5 => {
                     // Every mod in the mods folder, with its version and a
@@ -225,7 +226,7 @@ impl App {
                 }
                 _ => {
                     ui.text(x, row(0) + 4.0 * s, "PLAYER NAME", ui::DIM);
-                    ui.text_field(10, x + 80.0 * s, row(0), bw - 80.0 * s, bh, &mut st.player_name, 16, ui::name_char);
+                    ui.text_field_case(10, x + 80.0 * s, row(0), bw - 80.0 * s, bh, &mut st.player_name, 16, ui::name_char, ui::FieldCase::Upper);
                     changed |= ui.stepper(x, row(1), bw, bh, "AUTOSAVE EVERY (SECONDS)", &mut st.autosave_seconds, 10, 600, 10);
                     if let Some(g) = self.session.as_mut() {
                         let label = alloc::format!("GAME MODE  {}", if g.mode == GameMode::Survival { "SURVIVAL" } else { "CREATIVE" });

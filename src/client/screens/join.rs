@@ -102,7 +102,7 @@ impl App {
             return;
         }
         ui.text(x + half + 4.0 * s, y - 9.0 * s, "YOUR NAME", ui::DIM);
-        ui.text_field(31, x + half + 4.0 * s, y, half, bh, &mut self.settings.player_name, 16, ui::name_char);
+        ui.text_field_case(31, x + half + 4.0 * s, y, half, bh, &mut self.settings.player_name, 16, ui::name_char, ui::FieldCase::Upper);
         // Hosting: a server runs inside the game for as long as you play.
         ui.text(x + half + 4.0 * s, y + step * 1.5 - 9.0 * s, "SHARED WORLD NAME", ui::DIM);
         ui.text_field(32, x + half + 4.0 * s, y + step * 1.5, half, bh, &mut self.form_host, 24, ui::world_char);

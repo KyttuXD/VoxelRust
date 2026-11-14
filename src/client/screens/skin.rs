@@ -25,6 +25,7 @@ impl App {
         } else {
             r.update_texture(self.skin_tex, 64, 64, &px);
         }
+        self.skin_slim = crate::client::skinfile::is_slim(&px, 64, 64);
         self.skin_png = crate::png::encode(64, 64, &px);
         self.skin_sent = false;
     }

@@ -648,7 +648,7 @@ impl Session {
         // The speaker's name in a colour of its own (the same every time).
         let hue = name.bytes().fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
         let code = [b'9', b'A', b'B', b'C', b'D', b'E', b'6', b'3'][(hue % 8) as usize] as char;
-        self.push_chat(alloc::format!("&{}<{}>&F {}", code, name, text).to_ascii_uppercase());
+        self.push_chat(alloc::format!("&{}<{}>&F {}", code, name.to_ascii_uppercase(), text));
     }
 
     /// Call into every mod's own code that is switched on.

@@ -93,7 +93,7 @@ impl App {
         if let Some(g) = self.session.as_mut() {
             if let (Some(net), false) = (g.net.as_mut(), self.skin_sent) {
                 if self.skin_png.len() <= crate::proto::MAX_SKIN {
-                    net.send_skin(&self.skin_png, self.settings.slim_arms);
+                    net.send_skin(&self.skin_png, self.settings.slim_arms || self.skin_slim);
                 }
                 self.skin_sent = true;
             }
