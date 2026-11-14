@@ -61,7 +61,57 @@ pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
     })
 }
 
+/// The box of a role picture's head (its `L`, `M`, `D` and `W` cells): where a gradient is spread.
+fn shape_head_box(rows: &[&str; 16]) -> (i32, i32, i32, i32) {
+    let (mut x0, mut y0, mut x1, mut y1) = (16, 16, -1, -1);
+    for (y, row) in rows.iter().enumerate() {
+        for (x, c) in row.bytes().enumerate() {
+            if matches!(c, b'L' | b'M' | b'D' | b'W') {
+                x0 = x0.min(x as i32);
+                y0 = y0.min(y as i32);
+                x1 = x1.max(x as i32);
+                y1 = y1.max(y as i32);
+            }
+        }
+    }
+    if x1 < 0 {
+        return (0, 0, 16, 16);
+    }
+    (x0, y0, x1 - x0 + 1, y1 - y0 + 1)
+}
+
+/// A tool painted from the OCD pack's own silhouette (see `tool_shapes`): the
+/// outline and the shape come from the picture, the colours from the palette
+/// (the head's from its roles `L` light, `M` mid, `D` dark and `W` highlight,
+/// with a gradient over the head if the palette has one; the handle's from the
+/// second palette).
+fn paint_shape(rows: &[&str; 16], pal: &Palette, x: i32, y: i32) -> Px {
+    let (hx, hy, hw, hh) = shape_head_box(rows);
+    let wood = pal.handle_or((WOOD, WOOD_DARK));
+    let rgb = pal.at_in(x, y, hx, hy, hw, hh);
+    let (l, m, d) = (pal.light_of(rgb), rgb, pal.dark_of(rgb));
+    if !(0..16).contains(&x) || !(0..16).contains(&y) {
+        return CLEAR;
+    }
+    match rows[y as usize].as_bytes()[x as usize] {
+        b'o' => px(pal.outline()),
+        b'h' => px(wood.0),
+        b'H' => px(wood.1),
+        b'L' => px(l),
+        b'M' => px(m),
+        b'D' => px(d),
+        // A highlight; a sword's `accent` replaces it (a fuller down the blade).
+        b'W' => px(pal.accent().unwrap_or_else(|| pal.light_of(l))),
+        _ => CLEAR,
+    }
+}
+
 pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
+    if matches!(style, "stick" | "pick" | "axe" | "shovel" | "hoe" | "sword" | "arrow") {
+        if let Some(rows) = super::tool_shapes::shape(style) {
+            return Some(paint_shape(rows, pal, x, y));
+        }
+    }
     let (hx, hy, hw, hh) = head_box(style);
     let rgb = pal.at_in(x, y, hx, hy, hw, hh);
     let (l, m, d) = (pal.light_of(rgb), rgb, pal.dark_of(rgb));

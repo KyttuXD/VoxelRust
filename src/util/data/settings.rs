@@ -199,9 +199,9 @@ impl Default for Settings {
             extras: Vec::new(),
             mods_off: String::new(),
             texture_pack: String::new(),
-            pack_hue: 6,
-            pack_saturation: 108,
-            pack_brightness: 97,
+            pack_hue: 0,
+            pack_saturation: 100,
+            pack_brightness: 100,
             auto_update: true,
             picker_dir: String::new(),
         }

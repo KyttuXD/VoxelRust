@@ -150,7 +150,7 @@ fn tools_are_upright_with_the_head_on_top() {
     for style in ["pick", "axe", "shovel", "hoe", "sword"] {
         let px = picture(|x, y| paint(style, [200, 60, 60], x, y));
         let solid = |x: usize, y: usize| px[(y * 16 + x) * 4 + 3] == 255;
-        assert!(solid(7, 14) && solid(8, 14), "{style}: no handle at the foot");
+        assert!((6..=9).any(|x| solid(x, 14)), "{style}: no handle at the foot");
         assert!(!solid(0, 8) && !solid(15, 8) && !solid(0, 15), "{style}: not upright");
         // The widest row is in the top half.
         let width = |y: usize| (0..16).filter(|x| solid(*x, y)).count();

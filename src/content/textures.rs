@@ -408,7 +408,7 @@ fn pack_tool(kind: &str, rgb: [u8; 3]) -> Option<Vec<u8>> {
 
 /// How much the pack's colours are changed: hue turned by this many degrees,
 /// saturation and brightness scaled by these percentages. Set from the settings.
-static TWEAK: [core::sync::atomic::AtomicI32; 3] = [core::sync::atomic::AtomicI32::new(6), core::sync::atomic::AtomicI32::new(108), core::sync::atomic::AtomicI32::new(97)];
+static TWEAK: [core::sync::atomic::AtomicI32; 3] = [core::sync::atomic::AtomicI32::new(0), core::sync::atomic::AtomicI32::new(100), core::sync::atomic::AtomicI32::new(100)];
 
 pub fn set_pack_tweak(hue: i32, saturation: i32, brightness: i32) {
     use core::sync::atomic::Ordering::Release;
@@ -639,7 +639,9 @@ mod tests {
     fn the_pack_colour_change_is_small_and_keeps_alpha() {
         let mut px = [126u8, 126, 126, 255, 129, 94, 63, 128];
         let before = px;
+        set_pack_tweak(6, 108, 97);
         tweak_colours(&mut px);
+        set_pack_tweak(0, 100, 100);
         // A grey stays grey (a little darker); a brown moves a little; alpha is untouched.
         assert!(px[0] == px[1] && px[1] == px[2] && px[0] < before[0] && before[0] - px[0] < 8, "{px:?}");
         assert!(px[4] != before[4] || px[5] != before[5] || px[6] != before[6]);

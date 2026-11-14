@@ -23,6 +23,7 @@ pub mod ores;
 pub mod plants;
 pub mod sky;
 pub mod stone;
+pub mod tool_shapes;
 pub mod tools;
 pub mod wood;
 

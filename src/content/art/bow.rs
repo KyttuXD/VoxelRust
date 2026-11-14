@@ -6,8 +6,7 @@
 //! Paint styles: `bow`, `crossbow` (at rest) and `bow_pull0..2`,
 //! `crossbow_pull0..2` (drawn back a little, half way, fully).
 //!
-//! The picture is diagonal like the game's other tools: the stave bulges to
-//! the top right, the string is pulled to the bottom left.
+//! The pictures stand upright, as the OCD pack draws them.
 
 type Px = [u8; 4];
 
@@ -16,19 +15,6 @@ const OUTLINE: Px = [26, 26, 26, 255];
 const STRING: Px = [236, 236, 230, 255];
 const SHAFT: Px = [150, 112, 70, 255];
 const HEAD: Px = [190, 192, 200, 255];
-const FEATHER: Px = [236, 236, 240, 255];
-
-/// What is at a pixel of the picture, before the outline.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Part {
-    None,
-    Stave,
-    Stock,
-    String,
-    Shaft,
-    Head,
-    Feather,
-}
 
 /// Which way the picture of a style is drawn: `None` is at rest, `Some(k)`
 /// the stage of drawing (0..=2). The second is whether it is a crossbow.
@@ -46,106 +32,26 @@ fn stage_of(style: &str) -> Option<(Option<i32>, bool)> {
     })
 }
 
-/// How far (in pixels along the diagonal) the nock is pulled back from the
-/// string's middle at each stage.
-fn pull_of(stage: Option<i32>) -> i32 {
-    match stage {
-        None => 0,
-        Some(k) => 2 + 2 * k.clamp(0, 2),
-    }
-}
-
-fn abs(v: i32) -> i32 {
-    if v < 0 { -v } else { v }
-}
-
-/// Whether the pixel is on the straight line from `a` to `b` (about one pixel thick).
-fn on_line(p: (i32, i32), a: (i32, i32), b: (i32, i32)) -> bool {
-    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-    // Within the segment's span.
-    let (lo_x, hi_x) = (a.0.min(b.0), a.0.max(b.0));
-    let (lo_y, hi_y) = (a.1.min(b.1), a.1.max(b.1));
-    if p.0 < lo_x || p.0 > hi_x || p.1 < lo_y || p.1 > hi_y {
-        return false;
-    }
-    // The cross product is twice the triangle's area: small means near the line.
-    let cross = (p.0 - a.0) * dy - (p.1 - a.1) * dx;
-    let long = abs(dx).max(abs(dy)).max(1);
-    abs(cross) * 2 <= long
-}
-
-fn part(stage: Option<i32>, crossbow: bool, x: i32, y: i32) -> Part {
-    if !(0..16).contains(&x) || !(0..16).contains(&y) {
-        return Part::None;
-    }
-    // The ends of the stave and the middle of the string at rest.
-    let (a, b) = ((3, 2), (13, 12));
-    let pull = pull_of(stage);
-    let nock = (8 - pull, 7 + pull);
-
-    // The arrow (a bolt in a crossbow) lies along x + y == 15, nock to point.
-    if stage.is_some() {
-        let on_shaft = x + y == 15 && x >= nock.0 && x <= 14;
-        let head = (x + y == 15 && x >= 13) || [(12, 2), (13, 1), (14, 2), (13, 3)].contains(&(x, y));
-        if head {
-            return Part::Head;
-        }
-        if on_shaft {
-            return if x <= nock.0 + 1 { Part::Feather } else { Part::Shaft };
-        }
-        // The feathers' vanes, either side of the shaft at the nock.
-        if (x + y == 14 || x + y == 16) && x >= nock.0 && x <= nock.0 + 1 {
-            return Part::Feather;
-        }
-    }
-    // The string: from one end of the stave to the nock and on to the other.
-    if on_line((x, y), a, nock) || on_line((x, y), nock, b) {
-        return Part::String;
-    }
-    // The stave, an arc round (3, 12).
-    let (dx, dy) = (x - 3, y - 12);
-    let d2 = dx * dx + dy * dy;
-    if (100..=130).contains(&d2) && x >= 3 && y <= 12 {
-        return Part::Stave;
-    }
-    // A crossbow's stock runs back from the stave along the line of the bolt.
-    if crossbow && (x + y == 14 || x + y == 16) && (3..=10).contains(&x) {
-        return Part::Stock;
-    }
-    if crossbow && (2..=4).contains(&x) && (13..=14).contains(&y) && (15..=17).contains(&(x + y)) {
-        return Part::Stock;
-    }
-    Part::None
-}
-
 /// One pixel of the picture in the style `style` (see the top of this file),
 /// in the colour `rgb` for the wood; `None` if it is not one of ours.
 pub fn painted(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
-    let (stage, crossbow) = stage_of(style)?;
+    stage_of(style)?;
+    // The picture is the OCD pack's own silhouette (tools/ocd_shapes.py): the
+    // stave and stock in the wood colour, the string and arrow parts pale.
+    let rows = crate::painters::tool_shapes::shape(style)?;
+    if !(0..16).contains(&x) || !(0..16).contains(&y) {
+        return Some(CLEAR);
+    }
     let wood = [rgb[0], rgb[1], rgb[2], 255];
-    let dark = [
-        (rgb[0] as u32 * 62 / 100) as u8,
-        (rgb[1] as u32 * 62 / 100) as u8,
-        (rgb[2] as u32 * 62 / 100) as u8,
-        255,
-    ];
-    let here = part(stage, crossbow, x, y);
-    Some(match here {
-        Part::Stave => wood,
-        Part::Stock => dark,
-        Part::String => STRING,
-        Part::Shaft => SHAFT,
-        Part::Head => HEAD,
-        Part::Feather => FEATHER,
-        Part::None => {
-            // The dark outline: a pixel beside the picture's own.
-            let beside = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)];
-            if beside.iter().any(|&(bx, by)| part(stage, crossbow, bx, by) != Part::None) {
-                OUTLINE
-            } else {
-                CLEAR
-            }
-        }
+    let dark = [(rgb[0] as u32 * 62 / 100) as u8, (rgb[1] as u32 * 62 / 100) as u8, (rgb[2] as u32 * 62 / 100) as u8, 255];
+    Some(match rows[y as usize].as_bytes()[x as usize] {
+        b'o' => OUTLINE,
+        b'h' => wood,
+        b'H' => dark,
+        b'L' | b'W' => STRING,
+        b'M' => HEAD,
+        b'D' => SHAFT,
+        _ => CLEAR,
     })
 }
 

@@ -575,10 +575,10 @@ texture the pack calls something else.
 
 **Colours.** The pack's colours are changed a little so the game does not look
 exactly like it: the hue is turned, and saturation and brightness are
-scaled. The settings (`settings.txt`) are `pack_hue` (degrees, default 6),
-`pack_saturation` (percent, default 108) and `pack_brightness` (percent,
-default 97); `pack_hue=0`, `pack_saturation=100`, `pack_brightness=100` gives
-the pack's own colours. The change is made to every picture taken from the
+scaled. The settings (`settings.txt`) are `pack_hue` (degrees, default 0),
+`pack_saturation` (percent, default 100) and `pack_brightness` (percent,
+default 100): the pack's own colours unless you change them. A recoloured
+pack (such as `ocd recolour`, listed last so its pictures win) is the better way to change the look. The change is made to every picture taken from the
 pack, blocks and items alike, and to the tools made from its iron ones.
 
 **Ruby, tin, silver and the other tools the pack lacks.** The game's own ruby
@@ -753,3 +753,16 @@ pictures.
 - [ ] Named like the pack names it, or added to `pack_names`.
 - [ ] Creatures: the palette is in `tools/entity_palettes.py`, the pictures are
   made by `tools/entity_textures.py`, nothing is painted by hand.
+
+
+## The tools' shapes come from the pack
+
+The game's own tools, weapons and bows are painted from the pack's silhouettes,
+not from shapes of ours: `tools/ocd_shapes.py` reads the OCD pack's iron pickaxe,
+axe, shovel, hoe, sword, stick, arrow, bow (at rest and drawn) and crossbow and
+writes them as role pictures (outline, handle lit/shade, head light/mid/dark,
+highlight) into `src/content/painters/tool_shapes.rs`. The painters colour those
+roles from a palette, so every metal, wood and gem tool has the pack's exact shape
+(the hooked pickaxe, the bracket bow) in its own colours, and a palette with
+several colours or a gradient gives a multi-coloured head. Run
+`python3 tools/ocd_shapes.py "<pack>/assets/game/textures/item"` to regenerate.
