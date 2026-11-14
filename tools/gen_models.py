@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generates the creature and vehicle models in data/models/ (and the packs'
-in mods/spellsNmagic/models/, mods/titanlands/models/, mods/landvehicles/models/
-and mods/hearthgarden/models/, see OUTPUTS) and data/creatures.txt.
+"""Generates the creature and vehicle models: the creatures' into the wildlife mod's models/
+(tools/export_mods.py then sorts each into the mod it belongs to), and the packs' into
+the mods' own models/ folders (spellsNmagic, titanlands, landvehicles, hearthgarden...,
+see OUTPUTS). The creatures themselves are in tools/gen_creatures.py.
 
     python3 tools/gen_models.py                 # write the models, validate
-    python3 tools/gen_models.py --creatures     # also rewrite creatures.txt (it has hand edits)
     python3 tools/gen_models.py --sheet out.png # also render a contact sheet
     python3 tools/gen_models.py --only wolf,fox # just these models
 
@@ -34,9 +34,8 @@ from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODS_DIR = os.path.abspath(os.environ.get("VOXELRUST_MODS_DIR") or os.path.join(ROOT, "..", "VoxelRust-Mods"))  # the mods live outside the repository
-OUT_DIR = os.path.join(ROOT, "data", "models")
+OUT_DIR = os.path.join(MODS_DIR, "wildlife", "models")  # the creature models; tools/export_mods.py sorts them into their mods
 PACK_DIR = os.path.join(MODS_DIR, "spellsNmagic", "models")  # the fantasy pack
-CREATURES = os.path.join(ROOT, "data", "creatures.txt")
 FACES = ("north", "south", "east", "west", "up", "down")
 # Brightness the game gives each face (src/model.rs), for the preview.
 FACE_SHADE = {"east": 200, "west": 200, "up": 255, "down": 140, "south": 228, "north": 228}
@@ -9302,83 +9301,6 @@ OUTPUTS = [
     (HG_DIR, HEARTH_GARDEN),
 ]
 
-# ---------------------------------------------------------------- creatures.txt
-
-# id, name, model, tint, height, width, speed, health, damage, behavior, biomes, night, weight
-ENTITIES = [
-    ("cow", "Cow", "cow", None, 1.4, 0.9, 1.6, 10, 0, "wander", "plains forest savanna", False, 24),
-    ("cow_brown", "Brown Cow", "cow", (190, 140, 100), 1.4, 0.9, 1.6, 10, 0, "wander", "plains savanna mountain", False, 14),
-    ("cow_red", "Red Cow", "cow", (220, 130, 90), 1.35, 0.9, 1.6, 10, 0, "wander", "plains taiga", False, 8),
-    ("pig", "Pig", "pig", None, 0.9, 0.8, 1.7, 8, 0, "wander", "plains forest swamp", False, 24),
-    ("pig_spotted", "Dusky Pig", "pig", (200, 170, 160), 0.9, 0.8, 1.7, 8, 0, "wander", "forest taiga", False, 10),
-    ("pig_black", "Black Pig", "pig", (95, 85, 90), 0.95, 0.8, 1.8, 9, 0, "wander", "forest jungle swamp", False, 8),
-    ("chicken", "Chicken", "chicken", None, 0.6, 0.4, 1.4, 4, 0, "wander", "plains forest savanna", False, 26),
-    ("chicken_brown", "Brown Hen", "chicken", (205, 150, 100), 0.6, 0.4, 1.4, 4, 0, "wander", "plains forest", False, 14),
-    ("chicken_black", "Black Hen", "chicken", (100, 100, 110), 0.6, 0.4, 1.4, 4, 0, "wander", "forest jungle", False, 8),
-    ("cat", "Tabby Cat", "cat", None, 0.5, 0.4, 2.6, 6, 0, "wander", "plains forest", False, 8),
-    ("cat_ginger", "Ginger Cat", "cat", (255, 176, 104), 0.5, 0.4, 2.6, 6, 0, "wander", "plains forest savanna", False, 6),
-    ("cat_black", "Black Cat", "cat", (84, 82, 92), 0.5, 0.4, 2.6, 6, 0, "wander", "forest swamp", True, 5),
-    ("cat_cream", "Cream Cat", "cat", (255, 236, 204), 0.5, 0.4, 2.6, 6, 0, "wander", "plains desert", False, 4),
-    ("dog", "Dog", "dog", None, 0.75, 0.5, 3.0, 10, 0, "wander", "plains forest", False, 8),
-    ("dog_golden", "Golden Dog", "dog", (255, 214, 140), 0.8, 0.5, 3.0, 10, 0, "wander", "plains savanna", False, 6),
-    ("dog_brown", "Brown Dog", "dog", (176, 130, 100), 0.75, 0.5, 3.0, 10, 0, "wander", "forest mountain", False, 6),
-    ("dog_grey", "Grey Dog", "dog", (170, 176, 190), 0.85, 0.5, 3.2, 12, 0, "wander", "tundra taiga", False, 6),
-    ("tiger", "Tiger", "tiger", None, 1.25, 0.9, 4.2, 30, 7, "hostile", "jungle", False, 8),
-    ("elephant", "Elephant", "elephant", None, 3.2, 1.9, 2.0, 80, 0, "wander", "savanna", False, 6),
-    ("bear", "Bear", "bear", None, 1.5, 1.1, 3.0, 40, 6, "hostile", "taiga forest", False, 6),
-    ("gator", "Gator", "gator", None, 0.55, 1.0, 2.4, 28, 6, "hostile", "swamp", False, 12),
-    ("snake", "Snake", "snake", None, 0.45, 0.6, 1.8, 6, 3, "hostile", "swamp jungle desert", False, 10),
-    ("fish", "Silver Fish", "fish", None, 0.4, 0.3, 2.0, 3, 0, "swim", "", False, 30),
-    ("fish_orange", "Orange Fish", "fish", (255, 160, 80), 0.35, 0.3, 2.0, 3, 0, "swim", "jungle swamp plains", False, 16),
-    ("fish_blue", "Blue Fish", "fish", (120, 180, 255), 0.4, 0.3, 2.2, 3, 0, "swim", "jungle savanna desert", False, 12),
-    ("fish_green", "Green Fish", "fish", (150, 215, 130), 0.45, 0.3, 1.8, 4, 0, "swim", "swamp forest taiga", False, 12),
-    ("squid", "Squid", "squid", None, 1.1, 0.7, 1.6, 10, 0, "swim", "", False, 8),
-    ("worm", "Worm", "worm", None, 0.2, 0.2, 0.5, 1, 0, "wander", "plains forest swamp jungle", False, 10),
-    ("ant", "Ant", "ant", None, 0.2, 0.25, 1.2, 1, 0, "wander", "desert savanna jungle badlands forest", False, 12),
-    ("sheep", "Sheep", "sheep", None, 1.25, 0.9, 1.6, 8, 0, "wander", "plains mountain tundra", False, 22),
-    ("sheep_black", "Black Sheep", "sheep", (88, 84, 88), 1.25, 0.9, 1.6, 8, 0, "wander", "plains mountain", False, 5),
-    ("sheep_brown", "Brown Sheep", "sheep", (176, 136, 104), 1.25, 0.9, 1.6, 8, 0, "wander", "mountain taiga", False, 7),
-    ("horse", "Grey Horse", "horse", None, 2.0, 1.0, 5.0, 24, 0, "wander", "plains savanna", False, 8),
-    ("horse_bay", "Bay Horse", "horse", (190, 124, 84), 2.0, 1.0, 5.0, 24, 0, "wander", "plains savanna", False, 10),
-    ("horse_black", "Black Horse", "horse", (92, 86, 90), 2.05, 1.0, 5.2, 24, 0, "wander", "plains mountain", False, 5),
-    ("horse_palomino", "Palomino Horse", "horse", (255, 214, 150), 1.95, 1.0, 5.0, 24, 0, "wander", "savanna badlands", False, 6),
-    ("frog", "Frog", "frog", None, 0.35, 0.4, 1.5, 3, 0, "wander", "swamp jungle", False, 16),
-    ("duck", "Duck", "duck", None, 0.6, 0.45, 1.5, 4, 0, "wander", "swamp plains forest", False, 12),
-]
-
-
-def creatures_text(models):
-    out = ["# Creatures and vehicle models. Generated by tools/gen_models.py; edit that, not this.",
-           "#",
-           "# model <id> file <path relative to this file>",
-           "# entity <id> ... see base.txt for the properties.",
-           "", "# --- animal models"]
-    for fn in ANIMALS:
-        out.append("model %s file models/%s.bbmodel" % (fn.__name__, fn.__name__))
-    out.append("")
-    for eid, name, model, tint, height, width, speed, health, damage, beh, biomes, night, weight in ENTITIES:
-        assert model in models, model
-        assert 0.2 <= height <= 4 and 0.2 <= width <= 2 and 0 <= speed <= 12 and 1 <= health <= 1000 and 0 <= damage <= 100
-        out.append("entity " + eid)
-        out.append("  name " + name)
-        out.append("  model " + model)
-        if tint:
-            out.append("  tint %d %d %d" % tint)
-        out.append("  height %g" % height)
-        out.append("  width %g" % width)
-        out.append("  speed %g" % speed)
-        out.append("  health %d" % health)
-        if beh == "hostile":
-            out.append("  damage %d" % damage)
-        out.append("  behavior " + beh)
-        if biomes:
-            out.append("  biomes " + biomes)
-        if night:
-            out.append("  night")
-        out.append("  weight %d" % weight)
-    return "\n".join(out) + "\n"
-
-
 # ---------------------------------------------------------------- validation
 
 def validate(path):
@@ -9528,10 +9450,6 @@ def main(argv):
         print("%-15s %2d cubes  %3dx%-3d  size %4.1f x %4.1f x %4.1f  bones: %s" % (
             m.id, n, size[0], size[1], hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], " ".join(bones)))
         built.append(m)
-    if "--creatures" in argv and not only:
-        with open(CREATURES, "w") as f:
-            f.write(creatures_text({m.id for m in built}))
-        print("wrote", os.path.relpath(CREATURES, ROOT), "with", len(ENTITIES), "entities")
     if sheet:
         contact_sheet(built, sheet)
         print("wrote", sheet)

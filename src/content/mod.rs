@@ -11,3 +11,6 @@ pub mod icon;
 pub mod bbmodel;
 pub mod model;
 pub mod pack_entities;
+
+#[cfg(test)]
+mod core_tests;

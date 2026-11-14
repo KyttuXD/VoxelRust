@@ -345,22 +345,28 @@ Runs every night at 03:00 UTC, and by hand from the Actions tab.
 ## Regenerating data
 
 The game only ever reads the files under `data/`, which are compiled into the
-program (`build.rs` embeds them). Four scripts write those files:
+program (`build.rs` embeds them): the core. The rest of the content is the mods of the
+`VoxelRust-Mods` folder, written by `tools/export_mods.py`. These scripts write them:
 
 | Script | Writes | Needs |
 | --- | --- | --- |
-| `python3 tools/gen_base.py` | `data/base.txt`: the textures, blocks, items and recipes, generated from tables (sixteen colours times several materials, six woods, stairs and slabs of each, doors, beds, furniture, rail track, crops, tools, food, sounds, dimensions) | Python 3 |
-| `python3 tools/gen_models.py` | `data/models/*.bbmodel` (creature models; the vehicle models and those of the other mods go to `mods/<name>/models`). With `--creatures` it also rewrites `data/creatures.txt`, the list of base models | Python 3 with Pillow |
-| `python3 tools/entity_textures.py` | `data/textures/entity/*.png`: the picture of every creature look and player skin, painted in the OCD style from the colour table `tools/entity_palettes.py` (see [TEXTURING.md](TEXTURING.md#creatures-and-players)) | Python 3 with Pillow |
-| `python3 tools/gen_creatures.py` | `data/wildlife.txt`: every creature, where it lives and how it behaves | Python 3 |
+| `python3 tools/gen_base.py` | `data/base.txt` (the core) and `data/effects.txt`. It builds the whole content from tables (sixteen colours times several materials, seven woods, stairs and slabs of each, doors, beds, furniture, crops, tools, food, sounds, dimensions) and `tools/modsplit.py` keeps in the core only what the game needs to boot and play | Python 3 |
+| `python3 tools/export_mods.py [DIR]` | the mods stonework, woods, colours, caves, explosives, farming, cooking, tools-extra, furniture (from `gen_base.py`) and wildlife, monsters, villagers, wanderer (from `gen_creatures.py`) into `DIR` (default `$VOXELRUST_MODS_DIR`, else `../VoxelRust-Mods`): each a `pack.txt`, a `README.txt` and for creatures their models and pictures. Which mod owns what is the table at the top of `tools/modsplit.py`; it also stops with an error if a mod would refer to a later one | Python 3 |
+| `python3 tools/gen_models.py` | the creature models into the wildlife mod's `models/` (then `export_mods.py` sorts each into its mod); the vehicle models and those of the other mods go to `<mod>/models` | Python 3 with Pillow |
+| `python3 tools/entity_textures.py` | the picture of every creature look into the wildlife mod's `textures/`, and the player's and the skins' into `data/textures/entity/`, painted in the OCD style from the colour table `tools/entity_palettes.py` (see [TEXTURING.md](TEXTURING.md#creatures-and-players)) | Python 3 with Pillow |
+| `python3 tools/gen_creatures.py` | runs `export_mods.py --creatures`: every creature, where it lives and how it behaves, written into wildlife, monsters, villagers and wanderer | Python 3 |
+
+Set `VOXELRUST_MODS_DIR` to the mods folder for all of them. To remake everything:
+`gen_models.py`, `entity_textures.py`, `gen_base.py`, then `export_mods.py` (which
+also does the creatures).
 
 `tools/gen_models.py --sheet out.png` also renders a contact sheet of the
-models, and `--only wolf,fox` remakes just those. `data/base.txt` and
-`data/wildlife.txt` may be edited by hand as well, but a later run of their
+models, and `--only wolf,fox` remakes just those. `data/base.txt` and the mods'
+`pack.txt` may be edited by hand as well, but a later run of their
 script will overwrite such edits; change the script instead. Run
-`gen_models.py` before `gen_creatures.py` when adding a model, since the
+`gen_models.py` before `export_mods.py` when adding a model, since the
 latter only uses models whose files exist, and `entity_textures.py` before
-`gen_creatures.py` when adding a look, since the latter checks the pictures exist.
+it when adding a look, since it checks the pictures exist.
 
 Rebuild after changing anything under `data/`.
 

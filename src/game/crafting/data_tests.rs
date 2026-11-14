@@ -110,7 +110,7 @@ fn a_pack_may_add_craft_shaped_and_group_lines() {
          shaped stone_slab 1 X.. .Y. with X stone Y dirt*3\n\
          shapeless glass 1 sand 1 coal 1\n\
          craft brick 1 clay 3\n\
-         recipe lantern 1 glass 1\n",
+         recipe sandstone 1 glass 1\n",
     );
     let id = |s: &str| r.items.iter().position(|i| i.id == s).unwrap() as u16;
     assert!(r.warnings.iter().all(|w| !w.contains("recipe")), "{:?}", r.warnings);

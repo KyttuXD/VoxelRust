@@ -1,10 +1,23 @@
 # Creatures
 
-The game has 75 kinds of creature: farm animals, pets, wildlife, things that
-fly and swim, night monsters, cave dwellers and villagers. All of them are
-declared in [data/wildlife.txt](../data/wildlife.txt) (written by
-`tools/gen_creatures.py`), so a pack can change any of them or add more; the
-format is in [DATA.md](DATA.md#creatures).
+The game has no creatures of its own: with no mod installed the world is empty of
+them. The 75 kinds that used to be built in (farm animals, pets, wildlife, things
+that fly and swim, night monsters, cave dwellers and villagers) are four mods of the
+`VoxelRust-Mods` folder, written by `tools/export_mods.py` from the table in
+`tools/gen_creatures.py`:
+
+| Mod | Creatures |
+| --- | --- |
+| `wildlife` | every animal (`animals.txt`), and the 32 newer species with their looks (`pack.txt`); the golem statue |
+| `monsters` | the Lurker, wraith, bone hound, skeleton, zombie, werewolf, ghoul, ogre, scarecrow, slimes, crawlers, cave spider and rock golem |
+| `villagers` | the eight trades: farmer, builder, guard, baker, smith, trader, shepherd, fisher |
+| `wanderer` | the Wanderer |
+
+Each carries its own `models/` and `textures/` (every picture is a `picture` line,
+see [DATA.md](DATA.md#creatures)). The drops and trades of the creatures name items
+of the cooking, farming, colours and other mods; with one of those missing the line is
+left out with a warning and the creature still lives. A pack can change any creature
+or add more; the format is in [DATA.md](DATA.md#creatures).
 
 ## How they appear
 
@@ -401,5 +414,5 @@ voxelrust --show creatures --screenshot creatures.bmp
 lines up one of every creature and vehicle model and writes a picture
 (`--show creatures,walking` is meant to show them mid-stride). In a
 world, `/spawn <id>` puts one in front of you; the ids are the `entity` names
-in [data/wildlife.txt](../data/wildlife.txt), for example `/spawn wolf 3`.
+in the creature mods (`wildlife/animals.txt`, `monsters/pack.txt`...), for example `/spawn wolf 3`.
 In creative mode the [spawn eggs](#spawn-eggs) do the same by hand.

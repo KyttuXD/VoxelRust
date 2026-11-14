@@ -2,8 +2,10 @@
 //!
 //! Every creature is painted with a picture: its model's own (named after the
 //! model: `cow`), or the one its data names with `tex` (`cow_brown`,
-//! `villager_farmer`...). The game's own pictures are in `data/textures/entity/`,
-//! made by `tools/entity_textures.py` and carried inside the program. A texture
+//! `villager_farmer`...). The game's own pictures (the player and the skins) are in
+//! `data/textures/entity/`, carried inside the program; the creatures' pictures come
+//! with their mods, which name them with `picture <name> file <png>` lines (see
+//! [`mod_image`]). All are made by `tools/entity_textures.py`. A texture
 //! pack can replace any of them: a picture called the same (or one of the names
 //! in [`pack_names`]) in the pack's `assets/<namespace>/textures/entity/` folder
 //! (or `textures/entity/`, `entity/`, or the pack folder itself), also in a
@@ -165,12 +167,19 @@ pub fn builtin_image(name: &str) -> Option<Image> {
     crate::png::decode(bytes)
 }
 
-/// The picture for `name`: a pack's if it has one, else the game's own.
+/// The picture a mod brought for `name` (`picture <name> file <png>` in its pack file).
+pub fn mod_image(name: &str) -> Option<Image> {
+    let name = clean_name(name);
+    let bytes = &crate::block::reg().pictures.iter().find(|p| p.0 == name)?.1;
+    crate::png::decode(bytes)
+}
+
+/// The picture for `name`: a texture pack's if it has one, else a mod's, else the game's own.
 pub fn image(name: &str) -> Option<Image> {
     if name.is_empty() {
         return None;
     }
-    pack_image(name).or_else(|| builtin_image(name))
+    pack_image(name).or_else(|| mod_image(name)).or_else(|| builtin_image(name))
 }
 
 /// The 64 x 64 skin picture of a built-in skin (`explorer`...): a pack's if it

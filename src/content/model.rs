@@ -306,7 +306,12 @@ mod tests {
         assert!(matches!(classify("Forearm-L"), Swing::Forearm(_)));
         assert!(matches!(classify("tail-b"), Swing::Tail(k) if k == 1.0));
         // A model with jointed legs: walking moves it, and nothing goes wild.
-        let text = String::from_utf8_lossy(crate::block::embedded::file("models/cow.bbmodel").expect("cow model")).into_owned();
+        // (The cow is the wildlife mod's: with no shipped mods in this build there is no model to try.)
+        let Some(cow_file) = crate::native::shipped().iter().find(|f| f.0 == "mods/wildlife/models/cow.bbmodel") else {
+            eprintln!("SKIPPED: no wildlife mod in this build (set VOXELRUST_MODS_DIR)");
+            return;
+        };
+        let text = String::from_utf8_lossy(cow_file.1).into_owned();
         let cow = ModelDef::from_bbmodel("cow", &text).unwrap();
         assert!(cow.model.bones.iter().any(|b| b.name.to_ascii_lowercase().starts_with("shin")), "the cow has knees");
         let (mut still, mut walking) = (Vec::new(), Vec::new());
