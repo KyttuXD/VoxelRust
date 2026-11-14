@@ -801,9 +801,28 @@ pub fn write_file(path: &str, data: &[u8]) -> bool {
 /// file cannot be moved over another (a browser), or the move fails, it is
 /// written in place.
 pub fn write_file_atomic(path: &str, data: &[u8]) -> bool {
+    write_file_atomic_as(path, data, false)
+}
+
+/// [`write_file_atomic`] for a file only its owner may read (accounts, remembered PINs): the
+/// copy is made private before any data is in it, so the file is never readable by others, not
+/// even for the moment between writing and `chmod`.
+pub fn write_file_private(path: &str, data: &[u8]) -> bool {
+    let ok = write_file_atomic_as(path, data, true);
+    clock::make_private(path);
+    ok
+}
+
+fn write_file_atomic_as(path: &str, data: &[u8], private: bool) -> bool {
     #[cfg(any(all(unix, not(target_arch = "wasm32")), windows))]
     {
         let tmp = alloc::format!("{}.tmp", path);
+        if private {
+            // Created empty and restricted first; writing then keeps the mode.
+            if write_file(&tmp, &[]) {
+                clock::make_private(&tmp);
+            }
+        }
         let wrote = write_file(&tmp, data);
         if wrote {
             let (f, t) = (cstr(&tmp), cstr(path));

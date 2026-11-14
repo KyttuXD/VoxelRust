@@ -714,6 +714,8 @@ rebuilds the atlas and the chunks at once. If the pictures at the chosen size wo
 the pages or the memory the game may spend on them, the size is lowered a step at a time until they
 do (F3 shows the size that was used). The planned atlas is the same every time for the same pictures.
 
+The pages of the HD atlas are planned for the biggest texture the card says it takes (never over 4096); a card or browser that does not answer is planned for 2048.
+
 **Memory.** The game stays under about 300 MB without mods and 700 MB with them (see
 [MEMORY.md](MEMORY.md)), *except* for what HD pictures cost: when they are in use their
 cost (the atlas on the card and in the driver, the picture files kept to build it again) is

@@ -51,6 +51,8 @@ pub struct CullStats {
     pub frustum: u32,
     pub occluded: u32,
     pub micros: u32,
+    /// The occlusion walk ran this frame (it is skipped where it gains nothing, see `cull_adapt.rs`).
+    pub walked: bool,
 }
 
 pub struct Culler {
@@ -59,6 +61,7 @@ pub struct Culler {
     conn: Vec<u16>,
     scratch: Scratch,
     out: Vec<u32>,
+    adapt: crate::client::cull_adapt::Adaptive,
     /// The chunks to draw, nearest first.
     pub chunks: Vec<ChunkDraw>,
     pub runs: Vec<[i32; 2]>,
@@ -73,7 +76,7 @@ impl Default for Culler {
 
 impl Culler {
     pub fn new() -> Culler {
-        Culler { occlusion: true, conn: Vec::new(), scratch: Scratch::default(), out: Vec::new(), chunks: Vec::new(), runs: Vec::new(), stats: CullStats::default() }
+        Culler { occlusion: true, conn: Vec::new(), scratch: Scratch::default(), out: Vec::new(), adapt: Default::default(), chunks: Vec::new(), runs: Vec::new(), stats: CullStats::default() }
     }
 
     /// The slice of `runs` for one kind of geometry of a chunk.
@@ -113,14 +116,17 @@ impl Culler {
             }
         }
 
-        // 2. The walk from the camera's section.
-        if self.occlusion {
+        // 2. The walk from the camera's section (skipped for a while where it hides nothing).
+        let walk = self.occlusion && self.adapt.should_run();
+        self.stats.walked = walk;
+        if walk {
             let cam_sy = sections::section_of(floord(cam[1])) as i32;
             let grid = Grid { radius, conn: &self.conn };
             let mut inside = |dx: i32, sy: i32, dz: i32| {
                 let o = origin_of(ccx + dx, ccz + dz);
                 let y0 = o[1] + (sy * 16) as f32;
-                frustum.box_visible(Vec3::new(o[0], y0, o[2]), Vec3::new(o[0] + 16.0, y0 + 16.0, o[2] + 16.0))
+                // A little loose: water sways and boxes may stick out of their section.
+                frustum.box_visible(Vec3::new(o[0] - 0.5, y0 - 0.5, o[2] - 0.5), Vec3::new(o[0] + 16.5, y0 + 16.5, o[2] + 16.5))
             };
             visibility::traverse(&grid, cam_sy, reach, &mut inside, &mut self.scratch, &mut self.out);
         }
@@ -163,24 +169,23 @@ impl Culler {
                     continue;
                 }
                 self.stats.total += 1;
-                if self.occlusion {
-                    let st = self.scratch.state[col + s];
-                    if st & visibility::SEEN == 0 {
-                        // Never entered: outside the view, or behind rock.
-                        if st & visibility::TESTED != 0 {
-                            self.stats.frustum += 1;
-                        } else {
-                            self.stats.occluded += 1;
-                        }
-                        continue;
-                    }
-                }
                 // The box of the geometry itself (a little loose: water sways).
                 let b = m.sec.bounds[s];
                 let y0 = o[1] + (s * 16) as f32;
                 let min = Vec3::new(o[0] + b[0] as f32 - 0.5, y0 + b[1] as f32 - 0.5, o[2] + b[2] as f32 - 0.5);
                 let max = Vec3::new(o[0] + b[3] as f32 + 0.5, y0 + b[4] as f32 + 0.5, o[2] + b[5] as f32 + 0.5);
-                if frustum.box_visible(min, max) {
+                let in_view = frustum.box_visible(min, max);
+                if walk && self.scratch.state.get(col + s).map_or(false, |st| st & visibility::SEEN == 0) {
+                    // Never entered: outside the view, or behind rock. Only what the
+                    // view would have shown counts as hidden by the rock.
+                    if in_view {
+                        self.stats.occluded += 1;
+                    } else {
+                        self.stats.frustum += 1;
+                    }
+                    continue;
+                }
+                if in_view {
                     mask |= 1 << s;
                     self.stats.drawn += 1;
                 } else {
@@ -200,6 +205,9 @@ impl Culler {
             if cd.run_len.iter().any(|&n| n > 0) || cd.hd_runs.iter().any(|&n| n > 0) {
                 self.chunks.push(cd);
             }
+        }
+        if walk {
+            self.adapt.record(self.stats.total, self.stats.occluded);
         }
         // 4. Nearest first.
         self.chunks.sort_unstable_by_key(|c| c.d2);

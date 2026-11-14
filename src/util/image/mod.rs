@@ -73,6 +73,8 @@ pub mod header;
 mod jpeg;
 pub mod png;
 mod png_encode;
+#[cfg(test)]
+mod fuzz_tests;
 pub mod resize;
 mod tga;
 

@@ -263,6 +263,32 @@ mod tests {
     }
 
     #[test]
+    fn a_head_swinging_from_one_side_to_the_other_stays_within_its_limits_and_goes_the_short_way() {
+        // From full left to full right: every frame is between the two, moving one way only.
+        let mut h = Head { yaw: MAX_YAW, pitch: MAX_PITCH };
+        let mut last = h.yaw;
+        for _ in 0..400 {
+            h = approach(h, (-MAX_YAW, -MAX_PITCH), 1.0 / 60.0);
+            assert!(h.yaw <= last && h.yaw >= -MAX_YAW && h.pitch >= -MAX_PITCH && h.pitch <= MAX_PITCH, "{h:?}");
+            last = h.yaw;
+        }
+        assert_eq!(h, Head { yaw: -MAX_YAW, pitch: -MAX_PITCH });
+        // A script's forced look goes beyond the creature's own limits, but not past its own.
+        assert_eq!(clamp_look(500.0, -500.0, SCRIPT_YAW, SCRIPT_PITCH), (90.0, -60.0));
+        // The same walk at a slow frame rate (10 a second) and a fast one (240) ends in the same place.
+        for dt in [0.1f32, 1.0 / 240.0] {
+            let mut h = Head::default();
+            for _ in 0..(10.0 / dt) as usize {
+                h = approach(h, (45.0, -10.0), dt);
+            }
+            assert_eq!(h, Head { yaw: 45.0, pitch: -10.0 });
+        }
+        // A frame of a whole minute (a stall) turns no faster than the top rate allows for half a second.
+        let jump = approach(Head::default(), (70.0, 40.0), 60.0);
+        assert!(jump.yaw <= TURN_RATE * 0.5 + 1e-3 && jump.pitch <= TURN_RATE * 0.5 + 1e-3);
+    }
+
+    #[test]
     fn creatures_watch_the_nearest_player_in_range() {
         let head = [0.0, 1.0, 0.0];
         let near = [-3.0, 1.0, 0.0];

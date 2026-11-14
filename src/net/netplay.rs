@@ -247,10 +247,8 @@ impl Client {
                             let (dx, dz) = ((pos[0] - p.pos[0]) as f32, (pos[2] - p.pos[2]) as f32);
                             let step = crate::math::sqrtf(dx * dx + dz * dz);
                             if p.seen {
-                                p.phase += step * 3.2;
-                                p.stride = (step * 2.5).min(1.0);
-                                // (positions come ten times a second)
-                                p.pace += (step * 10.0 - p.pace) * 0.5;
+                                // (positions come ten times a second; see content/pose/gait.rs)
+                                (p.phase, p.stride, p.pace) = crate::content::pose::gait::follow(p.phase, p.pace, step);
                             }
                             p.pos = pos;
                             p.yaw = yaw;

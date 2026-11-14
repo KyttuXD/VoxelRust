@@ -347,6 +347,9 @@ fn nobody_can_register_a_reserved_name_and_the_administrator_logs_in_with_every_
     assert!(new_pin.chars().all(|c| c.is_ascii_digit()), "{reply}");
     assert!(note_of(h.join("ann", Some("4821"))).starts_with("WRONG PIN"));
     assert!(h.join("ann", Some(&new_pin)).is_ok());
+    // An administrator's own PIN is out of /resetpin's reach (also for themselves).
+    admin.send_chat("/resetpin kyttu 937156");
+    assert!(chats(&pump(&mut admin, 400)).iter().any(|l| l.contains("CANNOT BE RESET FROM THE GAME")));
     // The administrator can ban and kick like any operator.
     admin.send_chat("/ban bob");
     assert!(chats(&pump(&mut admin, 300)).iter().any(|l| l.contains("BOB WAS REMOVED")));

@@ -45,6 +45,8 @@ pub const MAX_TOTAL: usize = 64;
 /// Largest side of a picture, pixels, and most bytes of it decoded.
 pub const MAX_SIDE: usize = 1024;
 pub const MAX_BYTES: usize = 4 * 1024 * 1024;
+/// Most decoded bytes of all the pictures of all mods together (64 pictures of 4 MB would be 256 MB on the card).
+pub const MAX_TOTAL_BYTES: usize = 48 * 1024 * 1024;
 /// Largest file read (before it is decoded).
 pub const MAX_FILE: usize = 8 * 1024 * 1024;
 /// Longest file name.
@@ -132,7 +134,7 @@ impl Images {
         let id = self.next;
         let mut entry = Entry { id, owner: String::from(owner), file: String::from(file), w: 0, h: 0, pixels: None, tex: 0, failed: true };
         if let Some(p) = source() {
-            let sane = p.w > 0 && p.h > 0 && p.w <= MAX_SIDE && p.h <= MAX_SIDE && p.rgba.len() == p.w * p.h * 4 && p.rgba.len() <= MAX_BYTES;
+            let sane = p.w > 0 && p.h > 0 && p.w <= MAX_SIDE && p.h <= MAX_SIDE && p.rgba.len() == p.w * p.h * 4 && p.rgba.len() <= MAX_BYTES && self.bytes() + p.rgba.len() <= MAX_TOTAL_BYTES;
             if sane {
                 entry.w = p.w;
                 entry.h = p.h;
@@ -375,6 +377,23 @@ mod tests {
             }
         }
         assert_eq!(made, MAX_TOTAL);
+    }
+
+    #[test]
+    fn all_pictures_together_may_not_hold_too_many_bytes() {
+        let mut im = Images::default();
+        let mut made = 0;
+        for k in 0..MAX_TOTAL / MAX_PER_MOD {
+            for i in 0..4 {
+                if im.get(&alloc::format!("m{}", k), &alloc::format!("big{}.png", i), &mut || px(MAX_SIDE, MAX_SIDE)).is_some() {
+                    made += 1;
+                }
+            }
+        }
+        assert_eq!(made, MAX_TOTAL_BYTES / MAX_BYTES, "twelve of 4 MB, not sixteen");
+        assert!(im.bytes() <= MAX_TOTAL_BYTES);
+        // Small ones still fit beside them, and a mod is not held back by another's refusals.
+        assert!(im.get("small", "s.png", &mut || px(2, 2)).is_some() || im.bytes() == MAX_TOTAL_BYTES);
     }
 
     #[test]

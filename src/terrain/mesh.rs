@@ -665,6 +665,43 @@ mod tests {
     }
 
     #[test]
+    fn walls_of_glass_leaves_and_water_do_not_block_sight() {
+        use crate::sections::{connected, FACE_NX, FACE_PX};
+        let wk = &reg().wk;
+        let e = ChunkData::new();
+        let stone_section = |c: &mut ChunkData| {
+            for x in 0..16 {
+                for z in 0..16 {
+                    for y in 64..80 {
+                        c.set(x, y, z, wk.stone);
+                    }
+                }
+            }
+        };
+        let glass = reg().block("glass").unwrap();
+        for wall in [glass, wk.leaves, wk.water, wk.ice] {
+            let mut c = ChunkData::new();
+            stone_section(&mut c);
+            // A one-cell tunnel through the rock, closed in the middle by the block under test.
+            for x in 0..16 {
+                c.set(x, 70, 5, AIR);
+            }
+            c.set(8, 70, 5, wall);
+            let t = hood(&c, &e).sections;
+            assert!(connected(t.conn[4], FACE_NX, FACE_PX), "block {} stops sight", wall);
+        }
+        // The control: a stone plug in the tunnel does.
+        let mut c = ChunkData::new();
+        stone_section(&mut c);
+        for x in 0..16 {
+            c.set(x, 70, 5, AIR);
+        }
+        c.set(8, 70, 5, wk.stone);
+        let t = hood(&c, &e).sections;
+        assert!(!connected(t.conn[4], FACE_NX, FACE_PX));
+    }
+
+    #[test]
     fn hidden_faces_are_culled() {
         let e = ChunkData::new();
         let mut c = ChunkData::new();
