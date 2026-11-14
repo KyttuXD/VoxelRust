@@ -1823,6 +1823,8 @@ impl Session {
             None => cause,
         };
         if !crate::game::hooks::player_hurt(self, &mut amount, &cause) {
+            return;
+        }
         // A bite may poison; absorption takes what it can of the blow.
         if let Some(kind) = attacker {
             crate::game::effects::apply::on_bitten(self, kind);
