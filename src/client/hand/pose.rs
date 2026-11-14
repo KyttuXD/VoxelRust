@@ -23,8 +23,8 @@ pub struct Pose {
 pub fn pose_of(held: Held) -> Pose {
     match held {
         // Big and thick, the head up and to the left.
-        Held::Tool(_) => Pose { roll: 0.62, scale: 1.6, yaw: 0.35, pitch: -0.5, grip: [0.0; 3] },
-        Held::Bow(_) => Pose { roll: 0.3, scale: 1.3, yaw: 0.4, pitch: -0.3, grip: [0.0; 3] },
+        Held::Tool(_) => Pose { roll: 0.10, scale: 1.8, yaw: 0.35, pitch: -0.45, grip: [0.0; 3] },
+        Held::Bow(_) => Pose { roll: 0.08, scale: 1.8, yaw: 0.4, pitch: -0.3, grip: [0.0; 3] },
         // A small cube, turned to show its top and two of its sides.
         Held::Cube(_) => Pose { roll: 0.0, scale: 1.4, yaw: 0.6, pitch: 0.15, grip: [0.0; 3] },
         // A card with its lower edge in the fist, leaning back a little.
@@ -44,15 +44,15 @@ pub fn bow_pose(draw: f32) -> Pose {
 /// The first-person hand is LastRoute's (data/render/fp_hands.json): the
 /// mannequin's arm, its hand at the origin and the forearm running up from
 /// it, is tilted 118 degrees about X and placed with the hand at `BARE_VIEW`.
-pub(super) const TILT_DEG: f32 = 118.0;
-pub(super) const BARE_VIEW: [f32; 3] = [0.27, -0.24, -0.52];
+pub(super) const TILT_DEG: f32 = 128.0;
+pub(super) const BARE_VIEW: [f32; 3] = [0.20, -0.02, -0.50];
 
 /// Where the hand is in the view. A tool is held where LastRoute's crowbar and
 /// axe are (HeldItemPoses.FIRST_PERSON `view`), a little lower and nearer the
 /// middle than the bare hand.
 pub fn hand_view(held: Held) -> [f32; 3] {
     match held {
-        Held::Tool(_) | Held::Bow(_) => [0.24, -0.28, -0.54],
+        Held::Tool(_) | Held::Bow(_) => [0.26, -0.04, -0.52],
         _ => BARE_VIEW,
     }
 }

@@ -283,7 +283,7 @@ mod tests {
     #[test]
     fn a_tool_is_held_big_with_its_head_up_and_to_the_left() {
         let p = pose_of(Held::Tool(1));
-        assert!(p.scale > 1.4 && p.roll > 0.4);
+        assert!(p.scale > 1.4 && p.roll >= 0.0 && p.roll < 0.3, "a tool stands up, big, near the side of the view");
         // The head of a diagonal picture ends up above and left of the fist.
         let mut out = Vec::new();
         first_person_view(Held::Tool(1), &View::default(), &mut out);

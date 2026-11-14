@@ -1241,7 +1241,7 @@ impl App {
                     let mut items = Vec::new();
                     crate::client::hand::first_person_view(held, &view, &mut items);
                     let to_view = |p: [f32; 3]| crate::client::hand::arm_point_view(p, &view, held);
-                    r.draw_first_person(hand, self.skin_tex, cam.fov, 0.12, &to_view, &items);
+                    r.draw_first_person(hand, self.skin_tex, cam.fov, 0.24, &to_view, &items);
                 }
             }
         } else {

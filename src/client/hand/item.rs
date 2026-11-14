@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 
 /// How many pixels thick a picture made solid is, in the hand: more than the
 /// one a pixel is wide, so it reads as a thing with weight.
-pub(super) const TOOL_DEPTH: f32 = 1.8;
+pub(super) const TOOL_DEPTH: f32 = 0.7;
 pub(super) const CARD_DEPTH: f32 = 1.6;
 
 /// The held item, put in `out`. `first` is for the first-person view (where
