@@ -101,7 +101,11 @@ pub fn summary_tops(cx: i32, cz: i32, summary: &[u32], out: &mut Vec<Top>) {
 }
 
 /// Put a chunk's tops into its blocks: the top block in place and nothing
-/// above it. (Everything under the top stays as generated.)
+/// above it. (Everything under the top stays as generated, except that air
+/// right under a top is filled with the same block down to the first solid
+/// one: the summary does not know the walls under a roof or a tower's body,
+/// and a roof or a cap hanging in the air looks wrong from afar. A distant
+/// building is a solid box, as it is when the cell is only raised.)
 pub fn apply_tops(data: &mut ChunkData, cx: i32, cz: i32, tops: &[Top]) {
     for t in tops {
         if t.x >> 4 != cx || t.z >> 4 != cz || !(0..CH).contains(&t.y) {
@@ -111,6 +115,11 @@ pub fn apply_tops(data: &mut ChunkData, cx: i32, cz: i32, tops: &[Top]) {
         data.blocks[base + t.y as usize] = t.block;
         for y in (t.y + 1) as usize..CH as usize {
             data.blocks[base + y] = AIR;
+        }
+        let mut y = t.y;
+        while y > 0 && data.blocks[base + y as usize - 1] == AIR {
+            y -= 1;
+            data.blocks[base + y as usize] = t.block;
         }
     }
 }
@@ -385,5 +394,10 @@ mod tests {
         apply_tops(&mut fresh, 2, -3, &tops);
         assert_eq!(fresh.get(4, h + 10, 9), stone);
         assert_eq!(column_top(&fresh, 4, 9), column_top(&data, 4, 9));
+        // The air under a floating top is filled, so a roof or a tower's cap is not left hanging.
+        assert_eq!(fresh.get(4, h + 5, 9), stone);
+        assert_eq!(fresh.get(4, h + 1, 9), stone);
+        assert_ne!(fresh.get(4, h, 9), crate::block::AIR);
+        assert_eq!(fresh.get(4, h + 11, 9), crate::block::AIR);
     }
 }

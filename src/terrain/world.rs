@@ -251,6 +251,10 @@ impl World {
         if ok && changed && self.log_edits {
             self.edit_log.push((x, y, z, b));
             self.remember(x, y, z, b);
+        } else if ok && changed {
+            // Not a shared world: the distant tile is told all the same (when the chunk
+            // is drawn as real blocks, once it is dropped or no longer drawn).
+            self.far_note_edit(x, z);
         }
         ok
     }
@@ -479,6 +483,13 @@ impl World {
                         sink.free(m);
                     }
                 }
+            }
+            // Edited chunks that are kept but no longer drawn (the margin beyond the view
+            // distance): the distant tile that covers them shows the edit from now on.
+            let hidden: Vec<(i32, i32)> = self.far_unseen.iter().filter(|k| (k.0 - ccx) * (k.0 - ccx) + (k.1 - ccz) * (k.1 - ccz) > mesh_r2).copied().collect();
+            for key in hidden {
+                self.far_unseen.remove(&key);
+                self.far_mark(key.0, key.1);
             }
             // (Chunks of the server's land that were dropped are not asked for any more.)
             if let Some(r) = self.remote.as_mut() {

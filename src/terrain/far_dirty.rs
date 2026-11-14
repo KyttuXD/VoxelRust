@@ -178,6 +178,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::block::reg;
+    use crate::worldgen;
     use crate::jobs::Pool;
     use crate::mesh::MeshData;
     use crate::world::{GpuMesh, MeshSink, NullStore};
@@ -236,5 +237,27 @@ mod tests {
         assert!(w.far[&key].mesh.is_some());
         let c = w.far_colour_at(128 + 21, 64 + 21);
         assert_eq!(c, crate::block_colour::of_block(clay));
+    }
+
+    #[test]
+    fn an_edit_in_a_kept_chunk_that_is_no_longer_drawn_reaches_the_distant_tile() {
+        let seed = 11;
+        let mut w = World::new(seed);
+        let mut pool = Pool::new(0, seed);
+        let mut sink = Sink;
+        w.far_radius = 16;
+        settle(&mut w, &mut pool, &mut sink);
+        let stone = reg().wk.stone;
+        // A local edit (no edit log) in a drawn chunk waits until the chunk stops being drawn.
+        let (x, z) = (20, 5);
+        let y = worldgen::column(seed, x, z).height + 6;
+        assert!(w.set_block(x, y, z, stone));
+        assert!(w.far_unseen.contains(&(1, 0)));
+        // One step away the chunk is kept (3 chunks off, margin 2 + radius 1) but not drawn.
+        w.update(-2, 0, 1, &mut pool, &mut sink, &mut NullStore);
+        assert!(w.chunks.contains_key(&(1, 0)), "the chunk is expected to be kept");
+        assert!(!w.far_unseen.contains(&(1, 0)));
+        let t = &w.far[&(0, 0)];
+        assert!(t.dirty || t.busy, "the tile covering the edit is made again");
     }
 }
