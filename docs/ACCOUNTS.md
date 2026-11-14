@@ -139,7 +139,7 @@ key   = SHA-256 repeated 20000 times over (salt, PIN)     the verifier the serve
 proof = HMAC-SHA-256(key, nonce || lower-case name)
 ```
 
-1. The player's game says `Hello` as usual (protocol 14).
+1. The player's game says `Hello` as usual (protocol 14 or later).
 2. If the name has an account the server answers with an `AuthChallenge`: the
    account's salt, the number of rounds, and a fresh random 16-byte nonce. (If the
    name is locked out it says so instead.)

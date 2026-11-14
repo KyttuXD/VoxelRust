@@ -106,7 +106,7 @@ empty name becomes `Player`. If someone on the server already has it, a
 number is added (`Bob` becomes `Bob2`).
 
 The server refuses a player whose game speaks a different version of the
-network protocol (currently version 14; a server also lets in version 13 games, see below and [ACCOUNTS.md](ACCOUNTS.md)), and anyone beyond the player limit.
+network protocol (currently version 15; a server also lets in version 13 and 14 games, see below and [ACCOUNTS.md](ACCOUNTS.md)), and anyone beyond the player limit.
 Only the protocol version decides: the build name (`linux-server-x86_64` for
 the public server, `linux-x86_64`, `windows-x86_64`, `macos-...` for games) and
 the release number do not, so a game and a server of different builds or
@@ -374,6 +374,62 @@ players see your arm swing, 0.3 seconds, whenever the pose byte of your
 position messages has its swing flag: right arm back, then forward and up,
 the forearm following.
 
+## Land from the server
+
+The land of a world is normally made by every player's game from the seed, and only
+the changes players make cross the network. A world whose terrain comes from a mod's
+own compiled-in code (the Earth mod: `somewhere 46.8 -121.7 30 75`) cannot be made
+by a game that does not have that code, and native code mods are not downloaded.
+Such a game used to fall back to ordinary terrain, so players saw other ground than
+the server and than each other, and edits (blocks at coordinates) landed on the wrong
+land. Now the game asks the server for the land:
+
+- **Who.** A game whose world kind it cannot parse (no mod it has knows the word) and
+  that speaks protocol 15 or later. A game that has the mod keeps making the land
+  itself, and makes the same chunks as the server (so nothing is sent to it). The
+  join says `THIS WORLD'S LAND COMES FROM THE SERVER` in the chat.
+- **The server** (a dedicated `--server` whose world kind is one its own mod code
+  supplies; a server hosted from the menu does not send land) tells every client of
+  protocol 15 or later after the mod list, in `ChunkCaps`, whether it sends land and
+  how far (30 000 blocks from the origin). The land is made on a worker thread by
+  the same generator the world uses, with the server's edits put on top, compressed
+  and sent. The last 256 chunks (at most 24 MB) are kept compressed; a block change by
+  a player throws away the chunk it is in. A server that sends no land says so, and
+  the game of a player who lacks the mod falls back to ordinary terrain with
+  `THIS WORLD NEEDS THE <NAME> MOD ...` in the chat (the same line, `THIS WORLD
+  NEEDS THE <NAME> MOD`, appears when a singleplayer world of an unknown kind is
+  opened: it is played with ordinary terrain, as before).
+- **A chunk on the wire** is its blocks run-length encoded exactly as save files do
+  (`(count: u16, state: u16)` pairs, `terrain/save.rs`), with the server's state
+  numbers (the content is shared: the pack comes first), compressed with the deflate
+  of `util/image/deflate.rs` (a zlib stream), and cut into pieces of at most 40 000
+  bytes (eight at most; a chunk of land is usually one piece of a few kilobytes).
+  See `net/chunks/codec.rs`.
+- **Limits per player**: at most 16 requests unanswered, 200 chunks a second, only chunks
+  within 30 000 blocks of the origin, and only from a joined player of protocol 15 or later (a
+  request from anyone else drops the connection). Over the limit a request is ignored
+  (the game asks again after three seconds); a player who keeps asking for far too much is
+  cut. At most 128 chunks wait to be made. See `net/chunks/limiter.rs`, `net/chunks/gen.rs`.
+- **On the client** the world asks the server where it would generate a chunk
+  (`terrain/world_remote.rs`): nearest the player first, at most 16 in flight and 120 a
+  second, anything unanswered after three seconds again, never blocking the frame (the
+  chunk shows when it arrives; the world waits for it as it waits for a generated one).
+  The pieces are put together and the chunk gets the changes others made, as a
+  generated one does. The last 512 chunks (at most 8 MB, compressed) are kept for the
+  session, so walking back over ground costs no network; the chunks in view live in the
+  world as always, so the memory is what it was. Nothing is asked for before the server's
+  pack is in use, and if the server says nothing for 20 seconds the game gives up and
+  makes its own land. The state machine is `net/chunks/client_state.rs`.
+- **A new player's place.** A player with no saved place starts where ordinary terrain would
+  put them; when the chunk under them arrives they are set on the ground of the real land.
+- **No distant terrain.** The far tiles are made from the terrain function, which this game
+  does not have, so a world whose land comes from the server shows only the chunks that have
+  arrived (the view distance), and no far range. (A coarse summary of the far land would need
+  a further message; it is not part of this protocol.) The same goes for anything else that
+  asks the terrain function directly (a map of the whole land, the biome in the HUD and the
+sounds that go with it, finding a spawn, where creatures are placed) still answers from ordinary
+terrain in such a world.
+
 ## Server-hosted packs
 
 A server started with packs (`pack.txt` in its data folder, anything in its
@@ -443,7 +499,7 @@ the code of such a mod.
 (`content::mod_runtime`, see [MODDING.md](MODDING.md#scripts-that-mods-bring));
 without an engine they are kept and not run.
 
-(Version 9 added poses and emotes.) The protocol: version 14 adds big (HD) skins in pieces: `SkinCaps` (server to client, after `Info`: the largest side, 4096, and the most bytes, 1 MiB, that the server takes; a client that never gets it sends 64 x 64 skins only), `SkinBegin` (a skin of `size` bytes of PNG and `side` pixels follows) and `SkinPart` (up to 40 000 bytes, `last` ends it); see `net/skinxfer.rs` and `net/skinslot.rs`. A server of version 14 still lets in clients of version 13 and never sends them a message they do not know: it keeps the skin as sent and a 64 x 64 version made from it, and sends version 13 clients the latter as a plain `Skin` (at most 24 000 bytes, as before). Version 14 also adds accounts (see [ACCOUNTS.md](ACCOUNTS.md)): after `Hello` a server may send `AuthChallenge` (kind 44: what it is for, flags, how many rounds the PIN is hashed, tries left, the account's salt, a salt for a new key, a fresh 16-byte nonce) and wait up to 15 seconds for `AuthLogin` (40: the HMAC-SHA-256 proof) or, for a new account, `AuthRegister` (41: the key); a player already in the game asks with `AuthAsk` (43) and answers a `/pin` challenge with `AuthChange` (42); the server's `AuthResult` (45) says how it went and `Account` (46: its mode and whether you are logged in) follows `Welcome`. A server lets a version 13 client in as a guest (a name without an account) and sends it none of these. Version 13 lets the creature snapshot carry, after a creature's ten fields, its own size, health limit, tilt, bone overrides and a state text of up to 64 bytes (see `game/creature_wire.rs`; a creature with none of these has the old line, and in between full sets a creature whose extras did not change says `|=`), and adds the mods' message channel: `State` on channel 5, key `mod\x1fchannel`, data a receiver number (two bytes, `0xFFFF` for everyone else) and up to 512 bytes of text; the server drops messages with a bad key or text and from a player who sends more than 8 a second (never kept, never relayed to the sender), and passes a message for one player to that player only (`net/modmsg.rs`). Version 12 adds `Info` (server to client, right after `Welcome`: build name, release number and commit, for showing only) and fixes `State` keys, which lost the separator of the script channel's `mod\x1fkey`; the biggest `State` is now 59 000 bytes (it was over the message limit). Version 11 adds `Effects`: the status effects on a player (id, level and whole seconds left for each, 16 at most), sent by that player's game whenever the set changes, relayed with their id, and told to players who join later. It is for show (the name tag) and for mods; each game keeps its own effects. Version 10 adds `ModList` (server to client, after the pack),
+(Version 9 added poses and emotes.) The protocol: version 15 adds land from the server (see [Land from the server](#land-from-the-server)): `ChunkRequest` (kind 47, client to server: `cx`, `cz`, two `i32`), `ChunkData` (48, server to client: `cx`, `cz`, the piece's number and how many pieces there are, one byte each, up to 40 000 bytes of compressed blocks) and `ChunkCaps` (49, server to client, after the mod list: flags, 1 = this server sends land, and how far from the origin in blocks it does). A client of version 13 or 14 is never sent any of these and is dropped if it sends one. Version 14 adds big (HD) skins in pieces: `SkinCaps` (server to client, after `Info`: the largest side, 4096, and the most bytes, 1 MiB, that the server takes; a client that never gets it sends 64 x 64 skins only), `SkinBegin` (a skin of `size` bytes of PNG and `side` pixels follows) and `SkinPart` (up to 40 000 bytes, `last` ends it); see `net/skinxfer.rs` and `net/skinslot.rs`. A server of version 14 still lets in clients of version 13 and never sends them a message they do not know: it keeps the skin as sent and a 64 x 64 version made from it, and sends version 13 clients the latter as a plain `Skin` (at most 24 000 bytes, as before). Version 14 also adds accounts (see [ACCOUNTS.md](ACCOUNTS.md)): after `Hello` a server may send `AuthChallenge` (kind 44: what it is for, flags, how many rounds the PIN is hashed, tries left, the account's salt, a salt for a new key, a fresh 16-byte nonce) and wait up to 15 seconds for `AuthLogin` (40: the HMAC-SHA-256 proof) or, for a new account, `AuthRegister` (41: the key); a player already in the game asks with `AuthAsk` (43) and answers a `/pin` challenge with `AuthChange` (42); the server's `AuthResult` (45) says how it went and `Account` (46: its mode and whether you are logged in) follows `Welcome`. A server lets a version 13 client in as a guest (a name without an account) and sends it none of these. Version 13 lets the creature snapshot carry, after a creature's ten fields, its own size, health limit, tilt, bone overrides and a state text of up to 64 bytes (see `game/creature_wire.rs`; a creature with none of these has the old line, and in between full sets a creature whose extras did not change says `|=`), and adds the mods' message channel: `State` on channel 5, key `mod\x1fchannel`, data a receiver number (two bytes, `0xFFFF` for everyone else) and up to 512 bytes of text; the server drops messages with a bad key or text and from a player who sends more than 8 a second (never kept, never relayed to the sender), and passes a message for one player to that player only (`net/modmsg.rs`). Version 12 adds `Info` (server to client, right after `Welcome`: build name, release number and commit, for showing only) and fixes `State` keys, which lost the separator of the script channel's `mod\x1fkey`; the biggest `State` is now 59 000 bytes (it was over the message limit). Version 11 adds `Effects`: the status effects on a player (id, level and whole seconds left for each, 16 at most), sent by that player's game whenever the set changes, relayed with their id, and told to players who join later. It is for show (the name tag) and for mods; each game keeps its own effects. Version 10 adds `ModList` (server to client, after the pack),
 `ModsWant` (client to server) and `ModPart` (server to client, one mod's
 bundle in pieces of up to 40,000 bytes). A mod's bundle is the
 `save::bundle` format with the paths inside the mod as names.
@@ -564,6 +620,8 @@ skin 30 a second. Voice has its own limit. Also:
 - the server keeps at most 600 000 changed blocks and 8 MB of kept state (chests);
   a chest's contents are only taken from players who may build, and the
   creature snapshots only from the player who runs the creatures;
+- land from the server: 16 requests unanswered, 200 chunks a second, 30 000 blocks from the origin, 128
+  chunks waiting to be made, 256 chunks (24 MB) kept (see [Land from the server](#land-from-the-server));
 - player numbers are never reused while in use, and names that differ only in
   capital letters count as the same name; a ban is checked against the name as
   the server knows it;

@@ -1,6 +1,7 @@
 //! Multiplayer: the protocol, the server and the client side.
 
 pub mod accounts;
+pub mod chunks;
 pub mod proto;
 pub mod server;
 pub mod netplay;
