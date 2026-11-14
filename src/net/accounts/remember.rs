@@ -75,9 +75,7 @@ pub fn lookup(base: &str, address: &str, name: &str) -> Option<String> {
 /// Remember a PIN.
 pub fn save(base: &str, address: &str, name: &str, pin: &str) {
     let text = with_entry(&read(base), address, name, pin);
-    if crate::sys::write_file_atomic(&path(base), text.as_bytes()) {
-        crate::sys::clock::make_private(&path(base));
-    }
+    crate::sys::write_file_private(&path(base), text.as_bytes());
 }
 
 /// Forget a PIN.
@@ -86,7 +84,7 @@ pub fn forget(base: &str, address: &str, name: &str) {
     if find(&text, address, name).is_some() {
         let kept = without(&text, address, name);
         let out = if kept.is_empty() { String::new() } else { alloc::format!("{}{}", HEADER, kept.lines().filter(|l| !l.starts_with('#')).map(|l| alloc::format!("{}\n", l)).collect::<String>()) };
-        crate::sys::write_file_atomic(&path(base), out.as_bytes());
+        crate::sys::write_file_private(&path(base), out.as_bytes());
     }
 }
 

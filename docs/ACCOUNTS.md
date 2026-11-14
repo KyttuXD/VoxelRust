@@ -90,11 +90,20 @@ normally and is asked for the PIN. A logged-in administrator has every permissio
 (`/ban`, `/kick`, `/op`, `/perm`...) and, alone, `/accounts` (the accounts, with who
 is locked out; never any verifier) and `/resetpin NAME [PIN]` (a new PIN; without
 one, six random digits that the answer shows to the administrator, who tells the
-player privately; the player then uses `/pin`). Operators that exist today keep
+player privately; the player then uses `/pin`). `/resetpin` never works on an
+administrator's account (not another administrator's, not one's own): a hijacked session
+would otherwise keep the account for good. An administrator changes their PIN with
+`/pin OLD NEW` (which needs the old one), the server's owner with `--set-pin`. Operators that exist today keep
 working. When `admins` names someone, the first player to join no longer becomes
 an operator automatically. The `--set-pin` PIN is checked like any other (and
 `allow_weak_pins` applies); it is given on the command line, so it is in the
 shell's history: change it with `/pin` afterwards.
+
+**Files and lockouts.** The accounts file and the remembered PINs are written to a copy that is made
+private before any data goes in it, then moved over the old file, so other users of the machine never
+get to read them, not even for a moment. A lockout of an account is written to the file at once
+(other changes within ten seconds), so it holds across a restart; the wrong tries of an
+*address* are kept in memory only (a restart forgets them, the accounts' own lockouts stay).
 
 **Where it is kept.** `<world>.server-accounts.txt` in the world folder, next to
 `<world>.server-ops.txt`, readable by its owner only (on systems that have file

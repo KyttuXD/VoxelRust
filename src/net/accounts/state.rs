@@ -148,6 +148,11 @@ impl AccountState {
         let by_name = self.accounts.get_mut(name).map(|a| a.strikes.fail(now));
         self.accounts.dirty |= by_name.is_some();
         let by_addr = ip.and_then(|ip| self.addr_mut(ip, now)).map(|r| r.strikes.fail(now));
+        // A lockout on an account is written to the file at once (not within ten seconds), so a
+        // server that stops right after still holds it when it starts again.
+        if matches!(by_name, Some(Fail::Locked(_))) {
+            self.write_wait = 0.0;
+        }
         match (by_name, by_addr) {
             (Some(Fail::Locked(a)), Some(Fail::Locked(b))) => Fail::Locked(a.max(b)),
             (Some(Fail::Locked(a)), _) | (_, Some(Fail::Locked(a))) => Fail::Locked(a),
@@ -203,6 +208,32 @@ mod tests {
         assert_eq!(s.locked_until("whoever", ip, now + 1), Some(now + 60));
         assert_eq!(s.locked_until("whoever", Some([10, 0, 0, 8]), now + 1), None);
         assert_eq!(s.locked_until("whoever", ip, now + 61), None);
+    }
+
+    #[test]
+    fn a_lockout_of_an_account_asks_for_the_file_to_be_written_now() {
+        let mut s = AccountState::default();
+        s.accounts.put(crate::net::accounts::store::Account {
+            name: alloc::string::String::from("ann"),
+            kind: alloc::string::String::from("pin"),
+            salt: [1; 16],
+            key: [2; 32],
+            rounds: 1000,
+            created: 1,
+            strikes: Strikes::default(),
+        });
+        s.write_wait = 10.0;
+        for k in 0..4 {
+            s.charge_failure("ann", Some([9, 9, 9, k as u8]), 100);
+            assert_eq!(s.write_wait, 10.0, "tries that do not lock wait for the timer");
+        }
+        // The fifth, from yet another address, locks the account.
+        assert!(matches!(s.charge_failure("ann", Some([9, 9, 9, 99]), 100), Fail::Locked(_)));
+        assert_eq!(s.write_wait, 0.0);
+        // The record is in the file text and survives a restart.
+        let mut again = crate::net::accounts::store::Accounts::default();
+        again.load_text(&s.accounts.to_text());
+        assert!(again.get("ann").unwrap().strikes.locked(101).is_some());
     }
 
     #[test]

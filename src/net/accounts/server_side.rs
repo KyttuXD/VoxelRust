@@ -491,6 +491,12 @@ impl Server {
                 if self.acct.accounts.get(&name).is_none() {
                     return alloc::format!("{} has no account", name);
                 }
+                // An administrator's PIN is not reset from the game, not even by another administrator
+                // (nor by themselves): whoever got hold of one session would keep the account for good. Its
+                // owner changes it with /pin OLD NEW, and the machine's owner with --set-pin.
+                if self.acct.cfg.is_admin_name(&name) {
+                    return String::from("an administrator's PIN cannot be reset from the game: its owner uses /pin OLD NEW, or the server's owner runs --set-pin");
+                }
                 let new_pin = if arg(2).is_empty() { self.random_pin() } else { String::from(arg(2)) };
                 if let Err(e) = pin::check(&new_pin, self.acct.cfg.allow_weak_pins) {
                     return e;

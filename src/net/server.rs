@@ -51,6 +51,8 @@ struct Conn {
     last_move: Option<([f64; 3], f32, f32, u16, u8)>,
     /// This player's skin as the server keeps it (see `net::skinslot`).
     skin: crate::net::skinslot::SkinSlot,
+    /// Skins of other players waiting to be sent to this one, a few pieces a tick.
+    skin_out: crate::net::skinqueue::SkinQueue,
     /// The protocol version their game said it speaks.
     proto: u16,
     /// What this player's voice chat is set to (`VOICE_` flags); 0 until they say.
@@ -464,14 +466,17 @@ impl Server {
     /// original to clients that take it and the 64 x 64 one to the others.
     fn relay_skin(&mut self, from: usize) {
         let id = self.conns[from].id;
-        let new = self.conns[from].skin.wire_for(id, crate::net::skinslot::HD_PROTOCOL);
-        let old = self.conns[from].skin.wire_for(id, 0);
+        let new: crate::net::skinqueue::Batch = alloc::sync::Arc::new(self.conns[from].skin.messages_for(id, crate::net::skinslot::HD_PROTOCOL));
+        let old: crate::net::skinqueue::Batch = alloc::sync::Arc::new(self.conns[from].skin.messages_for(id, 0));
+        // The pieces are not sent here: they wait in each connection's queue and
+        // go a few to a tick (a big skin must not hold up the server).
         for (k, c) in self.conns.iter_mut().enumerate() {
             if k == from || !c.joined || c.gone {
                 continue;
             }
-            let bytes = if c.proto >= crate::net::skinslot::HD_PROTOCOL { &new } else { &old };
-            if !bytes.is_empty() && c.stream.send_all(bytes, SEND_TIMEOUT).is_err() {
+            let batch = if c.proto >= crate::net::skinslot::HD_PROTOCOL { &new } else { &old };
+            if !c.skin_out.push(batch.clone()) {
+                // Far behind with skins already: let it go rather than grow without end.
                 c.gone = true;
             }
         }
@@ -554,7 +559,7 @@ impl Server {
                         continue;
                     }
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default() });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: crate::net::skinslot::SkinSlot::deferred(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default() });
                 }
                 _ => break,
             }
@@ -796,6 +801,32 @@ impl Server {
                 }
             }
         }
+        // Big skins that came in are unpacked by the worker, not here; the ones it has
+        // finished are passed on.
+        for c in self.conns.iter_mut().filter(|c| !c.gone) {
+            if let Some(pending) = c.skin.take_job() {
+                let _ = crate::net::skinwork::submit(crate::net::skinwork::Job { id: c.id, pending });
+            }
+        }
+        for d in crate::net::skinwork::take_done() {
+            if let Some(k) = self.conns.iter().position(|c| c.id == d.id && c.joined && !c.gone) {
+                if self.conns[k].skin.finish(d.pending, d.legacy) {
+                    self.relay_skin(k);
+                }
+            }
+        }
+        // A few pieces of skins for whoever is waiting for them.
+        for c in self.conns.iter_mut().filter(|c| !c.gone && !c.skin_out.is_empty()) {
+            let mut batch = Vec::new();
+            c.skin_out.take(crate::net::skinqueue::PER_TICK, &mut batch);
+            for bytes in batch {
+                if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+                    c.gone = true;
+                    c.skin_out.clear();
+                    break;
+                }
+            }
+        }
         // A few pieces of mods for whoever is downloading them.
         for c in self.conns.iter_mut().filter(|c| !c.gone) {
             for _ in 0..12 {
@@ -1004,7 +1035,7 @@ mod tests {
         // One still in use after the counter went round is not given out again.
         let mut s = Server::bind(plain_config()).unwrap();
         let stream = crate::sys::net::TcpStream::connect("127.0.0.1", s.port(), 2000).unwrap();
-        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default() });
+        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default() });
         s.next_id = 6;
         assert_eq!((s.fresh_id(), s.fresh_id()), (6, 8));
     }

@@ -339,6 +339,91 @@ mod tests {
     }
 
     #[test]
+    fn a_one_block_tunnel_in_a_thick_wall_is_followed_but_not_a_shifted_one() {
+        let thick = |shift: i32| {
+            let mut w = World::new(CONN_ALL);
+            for sy in 0..SECTIONS as i32 {
+                for dz in -R..=R {
+                    w.set(1, sy, dz, 0);
+                    w.set(2, sy, dz, 0);
+                }
+            }
+            w.set(1, CAM_Y, 0, pair_bit(FACE_NX, FACE_PX));
+            w.set(2, CAM_Y, shift, pair_bit(FACE_NX, FACE_PX));
+            w.run()
+        };
+        assert!(thick(0).contains(&(3, CAM_Y, 0)));
+        // A second part shifted sideways is not entered from the first.
+        let seen = thick(1);
+        assert!(!seen.contains(&(3, CAM_Y, 0)));
+        assert!(!seen.contains(&(3, CAM_Y, 1)));
+    }
+
+    #[test]
+    fn a_section_joining_the_wrong_faces_does_not_pass_sight_on() {
+        // Sight enters a section through -x; it only joins -z to +z, so nothing leaves by +x.
+        let mut w = World::new(0);
+        w.set(0, CAM_Y, 0, CONN_ALL);
+        w.set(1, CAM_Y, 0, pair_bit(FACE_NZ, FACE_PZ));
+        w.set(2, CAM_Y, 0, CONN_ALL);
+        let seen = w.run();
+        assert!(seen.contains(&(1, CAM_Y, 0)));
+        assert!(!seen.contains(&(2, CAM_Y, 0)));
+    }
+
+    #[test]
+    fn a_camera_above_or_below_the_world_starts_in_the_end_sections() {
+        let w = World::new(CONN_ALL);
+        let g = w.grid();
+        for cam in [-7, 0, 15, 40] {
+            let mut scratch = Scratch::default();
+            let mut out = Vec::new();
+            traverse(&g, cam, 1000, &mut |_, _, _| true, &mut scratch, &mut out);
+            let expect = ((2 * R + 1) * (2 * R + 1)) as usize * SECTIONS;
+            assert_eq!(out.len(), expect, "camera section {}", cam);
+        }
+    }
+
+    #[test]
+    fn the_walk_goes_down_a_shaft_into_a_cave() {
+        use crate::sections::{FACE_NY, FACE_PY};
+        // Open sky from section 8 up, rock below with a shaft at dx = 2 and a cave at its foot.
+        let mut w = World::new(0);
+        for sy in 8..SECTIONS as i32 {
+            for dx in -R..=R {
+                for dz in -R..=R {
+                    w.set(dx, sy, dz, CONN_ALL);
+                }
+            }
+        }
+        for sy in 0..8 {
+            w.set(2, sy, 0, pair_bit(FACE_PY, FACE_NY));
+        }
+        w.set(2, 3, 0, CONN_ALL);
+        w.set(3, 3, 0, CONN_ALL);
+        let seen = w.run();
+        assert!(seen.contains(&(2, 0, 0)));
+        assert!(seen.contains(&(3, 3, 0)));
+        assert!(!seen.contains(&(-2, 3, 0)));
+    }
+
+    #[test]
+    fn nothing_is_reported_twice_and_everything_is_inside_the_grid() {
+        let mut w = World::new(CONN_ALL);
+        w.set(1, CAM_Y, 0, pair_bit(FACE_NX, FACE_PX));
+        w.set(0, CAM_Y + 1, 1, 0x1234);
+        let g = w.grid();
+        let mut scratch = Scratch::default();
+        let mut out = Vec::new();
+        traverse(&g, CAM_Y, 1000, &mut |dx, _, dz| dx.abs() < 3 && dz.abs() < 4, &mut scratch, &mut out);
+        let mut sorted = out.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), out.len());
+        assert!(out.iter().all(|&i| (i as usize) < g.len()));
+    }
+
+    #[test]
     fn work_is_proportional_to_what_is_visible() {
         // A world that is all rock but the camera's own section visits few sections.
         let w = World::new(0);

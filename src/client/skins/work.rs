@@ -24,11 +24,16 @@ pub enum Job {
     Own { gen: u32, side: usize, rgba: Vec<u8> },
     /// Unpack another player's skin, shrunk to `target` pixels at most.
     Remote { id: u16, gen: u32, full: usize, png: Vec<u8>, target: usize },
+    /// Unpack the player's own custom skin file (`skin.png`), so that a big one does
+    /// not stop the first frame: the PNG's bytes, and the side its header gives.
+    Load { gen: u32, side: usize, png: Vec<u8> },
 }
 
 pub enum Done {
     Own(OwnSkin),
     Remote { id: u16, gen: u32, result: Option<(usize, Vec<u8>)> },
+    /// The custom skin file, unpacked as (side, square RGBA pixels), or `None` if it is no skin.
+    Loaded { gen: u32, result: Option<(usize, Vec<u8>)> },
 }
 
 /// The player's own skin, packed.
@@ -47,6 +52,7 @@ impl Job {
         match self {
             Job::Own { side, .. } => *side,
             Job::Remote { full, .. } => *full,
+            Job::Load { side, .. } => *side,
         }
     }
 }
@@ -85,6 +91,10 @@ pub fn run(job: Job) -> Done {
         Job::Own { gen, side, rgba } => {
             let (hd, side, small) = pack_own(side, &rgba, MAX_SKIN);
             Done::Own(OwnSkin { gen, hd, side, small })
+        }
+        Job::Load { gen, png, .. } => {
+            let result = crate::png::decode(&png).and_then(|img| crate::client::skinfile::from_image(&img).ok().map(|px| (img.w, px)));
+            Done::Loaded { gen, result }
         }
         Job::Remote { id, gen, png, target, .. } => {
             let result = side_of_png(&png).and_then(|_| crate::png::decode(&png)).filter(|img| img.w == img.h && crate::skin_grid::valid_side(img.w)).map(|img| {

@@ -11,3 +11,5 @@ pub mod modmsg;
 pub mod version;
 pub mod skinxfer;
 pub mod skinslot;
+pub mod skinqueue;
+pub mod skinwork;

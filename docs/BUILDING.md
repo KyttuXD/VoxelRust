@@ -558,6 +558,12 @@ Hidden things are not drawn. In the order a frame meets them:
   such a far end may be missing from view until you come nearer.
   **F3 + O** (or `--show nocull`) turns the occlusion walk off, to compare frame times
   and look for missing sections; the frustum tests stay.
+  The walk costs about half a millisecond at view distance 32 and hides nothing on flat
+  country, so it is **adaptive** (`client/cull_adapt.rs`): when it hid under 2 percent of the
+  sections that were in view over its last 60 runs it is skipped, and it runs once every 30
+  frames to see whether that is still right (one frame that hides 2 percent or more turns it
+  back on). Skipping it changes nothing but what is drawn extra, never what is missing. The
+  F3 counts of "hidden by caves" only count sections that the view would have shown.
 - **Order.** Opaque geometry is drawn nearest first (early depth rejection), the water
   and glass pass walks the same list backwards (the lists are kept between frames, so a
   frame allocates nothing once they have grown). Sorting some hundred chunks by an

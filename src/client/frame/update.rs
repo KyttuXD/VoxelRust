@@ -92,6 +92,10 @@ impl App {
                 g.world.update(cx, cz, distance, &mut g.pool, r, &mut g.store);
             }
         }
+        // A big custom skin that was unpacked on a worker (see screens/skin.rs).
+        if self.skins.custom_loading() || self.settings.skin == "custom" {
+            self.take_loaded_skin(r);
+        }
         // A new name may mean another of the built-in skins.
         if self.settings.skin != "custom" && self.skin_for != self.settings.player_name {
             self.load_skin(r);

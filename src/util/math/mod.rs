@@ -84,6 +84,10 @@ pub fn sinf(x: f32) -> f32 {
     // Reduce to [-pi, pi], fold to [-pi/2, pi/2], then a degree-9 polynomial.
     let k = floorf(x * (1.0 / TAU) + 0.5);
     let mut r = x - k * TAU;
+    // (A number that is not one, or so big that the reduction is noise, has no sine worth drawing.)
+    if !(r >= -PI && r <= PI) {
+        return 0.0;
+    }
     if r > PI * 0.5 {
         r = PI - r;
     } else if r < -PI * 0.5 {
@@ -305,6 +309,17 @@ mod tests {
             assert!((cosf(x) - x.cos()).abs() < 2e-5, "cos({x})");
             x += 0.013;
         }
+    }
+
+    #[test]
+    fn sine_of_nonsense_stays_in_range() {
+        for x in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 1.0e9, -1.0e9, 3.0e38, 1.0e12, 123_456_789.0] {
+            let (s, c) = (sinf(x), cosf(x));
+            assert!(s.is_finite() && s.abs() <= 1.01 && c.is_finite() && c.abs() <= 1.01, "{x}: {s} {c}");
+        }
+        // Where the reduction is exact the values are as before, up to the edge of the range.
+        assert!((sinf(3.1415927) - 0.0).abs() < 1e-3);
+        assert!((sinf(-3.1415927)).abs() < 1e-3);
     }
 
     #[test]

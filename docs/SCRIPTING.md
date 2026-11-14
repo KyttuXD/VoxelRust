@@ -965,7 +965,7 @@ the screen, then moved `dx` right and `dy` down (so `hud_text("bottom-right",
 in the mod's folder, relative to it (`"images/scare.png"`; letters, digits, `_`, `-`,
 `.` and `/` only, no `..`). It is read the first time a call names it and kept: a mod
 may name **16 pictures**, each at most **1024 x 1024** pixels and **4 MB** decoded
-(a name that fails also uses a place), all mods together 64. The picture goes to the
+(a name that fails also uses a place), all mods together 64 and at most **48 MB** decoded. The picture goes to the
 graphics card when first drawn and its pixels are dropped from memory; when the mod is
 switched off its pictures are freed. A picture the mod's pack names with a `picture`
 line is found by its file's name too, which is how a mod from a server shows its own.
