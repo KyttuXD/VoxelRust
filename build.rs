@@ -169,7 +169,7 @@ fn main() {
         if let Some(b) = branch.filter(|b| !b.is_empty()) {
             watch(git_path(&b));
         }
-        let commit = std::process::Command::new("git").args(["rev-parse", "--short=12", "HEAD"]).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+        let commit = std::process::Command::new("git").args(["rev-parse", "--short=7", "HEAD"]).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
         if let Some(c) = commit.filter(|c| !c.is_empty()) {
             println!("cargo:rustc-env=VOXELRUST_COMMIT={c}");
         }

@@ -47,7 +47,7 @@ check_plain SITE_ROOT
 case "$SITE_KEEP" in ''|*[!0-9]*) die "SITE_KEEP must be a number" ;; esac
 [ "$SITE_KEEP" -ge 2 ] || SITE_KEEP=2
 
-commit="${VOXELRUST_COMMIT:-$(git rev-parse --short=12 HEAD)}"
+commit="${VOXELRUST_COMMIT:-$(git rev-parse --short=7 HEAD)}"
 seq="${VOXELRUST_SEQ:-$(git rev-list --count HEAD)}"
 name="$seq-$commit"
 stage="$ROOT/dist/web-site/$name"

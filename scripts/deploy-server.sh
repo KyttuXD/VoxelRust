@@ -54,7 +54,7 @@ done
 load_conf
 set_defaults
 out="$ROOT/dist/nightly"
-commit="$(git rev-parse --short=12 HEAD)"
+commit="$(git rev-parse --short=7 HEAD)"
 
 command -v gh >/dev/null 2>&1 || [ "$DRY" = 1 ] || die "the gh CLI is needed (https://cli.github.com/) and must be logged in: gh auth login"
 if [ "$MIRROR" = 1 ] && [ -n "${MIRROR_HOST:-}" ]; then need_setting MIRROR_DIR; check_plain MIRROR_HOST; check_plain MIRROR_DIR; fi

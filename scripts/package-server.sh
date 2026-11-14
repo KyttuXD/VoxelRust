@@ -18,7 +18,7 @@ cd "$(dirname "$0")/.."
 TARGET="${CARGO_TARGET_DIR:-target}"
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
-COMMIT="${VOXELRUST_COMMIT:-$(git rev-parse --short=12 HEAD)}"
+COMMIT="${VOXELRUST_COMMIT:-$(git rev-parse --short=7 HEAD)}"
 export VOXELRUST_COMMIT="$COMMIT"
 
 sdl="${SDL2_LIB:-$(ldconfig -p | awk '/libSDL2-2\.0\.so\.0 / {print $NF; exit}')}"

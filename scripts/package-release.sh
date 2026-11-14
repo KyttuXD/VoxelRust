@@ -43,7 +43,7 @@ if [ "$have_pub" != "$game_pub" ]; then
 fi
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
-COMMIT="${VOXELRUST_COMMIT:-$(git rev-parse --short=12 HEAD)}"
+COMMIT="${VOXELRUST_COMMIT:-$(git rev-parse --short=7 HEAD)}"
 export VOXELRUST_COMMIT="$COMMIT"
 # The release number: how many commits the release branch has. It only ever
 # goes up, so that programs can tell a newer release from an older one.
