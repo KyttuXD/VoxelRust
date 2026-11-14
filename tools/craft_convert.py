@@ -4,6 +4,9 @@
     craft  <item> <count> <ingredient> <count> [<ingredient> <count> ...]
     shaped <item> <count> <row> [<row> ...] with <letter> <ingredient> [<letter> <ingredient> ...]
 
+(A shaped recipe may be up to 7 x 7 cells; one bigger than 3 x 3 needs a
+crafting bench, one bigger than 5 x 5 a workshop.)
+
 A line is turned into a `shaped` one where its shape is well known (tools,
 stairs, slabs, doors, beds, chests, furnaces ...); every other `craft` line is
 left as it is, which the game reads as a shapeless recipe. `bake` and `smelt`
@@ -305,11 +308,24 @@ def assign(ingredients, flat):
     return all(augment(e, [False] * len(flat)) for e in range(len(ingredients)))
 
 
-def canonical(recipe, last=False):
-    """The 3 x 3 grid a recipe is made from, laid out at its top left, with
-    the first (or last) item of each group."""
+def grid_side(recipe):
+    """The side of the smallest grid a recipe fits in: 2, 3, 5 or 7 (the
+    inventory, a table, a bench, a workshop), but never less than 3 here."""
     _, _, kind, data, _ = recipe
-    cells = [[None] * 3 for _ in range(3)]
+    if kind == "shaped":
+        big = max(len(data), len(data[0])) if data else 1
+    else:
+        big = 3 if len(data) > 4 else 2
+    return next((n for n in (3, 5, 7) if big <= n), 7)
+
+
+def canonical(recipe, last=False):
+    """The grid (3 x 3, or 5 x 5 or 7 x 7 for a recipe that big) a recipe is
+    made from, laid out at its top left, with the first (or last) item of
+    each group."""
+    _, _, kind, data, _ = recipe
+    side = grid_side(recipe)
+    cells = [[None] * side for _ in range(side)]
 
     def put(ing):
         return (ing[2][-1 if last else 0], ing[1])
@@ -321,7 +337,7 @@ def canonical(recipe, last=False):
                     cells[y][x] = put(c)
     else:
         for i, c in enumerate(data):
-            cells[i // 3][i % 3] = put(c)
+            cells[i // side][i % side] = put(c)
     return cells
 
 
@@ -332,7 +348,7 @@ def find_conflicts(texts):
     for a in recipes:
         for grid in (canonical(a), canonical(a, last=True)):
             for b in recipes:
-                if b is not a and b[4] != a[4] and (b[0], b[1]) != (a[0], a[1]) and matches(b, 3, grid):
+                if b is not a and b[4] != a[4] and (b[0], b[1]) != (a[0], a[1]) and matches(b, len(grid), grid):
                     bad.append((a[4], b[4]))
     # Several recipes for the same thing from the same grid are fine; two
     # things from one grid are not.

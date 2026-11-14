@@ -59,7 +59,7 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | (chat) /passenger | ride along in a nearby vehicle with a free seat (buses, ferries, jeeps...) |
 | (chat) /lock, /unlock | lock the vehicle you are in or looking at to you, or release it |
 | Left click | break a block, hit a creature, pick up a vehicle |
-| Right click | place a block; use a crafting table, chest, oven, furnace or bed; open or shut a door; sit on a chair; till soil with a hoe; eat (hold); draw a bow (hold) and shoot it (let go); get into a vehicle; collect from, trade with, tame or ride a creature; hatch a spawn egg |
+| Right click | place a block; use a crafting table, bench, workshop, chest, oven, furnace or bed; open or shut a door; sit on a chair; till soil with a hoe; eat (hold); draw a bow (hold) and shoot it (let go); get into a vehicle; collect from, trade with, tame or ride a creature; hatch a spawn egg |
 | Middle click | pick the block you are looking at |
 | 1-9, mouse wheel | choose a hotbar slot |
 | E * | inventory |
@@ -260,8 +260,22 @@ close the screen goes back into the inventory.
   list to every recipe, and the ones you lack the items for are dim: clicking
   one lays out what you have and shows what is missing as faint ghost items.
   Pointing at a recipe shows what it needs.
-- In creative the inventory screen keeps its item list; the crafting table
-  still has the grid.
+- **At a crafting bench** there is a 5 x 5 grid, and **at a workshop** a
+  7 x 7 one (the slots are smaller to fit the screen). They are for the big
+  recipes: a Big Chest (a ring of planks round a chest), a Four-poster Bed
+  Frame, a Golem Statue (a figure of stone), Heavy TNT, a long Banquet Table.
+  A bench makes everything a table does, and a workshop everything a bench
+  does, so you can keep to the biggest one you have. The recipe book at a
+  bench lists the recipes that fit its grid; its title says which block you
+  have open (CRAFTING TABLE, CRAFTING BENCH or WORKSHOP).
+- **Getting a bench.** A **Crafting Bench** is made at a crafting table from
+  a crafting table with 5 iron ingots round it (a row of 3 above, one at
+  each side) and a row of 3 planks under it (3 x 3, so a table is enough).
+  A **Workshop** is made at a crafting bench: a crafting bench in the middle,
+  ringed by 8 planks, ringed by 16 iron ingots (5 x 5). Both are in the
+  Shapes tab in creative.
+- In creative the inventory screen keeps its item list; the crafting table,
+  bench and workshop still have the grid.
 - **At an oven** (right click it) the baking recipes are offered as a list to
   click; see [The oven and baking](#the-oven-and-baking).
 - **At a furnace** the smelting recipes are offered as a list to click; see
@@ -486,7 +500,7 @@ lava or a campfire beside it, and by any explosion. A lit block flashes white
 for four seconds, then explodes: it clears a ball of blocks about ten blocks
 across (water, lava and unbreakable blocks stay), drops some of them in
 survival, sets off TNT near it a moment later, and hurts and throws whoever
-is close, you included. TNT is in the creative list's Tools tab. Lit TNT is
+is close, you included. TNT is in the creative list's Tools tab. **Heavy TNT** (8 TNT and 5 gunpowder laid out in a diamond, at a crafting bench) explodes twice as hard (power 5). Lit TNT is
 not saved with the world.
 
 ### Caves
@@ -948,7 +962,8 @@ marked "From the Earth mod").
   `GAME`, `SKIN`, `MODS` or `VOICE`.
 - `walking`, with `creatures`, shows the line-up mid-stride.
 - `craft:<item>` opens the crafting table with the first grid recipe for
-  that item (`craft:iron_pick`) laid out in the grid.
+  that item (`craft:iron_pick`) laid out in the grid; a recipe too big for a
+  table opens the bench or workshop it needs (`craft:big_chest`).
 - `looks:<name>`, with `creatures`, lines up every look (biome variant) of
   the creatures whose id contains the name (`creatures,looks:boomer`)
   instead of one of each. Hostile creatures show only in survival worlds.

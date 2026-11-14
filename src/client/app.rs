@@ -1164,6 +1164,7 @@ impl App {
             self.inv_scroll = 0;
             self.at_oven = what == block::Usable::Oven;
             self.at_furnace = what == block::Usable::Furnace;
+            self.craft.table_side = what.craft_side().unwrap_or(3);
             self.set_screen(if what == block::Usable::Chest { Screen::Chest } else { Screen::Craft });
         }
         if self.session.as_ref().map_or(false, |g| g.lost) {
@@ -2707,14 +2708,21 @@ impl App {
             ui.scrollbar(px + pw - 4.5 * s, uy, 3.0 * s, upper_rows as f32 * cell, &mut self.inv_scroll, upper_rows, total_rows);
         } else if !(at_table && (self.at_oven || self.at_furnace)) {
             // The crafting grid, and the recipe book (client/screens/crafting.rs).
-            ui.text(gx, py + 6.0 * s, if at_table { "CRAFTING TABLE" } else { "CRAFTING - A TABLE HAS A BIGGER GRID" }, ui::DIM);
+            let side = if at_table { self.craft.side() } else { crate::crafting::HAND_SIDE };
+            let title = match (at_table, side) {
+                (false, _) => "CRAFTING - A TABLE HAS A BIGGER GRID",
+                (true, 5) => "CRAFTING BENCH",
+                (true, 7) => "WORKSHOP",
+                _ => "CRAFTING TABLE",
+            };
+            ui.text(gx, py + 6.0 * s, title, ui::DIM);
             let frame = super::screens::crafting::Frame {
                 gx,
                 uy,
                 width: cols as f32 * cell,
                 cell,
                 rows: upper_rows,
-                at_table,
+                side,
                 shift: self.keys[225] || self.keys[229],
             };
             if let Some(t) = super::screens::crafting::draw(ui, g, &mut self.craft, &frame) {
@@ -3077,11 +3085,13 @@ pub(crate) fn draw_slot(r: &mut Renderer, x: f32, y: f32, size: f32, s: f32, sta
         r.frame(ix, iy, iw, iw, s, [255, 255, 255, 150]);
     }
     if let Some(st) = stack {
-        draw_item(r, x + 3.0 * s, y + 3.0 * s, size - 6.0 * s, st.item as usize, WHITE);
+        // (A small slot, as in a 7 x 7 grid, has a thinner margin.)
+        let m = (3.0 * s).min(size * 0.15);
+        draw_item(r, x + m, y + m, size - 2.0 * m, st.item as usize, WHITE);
         if st.count > 1 {
             let t = alloc::format!("{}", st.count);
             let tw = Renderer::text_width(&t, s);
-            r.label(x + size - tw - 1.5 * s, y + size - 9.0 * s, s, &t, WHITE);
+            r.label(x + size - tw - 1.5 * s, (y + size - 9.0 * s).max(y + size * 0.45), s, &t, WHITE);
         }
     }
 }
@@ -3566,12 +3576,15 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let r = reg();
             let one = |it: u16| Some(crate::inventory::Stack { item: it, count: 1 });
             if let Some(rc) = r.grid_recipes.iter().find(|rc| r.items[rc.out.0 as usize].id == want) {
+                // The bench or workshop the recipe needs (a table at least).
+                app.craft.table_side = rc.min_side().max(3);
+                let stride = app.craft.table_side;
                 match &rc.pattern {
                     crate::crafting::Pattern::Shaped { w, h, cells } => {
                         for y in 0..*h {
                             for x in 0..*w {
                                 if let Some(ing) = &cells[y * w + x] {
-                                    app.craft.grid.cells[y * 3 + x] = ing.items.first().and_then(|&it| one(it));
+                                    app.craft.grid.cells[y * stride + x] = ing.items.first().and_then(|&it| one(it));
                                 }
                             }
                         }

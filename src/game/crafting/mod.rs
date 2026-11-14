@@ -1,5 +1,6 @@
 //! The crafting grid: recipes laid out in cells (2 x 2 in the inventory
-//! screen, 3 x 3 at a crafting table), an output that takes one of each
+//! screen, 3 x 3 at a crafting table, 5 x 5 at a crafting bench, 7 x 7 at a
+//! workshop), an output that takes one of each
 //! ingredient, and a way to fill the grid from the inventory.
 //!
 //! - [`recipe`]: what a recipe is (shaped or shapeless).
@@ -16,7 +17,7 @@ pub mod recipe;
 #[cfg(test)]
 mod data_tests;
 
-pub use recipe::{GridRecipe, Ingredient, Pattern, HAND_SIDE, MAX_SIDE};
+pub use recipe::{GridRecipe, Ingredient, Pattern, BENCH_SIDE, HAND_SIDE, MAX_SIDE, SIDES, TABLE_SIDE};
 
 use crate::inventory::{click_slot, stack_limit, Inventory, Slot, Stack};
 use alloc::collections::BTreeMap;
@@ -27,11 +28,18 @@ pub const CELLS: usize = MAX_SIDE * MAX_SIDE;
 
 /// What lies in the crafting grid while its screen is open. The grid is
 /// `side` by `side`, row by row, in the first `side * side` cells.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CraftGrid {
     pub cells: [Slot; CELLS],
     /// Items the recipe book wants in empty cells, shown dimmed.
     pub ghost: [Option<u16>; CELLS],
+}
+
+impl Default for CraftGrid {
+    // (Written out: `Default` is only derived for arrays up to 32 long.)
+    fn default() -> CraftGrid {
+        CraftGrid { cells: [None; CELLS], ghost: [None; CELLS] }
+    }
 }
 
 /// Whether `item` x `count` would fit into the inventory.

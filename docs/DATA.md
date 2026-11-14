@@ -120,6 +120,7 @@ stages of a crop).
 background): `stick pick axe shovel hoe sword gem meat fruit fishfood rail
 machine hull wings chest workbench seeds sheaf loaf pizza wedge root tuber jar
 egg sack cookie pie bowl bow crossbow arrow ingot`.
+The crafting blocks' tops and sides are `bench5`, `bench7` and `bench_side`.
 
 **`paint` styles for ores** (stone with the ore's colour; they take palettes):
 `ore` (four blobs; several palettes make a multi-gem ore) and `ore_vein` (two
@@ -149,7 +150,7 @@ block <id>
   drops <item> [<chance>]        what breaking it gives in survival
   drops nothing
   also <item> [<chance>] [<count>]   a second thing given when broken
-  use craft | chest | oven | furnace | bed   what right-clicking it does
+  use craft [3|5|7] | chest | oven | furnace | bed   what right-clicking it does
   toggle <block>                 right click swaps it for that block
   seat <sixteenths>              right click sits on it, that high
   eat <points>                   right click eats it where it stands
@@ -187,7 +188,10 @@ category is `Blocks`; `solid` is yes for everything except `cross` and
   always gives two.
 - `tool`: only matters together with items that have a `tool` property (see
   Items). Without the right tool the block still breaks, at hand speed.
-- `use craft`: right click opens the crafting table's 3 x 3 grid.
+- `use craft [3|5|7]`: right click opens a crafting grid of that size: 3 x 3
+  (the crafting table; plain `use craft` means this), 5 x 5 (`use craft 5`,
+  the crafting bench) or 7 x 7 (`use craft 7`, the workshop). Any block may
+  have any of the three, so a pack can add its own benches. See Recipes.
 - `use chest`: right click opens 27 slots of storage belonging to that block.
 - `use oven`: right click opens the `bake` recipes.
 - `use furnace`: right click opens the `smelt` recipes. In the base data the
@@ -479,8 +483,9 @@ drawn as the first item of its category; its name appears when pointed at.
 ## Recipes
 
 Things are made in a **crafting grid**: 2 x 2 in the inventory screen, 3 x 3
-at a crafting table. A recipe says what items must be in the grid, and
-what comes out.
+at a crafting table, 5 x 5 at a crafting bench and 7 x 7 at a workshop (see
+`use craft`). A recipe says what items must be in the grid, and what comes
+out.
 
 ```
 craft     <item> <count> <ingredient> <count> [<ingredient> <count> ...]
@@ -503,10 +508,14 @@ smelt     <item> <count> <ingredient> <count> [<ingredient> <count> ...]
   there as a list. Fuel is not special: list coal as an ingredient if the
   recipe should need it.
 
-Whether a recipe can be made by hand or needs a table is not written down:
-it follows from its size. What fits the 2 x 2 grid (a shaped pattern no
-bigger than 2 x 2, or a shapeless list of at most 4 items) can be made by
-hand, and everything can be made at a table.
+Which grid a recipe needs is not written down: it follows from its size. What
+fits the 2 x 2 grid (a shaped pattern no bigger than 2 x 2, or a shapeless
+list of at most 4 items) can be made by hand. A shaped pattern up to 3 x 3 (or
+a shapeless list of up to 9 cells) needs a crafting table; one wider or taller
+than 3 (up to 5 x 5) needs a **crafting bench**; one wider or taller than 5
+(up to 7 x 7) needs a **workshop**. Each tier makes everything the smaller
+ones do, and a pattern bigger than 7 in either direction is refused with a
+warning. A shapeless `craft` line never needs more than a table.
 
 ### Shaped recipes
 
@@ -531,7 +540,8 @@ shaped glass_lamp 2 III .L. with I glass L lamp
   right (so an axe `II`/`IS`/`.S` also works the other way round). It may not
   be turned upside down, and no other items may be in the grid.
 - The recipe is as big as its pattern: a pattern of 3 x 3 or 3 x 2 needs a
-  table.
+  table, 5 x 3 or 4 x 4 a bench, 7 x 1 a workshop (the longer side counts).
+  Only the trimmed pattern counts: `"I.."` is 1 x 1 whatever its rows say.
 
 ### Ingredients, counts and groups
 
@@ -567,8 +577,9 @@ base data defines `@planks` (all eight woods' planks).
 - Taking the result uses up one of each ingredient, or the amount asked for
   with `*N` or by a recipe that was too big for the grid. Shift-click makes
   as many as the grid and the inventory allow.
-- The recipe book lists the recipes that fit the grid and can be made with
-  the items you carry; a click fills the grid from the inventory.
+- The recipe book lists the recipes that fit the open grid (so a bench lists
+  its own and every smaller recipe) and can be made with the items you carry;
+  a click fills the grid from the inventory.
 
 ```
 group gems ruby crystal
@@ -582,6 +593,24 @@ smelt iron_ingot 1 iron_ore 1 coal 1
 Every name must be an existing item. Recipes are added, never replaced: a pack
 cannot remove a base recipe. A recipe that does not read is left out, with a
 warning that names its file and line.
+
+The base game's own tiers, as an example of the syntax (`tools/gen_base.py`):
+
+```
+block crafting_bench            # tex bench5_top bench5_side bench5_side
+  use craft 5
+block workshop
+  use craft 7
+shaped crafting_bench 1 "III" "ITI" "PPP" with I iron_ingot T crafting_table P @planks
+shaped workshop 1 "IIIII" "IPPPI" "IPBPI" "IPPPI" "IIIII" with I iron_ingot P @planks B crafting_bench
+shaped big_chest 1 "PPPPP" "P...P" "P.C.P" "P...P" "PPPPP" with P @planks C oak_chest
+shaped banquet_table 1 "PPPPPPP" ".S...S." ".S...S." with P @planks S stick
+```
+
+The bench is made at a table and the workshop at a bench, so the tiers must
+be climbed in order. The painters `bench5`, `bench7` and `bench_side`
+(`src/content/painters/benches.rs`) draw the top with a 5 x 5 or 7 x 7 grid
+of cells and the plated side, in any colour.
 
 `tools/craft_convert.py` rewrites `craft` lines into `shaped` ones where the
 shape is well known (tools, stairs, slabs, doors, beds, chests, furnaces

@@ -105,6 +105,7 @@ metal, wood or stone recolours consistently.
 | File | Builtin names | Paint styles |
 | --- | --- | --- |
 | `blocks.rs` | `dirt sand gravel clay snow snow_side sandstone lamp` | `concrete wool terracotta farmland magma chest workbench` |
+| `benches.rs` | | `bench5 bench7 bench_side` |
 | `stone.rs` | `stone deepstone cobble brick stone_bricks` | `rock polished bricks tiles` |
 | `wood.rs` | `log_side pine_side log_top planks` | `planks bark rings door` |
 | `ores.rs` | `coal_ore iron_ore copper_ore crystal_ore ruby_ore` | `ore ore_vein cluster` |
@@ -130,6 +131,10 @@ What each one looks like:
   a three-pixel shine, `farmland` furrows every fourth row, `magma` a dark
   crust with four glowing blobs, `chest` a lid line and a latch, `workbench`
   a grid, `door` two panels and a handle.
+  The bigger crafting blocks (`benches.rs`): `bench5` is a frame round a 5 x 5
+  grid of two-pixel cells with a lit middle one, `bench7` a 7 x 7 grid of
+  one-pixel cells, `bench_side` a plate with a rail along the top and the
+  bottom and a rivet in each corner; three tones of one colour.
 - **Ores** (`ore`) are stone with four 2 x 2 blobs of the ore's colour, each with a
   lighter pixel on top (the shipped ruby ore uses a palette: base, a dark
   pixel at the bottom right, a light one on top); `ore_vein` crosses the stone with

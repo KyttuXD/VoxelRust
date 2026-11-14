@@ -457,8 +457,12 @@ pub struct EntityDef {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Usable {
     Nothing,
-    /// Opens the 3 x 3 crafting grid.
+    /// Opens the 3 x 3 crafting grid (`use craft`, or `use craft 3`).
     Craft,
+    /// Opens the 5 x 5 grid of a crafting bench (`use craft 5`).
+    Craft5,
+    /// Opens the 7 x 7 grid of a workshop (`use craft 7`).
+    Craft7,
     /// Opens its own storage.
     Chest,
     /// Opens the baking recipes.
@@ -467,6 +471,18 @@ pub enum Usable {
     Bed,
     /// Opens the smelting recipes.
     Furnace,
+}
+
+impl Usable {
+    /// The side of the crafting grid this opens (3, 5 or 7), if it is one.
+    pub fn craft_side(self) -> Option<usize> {
+        match self {
+            Usable::Craft => Some(3),
+            Usable::Craft5 => Some(5),
+            Usable::Craft7 => Some(7),
+            _ => None,
+        }
+    }
 }
 
 pub const TOOLS: [&str; 5] = ["none", "pick", "axe", "shovel", "hoe"];
@@ -1252,12 +1268,17 @@ impl Parser<'_> {
                     b.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "use" => match a.first() {
-                    Some(&"craft") => b.usable = Usable::Craft,
+                    Some(&"craft") => match a.get(1).copied() {
+                        None | Some("3") => b.usable = Usable::Craft,
+                        Some("5") => b.usable = Usable::Craft5,
+                        Some("7") => b.usable = Usable::Craft7,
+                        _ => bad = Some("use craft takes a grid size: 3, 5 or 7"),
+                    },
                     Some(&"chest") => b.usable = Usable::Chest,
                     Some(&"oven") => b.usable = Usable::Oven,
                     Some(&"furnace") => b.usable = Usable::Furnace,
                     Some(&"bed") => b.usable = Usable::Bed,
-                    _ => bad = Some("use must be craft, chest, oven, furnace or bed"),
+                    _ => bad = Some("use must be craft [3|5|7], chest, oven, furnace or bed"),
                 },
                 "category" => b.category = rest.to_string(),
                 // connect <group> [cubes]: joins blocks of the same group (and full cubes)
