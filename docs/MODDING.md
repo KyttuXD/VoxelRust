@@ -371,7 +371,7 @@ several things in a branch, give them a name with `command` and call that.
 
 ```
 /after SECONDS COMMAND     carry it out later (0 to 3600 seconds)
-/repeat N COMMAND          carry it out N times (64 at most)
+/repeat N COMMAND          carry it out N times (64 at most; fewer when nested)
 ```
 
 At most 64 commands can be waiting at once. Waiting commands are not saved:

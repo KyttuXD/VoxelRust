@@ -808,7 +808,8 @@ impl<'a> Interp<'a> {
         if lo < 0 || hi < lo {
             return Err(format!("slice index starts at {} but ends at {}", lo, hi));
         }
-        if hi as usize > len {
+        // (Compared as i64: `hi as usize` wraps on a 32-bit target, where 2^32 would pass as 0.)
+        if hi > len as i64 {
             return Err(format!("range end index {} out of range for length {}", hi, len));
         }
         Ok((lo as usize, hi as usize))

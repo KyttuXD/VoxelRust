@@ -376,7 +376,7 @@ impl App {
             if let Some(s) = self.session.as_mut() {
                 if let Some(c) = s.cursor.take() {
                     if s.mode == GameMode::Survival {
-                        s.inv.add(c.item, c.count);
+                        s.give_or_drop(c.item, c.count);
                     }
                 }
             }

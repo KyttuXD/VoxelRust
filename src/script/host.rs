@@ -336,7 +336,11 @@ impl Host for SessionHost<'_> {
 
     fn give(&mut self, item: &str, n: i64) -> bool {
         match Self::item(item) {
-            Some(i) => self.g.inv.add(i, n.clamp(1, 999) as u16) == 0,
+            Some(i) => {
+                // What does not fit lies at the player's feet rather than vanishing.
+                self.g.give_or_drop(i, n.clamp(1, 999) as u16);
+                true
+            }
             None => false,
         }
     }
@@ -344,6 +348,10 @@ impl Host for SessionHost<'_> {
     fn spawn(&mut self, creature: &str, x: f64, y: f64, z: f64) -> bool {
         let Some(kind) = crate::block::reg().entities.iter().position(|e| e.id == creature) else { return false };
         if !self.may_change_world() || !(x.is_finite() && y.is_finite() && z.is_finite()) {
+            return false;
+        }
+        // A script cannot fill the world with creatures (the natural cap is far lower).
+        if self.g.mobs.list.len() >= crate::entity::SCRIPT_CAP {
             return false;
         }
         self.g.mobs.spawn(kind, [x, y.clamp(1.0, crate::chunk::CH as f64 + 20.0), z]);

@@ -2,6 +2,8 @@
 
 pub mod player;
 pub mod inventory;
+pub mod give;
+pub mod cmd_limits;
 pub mod interact;
 pub mod loot;
 pub mod entity;

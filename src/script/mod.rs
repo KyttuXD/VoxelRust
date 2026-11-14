@@ -55,6 +55,8 @@ mod tests;
 mod mods_tests;
 #[cfg(test)]
 mod tests_qol;
+#[cfg(test)]
+mod tests_audit;
 
 use crate::script::ast::{Name, Program};
 use crate::script::error::ScriptError;

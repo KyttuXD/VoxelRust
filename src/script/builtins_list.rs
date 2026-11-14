@@ -42,7 +42,7 @@ impl<'a> Interp<'a> {
             Value::Range(r) => {
                 let (Some(lo), Some(hi)) = (r.lo, r.hi) else { return self.fail("an open range cannot be used as a list") };
                 let hi = if r.incl { hi.saturating_add(1) } else { hi };
-                let n = if hi > lo { (hi - lo) as u64 } else { 0 };
+                let n = if hi > lo { hi.wrapping_sub(lo) as u64 } else { 0 }; // (exact: the difference fits a u64)
                 if n > self.limits.max_vec as u64 {
                     return self.fail(format!("a Vec may not hold more than {} elements", self.limits.max_vec));
                 }

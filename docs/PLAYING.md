@@ -785,7 +785,7 @@ blocks from it.
 | `/var NAME = N`, `+ N`, `- N`, `random N` | set, add to or subtract from a numbered variable, or set it to a random whole number from 0 to N-1 | works |
 | `/if CONDITION then COMMAND [else COMMAND]` | carry out a command only if the condition holds | works |
 | `/after SECONDS COMMAND` | carry out a command later (up to 3600 seconds) | works |
-| `/repeat N COMMAND` | carry out a command N times (64 at most) | works |
+| `/repeat N COMMAND` | carry out a command N times (64 at most; 8 when inside another `/if` or `/repeat`, 2 deeper still) | works |
 
 The commands marked "no" answer `NOT ON A SERVER` there. `/give` and `/tp`
 work in survival too; there are no permissions. `/say` and everything after
