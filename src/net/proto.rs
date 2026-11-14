@@ -152,6 +152,11 @@ pub enum Msg {
     /// The next piece of the skin that [`Msg::SkinBegin`] announced; `last`
     /// ends it.
     SkinPart { id: u16, last: bool, data: Vec<u8> },
+    /// From the server to a client of protocol 14 or later: the skin it sent
+    /// (plain or in pieces) was refused (too soon after the last, a bad
+    /// picture, too many transfers) or its transfer was dropped. The client
+    /// clears its "skin sent" flag and may send it again later.
+    SkinRefused,
     /// Voice chat: one 20 ms frame of ADPCM speech (see `client::voice::codec`).
     /// Sent by a talker (`id` ignored, the server knows who it is) and relayed
     /// by the server only to players in range, with `gain` (0..=255) already
@@ -396,6 +401,9 @@ impl Msg {
                 w.u16(n as u16);
                 w.0.extend_from_slice(&data[..n]);
             }
+            Msg::SkinRefused => {
+                w.u8(26);
+            }
             Msg::State { id, channel, keep, key, data } => {
                 w.u8(6);
                 w.u16(*id);
@@ -574,6 +582,7 @@ impl Msg {
                 Msg::Skin { id, png, slim: r.u8()? != 0 }
             }
             23 => Msg::SkinCaps { max_side: r.u16()?, max_bytes: r.u32()? },
+            26 => Msg::SkinRefused,
             24 => Msg::SkinBegin { id: r.u16()?, size: r.u32()?, side: r.u16()?, slim: r.u8()? != 0 },
             25 => {
                 let (id, last) = (r.u16()?, r.u8()? != 0);
@@ -747,6 +756,7 @@ mod tests {
             Msg::SkinBegin { id: 4, size: 123_456, side: 1024, slim: false },
             Msg::SkinPart { id: 4, last: false, data: alloc::vec![9; MAX_SKIN_PART] },
             Msg::SkinPart { id: 4, last: true, data: alloc::vec![1, 2, 3] },
+            Msg::SkinRefused,
             Msg::State { id: 4, channel: 3, keep: true, key: String::from("1 2 3"), data: b"chest".to_vec() },
             // The script channel's key has a separator in it, which must get through.
             Msg::State { id: 4, channel: channel::SCRIPT, keep: false, key: String::from("mymod\u{1f}score"), data: b"7".to_vec() },

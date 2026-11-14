@@ -203,10 +203,13 @@ pub struct Transfers {
 impl Transfers {
     /// A player's announcement. A new one from the same player replaces their old one.
     pub fn begin(&mut self, id: u16, size: u32, side: u16, slim: bool) -> Result<(), Refuse> {
-        self.open.remove(&id);
+        // An announcement that cannot be a skin leaves the open transfer alone.
         let inc = Incoming::begin(size, side, slim)?;
-        let pending: usize = self.open.values().map(|i| i.size).sum();
-        if self.open.len() >= MAX_OPEN || pending + inc.size > MAX_PENDING_BYTES {
+        // (The player's own old transfer is not counted: it is the one replaced.)
+        let others = || self.open.iter().filter(move |(k, _)| **k != id);
+        let count = others().count();
+        let pending: usize = others().map(|(_, i)| i.size).sum();
+        if count >= MAX_OPEN || pending + inc.size > MAX_PENDING_BYTES {
             return Err(Refuse::Busy);
         }
         self.open.insert(id, inc);

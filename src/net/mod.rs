@@ -15,3 +15,6 @@ pub mod skinqueue;
 pub mod skinwork;
 pub mod sync;
 pub mod pvp;
+
+#[cfg(test)]
+mod skinrelay_tests;

@@ -72,36 +72,49 @@ struct Shared {
 
 static SHARED: Spin<Shared> = Spin::new(Shared { waiting: VecDeque::new(), done: Vec::new(), busy: false });
 
-/// The worker: takes jobs until none are left. `busy` is cleared in the same
-/// locked step that finds the queue empty, so a job added at that moment
-/// starts a new worker instead of waiting for ever.
+/// Add a job to the waiting list. `None` if too many are waiting (the job is
+/// dropped); otherwise `Some(true)` when no worker is running and one must be
+/// started, `Some(false)` when the running one will get to it.
+fn enqueue(s: &mut Shared, job: Job) -> Option<bool> {
+    if s.waiting.len() >= MAX_WAITING {
+        return None;
+    }
+    s.waiting.push_back(job);
+    let start = !s.busy;
+    s.busy = true;
+    Some(start)
+}
+
+/// Take the next job to do. Finding none clears `busy` in the same locked
+/// step, so a job added at that moment starts a new worker instead of waiting
+/// for ever.
+fn next(s: &mut Shared) -> Option<Job> {
+    let j = s.waiting.pop_front();
+    if j.is_none() {
+        s.busy = false;
+    }
+    j
+}
+
+/// The worker: takes jobs until none are left.
 fn work() {
     loop {
-        let job = SHARED.with(|s| {
-            let j = s.waiting.pop_front();
-            if j.is_none() {
-                s.busy = false;
-            }
-            j
-        });
+        let job = SHARED.with(next);
         let Some(job) = job else { return };
         let d = run(job);
         SHARED.with(|s| s.done.push(d));
     }
 }
 
+/// Whether one more job would be taken now (the tick checks before it hands
+/// a job over, so that a job is never dropped for want of room).
+pub fn has_room() -> bool {
+    SHARED.with(|s| s.waiting.len() < MAX_WAITING)
+}
+
 /// Queue a job. False if too many are waiting (the job is dropped).
 pub fn submit(job: Job) -> bool {
-    let start = SHARED.with(|s| {
-        if s.waiting.len() >= MAX_WAITING {
-            return None;
-        }
-        s.waiting.push_back(job);
-        let start = !s.busy;
-        s.busy = true;
-        Some(start)
-    });
-    match start {
+    match SHARED.with(|s| enqueue(s, job)) {
         None => false,
         Some(false) => true,
         Some(true) => {
@@ -117,4 +130,71 @@ pub fn submit(job: Job) -> bool {
 /// Everything finished since the last call.
 pub fn take_done() -> Vec<Done> {
     SHARED.with(|s| core::mem::take(&mut s.done))
+}
+
+#[cfg(test)]
+mod tests {
+    //! The queue's rules, tested on a queue of their own (no thread, no global).
+    use super::*;
+    use crate::net::skinslot::Pending;
+
+    fn job(id: u16) -> Job {
+        Job { id, pending: Pending { ticket: id as u32, png: Vec::new(), side: 128, slim: false } }
+    }
+
+    fn empty() -> Shared {
+        Shared { waiting: VecDeque::new(), done: Vec::new(), busy: false }
+    }
+
+    #[test]
+    fn a_full_queue_refuses_the_next_job_and_keeps_the_others() {
+        let mut s = empty();
+        for k in 0..MAX_WAITING as u16 {
+            assert!(enqueue(&mut s, job(k)).is_some(), "job {k} fits");
+        }
+        assert_eq!(s.waiting.len(), MAX_WAITING);
+        assert_eq!(enqueue(&mut s, job(99)), None, "the seventeenth is refused");
+        assert_eq!(s.waiting.len(), MAX_WAITING);
+        assert_eq!(s.waiting.back().map(|j| j.id), Some(MAX_WAITING as u16 - 1));
+    }
+
+    #[test]
+    fn the_first_job_starts_a_worker_and_the_rest_wait_for_it() {
+        let mut s = empty();
+        assert_eq!(enqueue(&mut s, job(1)), Some(true), "no worker yet: start one");
+        assert_eq!(enqueue(&mut s, job(2)), Some(false), "the worker is busy");
+        assert_eq!(enqueue(&mut s, job(3)), Some(false));
+    }
+
+    #[test]
+    fn jobs_come_out_in_the_order_they_went_in() {
+        let mut s = empty();
+        for k in [4u16, 9, 2] {
+            enqueue(&mut s, job(k));
+        }
+        let order: Vec<u16> = core::iter::from_fn(|| next(&mut s).map(|j| j.id)).take(3).collect();
+        assert_eq!(order, [4, 9, 2]);
+    }
+
+    #[test]
+    fn an_empty_queue_lets_the_worker_stop_so_the_next_job_starts_one() {
+        let mut s = empty();
+        enqueue(&mut s, job(1));
+        assert!(next(&mut s).is_some());
+        assert!(s.busy, "still busy until the queue is found empty");
+        assert!(next(&mut s).is_none());
+        assert!(!s.busy);
+        assert_eq!(enqueue(&mut s, job(2)), Some(true));
+    }
+
+    #[test]
+    fn room_is_given_back_as_jobs_are_taken() {
+        let mut s = empty();
+        for k in 0..MAX_WAITING as u16 {
+            enqueue(&mut s, job(k));
+        }
+        assert_eq!(enqueue(&mut s, job(50)), None);
+        next(&mut s);
+        assert!(enqueue(&mut s, job(50)).is_some(), "one taken, one fits again");
+    }
 }

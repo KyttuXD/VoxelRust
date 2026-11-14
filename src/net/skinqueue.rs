@@ -20,24 +20,60 @@ pub const MAX_QUEUED: usize = 8 << 20;
 /// The encoded messages of one skin, shared by everyone who is sent it.
 pub type Batch = Arc<Vec<Vec<u8>>>;
 
-#[derive(Default)]
 pub struct SkinQueue {
     /// Batches waiting, with the number of messages of each already sent.
     items: VecDeque<(Batch, usize)>,
     /// Bytes not yet sent.
     bytes: usize,
+    /// Most bytes that may wait (see [`SkinQueue::allow_backlog`]).
+    limit: usize,
+}
+
+impl Default for SkinQueue {
+    fn default() -> SkinQueue {
+        SkinQueue { items: VecDeque::new(), bytes: 0, limit: MAX_QUEUED }
+    }
 }
 
 fn size_of(batch: &Batch) -> usize {
     batch.iter().map(|m| m.len()).sum()
 }
 
+/// The overflow decision: whether `add` more bytes may wait when `waiting`
+/// already do and up to `limit` may.
+pub fn may_queue(waiting: usize, add: usize, limit: usize) -> bool {
+    waiting.saturating_add(add) <= limit
+}
+
+/// Whether a skin relayed from one player goes to the connection `k` (not
+/// the sender, and only to a player who has joined and is still here).
+pub fn relay_wanted(k: usize, from: usize, joined: bool, gone: bool) -> bool {
+    k != from && joined && !gone
+}
+
+/// The form of a relayed skin a client speaking `proto` is sent: the big
+/// original if it knows them (see `net/skinslot.rs`), else the 64 x 64 one.
+pub fn relay_batch(proto: u16, original: &Batch, small: &Batch) -> Batch {
+    if crate::net::skinslot::sends_refusal(proto) {
+        original.clone()
+    } else {
+        small.clone()
+    }
+}
+
 impl SkinQueue {
+    /// Let this connection have up to `extra` more bytes waiting: a newcomer
+    /// is owed the skins of everyone already here, bounded by the players
+    /// allowed, so the backlog must not count against the usual limit.
+    pub fn allow_backlog(&mut self, extra: usize) {
+        self.limit = self.limit.saturating_add(extra);
+    }
+
     /// Put a skin in the queue. False if this connection already has too
     /// much waiting (the skin is not queued).
     pub fn push(&mut self, batch: Batch) -> bool {
         let n = size_of(&batch);
-        if self.bytes.saturating_add(n) > MAX_QUEUED {
+        if !may_queue(self.bytes, n, self.limit) {
             return false;
         }
         if n > 0 {
