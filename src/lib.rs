@@ -20,6 +20,8 @@ pub mod game;
 pub mod net;
 pub mod client;
 pub mod native;
+/// Mods' plain-text scripts, run by the game (see docs/SCRIPTING.md).
+pub mod script;
 /// The code of the mods found in the mods folder (VOXELRUST_MODS_DIR, default
 /// `../VoxelRust-Mods`) when the game was built (see
 /// [`native`]).

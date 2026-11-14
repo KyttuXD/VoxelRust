@@ -59,6 +59,8 @@ Run it with no options for the title screen. Options:
   --no-update         do not look for a newer version this time
   --add-mod PATH      copy a mod (a folder, a .zip or a pack file) into the
                       data folder's mods, and exit
+  --script-check FILE read a mod's script (a .rs file, see docs/SCRIPTING.md) the way
+                      the game would, say what is wrong with it, and exit
   --export FILE       with --world NAME: write that world as one file, and exit
   --texture-pack DIR  use a Minecraft-style texture pack folder (repeat for several, later ones win);
                       or list them in settings.txt as texture_pack=DIR|DIR
@@ -127,6 +129,8 @@ struct Opts {
     write_icon: Option<String>,
     no_update: bool,
     import_mod: Option<String>,
+    /// `--script-check FILE`: read a mod script and report its mistakes, and exit.
+    script_check: Option<String>,
     icon_size: usize,
     version: bool,
     /// `--stamp FILE`: write which build this is to FILE, and exit (the
@@ -219,6 +223,7 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--update-now" => o.update_now = true,
             "--no-update" => o.no_update = true,
             "--add-mod" => o.import_mod = Some(next(&mut i, a)?),
+            "--script-check" => o.script_check = Some(next(&mut i, a)?),
             "--export" => o.export = Some(next(&mut i, a)?),
             "--export-textures" => o.export_textures = Some(next(&mut i, a)?),
             "--world-op" => {
@@ -3159,6 +3164,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         return Ok(());
     }
     sdl::load()?;
+    if let Some(path) = &opts.script_check {
+        // Reads a script the way the game would and says what is wrong (no window).
+        return crate::script::check::check_file(path);
+    }
     if let Some(path) = &opts.log {
         sys::log_to_file(path);
     }
@@ -3220,6 +3229,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         sys::make_dir(&alloc::format!("{}{}", base, dir));
     }
     crate::session::migrate_worlds(&base);
+    // Where mods' scripts keep what they save (script/mod.rs).
+    crate::script::ScriptHost::set_data_dir(&base);
     if let Some(from) = &opts.import_mod {
         let said = import_mod(&base, from);
         logf!("voxelrust: {}", said.to_ascii_lowercase());

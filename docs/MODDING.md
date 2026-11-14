@@ -939,6 +939,28 @@ A new event is one row in `REGISTRY` in
 right place, and one row in the tables above. A new cancelling hook is a
 field in `Native` (and in `Native::NONE` and `hooks::has_any`) and a small
 dispatcher in [src/game/hooks.rs](../src/game/hooks.rs) built on `hooks::allow`.
+If scripts should hear it too, the dispatcher also calls a function in
+[src/script/bridge.rs](../src/script/bridge.rs), and the hook gets a row in
+`script::HOOKS` and in [SCRIPTING.md](SCRIPTING.md) (a test checks the docs list
+every hook).
+
+## Scripts: code without compiling
+
+A mod that needs logic but not speed does not have to be built into the
+program: it can carry plain `.rs` files in `scripts/` (a small subset of Rust)
+that the game reads and runs. A script defines functions named after the
+hooks it wants (`on_block_break`, `on_tick`, `on_entity_death`, `on_command`...)
+and may call a fixed set of host functions (`give`, `say`, `spawn`,
+`set_block`, `explode`, `effect`, `run_command`...). The scripts are one more
+listener beside the native hooks above: the same dispatchers in
+[src/game/hooks.rs](../src/game/hooks.rs) call them after the native code, a
+script may cancel what a cancelling hook may cancel, and with no scripts loaded
+a call site costs the same flag test. Scripts run in a sandbox (no files, no
+network, a budget of steps and memory for every call; an error switches the
+script off and is logged with `file:line`).
+The language, the library, every hook and every host function, and
+worked examples are in [SCRIPTING.md](SCRIPTING.md); `voxelrust --script-check
+FILE` checks a script without starting the game.
 
 ## What mods cannot replace
 

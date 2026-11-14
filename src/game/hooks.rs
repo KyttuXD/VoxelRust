@@ -53,7 +53,7 @@ pub fn block_break(g: &mut Session, cell: [i32; 3], b: Block) -> bool {
     if !g.ev.hooks_live {
         return true;
     }
-    allow(crate::native::active().filter_map(|(_, n)| n.on_block_break), |f| f(g, cell, b))
+    allow(crate::native::active().filter_map(|(_, n)| n.on_block_break), |f| f(g, cell, b)) && crate::script::bridge::block_break(g, cell, b)
 }
 
 /// Block `b` is about to be placed at `cell`; `false` stops it.
@@ -61,7 +61,7 @@ pub fn block_place(g: &mut Session, cell: [i32; 3], b: Block) -> bool {
     if !g.ev.hooks_live {
         return true;
     }
-    allow(crate::native::active().filter_map(|(_, n)| n.on_block_place), |f| f(g, cell, b))
+    allow(crate::native::active().filter_map(|(_, n)| n.on_block_place), |f| f(g, cell, b)) && crate::script::bridge::block_place(g, cell, b)
 }
 
 /// A creature of `kind` has appeared; `false` takes it away again.
@@ -69,7 +69,7 @@ pub fn entity_spawn(g: &mut Session, kind: usize) -> bool {
     if !g.ev.hooks_live {
         return true;
     }
-    allow(crate::native::active().filter_map(|(_, n)| n.on_entity_spawn), |f| f(g, kind))
+    allow(crate::native::active().filter_map(|(_, n)| n.on_entity_spawn), |f| f(g, kind)) && crate::script::bridge::entity_spawn(g, kind)
 }
 
 /// A creature of `kind` died at `at`.
@@ -80,6 +80,7 @@ pub fn entity_death(g: &mut Session, kind: usize, at: [f64; 3]) {
     for f in crate::native::active().filter_map(|(_, n)| n.on_entity_death) {
         f(g, kind, at);
     }
+    crate::script::bridge::entity_death(g, kind, at);
 }
 
 /// The player is about to take `amount` damage from `cause`. The mods may
@@ -89,6 +90,9 @@ pub fn player_hurt(g: &mut Session, amount: &mut i32, cause: &str) -> bool {
         return *amount > 0;
     }
     let ok = allow(crate::native::active().filter_map(|(_, n)| n.on_player_hurt), |f| f(g, amount, cause));
+    if ok {
+        crate::script::bridge::player_hurt(g, amount, cause);
+    }
     ok && *amount > 0
 }
 
@@ -97,7 +101,7 @@ pub fn chat(g: &mut Session, line: &str) -> bool {
     if !g.ev.hooks_live {
         return true;
     }
-    allow(crate::native::active().filter_map(|(_, n)| n.on_chat), |f| f(g, line))
+    allow(crate::native::active().filter_map(|(_, n)| n.on_chat), |f| f(g, line)) && crate::script::bridge::chat(g, line)
 }
 
 /// The player pressed the use button holding item `item`; `false` stops the use.
@@ -105,7 +109,7 @@ pub fn item_use(g: &mut Session, item: usize) -> bool {
     if !g.ev.hooks_live {
         return true;
     }
-    allow(crate::native::active().filter_map(|(_, n)| n.on_item_use), |f| f(g, item))
+    allow(crate::native::active().filter_map(|(_, n)| n.on_item_use), |f| f(g, item)) && crate::script::bridge::item_use(g, item)
 }
 
 /// The player crafted item `out`.
@@ -116,6 +120,7 @@ pub fn craft(g: &mut Session, out: usize) {
     for f in crate::native::active().filter_map(|(_, n)| n.on_craft) {
         f(g, out);
     }
+    crate::script::bridge::craft(g, out);
 }
 
 /// Once a frame.
@@ -126,6 +131,7 @@ pub fn tick(g: &mut Session, dt: f32) {
     for f in crate::native::active().filter_map(|(_, n)| n.on_tick) {
         f(g, dt);
     }
+    crate::script::bridge::tick(g, dt);
 }
 
 /// A script event was raised (see `Session::fire`): every mod's `on_event`
@@ -138,6 +144,7 @@ pub fn event(g: &mut Session, name: &str, what: &str) {
     for f in crate::native::active().filter_map(|(_, n)| n.on_event) {
         f(g, name, what);
     }
+    crate::script::bridge::event(g, name, what);
     g.ev.in_event = false;
 }
 
@@ -147,6 +154,7 @@ pub fn world_loaded(g: &mut Session) {
     for f in crate::native::active().filter_map(|(_, n)| n.on_world_load) {
         f(g);
     }
+    crate::script::bridge::world_loaded(g);
 }
 
 /// The world was just saved.
@@ -154,6 +162,7 @@ pub fn world_saved(g: &mut Session) {
     for f in crate::native::active().filter_map(|(_, n)| n.on_world_save) {
         f(g);
     }
+    crate::script::bridge::world_saved(g);
 }
 
 /// What a mod draws the heads-up display with. Positions are in screen

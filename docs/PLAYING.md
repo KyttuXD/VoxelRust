@@ -934,6 +934,7 @@ marked "From the Earth mod").
 | `--version` | print the version and which build this is, and exit |
 | `--no-update` | do not look for a newer version this time |
 | `--add-mod PATH` | copy a mod (a folder, a .zip or a pack file) into the data folder's `mods`, and exit |
+| `--script-check FILE` | read a mod's script (a `.rs` file, see [SCRIPTING.md](SCRIPTING.md)) the way the game would, say what is wrong with it, and exit |
 | `--export FILE` | with `--world NAME`: write that world as one file, and exit |
 | `--import FILE` | with `--world NAME`: add a world from such a file, and exit |
 | `--pos X Y Z` | start position |
