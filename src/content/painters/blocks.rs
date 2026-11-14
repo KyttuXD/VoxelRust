@@ -91,6 +91,38 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
                 px(scale(rgb, 88))
             }
         }
+        // The faces of a chest block (data/base.txt: a 14 x 14 footprint, a 7 high
+        // body and a 3 high lid, so rows 6..15 of the picture): `chest_front` is
+        // the latch side, `chest_side` the other three, `chest_top` the lid and
+        // the underside. Each draws its own dark outline; the cells round it
+        // are never seen.
+        "chest_front" | "chest_side" => {
+            if !((1..15).contains(&x) && (6..16).contains(&y)) {
+                return Some(CLEAR);
+            }
+            if x == 1 || x == 14 || y == 6 || y == 15 || y == 9 {
+                px(pal.shade(rgb, 60))
+            } else if style == "chest_front" && rect(x, y, 7, 7, 2, 5) {
+                px(pal.accent().unwrap_or([214, 196, 120])) // the latch, across the lid's seam
+            } else if y < 9 {
+                px(rgb)
+            } else {
+                px(scale(rgb, 88))
+            }
+        }
+        "chest_top" => {
+            if !((1..15).contains(&x) && (1..15).contains(&y)) {
+                return Some(CLEAR);
+            }
+            let ring = ((3..=12).contains(&y) && (x == 3 || x == 12)) || ((3..=12).contains(&x) && (y == 3 || y == 12));
+            if x == 1 || x == 14 || y == 1 || y == 14 {
+                px(pal.shade(rgb, 60))
+            } else if ring {
+                px(scale(rgb, 90))
+            } else {
+                px(rgb)
+            }
+        }
         "workbench" => {
             if x % 5 == 0 || y % 5 == 0 {
                 px(pal.shade(rgb, 60))

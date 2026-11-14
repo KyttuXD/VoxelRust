@@ -157,6 +157,8 @@ block <id>
   fills <wide> <tall>            a big prop: the room it takes (see Big props)
   part                           the hidden filler of a big prop
   long ahead|behind <block>      two blocks long: the other half, one block ahead of this one or behind it
+  front <texture>                a `rotate` block's picture for the face that looks the way it was placed (below)
+  rest <block>                   read as this block (same facing) when a saved world is loaded
   connect <group> [cubes]        joins neighbouring blocks of its group (and full cubes with `cubes`)
   arm x0 y0 z0 x1 y1 z1          drawn toward a joined neighbour, written for the north (-z) side (up to 4)
   react <next to> <becomes>      turns into the second block when the first is beside it
@@ -217,6 +219,12 @@ category is `Blocks`; `solid` is yes for everything except `cross` and
 - `tag track <percent>`: the block is track. Rail vehicles on it move at
   that percentage of their speed (10..400; 100 if no number is given). The
   Trains mod's `speed_rail` has 220 and `slow_rail` 40.
+- `tag slope <1..4>`: the block is a ramp for rail vehicles; the number says
+  which side is the high one (1 north, 2 west, 3 south, 4 east), and the
+  vehicle rides up it a block across the cell. The Trains mod's slopes have it.
+- `tag chest_lid <1..3>`: a stage of a chest lid being opened (see
+  [Chests that open](#chests-that-open)). Written on hidden blocks that
+  `rest` as the shut chest.
 - `tag station <seconds>`: 1..120 (1 if no number is given). A rail vehicle
   that nobody is driving and that is not chained behind another stops on the
   block for that long, then goes on. The Trains mod's `station_rail` has 6
@@ -312,6 +320,34 @@ a block or at the upper half of a wall.
 Each facing is stored as its own block state, so rotated blocks cost nothing
 extra in memory or in saves. There can be 4096 states in total (air is one;
 a plain block uses one, a `slab` two, a `rotate` block four, `stairs` eight).
+
+### Faces of a rotating block
+
+`tex <top> <side> <bottom>` gives the four sides of a block one picture. A
+`rotate` block made of boxes can also say `front <texture>`: the face that
+looks the way the player was facing when placing it (toward the player) uses
+that picture instead of the side one, on every box it has. The front goes with
+the block's turns, so a chest's latch is on one face only. The block's item
+shows the front picture. `front` needs `rotate` and `box` lines and is
+ignored otherwise.
+
+`rest <block>` names the block this one is read as when a saved world is
+loaded, facing the same way (both blocks need the same number of turns). It is
+for states that only exist while something is going on: an open chest.
+
+### Chests that open
+
+The base data's chests (`tools/gen_base.py`, `oak_chest` and the other
+woods and colours) are four blocks each: the shut chest, which has the item, and
+hidden `<id>_lid1`, `_lid2`, `_lid3`, whose boxes lift the lid a little more
+each (the last at 36 degrees; boxes cannot tilt, so the lid is three steps).
+The lid stages carry `tag chest_lid <n>` and `rest <the shut chest>`, and
+drop the shut chest. The game steps through them while the chest screen is open
+([`src/game/chest_anim.rs`](../src/game/chest_anim.rs)), plays the sounds
+`chest_open` and `chest_close`, and writes each stage as an ordinary block edit
+(so other players see it). A pack can give its own `use chest` blocks the same
+by naming blocks `<id>_lid1..3` in the same way; a chest block without them just
+does not animate.
 
 ### Props
 
