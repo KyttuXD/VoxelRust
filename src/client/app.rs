@@ -126,6 +126,8 @@ struct Opts {
     run: Option<String>,
     write_icon: Option<String>,
     no_update: bool,
+    /// `--update-mirror URL`: fetch updates from this web folder (see the settings' `update_mirror`).
+    update_mirror: Option<String>,
     import_mod: Option<String>,
     icon_size: usize,
     version: bool,
@@ -218,6 +220,7 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             #[cfg(feature = "update-test")]
             "--update-now" => o.update_now = true,
             "--no-update" => o.no_update = true,
+            "--update-mirror" => o.update_mirror = Some(next(&mut i, a)?),
             "--add-mod" => o.import_mod = Some(next(&mut i, a)?),
             "--export" => o.export = Some(next(&mut i, a)?),
             "--export-textures" => o.export_textures = Some(next(&mut i, a)?),
@@ -3365,7 +3368,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let restarted = crate::update::consume_restart_marker(&base);
     #[cfg(feature = "update-test")]
     if opts.update_now {
-        crate::update::run_now(BUILD, &base);
+        crate::update::run_now(BUILD, &base, opts.update_mirror.as_deref().unwrap_or(&settings.update_mirror));
         crate::update::restart(&restart_exe, &restart_folder);
         return Ok(());
     }
@@ -3380,7 +3383,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     if !scripted_early && !opts.server && !opts.no_update {
         let (scratch, install) = (base.clone(), settings.auto_update);
-        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::run(BUILD, &scratch, install)));
+        let mirror = opts.update_mirror.clone().unwrap_or_else(|| settings.update_mirror.clone());
+        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::run(BUILD, &scratch, install, &mirror)));
     }
     if let Some(f) = opts.far {
         settings.far_distance = f;
@@ -4254,7 +4258,11 @@ fn run_server(opts: &Opts, base: &str, pack_text: &[u8]) -> Result<(), String> {
     let _ = crate::update::consume_restart_marker(base);
     if !opts.no_update {
         let (scratch, install) = (String::from(base), true);
-        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::watch(BUILD, &scratch, install)));
+        // The mirror: `--update-mirror`, or the one in the data folder's settings.txt.
+        let mirror = opts.update_mirror.clone().unwrap_or_else(|| {
+            sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| Settings::parse(&String::from_utf8_lossy(&b)).update_mirror).unwrap_or_default()
+        });
+        sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::watch(BUILD, &scratch, install, &mirror)));
     }
     let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, &Settings::default())?;
     let address = sys::net::local_address().unwrap_or_else(|| String::from("<this machine's address>"));

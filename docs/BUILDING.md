@@ -130,7 +130,8 @@ of a release out in `dist/nightly/`:
 | `voxelrust-macos-legacy-x86_64.zip` | `VoxelRust.app` for Mac OS X 10.6 and later |
 | `voxelrust-web.zip` | the browser version (`dist/web`) |
 | `voxelrust-<build name>.bin`, `voxelrust-windows-x86_64.exe` | the bare programs, for the game's updater |
-| `nightly.txt` | the commit, and each bare program's SHA-256 and size: what the updater reads |
+| `nightly.txt` | the commit, the release number, and each bare program's SHA-256 and size: what the updater reads |
+| `nightly.txt.sig` | the Ed25519 signature of `nightly.txt` (64 bytes): the updater refuses the list without it |
 | `BUILDS.txt`, `SHA256SUMS.txt` | for people: which file is for which machine, and checksums |
 
 Each program archive also holds `README.md`, `LICENSE`, `docs/` and `examples/`.
@@ -155,6 +156,77 @@ uploaded by hand, because the workflows cannot run (see
 ```sh
 gh release upload nightly --clobber dist/nightly/*
 ```
+
+### Signing the release
+
+The updater only believes a `nightly.txt` whose `nightly.txt.sig` is a valid
+Ed25519 signature (RFC 8032) of the list's exact bytes. The public key is built
+into the game (`src/client/update_key.rs`); the private key stays on the
+machine that makes releases, outside the repository:
+
+```sh
+sh scripts/make-signing-key.sh        # once: ~/.voxelrust/update-signing-key.pem
+```
+
+It makes the key (with `openssl genpkey -algorithm ED25519`), refuses to
+overwrite one, and prints the public key as hex and as a Rust array. The key
+path is `VOXELRUST_SIGN_KEY` (default `~/.voxelrust/update-signing-key.pem`);
+`.gitignore` keeps `*.pem` and `update-signing-key*` out of git, and the key must
+never be committed or shared. `scripts/package-release.sh` checks at the start
+that the key exists **and is the one embedded in the game**, and
+`scripts/write-nightly-list.sh` signs through `scripts/sign-file.sh`; with no
+key the release is refused rather than made unsigned. **Back the key up.** If
+it is lost, games already out cannot be updated (a new key means a new
+program, installed by hand once). Needs `openssl` (1.1.1 or 3.x) at release time;
+the game itself needs nothing but `curl`.
+
+### A plain-HTTP mirror (for the old-Mac build)
+
+Mac OS X 10.6's `curl` cannot do HTTPS, so the legacy build cannot reach the
+release. It can update from a mirror: a folder served over plain HTTP that
+holds `nightly.txt`, `nightly.txt.sig` and the bare programs. Since the list is
+signed and each program is checked against the list's SHA-256 and size, the
+mirror (and the network to it) does not have to be trusted: a changed or
+replaced file is refused, with a line in the log, and nothing is installed.
+It can only withhold updates, or keep serving an old release (which the game
+never installs over a newer one, because of the release number).
+
+1. Serve a folder as plain static files. With nginx:
+
+   ```nginx
+   server {
+       listen 80;
+       server_name updates.example.org;
+       location /voxelrust/ { alias /var/www/voxelrust/; }
+   }
+   ```
+
+   or for a trial, `python3 -m http.server 8000 --bind 0.0.0.0 -d /var/www/voxelrust`.
+2. Publish from the release machine, after `scripts/package-release.sh`:
+
+   ```sh
+   sh scripts/publish-mirror.sh me@updates.example.org /var/www/voxelrust
+   ```
+
+   It copies `nightly.txt`, `nightly.txt.sig` and the `.bin`/`.exe` programs
+   from `dist/nightly/` with `rsync` (or `scp`), the programs first and the
+   list last. It is not run by any other script.
+3. On the old Mac, add a line to `settings.txt` in the game's data folder:
+
+   ```
+   update_mirror=http://updates.example.org/voxelrust/
+   ```
+
+   (or start the game with `--update-mirror URL`). The legacy build only
+   looks for updates when a mirror is set; other builds try the mirror first
+   and the GitHub release second. Servers read `update_mirror` from the
+   `settings.txt` in their `--data` folder, or take `--update-mirror`.
+
+`scripts/test-update.sh` tests all of this end to end with no network: it
+signs with a throwaway key (the programs it builds trust that key's public half
+through `VOXELRUST_UPDATE_KEY`, which only the `update-test` build reads),
+checks that a changed, foreign-signed or unsigned list is refused, and updates
+a program through a plain-HTTP mirror run by `python3 -m http.server`.
 
 ## Build names and updating
 
@@ -188,12 +260,17 @@ Nightly files are named after the build name (`voxelrust-<build name>`), and
 When the game starts it looks at the nightly release in the background
 (`src/client/update.rs`):
 
-1. It downloads `nightly.txt` from
-   `https://github.com/KyttuXD/VoxelRust/releases/download/nightly/` with
-   the system's `curl`, into the data folder. The file looks like this:
+1. It downloads `nightly.txt` and `nightly.txt.sig` from the mirror, if
+   `update_mirror` is set, and else (or if that fails) from
+   `https://github.com/KyttuXD/VoxelRust/releases/download/nightly/`, with
+   the system's `curl`, into `tmp/update/` in the data folder. It then checks
+   the signature against the public key built into the program; a list that
+   fails is thrown away unread (and the title screen says an update was
+   refused). The file looks like this:
 
    ```
    commit 1a2b3c4d5e6f
+   seq 42
    linux-x86_64 voxelrust-linux-x86_64.bin <sha256> <bytes>
    windows-x86_64 voxelrust-windows-x86_64.exe <sha256> <bytes>
    ```
@@ -218,11 +295,15 @@ The title screen shows how far this has got:
 | A NEWER VERSION IS INSTALLED - THE GAME RESTARTS WHEN YOU QUIT | replaced; it starts when you quit, never during play |
 | UPDATED - NOW RUNNING THE NEWEST VERSION | this copy was started by an update |
 | A NEWER VERSION IS OUT (AUTOMATIC UPDATES ARE OFF) | there is one, and it was not installed |
+| AN UPDATE WAS REFUSED: ITS SIGNATURE IS NOT VALID | a list was found but not signed by the project's key (tampered, or from another key) |
 | (no message) | a download failed, the list could not be read, the checksum did not match, or the program could not be replaced |
 
 Switching it off:
 
 - `--no-update` skips the check for that run.
+- `update_mirror=URL` in `settings.txt` / `--update-mirror URL` adds a mirror
+  (an address of `http://` or `https://`, with a folder; no spaces or quotes).
+  There is no line for it in the settings screen, only the file.
 - UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS (`auto_update` in
   `settings.txt`, on by default): when off, the game still checks but only
   reports that a newer version is out.
@@ -237,9 +318,10 @@ Switching it off:
 
 What it cannot do:
 
-- **The old-Mac build cannot update itself on Mac OS X 10.6.** The `curl`
-  that comes with 10.6 cannot make modern HTTPS connections. Replace the app
-  by hand there.
+- **The old-Mac build cannot reach the release on Mac OS X 10.6.** The `curl`
+  that comes with 10.6 cannot make modern HTTPS connections. It updates only
+  through a plain-HTTP mirror (see above); without `update_mirror`, replace the
+  app by hand there.
 - **Only the program is replaced.** The `mods` folder that came with the
   game (`mods/` beside the program, or `Contents/Resources/mods` in a Mac
   app), the docs and SDL2 stay as they were. If a newer version changes the

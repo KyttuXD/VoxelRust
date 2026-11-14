@@ -856,7 +856,10 @@ which of these happened:
 
 UPDATE THE GAME AUTOMATICALLY in SETTINGS > MODS (on by default) decides
 whether a newer version is installed or only announced. `--no-update` skips
-the check for one run.
+the check for one run. A list of files whose signature is not valid is
+refused (the title screen says so). `update_mirror=http://host/folder/` in
+`settings.txt` (or `--update-mirror URL`) names a plain-HTTP web folder to
+fetch updates from, for the old-Mac build, which cannot reach the release.
 
 Things to know:
 
@@ -933,6 +936,7 @@ marked "From the Earth mod").
 | `--icon-size N` | with `--write-icon`: its size in pixels (default 256) |
 | `--version` | print the version and which build this is, and exit |
 | `--no-update` | do not look for a newer version this time |
+| `--update-mirror URL` | fetch updates from this web folder (plain HTTP is fine) before the release; see BUILDING.md |
 | `--add-mod PATH` | copy a mod (a folder, a .zip or a pack file) into the data folder's `mods`, and exit |
 | `--export FILE` | with `--world NAME`: write that world as one file, and exit |
 | `--import FILE` | with `--world NAME`: add a world from such a file, and exit |

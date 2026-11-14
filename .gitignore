@@ -8,6 +8,11 @@
 !/vendor/README.md
 .claude/
 
+# Update-signing keys (private!): never commit one
+*.pem
+update-signing-key*
+.voxelrust/
+
 # macOS, Windows and editor junk
 .DS_Store
 .AppleDouble

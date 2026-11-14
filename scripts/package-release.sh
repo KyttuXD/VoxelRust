@@ -11,6 +11,9 @@
 #   voxelrust-web.zip                 the browser version
 #   nightly.txt                       commit, and each bare program's
 #                                     checksum and size (what the updater reads)
+#   nightly.txt.sig                   its Ed25519 signature (key: VOXELRUST_SIGN_KEY,
+#                                     default ~/.voxelrust/update-signing-key.pem);
+#                                     no key, no release
 #   BUILDS.txt, SHA256SUMS.txt        for people
 #
 # <build> is what `voxelrust --version` prints: each kind of machine has its
@@ -19,6 +22,25 @@ set -eu
 cd "$(dirname "$0")/.."
 . scripts/mods-dir.sh
 need_mods
+# The updater's list must be signed, so no key means no release: checked now,
+# before the long builds, and the key must be the one the game trusts
+# (src/client/update_key.rs), or no game would accept the list.
+SIGN_KEY="${VOXELRUST_SIGN_KEY:-$HOME/.voxelrust/update-signing-key.pem}"
+export VOXELRUST_SIGN_KEY="$SIGN_KEY"
+if [ ! -f "$SIGN_KEY" ]; then
+  echo "refusing: no signing key at $SIGN_KEY, so nightly.txt could not be signed." >&2
+  echo "Make one with scripts/make-signing-key.sh (and put its public key in src/client/update_key.rs)," >&2
+  echo "or set VOXELRUST_SIGN_KEY to the key's path." >&2
+  exit 1
+fi
+have_pub="$(openssl pkey -in "$SIGN_KEY" -pubout -outform DER | tail -c 32 | od -An -v -tx1 | tr -d ' \n')"
+game_pub="$(sed -n '/^const EMBEDDED/,/^];/p' src/client/update_key.rs | grep -o '0x[0-9a-fA-F][0-9a-fA-F]' | sed 's/0x//' | tr -d '\n' | tr 'A-F' 'a-f')"
+if [ "$have_pub" != "$game_pub" ]; then
+  echo "refusing: the signing key at $SIGN_KEY is not the one in src/client/update_key.rs" >&2
+  echo "  key file:  $have_pub" >&2
+  echo "  in game:   $game_pub" >&2
+  exit 1
+fi
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
 COMMIT="${VOXELRUST_COMMIT:-$(git rev-parse --short=12 HEAD)}"
