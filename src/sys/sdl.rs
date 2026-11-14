@@ -75,6 +75,11 @@ pub const EV_MOUSEWHEEL: u32 = 0x403;
 /// A file dropped on the window (the path is a pointer at offset 8).
 pub const EV_DROPFILE: u32 = 0x1000;
 pub const WINEV_SIZE_CHANGED: u8 = 6;
+pub const WINEV_SHOWN: u8 = 1;
+pub const WINEV_HIDDEN: u8 = 2;
+pub const WINEV_MINIMIZED: u8 = 7;
+pub const WINEV_RESTORED: u8 = 9;
+pub const WINEV_FOCUS_GAINED: u8 = 12;
 pub const WINEV_FOCUS_LOST: u8 = 13;
 
 pub type ThreadFn = unsafe extern "C" fn(*mut c_void) -> c_int;

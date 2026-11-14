@@ -78,11 +78,13 @@ pub struct Region {
     /// Encoded chunks, in current state numbers.
     blobs: Vec<Option<Vec<u8>>>,
     dirty: bool,
+    /// When it was last used (the store's counter), to let go of the longest unused.
+    used: u64,
 }
 
 impl Region {
     fn empty() -> Region {
-        Region { blobs: (0..SLOTS).map(|_| None).collect(), dirty: false }
+        Region { blobs: (0..SLOTS).map(|_| None).collect(), dirty: false, used: 0 }
     }
 
     /// Parse a region file, translating its block states to the current ones.
@@ -285,11 +287,19 @@ pub struct RegionStore<F: FileIo> {
     prefix: String,
     regions: BTreeMap<(i32, i32), Region>,
     pub write_failed: bool,
+    /// Counts uses of regions (see `Region::used`).
+    clock: u64,
+    /// The block numbers as they are (what a region written now holds), kept
+    /// so that reading a chunk does not build the list again each time.
+    identity: Vec<Block>,
 }
+
+/// Regions kept in memory at most (unsaved ones are written out first).
+const MAX_REGIONS: usize = 12;
 
 impl<F: FileIo> RegionStore<F> {
     pub fn new(io: F, prefix: String) -> RegionStore<F> {
-        RegionStore { io, prefix, regions: BTreeMap::new(), write_failed: false }
+        RegionStore { io, prefix, regions: BTreeMap::new(), write_failed: false, clock: 0, identity: Vec::new() }
     }
 
     fn path(&self, rx: i32, rz: i32) -> String {
@@ -297,12 +307,38 @@ impl<F: FileIo> RegionStore<F> {
     }
 
     fn region(&mut self, rx: i32, rz: i32) -> &mut Region {
+        self.clock += 1;
         if !self.regions.contains_key(&(rx, rz)) {
+            self.make_room();
             let path = self.path(rx, rz);
             let region = self.io.read(&path).and_then(|d| Region::from_bytes(&d)).unwrap_or_else(Region::empty);
             self.regions.insert((rx, rz), region);
         }
-        self.regions.get_mut(&(rx, rz)).unwrap()
+        let clock = self.clock;
+        let region = self.regions.get_mut(&(rx, rz)).unwrap();
+        region.used = clock;
+        region
+    }
+
+    /// Before another region is read: if too many are held, write out the
+    /// unsaved ones and let go of the ones used longest ago.
+    fn make_room(&mut self) {
+        if self.regions.len() < MAX_REGIONS {
+            return;
+        }
+        if self.regions.values().any(|r| r.dirty) {
+            self.flush();
+        }
+        while self.regions.len() >= MAX_REGIONS {
+            // (A region that could not be written stays: its chunks exist nowhere else.)
+            let oldest = self.regions.iter().filter(|(_, r)| !r.dirty).min_by_key(|(_, r)| r.used).map(|(k, _)| *k);
+            match oldest {
+                Some(k) => {
+                    self.regions.remove(&k);
+                }
+                None => break,
+            }
+        }
     }
 
     fn slot(cx: i32, cz: i32) -> usize {
@@ -338,7 +374,7 @@ impl<F: FileIo> RegionStore<F> {
                 self.write_failed = true;
             }
         }
-        if self.regions.len() > 32 {
+        if self.regions.len() > MAX_REGIONS {
             self.regions.retain(|_, r| r.dirty);
         }
     }
@@ -346,10 +382,15 @@ impl<F: FileIo> RegionStore<F> {
 
 impl<F: FileIo> ChunkStore for RegionStore<F> {
     fn load(&mut self, cx: i32, cz: i32) -> Option<ChunkData> {
+        let n = reg().blocks.len();
+        if self.identity.len() != n {
+            self.identity = (0..n as Block).collect();
+        }
+        let identity = core::mem::take(&mut self.identity);
         let region = self.region(cx.div_euclid(REGION), cz.div_euclid(REGION));
-        let blob = region.blobs[Self::slot(cx, cz)].as_ref()?;
-        let identity: Vec<Block> = (0..reg().blocks.len() as Block).collect();
-        decode(blob, &identity)
+        let out = region.blobs[Self::slot(cx, cz)].as_ref().and_then(|blob| decode(blob, &identity));
+        self.identity = identity;
+        out
     }
 
     fn save(&mut self, cx: i32, cz: i32, data: &ChunkData) {

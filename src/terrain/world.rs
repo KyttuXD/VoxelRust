@@ -247,6 +247,14 @@ impl World {
         true
     }
 
+    /// Squared distance (in chunks) from the centre to the nearest chunk of
+    /// the 3 x 3 around `(dx, dz)`: a chunk is needed if this is within the
+    /// meshed circle, because meshing reads the neighbours.
+    fn reach2(dx: i32, dz: i32) -> i32 {
+        let (ax, az) = ((dx.abs() - 1).max(0), (dz.abs() - 1).max(0));
+        ax * ax + az * az
+    }
+
     fn neighbourhood(&self, cx: i32, cz: i32) -> Option<[Arc<ChunkData>; 9]> {
         let mut v: Vec<Arc<ChunkData>> = Vec::with_capacity(9);
         for dz in -1..=1 {
@@ -318,6 +326,7 @@ impl World {
                         }
                         c.mesh = Some(sink.upload(&mesh));
                         c.props = mesh.props;
+                        c.props.shrink_to_fit();
                     }
                 }
             }
@@ -334,11 +343,14 @@ impl World {
             return;
         }
 
-        // 3. Forget chunks that are far away.
+        // 3. Forget chunks that are far away. A chunk is kept while it is, or
+        // touches, one that gets a mesh (see `needed`), plus a margin so that
+        // walking back and forth at the edge does not load and drop the same
+        // chunks again and again.
         if moved {
-            let far = radius + 3;
+            let keep = (radius + 2) * (radius + 2);
             let gone: Vec<(i32, i32)> =
-                self.chunks.keys().filter(|k| (k.0 - ccx).abs() > far || (k.1 - ccz).abs() > far).copied().collect();
+                self.chunks.keys().filter(|k| Self::reach2(k.0 - ccx, k.1 - ccz) > keep || (k.0 - ccx).abs() > radius + 3 || (k.1 - ccz).abs() > radius + 3).copied().collect();
             for key in gone {
                 if let Some(c) = self.chunks.remove(&key) {
                     if let (true, Some(d)) = (c.modified, &c.data) {
@@ -373,6 +385,10 @@ impl World {
                 break;
             }
             let (dx, dz) = self.offsets[i];
+            // The corners of the square are not needed: only what gets a mesh and its neighbours.
+            if Self::reach2(dx, dz) > mesh_r2 {
+                continue;
+            }
             let key = (ccx + dx, ccz + dz);
             let c = self.chunks.entry(key).or_default();
             if c.data.is_none() {

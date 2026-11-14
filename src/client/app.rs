@@ -441,6 +441,12 @@ struct App {
     settings_path: String,
     base: String,
     threads: usize,
+    /// The memory budget (client/memory) and what it lets the game use now.
+    mem: crate::client::memory::MemWatch,
+    eff: crate::budget::Effective,
+    /// The window is not in front / is minimised: the loop slows down (client/pacing).
+    unfocused: bool,
+    minimised: bool,
     screen: Screen,
     session: Option<Session>,
     /// Which text field has the keyboard (0 = none).
@@ -731,6 +737,8 @@ impl App {
             drop(pool);
             world.free_meshes(r);
         }
+        // The world's memory goes back to the system rather than sitting in the allocator.
+        crate::sys::heap::trim();
         // Nothing of the world left may go on sounding.
         self.audio.silence();
         // A game hosted from the menu ends when its host leaves.
@@ -1069,7 +1077,11 @@ impl App {
                             self.set_screen(Screen::Pause);
                         }
                         self.keys = [false; 512];
+                        self.unfocused = true;
                     }
+                    sdl::WINEV_FOCUS_GAINED => self.unfocused = false,
+                    sdl::WINEV_MINIMIZED | sdl::WINEV_HIDDEN => self.minimised = true,
+                    sdl::WINEV_RESTORED | sdl::WINEV_SHOWN => self.minimised = false,
                     _ => {}
                 },
                 sdl::EV_KEYDOWN => {
@@ -1202,7 +1214,17 @@ impl App {
         self.toggle_fly = false;
         self.leave = false;
         self.drop_item = false;
-        let distance = self.distance;
+        // What the memory budget allows (client/memory): the settings are left alone.
+        let wanted = crate::budget::Wanted {
+            distance: self.distance,
+            far: self.settings.far_distance,
+            lod_real: self.settings.lod_real,
+            lod_trees: self.settings.lod_trees,
+            lod_detail: self.settings.lod_detail,
+        };
+        self.mem.tick(dt, r, self.session.as_ref(), &mut self.audio, &wanted);
+        self.eff = self.mem.effective(&wanted);
+        let distance = self.eff.distance;
         let mut died = false;
         if let Some(g) = self.session.as_mut() {
             // The player may move once the chunks right around them are in;
@@ -1221,8 +1243,8 @@ impl App {
                 }
             }
             if playing && g.playable {
-                g.set_lod(self.settings.lod_real, self.settings.lod_trees, self.settings.lod_detail);
-                g.update(dt, &controls, distance, self.settings.far_distance, r, &mut self.audio);
+                g.set_lod(self.eff.lod_real, self.eff.lod_trees, self.eff.lod_detail);
+                g.update(dt, &controls, distance, self.eff.far, r, &mut self.audio);
                 if g.flags != self.settings.flags {
                     g.flags = self.settings.flags.clone();
                 }
@@ -1258,6 +1280,7 @@ impl App {
                     r.load_models();
                     self.pack_text = crate::client::pack_text::PackText::ready(pack);
                     self.server_content = true;
+                    self.mem.set_mods(true);
                     g.say("USING THE SERVER'S CONTENT");
                 }
             }
@@ -1382,11 +1405,11 @@ impl App {
             underwater = crate::block::is_water(head);
             let env = Env {
                 time: g.time,
-                distance: self.distance,
+                distance: self.eff.distance,
                 clouds: self.settings.clouds,
                 underwater,
                 clock: g.clock,
-                far_distance: if self.settings.far_distance > self.distance { self.settings.far_distance } else { 0 },
+                far_distance: if self.eff.far > self.eff.distance { self.eff.far } else { 0 },
                 rain: g.sky.rain,
                 flash: g.flash,
                 vision: crate::game::effects::apply::night_vision(&g.fx, &crate::game::effects::apply::lookup),
@@ -1854,6 +1877,8 @@ impl App {
                 alloc::format!("JOBS {} ON {} THREADS   TIME {:.2}", g.pool.in_flight, g.pool.thread_count(), g.time),
                 gl::get_string(gl::RENDERER),
             ];
+            let mem = self.mem.lines();
+            let lines: Vec<String> = lines.into_iter().chain(mem).collect();
             for (i, l) in lines.iter().enumerate() {
                 r.label(4.0 * s, 4.0 * s + i as f32 * 10.0 * s, s, l, WHITE);
             }
@@ -2632,6 +2657,17 @@ impl App {
         full.work(r, &frame);
     }
 
+    /// Choose the memory limit: the bigger one when there are mods (or a server's content).
+    fn refresh_mem_limit(&mut self) {
+        let mut any = self.server_content;
+        for p in &self.pack_paths {
+            if let Some(folder) = p.strip_suffix("/*") {
+                any |= mods_in(&alloc::format!("{}/", folder)).iter().any(|m| !self.settings.mods_off.split(',').any(|o| o == mod_name(m)));
+            }
+        }
+        self.mem.set_mods(any);
+    }
+
     /// Read the pack files again and switch to them without restarting.
     fn reload_packs(&mut self, r: &mut Renderer) {
         if self.session.as_ref().map_or(false, |g| g.net.is_some()) {
@@ -2663,6 +2699,7 @@ impl App {
         r.load_models();
         self.pack_text = text;
         self.server_content = false;
+        self.refresh_mem_limit();
         self.status = note;
     }
 
@@ -3521,6 +3558,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
     // (The settings are read properly further down; which mods are off is
     // needed now.)
     let mods_off: String = sys::read_file(&alloc::format!("{}settings.txt", base)).map(|b| crate::settings::Settings::parse(&String::from_utf8_lossy(&b)).mods_off).unwrap_or_default();
+    // Long sounds and model files are read again from their files when wanted (see util/data/reread).
+    crate::util::data::reread::set_reader(read_mod_file);
     let (first, mut pack_text) = load_content(&pack_paths, &mods_off);
     block::install(first);
     phases.mark("content: base data and mods parsed");
@@ -3670,7 +3709,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     unsafe { (api.SDL_StartTextInput)() };
     let mut inp = UiInput::default();
 
-    let threads = opts.threads.unwrap_or_else(|| thread::cpu_count().saturating_sub(1).clamp(1, 8));
+    let threads = opts.threads.unwrap_or_else(|| thread::cpu_count().saturating_sub(1).clamp(1, 6));
     let mut app = App {
         window,
         audio: if scripted { Audio::silent() } else { Audio::new() },
@@ -3680,6 +3719,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         settings_path,
         base: base.clone(),
         threads,
+        mem: crate::client::memory::MemWatch::new(false, opts.log.is_some()),
+        eff: crate::budget::Effective { distance: 8, far: 0, lod_real: 0, lod_trees: 0, lod_detail: 0 },
+        unfocused: false,
+        minimised: false,
         screen: Screen::Title,
         session: None,
         focus: 0,
@@ -3767,6 +3810,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     app.status.clear();
     // Sounds the player has put in the data folder's `sounds/` folder replace the game's own.
     let own_sounds = app.audio.load_folder(&base);
+    app.refresh_mem_limit();
     if !own_sounds.is_empty() {
         logf!("voxelrust: own sounds from {}sounds/: {}", base, own_sounds.join(" "));
     }
@@ -4077,15 +4121,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
         if frame_count % 30 == 0 {
             unsafe { (api.SDL_GL_SetSwapInterval)((app.settings.vsync && !scripted) as c_int) };
         }
-        // Do not spin the CPU in menus, and honour the frame-rate limit.
+        // Do not spin the CPU in menus, with the window behind others or minimised, and honour
+        // the frame-rate limit (client/pacing).
         let in_menu = !matches!(app.screen, Screen::Game | Screen::Inventory);
-        let limit = if in_menu && !scripted { 60 } else { app.settings.max_fps };
-        if limit > 0 && (in_menu || !app.settings.vsync) {
-            let spent = sys::now() - frame_start;
-            let want = 1.0 / limit as f64;
-            if spent < want {
-                unsafe { (api.SDL_Delay)(((want - spent) * 1000.0) as u32) };
-            }
+        let facts = crate::client::pacing::Facts { in_menu, focused: !app.unfocused, minimised: app.minimised, vsync: app.settings.vsync, max_fps: app.settings.max_fps, scripted };
+        let wait = crate::client::pacing::wait_ms(crate::client::pacing::cap(&facts), sys::now() - frame_start);
+        if wait > 0 {
+            unsafe { (api.SDL_Delay)(wait) };
         }
         #[cfg(target_arch = "wasm32")]
         return Ok(true);
@@ -4330,7 +4372,10 @@ fn server_content(pack: &[u8]) -> Registry {
         }
     }
     let refs: Vec<(&str, &str)> = sources.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    // (Their files live only in memory, so their sounds cannot be decoded again later.)
+    crate::util::data::reread::keep_all(true);
     let mut registry = Registry::from_sources(&refs, &mut |p| files.iter().find(|f| f.0.strip_prefix("file:") == Some(p)).map(|f| f.1.clone()));
+    crate::util::data::reread::keep_all(false);
     // What a server sends may define things, but the lines kept for the
     // mods' own code (addresses to fetch from, for one) stay our own.
     registry.lines = block::reg().lines.clone();
@@ -4523,6 +4568,7 @@ pub fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     for i in 0..argc.max(0) as usize {
         args.push(unsafe { sys::from_cstr(*argv.add(i)) });
     }
+    sys::heap::tune();
     match run(args) {
         Ok(()) => 0,
         Err(msg) => {

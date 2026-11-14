@@ -71,7 +71,7 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | Esc | menu / close a screen |
 | F1 | hide or show the HUD |
 | F2 | save a screenshot (`screenshot-<number>.bmp` in the data folder) |
-| F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts |
+| F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts, memory use against its limit (see [MEMORY.md](MEMORY.md)) |
 | F5 | third-person view |
 | F11 | full screen |
 
