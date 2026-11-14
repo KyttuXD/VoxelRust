@@ -274,12 +274,6 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
                             if opaque(nb) || (nb == b && d.kind != Kind::Cube) || (liquid && crate::liquid_mesh::face_hidden(b, nb)) {
                                 continue;
                             }
-                            // Beside the same liquid at another level, a side is only seen
-                            // where this one stands higher: inside a body of water (a
-                            // hole where a block was broken) no walls show.
-                            if liquid && f.n[1] == 0 && crate::block::same_fluid(b, nb) && liquid_top(nb, reg_.cell(nx, ny + 1, nz).0) >= top {
-                                continue;
-                            }
                             let mut quad = [Vertex { pos: [0; 4], col: [0; 4], uv: [0; 2], luv: [0; 2] }; 4];
                             let mut bright = [0u32; 4];
                             for (k, &(cu, cv)) in CORNERS.iter().enumerate() {
