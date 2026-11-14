@@ -147,3 +147,10 @@ sh scripts/write-nightly-list.sh "$out" "$COMMIT" "$SEQ"
 (cd "$out" && sha256sum voxelrust-* > SHA256SUMS.txt)
 rm -rf "$stage"
 ls -l "$out"
+# Every build goes on the GitHub nightly release and the mirror, so the tag
+# always names the newest build. VOXELRUST_PUBLISH=0 builds without it.
+if [ "${VOXELRUST_PUBLISH:-1}" = 1 ]; then
+  sh scripts/publish-nightly.sh || echo "WARNING: the build is in $out but publishing it failed (run scripts/publish-nightly.sh again)" >&2
+else
+  echo "not published (VOXELRUST_PUBLISH=0); run scripts/publish-nightly.sh to publish dist/nightly"
+fi
