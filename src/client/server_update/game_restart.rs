@@ -99,7 +99,9 @@ mod tests {
         assert!(matches!(p.step(true, MENU, 501.0), Step::Say(_)), "a fresh countdown");
         assert_eq!(p.step(true, MENU, 502.0), Step::Wait);
         let dl = Busy { downloading: true, ..WORLD };
-        assert_eq!(p.step(true, dl, 600.0), Step::Wait);
+        // The countdown begun at 501 is still running: the download cancels it, then it waits.
+        assert_eq!(p.step(true, dl, 600.0), Step::Cancel);
+        assert_eq!(p.step(true, dl, 601.0), Step::Wait);
     }
 
     #[test]
