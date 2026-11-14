@@ -87,6 +87,13 @@ impl App {
             r.rect(x - tw * 0.5 - 2.0 * ts, y - 2.0 * ts, tw + 4.0 * ts, 11.0 * ts, [0, 0, 0, 110]);
             r.label(x - tw * 0.5, *y, ts, name, WHITE);
         }
+        // Small hearts under the names of players near, and the list of players while Tab is held.
+        for (x, y, hp, max, shrink) in self.tag_hearts.borrow().iter() {
+            crate::client::playerlist::small_hearts(r, *x, *y + 12.0 * s * shrink, *hp, *max, s * shrink * 0.5);
+        }
+        if self.screen == Screen::Game && self.keys[43] && g.net.is_some() {
+            crate::client::playerlist::tab_list(r, g, &self.settings.player_name, w, s);
+        }
         // Voice chat: your microphone, and who is talking.
         {
             let names: Vec<String> = match g.net.as_ref() {

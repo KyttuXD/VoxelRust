@@ -29,6 +29,8 @@ pub struct Remote {
     pub emote_t: f32,
     /// The status effects on them: id, level, seconds left when it was sent.
     pub effects: Vec<(String, u8, u32)>,
+    /// Their health, hunger, armour and ping, as last said (None until the first message; see `net/sync`).
+    pub vitals: Option<crate::net::sync::vitals::Vitals>,
 }
 
 pub enum Event {
@@ -95,6 +97,10 @@ pub struct Client {
     age: f32,
     /// What this player's account is (see `net/accounts/client.rs`).
     pub acct: crate::net::accounts::client::ClientAccount,
+    /// Our own ping in milliseconds as the server measured it (0 until it has; see `net/sync`).
+    pub own_ping: u16,
+    /// The player the server named to run the creatures (None: the lowest number does).
+    pub runner: Option<u16>,
 }
 
 /// Most voice frames held waiting (about a second of one talker).
@@ -154,7 +160,7 @@ impl Client {
         for _ in 0..120 {
             match inbox.next() {
                 Next::Msg(Msg::Welcome { id, seed, time, kind }) => {
-                    let mut c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None, skin_caps: None, skin_in: Default::default(), skin_cool: 0.0, age: 0.0, acct: Default::default() };
+                    let mut c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None, skin_caps: None, skin_in: Default::default(), skin_cool: 0.0, age: 0.0, acct: Default::default(), own_ping: 0, runner: None };
                     c.acct.name = crate::settings::clean_name(name, 16).to_ascii_lowercase();
                     c.acct.at = auth.at.clone();
                     c.acct.remember = auth.remember;
@@ -231,7 +237,7 @@ impl Client {
                     Msg::Join { id, name } => {
                         events.push(Event::Chat(alloc::format!("{} JOINED", name.to_ascii_uppercase())));
                         events.push(Event::Joined(name.clone()));
-                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, pace: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new() });
+                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, pace: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new(), vitals: None });
                     }
                     Msg::Leave { id } => {
                         self.skin_in.forget(id);
@@ -308,6 +314,8 @@ impl Client {
                             events.push(Event::Skin(id, png, slim));
                         }
                     }
+                    // Health, ping and the like are kept here; the game does not see them as events.
+                    Msg::State { id, channel: crate::proto::channel::VITALS, key, data, .. } => self.on_vitals_state(id, &key, &data),
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
                     Msg::ModList { mods } => events.push(Event::ModList(mods)),
@@ -409,9 +417,10 @@ impl Client {
     }
 
     /// Whether this player is the one who runs the creatures and the like
-    /// for everybody: the one with the lowest number of those present.
+    /// for everybody: the one the server named (the first to have come of
+    /// those present), else the one with the lowest number.
     pub fn runs_the_world(&self) -> bool {
-        self.players.keys().all(|&other| self.id < other)
+        self.is_the_runner()
     }
 
     /// Tell the server whether we want to hear voice chat and whether we

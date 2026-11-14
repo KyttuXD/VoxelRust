@@ -408,6 +408,8 @@ struct App {
     picker: crate::client::picker::Picker,
     /// Name tags to draw this frame: screen position and text.
     tags: Vec<(f32, f32, String, f32)>,
+    /// Hearts to draw under other players' name tags this frame: screen position, health, most health, scale.
+    tag_hearts: core::cell::RefCell<Vec<(f32, f32, i32, i32, f32)>>,
     /// The map screen: centre in "unit" map coordinates (0..1) and zoom.
     /// Whose screen the map key has opened (a mod's code).
     map_native: Option<usize>,
@@ -1277,6 +1279,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         skin_url: String::new(),
         picker: crate::client::picker::Picker::new(),
         tags: Vec::new(),
+        tag_hearts: core::cell::RefCell::new(Vec::new()),
         map_native: None,
         status: String::new(),
         pin: PinPrompt::default(),
