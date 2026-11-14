@@ -50,6 +50,8 @@ pub struct SectionTables {
     pub bounds: [[u8; 6]; SECTIONS],
     /// Which faces of each section see each other (see [`pair_bit`]).
     pub conn: [u16; SECTIONS],
+    /// A bit for each section that has faces of HD tiles (kept apart in `MeshData::hd`).
+    pub hd: u16,
 }
 
 impl SectionTables {
@@ -64,7 +66,7 @@ impl SectionTables {
 
     /// Whether section `s` has any vertices at all.
     pub fn has_geometry(&self, s: usize) -> bool {
-        self.opaque[s + 1] > self.opaque[s] || self.water[s + 1] > self.water[s] || self.glass[s + 1] > self.glass[s]
+        self.opaque[s + 1] > self.opaque[s] || self.water[s + 1] > self.water[s] || self.glass[s + 1] > self.glass[s] || self.hd & (1 << s) != 0
     }
 }
 

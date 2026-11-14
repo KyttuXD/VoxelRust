@@ -69,6 +69,7 @@ imports! {
     fn glPointSize(size: f32);
     fn glHint(target: u32, mode: u32);
     fn glFinish();
+    fn glGetIntegerv(name: u32, out: *mut i32);
     fn glGenBuffers(n: i32, ids: *mut u32);
     fn glBindBuffer(target: u32, id: u32);
     fn glBufferData(target: u32, size: isize, data: *const c_void, usage: u32);

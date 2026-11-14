@@ -96,3 +96,19 @@ limit) and model pictures no bigger than they need to be: a 1024 x 1024
 picture is 4 MB on the graphics card, and 100 of them are 400 MB. The sound
 and model files must stay where they are while the game runs, because they are
 read again when needed (a mod inside a `.zip` works too).
+
+## HD pictures raise the limit
+
+The 300 MB and 700 MB are for the world. Pictures the player chose to use at a high
+resolution (HD textures of packs and mods, bigger creature pictures, HD skins) are
+not the world's to give back: while they are in use their cost is added to the limit
+(`src/util/budget/allowance.rs`), up to a hard ceiling of 1.5 GB for the whole game, and
+the steps of the ladder above are taken against that raised limit. With no HD picture
+the allowance is 0 and the limits are the ones above.
+
+What reports its cost: the HD atlas of block and item textures (its pages on the card with
+their mip levels, and the picture files kept to build it again), and the creature and model
+pictures bigger than 128 x 128 (what they cost beyond that). Code that loads other HD pictures (skins) calls
+`budget::set_allowance(kind, bytes)`, or `add_allowance` / `remove_allowance` as pictures come
+and go (`kind` is `Allow::Textures`, `Allow::Models` or `Allow::Skins`). F3 shows the allowance on
+a line with the HD atlas.

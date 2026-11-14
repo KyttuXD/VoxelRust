@@ -35,6 +35,8 @@ pub struct MemWatch {
     pub ladder: Ladder,
     /// Writing the numbers to the log is wanted (`--log`).
     pub log: bool,
+    /// Whether the bigger limit (mods) is the base: the limit is it plus the HD allowance.
+    with_mods: bool,
     since_measure: f32,
     since_log: f32,
     since_trim: f32,
@@ -47,12 +49,13 @@ pub struct MemWatch {
 
 impl MemWatch {
     pub fn new(with_mods: bool, log: bool) -> MemWatch {
-        MemWatch { budget: Budget::new(budget::soft_limit(with_mods)), ladder: Ladder::new(), log, since_measure: MEASURE_EVERY, since_log: 0.0, since_trim: 0.0, audio_bytes: 0, trims: 0, steps_taken: 0 }
+        MemWatch { budget: Budget::new(budget::current_limit(with_mods)), ladder: Ladder::new(), log, with_mods, since_measure: MEASURE_EVERY, since_log: 0.0, since_trim: 0.0, audio_bytes: 0, trims: 0, steps_taken: 0 }
     }
 
     /// Set the limit for a game with mods (or without).
     pub fn set_mods(&mut self, with_mods: bool) {
-        self.budget.limit = budget::soft_limit(with_mods);
+        self.with_mods = with_mods;
+        self.budget.limit = budget::current_limit(with_mods);
     }
 
     /// What to use now, given what the settings ask for.
@@ -63,10 +66,13 @@ impl MemWatch {
     /// Count what is held. Cheap, but not free: once a second is enough.
     pub fn measure(&mut self, r: &Renderer, g: Option<&Session>, audio: &Audio) {
         let b = &mut self.budget;
+        // HD textures and skins the player chose raise the limit by what they cost
+        // (nothing changes without them: the allowance is 0).
+        b.limit = budget::current_limit(self.with_mods);
         self.audio_bytes = audio.clip_bytes();
         b.set(Cat::Audio, self.audio_bytes);
         b.set(Cat::Meshes, r.vbo_bytes);
-        b.set(Cat::Textures, ATLAS_BYTES + UI_TEXTURE_BYTES + r.model_tex_bytes);
+        b.set(Cat::Textures, ATLAS_BYTES + UI_TEXTURE_BYTES + r.model_tex_bytes + r.hd_bytes);
         b.set(Cat::Models, r.model_bytes());
         b.set(Cat::Other, BASE_BYTES);
         match g {
@@ -129,11 +135,11 @@ impl MemWatch {
         }
     }
 
-    /// Two lines for the F3 screen.
-    pub fn lines(&self) -> [String; 2] {
+    /// Two lines for the F3 screen, and a third about the HD atlas when there is one.
+    pub fn lines(&self, r: &Renderer) -> alloc::vec::Vec<String> {
         let b = &self.budget;
         let mb = |c: Cat| b.get(c) >> 20;
-        [
+        let mut out = alloc::vec![
             alloc::format!("MEMORY {} OF {} MB ({}%)   HELD BACK: {}", b.total() >> 20, b.limit >> 20, b.percent(), self.ladder.describe()).to_ascii_uppercase(),
             alloc::format!(
                 "CHUNKS {}  MESHES {}  TEXTURES {}  AUDIO {}  MODELS {}  ENTITIES {} MB",
@@ -144,6 +150,22 @@ impl MemWatch {
                 mb(Cat::Models),
                 mb(Cat::Entities)
             ),
-        ]
+        ];
+        let (pages, tiles, bytes, cap) = r.hd_summary();
+        let allowed = budget::allowance();
+        if pages > 0 || allowed > 0 {
+            out.push(
+                alloc::format!(
+                    "HD ATLAS {} MB IN {} PAGES, {} TILES, TEXTURE SIZE {}   ALLOWANCE +{} MB",
+                    bytes >> 20,
+                    pages,
+                    tiles,
+                    cap,
+                    allowed.min(budget::HARD_CEILING) >> 20
+                )
+                .to_ascii_uppercase(),
+            );
+        }
+        out
     }
 }

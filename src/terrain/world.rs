@@ -41,6 +41,16 @@ pub struct GpuMesh {
     /// bounds and its connectivity (`terrain/sections.rs`); not `valid` for
     /// meshes without sections (distant tiles).
     pub sec: crate::sections::SectionTables,
+    /// The faces of HD tiles (see hd_split.rs): one buffer, a run of vertices for each page of the HD atlas.
+    pub hd: u32,
+    pub hd_runs: [i32; 4],
+}
+
+impl GpuMesh {
+    /// Whether anything of this mesh is drawn: normal, translucent or HD faces.
+    pub fn has_geometry(&self) -> bool {
+        self.opaque_count > 0 || self.water_count > 0 || self.glass_count > 0 || self.hd_runs.iter().any(|n| *n > 0)
+    }
 }
 
 /// Whoever owns the graphics card memory (the renderer; a counter in tests).
@@ -595,6 +605,21 @@ impl World {
             }
         }
         // Distant terrain is cheap to make again with the new textures.
+        for t in core::mem::take(&mut self.far).into_values() {
+            if let Some(m) = t.mesh {
+                sink.free(m);
+            }
+        }
+        self.far_center = (i32::MIN, 0, 0);
+        self.settled = false;
+    }
+
+    /// The pictures changed but not the blocks (the TEXTURE SIZE, the HD atlas was built again):
+    /// every mesh is made again, since the HD faces' coordinates are in the atlas's own units.
+    pub fn remesh_all(&mut self, sink: &mut dyn MeshSink) {
+        for c in self.chunks.values_mut() {
+            c.dirty = c.data.is_some();
+        }
         for t in core::mem::take(&mut self.far).into_values() {
             if let Some(m) = t.mesh {
                 sink.free(m);

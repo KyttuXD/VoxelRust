@@ -588,6 +588,13 @@
       if (target !== GL_FOG_HINT && target !== GL_PERSPECTIVE_CORRECTION_HINT) unimplemented("glHint 0x" + target.toString(16));
     },
     glFinish() { gl.finish(); },
+    glGetIntegerv(name, ptr) {
+      // Only the biggest texture is asked for (the HD atlas is planned to fit it).
+      const GL_MAX_TEXTURE_SIZE = 0x0D33;
+      const value = name === GL_MAX_TEXTURE_SIZE ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : 0;
+      if (name !== GL_MAX_TEXTURE_SIZE) unimplemented("glGetIntegerv 0x" + name.toString(16));
+      view().setInt32(ptr, value, true);
+    },
     glGenBuffers(n, ptr) {
       const out = view();
       for (let i = 0; i < n; i++) {

@@ -148,13 +148,9 @@ pub struct Settings {
     pub extras: Vec<(String, String)>,
     /// Names of mods that are switched off, separated by commas.
     pub mods_off: String,
-    /// Texture pack folders (Minecraft-style), separated by `|`: their pictures replace the game's own.
-    pub texture_pack: String,
-    /// How the texture packs' colours are changed: hue turned by this many degrees (-180..180),
-    /// saturation and brightness in percent.
-    pub pack_hue: i32,
-    pub pack_saturation: i32,
-    pub pack_brightness: i32,
+    /// The most pixels on a side a picture of a texture may have on the graphics card
+    /// (16, 32, 64, 128, 256 or 512). It only matters when HD pictures are in use (content/hd).
+    pub texture_size: i32,
     /// Install newer versions from the nightly release by itself.
     pub auto_update: bool,
     /// A web folder to fetch updates from over plain HTTP, for a build that cannot
@@ -221,15 +217,22 @@ impl Default for Settings {
             mod_keys: Vec::new(),
             extras: Vec::new(),
             mods_off: String::new(),
-            texture_pack: String::new(),
-            pack_hue: 0,
-            pack_saturation: 100,
-            pack_brightness: 100,
+            texture_size: 512,
             auto_update: true,
             update_mirror: String::new(),
             picker_dir: String::new(),
         }
     }
+}
+
+/// Settings that older versions wrote and that no longer exist (the texture pack choice and its
+/// colour sliders): an old `settings.txt` with them still loads, and they are not kept as
+/// mods' own settings.
+const RETIRED_KEYS: &[&str] = &["texture_pack", "pack_hue", "pack_saturation", "pack_brightness"];
+
+/// The nearest of the texture sizes the settings offer (16, 32, 64, 128, 256, 512), rounding down.
+pub fn texture_size_step(v: i32) -> i32 {
+    [512, 256, 128, 64, 32].into_iter().find(|s| v >= *s).unwrap_or(16)
 }
 
 /// Value of `key=` in a small text file.
@@ -346,7 +349,7 @@ impl Settings {
                 text.lines()
                     .filter_map(|l| l.trim_start_matches('\u{feff}').trim().split_once('='))
                     .filter(|(k, _)| !k.is_empty() && k.len() <= 32 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-                    .filter(|(k, _)| !k.starts_with("key_") && !k.starts_with("flag_") && !k.starts_with("modkey_") && kv(&own, k).is_none())
+                    .filter(|(k, _)| !k.starts_with("key_") && !k.starts_with("flag_") && !k.starts_with("modkey_") && kv(&own, k).is_none() && !RETIRED_KEYS.contains(k))
                     .map(|(k, v)| (String::from(k), v.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').take(120).collect::<String>()))
                     .take(32)
                     .collect()
@@ -354,10 +357,7 @@ impl Settings {
             auto_update: flag("auto_update", true),
             update_mirror: kv(text, "update_mirror").unwrap_or("").chars().filter(|c| !c.is_control() && *c != ' ').take(300).collect(),
             picker_dir: kv(text, "picker_dir").unwrap_or("").chars().filter(|c| !c.is_control()).take(400).collect(),
-            texture_pack: kv(text, "texture_pack").unwrap_or("").chars().filter(|c| !c.is_control()).take(1000).collect(),
-            pack_hue: int("pack_hue", d.pack_hue, -180, 180),
-            pack_saturation: int("pack_saturation", d.pack_saturation, 0, 300),
-            pack_brightness: int("pack_brightness", d.pack_brightness, 20, 200),
+            texture_size: texture_size_step(int("texture_size", d.texture_size, 16, 512)),
             mods_off: kv(text, "mods_off").unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, ',' | '_' | '-')).take(400).collect(),
         }
     }
@@ -393,7 +393,7 @@ impl Settings {
         s.push_str(&alloc::format!("music_volume={}\n", self.music_volume));
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\nslim_arms={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.slim_arms as i32));
         s.push_str(&alloc::format!("map_zoom={}\nmap_preset_1={}\nmap_preset_2={}\nmap_preset_3={}\nmap_follow={}\nmap_grid={}\nmap_waypoints={}\n", self.map_zoom, self.map_preset[0], self.map_preset[1], self.map_preset[2], self.map_follow as i32, self.map_grid as i32, self.map_waypoints as i32));
-        s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\ntexture_pack={}\npack_hue={}\npack_saturation={}\npack_brightness={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.texture_pack, self.pack_hue, self.pack_saturation, self.pack_brightness, self.auto_update as i32));
+        s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\ntexture_size={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.texture_size, self.auto_update as i32));
         s.push_str(&alloc::format!("picker_dir={}\nupdate_mirror={}\nshader={}\ngpu_limit={}\n", self.picker_dir, self.update_mirror, self.shader, self.gpu_limit));
         s.push_str(&alloc::format!(
             "voice_hear={}\nvoice_mic={}\nvoice_activation={}\nvoice_threshold={}\nvoice_volume={}\nvoice_device={}\n",
@@ -475,6 +475,31 @@ mod tests {
         assert_eq!(odd.player_name, "bxyb");
         assert_eq!(odd.key(Action::Jump), 1);
         assert_eq!(Settings::parse(""), Settings::default());
+    }
+
+    #[test]
+    fn old_texture_pack_keys_are_ignored_and_not_kept() {
+        let old = Settings::parse("distance=12\ntexture_pack=/a|/b\npack_hue=20\npack_saturation=150\npack_brightness=90\nweather=0\n");
+        assert_eq!(old.distance, 12);
+        assert!(!old.weather);
+        // They are neither a setting nor a mod's own, and are not written back.
+        assert!(old.extras.is_empty(), "{:?}", old.extras);
+        let text = old.to_text();
+        for k in ["texture_pack", "pack_hue", "pack_saturation", "pack_brightness"] {
+            assert!(kv(&text, k).is_none(), "{k} is still written");
+        }
+    }
+
+    #[test]
+    fn the_texture_size_defaults_to_512_snaps_to_a_step_and_round_trips() {
+        assert_eq!(Settings::default().texture_size, 512);
+        assert_eq!(Settings::parse("").texture_size, 512);
+        for (written, want) in [("16", 16), ("20", 16), ("32", 32), ("100", 64), ("128", 128), ("300", 256), ("512", 512), ("9999", 512), ("0", 16), ("x", 512)] {
+            assert_eq!(Settings::parse(&alloc::format!("texture_size={written}\n")).texture_size, want, "{written}");
+        }
+        let mut s = Settings::default();
+        s.texture_size = 128;
+        assert_eq!(Settings::parse(&s.to_text()).texture_size, 128);
     }
 
     #[test]

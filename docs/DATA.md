@@ -103,7 +103,7 @@ texture <id> paint <style> colors <#rrggbb|r g b|role=#rrggbb>... [gradient <dir
 palette <name> <colours...> [gradient vertical|horizontal|diagonal|radial]
                                           declare a palette (before the textures that use it)
 texture <id> flat <r> <g> <b> [noise <n>] a flat colour; with `noise` (any number) a block face with a darker frame
-texture <id> file <image>                 a PNG, JPEG, GIF, BMP or TGA file (any size, fitted to 16 x 16), path relative to this file
+texture <id> file <image>                 a PNG, JPEG, GIF, BMP or TGA file, path relative to this file; a square of 16 to 512 pixels (a multiple of 16) is an HD tile (see TEXTURING.md), any other size is fitted to 16 x 16
 ```
 
 Colours are three numbers 0..255, or (in `texture` and `palette` lines) `#rrggbb`.
@@ -1629,19 +1629,19 @@ editing. Change any of them in an image editor and copy the ones you changed
 into the `textures/` folder of the data folder (the game makes it when it
 starts). They replace the data's picture of the same id the next time the
 game starts or packs are reloaded, in singleplayer and on servers alike. A
-picture can be a PNG, JPEG, GIF, BMP or TGA (`<id>.png`, `<id>.jpg`, ...) of any size, fitted to 16 x 16; delete the file to get the original back. JPEG is read as baseline only (not progressive); a GIF gives its first picture.
+picture can be a PNG, JPEG, GIF, BMP or TGA (`<id>.png`, `<id>.jpg`, ...), a square of 16 to 512 pixels (an HD tile) or any other size fitted to 16 x 16; delete the file to get the original back. JPEG is read as baseline only (not progressive); a GIF gives its first picture.
 
 ### Texture packs
 
-`voxelrust --texture-pack DIR` (repeat it for several; later ones win), or
-`texture_pack=DIR|DIR` in `settings.txt`, uses a folder of pictures in the
+`voxelrust --texture-pack DIR` (repeat it for several; later ones win) adds a folder of pictures in the
 usual Minecraft-style layout (`assets/<name>/textures/block/*.png` and
 `.../item/*.png`, or a plain folder of PNG files). A texture is taken from a
 pack when the pack has a picture of that name, or one the game knows it by
 (a table of names in `src/content/textures.rs`: `grass_top` is `grass_block_top`,
 `wood_pick` is `wooden_pickaxe`, `crystal_*` tools are `diamond_*`, `pine` is
 `spruce`, crops by stage, and so on). Tall pictures (animation strips) give
-their first frame, other sizes are fitted to 16 x 16, and the grey textures
+their first frame, squares of 16 to 512 pixels (multiples of 16) are HD tiles
+(see [TEXTURING.md](TEXTURING.md#hd-textures)), other sizes are fitted to 16 x 16, and the grey textures
 the packs expect a biome to colour (grass, leaves, water) are tinted green and
 blue. A picture in the data folder's `textures/` folder beats the pack's; what
 neither has is made as before.

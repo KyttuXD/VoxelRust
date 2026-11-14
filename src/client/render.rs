@@ -22,6 +22,8 @@ use core::ffi::c_void;
 pub mod armor;
 // Particles and translucent quads of mods (game/fx).
 mod fx;
+// The HD atlas on the card (content/hd).
+mod hd;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -125,6 +127,14 @@ pub struct Renderer {
     pub culler: crate::client::cull::Culler,
     /// The view of the last `draw_world`, to cull creatures and particles by.
     frustum: Option<Frustum>,
+    /// The pages of the HD atlas (render/hd.rs): textures and sizes, what they cost, tiles in them, the cap they are at.
+    hd_tex: Vec<u32>,
+    hd_dims: Vec<(usize, usize)>,
+    pub hd_bytes: usize,
+    hd_tiles: usize,
+    hd_cap: usize,
+    /// Bytes of creature and model pictures beyond 128 x 128 each (they raise the memory allowance).
+    pub hd_model_bytes: usize,
 }
 
 /// What `draw_world` hands on to `finish_world`.
@@ -214,7 +224,8 @@ impl Renderer {
     pub fn new() -> Renderer {
         let g = gl();
         let r = reg();
-        let atlas_px = textures::build_atlas(r);
+        Self::note_max_texture();
+        let (atlas_px, hd_built) = textures::build_atlas_and_hd(r);
         let atlas = make_texture(textures::ATLAS, textures::ATLAS, &atlas_px, gl::NEAREST, gl::CLAMP_TO_EDGE);
         unsafe {
             // Mip levels down to one pixel per tile, built by hand so that
@@ -288,7 +299,7 @@ impl Renderer {
             (g.LoadMatrixf)(m.as_ptr());
             (g.ActiveTexture)(gl::TEXTURE0);
         }
-        Renderer {
+        let mut renderer = Renderer {
             atlas,
             light,
             water_phase: 0,
@@ -319,7 +330,15 @@ impl Renderer {
             pass: None,
             culler: crate::client::cull::Culler::new(),
             frustum: None,
-        }
+            hd_tex: Vec::new(),
+            hd_dims: Vec::new(),
+            hd_bytes: 0,
+            hd_tiles: 0,
+            hd_cap: 512,
+            hd_model_bytes: 0,
+        };
+        renderer.upload_hd(hd_built);
+        renderer
     }
 
     fn update_light_map(&mut self, day: f32, vision: f32) {
@@ -648,6 +667,8 @@ impl Renderer {
             self.stats.draw_calls += runs.len() as u32;
             self.stats.quads += runs.iter().map(|r| r[1] as u32 / 4).sum::<u32>();
         }
+        // The faces of HD textures, a page of the HD atlas at a time (render/hd.rs).
+        self.draw_hd_chunks(&view);
         if lod {
             let far_proj = math::perspective(cam.fov, aspect, 2.0, lod_far * 1.3 + 256.0);
             let far_frustum = Frustum::new(&math::mat_mul(&far_proj, &view));
@@ -1259,7 +1280,7 @@ impl Renderer {
     /// Repaint the block atlas from the current registry (content reloaded).
     pub fn rebuild_atlas(&mut self) {
         let g = gl();
-        let mut level = textures::build_atlas(reg());
+        let (mut level, hd_built) = textures::build_atlas_and_hd(reg());
         let mut size = textures::ATLAS;
         self.flush(gl::QUADS);
         unsafe {
@@ -1270,6 +1291,8 @@ impl Renderer {
                 size /= 2;
             }
         }
+        // The HD atlas of the same build (the old pages are given back).
+        self.upload_hd(hd_built);
         self.batch_tex = 0;
     }
 
@@ -1284,7 +1307,10 @@ impl Renderer {
         }
         let t = match crate::pack_entities::image(name) {
             Some(img) => {
+                // At most 512 on a side and the TEXTURE SIZE (content/hd).
+                let img = crate::hd::limit_picture(img);
                 self.model_tex_bytes += img.w * img.h * 4;
+                self.note_model_picture(img.w, img.h);
                 self.add_texture(img.w, img.h, &img.rgba)
             }
             None => 0,
@@ -1305,6 +1331,8 @@ impl Renderer {
         self.delete_textures(&old);
         self.entity_tex.clear();
         self.model_tex_bytes = 0;
+        self.hd_model_bytes = 0;
+        crate::budget::set_allowance(crate::budget::Allow::Models, 0);
         self.models = (0..r.models.len()).map(|_| None).collect();
         self.model_tried = alloc::vec![false; r.models.len()];
     }
@@ -1330,6 +1358,13 @@ impl Renderer {
                 // The picture named after the model (a pack's or the game's own, see
                 // `pack_entities`) comes before the one inside the model file, if it has the same shape.
                 let named = crate::pack_entities::image(&spec.id).filter(|i| crate::pack_entities::fits(i, def.model.tex_w, def.model.tex_h));
+                // Pictures of any size up to 512 (and the TEXTURE SIZE): the model's faces are
+                // fractions of the picture, so a bigger one needs nothing else (content/hd).
+                let named = named.map(crate::hd::limit_picture);
+                def.model.texture = def.model.texture.take().map(crate::hd::limit_picture);
+                if let Some(img) = named.as_ref().or(def.model.texture.as_ref()) {
+                    self.note_model_picture(img.w, img.h);
+                }
                 def.tex = match (&named, &def.model.texture) {
                     (Some(img), _) | (None, Some(img)) => make_texture(img.w, img.h, &img.rgba, gl::NEAREST, gl::CLAMP_TO_EDGE),
                     (None, None) => make_texture(1, 1, &[255, 255, 255, 255], gl::NEAREST, gl::CLAMP_TO_EDGE),
@@ -1598,6 +1633,16 @@ impl Renderer {
 
     /// One atlas tile, as an item icon.
     pub fn icon(&mut self, x: f32, y: f32, size: f32, tile: u16, col: Color) {
+        // An HD picture is drawn from the HD atlas (mip levels make it smooth when small).
+        if let Some((tex, uv)) = self.hd_icon(tile) {
+            self.set_tex(tex, gl::QUADS);
+            self.quad(
+                [[x, y, 0.0], [x + size, y, 0.0], [x + size, y + size, 0.0], [x, y + size, 0.0]],
+                [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]],
+                col,
+            );
+            return;
+        }
         self.set_tex(self.atlas, gl::QUADS);
         let n = textures::PER_ROW as u16;
         let e = 1.0 / n as f32;
@@ -1737,14 +1782,17 @@ impl MeshSink for Renderer {
             ymin: m.ymin,
             ymax: m.ymax,
             sec: m.sections,
+            hd: make(&m.hd.verts),
+            hd_runs: m.hd.runs.map(|n| n as i32),
         };
         unsafe { (g.BindBuffer)(gl::ARRAY_BUFFER, 0) };
         mesh
     }
 
     fn free(&mut self, m: GpuMesh) {
-        let ids = [m.opaque, m.water, m.glass];
-        self.vbo_bytes = self.vbo_bytes.saturating_sub((m.opaque_count + m.water_count + m.glass_count) as usize * core::mem::size_of::<Vertex>());
-        unsafe { (gl().DeleteBuffers)(3, ids.as_ptr()) };
+        let ids = [m.opaque, m.water, m.glass, m.hd];
+        let hd_count: i32 = m.hd_runs.iter().sum();
+        self.vbo_bytes = self.vbo_bytes.saturating_sub((m.opaque_count + m.water_count + m.glass_count + hd_count) as usize * core::mem::size_of::<Vertex>());
+        unsafe { (gl().DeleteBuffers)(4, ids.as_ptr()) };
     }
 }

@@ -36,6 +36,10 @@ pub struct ChunkDraw {
     pub vbo: [u32; 3],
     pub run_start: [u32; 3],
     pub run_len: [u8; 3],
+    /// The chunk's HD faces (`terrain/hd_split.rs`): buffer and vertices per page of the HD atlas.
+    /// They are drawn whole whenever any section of the chunk is.
+    pub hd: u32,
+    pub hd_runs: [i32; 4],
 }
 
 /// What the culling did this frame, for the F3 screen.
@@ -124,7 +128,7 @@ impl Culler {
         // 3. Sections to draw, chunk by chunk.
         for (&(cx, cz), chunk) in world.chunks.iter() {
             let m = match &chunk.mesh {
-                Some(m) if m.opaque_count > 0 || m.water_count > 0 || m.glass_count > 0 => m,
+                Some(m) if m.has_geometry() => m,
                 _ => continue,
             };
             let (dx, dz) = (cx - ccx, cz - ccz);
@@ -133,7 +137,7 @@ impl Culler {
                 continue;
             }
             let o = origin_of(cx, cz);
-            let mut cd = ChunkDraw { d2, origin: o, vbo: [m.opaque, m.water, m.glass], ..Default::default() };
+            let mut cd = ChunkDraw { d2, origin: o, vbo: [m.opaque, m.water, m.glass], hd: m.hd, hd_runs: m.hd_runs, ..Default::default() };
             let counts = [m.opaque_count, m.water_count, m.glass_count];
             if !m.sec.valid {
                 // A mesh without sections: all of it or nothing.
@@ -193,7 +197,7 @@ impl Culler {
                 cd.run_start[kind] = self.runs.len() as u32;
                 cd.run_len[kind] = sections::runs(m.sec.starts(kind), mask, &mut self.runs) as u8;
             }
-            if cd.run_len.iter().any(|&n| n > 0) {
+            if cd.run_len.iter().any(|&n| n > 0) || cd.hd_runs.iter().any(|&n| n > 0) {
                 self.chunks.push(cd);
             }
         }

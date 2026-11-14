@@ -39,6 +39,8 @@ pub struct MeshData {
     /// Where each section's vertices start, its bounds, and which of its
     /// faces see each other (see `terrain/sections.rs`).
     pub sections: crate::sections::SectionTables,
+    /// The faces of HD tiles (content/hd), taken out of `opaque` and grouped by page of the HD atlas.
+    pub hd: crate::hd_split::HdMesh,
 }
 
 const R: usize = 48;
@@ -244,7 +246,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
     let reg_ = Region { blk, light };
     let opaque = |b: Block| b == u16::MAX || r.opaque[b as usize] != 0;
 
-    let mut out = MeshData { opaque: Vec::new(), water: Vec::new(), glass: Vec::new(), ymin: CH, ymax: 0, props: Vec::new(), sections: Default::default() };
+    let mut out = MeshData { opaque: Vec::new(), water: Vec::new(), glass: Vec::new(), ymin: CH, ymax: 0, props: Vec::new(), sections: Default::default(), hd: Default::default() };
     let mut shape: Vec<Bx> = Vec::new();
     let mut tabs = crate::sections::SectionTables { valid: true, ..Default::default() };
 
@@ -412,6 +414,11 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
     tabs.opaque[end] = out.opaque.len() as u32;
     tabs.water[end] = out.water.len() as u32;
     tabs.glass[end] = out.glass.len() as u32;
+    // Faces of HD tiles go to a list of their own (nothing happens when no tile is HD); the
+    // section starts follow the quads that stay.
+    let (hd, hd_mask) = crate::hd_split::split_sections(&mut out.opaque, &mut tabs.opaque);
+    out.hd = hd;
+    tabs.hd = hd_mask;
     out.sections = tabs;
     if out.ymin > out.ymax {
         out.ymin = 0;
