@@ -822,7 +822,7 @@ impl Server {
 
     /// Note where a player stands as they leave (only sane numbers; at most 4096 players).
     fn remember_spot(&mut self, name: &str, spot: [f64; 5]) {
-        let ok = spot.iter().all(|v| v.is_finite()) && spot[..3].iter().all(|v| v.abs() < 3.0e7) && spot[1] > -64.0 && spot[1] < 4096.0;
+        let ok = spot.iter().all(|v| v.is_finite()) && spot[..3].iter().all(|v| *v > -3.0e7 && *v < 3.0e7) && spot[1] > -64.0 && spot[1] < 4096.0;
         let key = name.to_ascii_lowercase();
         if ok && (self.spots.len() < 4096 || self.spots.contains_key(&key)) {
             self.spots.insert(key, spot);

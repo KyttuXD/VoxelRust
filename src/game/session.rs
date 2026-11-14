@@ -640,7 +640,7 @@ impl Session {
         }
         let v: Vec<f64> = text.split(' ').filter_map(|w| w.parse::<f64>().ok()).filter(|f| f.is_finite()).collect();
         if let [x, y, z, yaw, pitch] = v[..] {
-            if x.abs() < 3.0e7 && z.abs() < 3.0e7 && y > -64.0 && y < 4096.0 {
+            if x > -3.0e7 && x < 3.0e7 && z > -3.0e7 && z < 3.0e7 && y > -64.0 && y < 4096.0 {
                 self.spot_applied = true;
                 self.player.pos = [x, y, z];
                 self.player.vel = [0.0; 3];
