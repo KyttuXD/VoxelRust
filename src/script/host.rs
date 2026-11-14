@@ -54,6 +54,17 @@ pub trait Host {
     }
     /// The mod whose script is about to run (for the log).
     fn set_mod(&mut self, _name: &str) {}
+    /// The running game, for the host functions of `script/ext/` (world
+    /// queries, creatures, bodies, drawing...). `None` for a host that is
+    /// not the game (the tests' mock): those functions then fail with a message.
+    fn session(&mut self) -> Option<&mut crate::session::Session> {
+        None
+    }
+    /// The game's data folder (ending with `/`), where a mod's files under
+    /// `tmp/<mod>/` live; empty when there is none.
+    fn data_dir(&mut self) -> String {
+        String::new()
+    }
 }
 
 /// Every host function: (signature, what it does). Kept in step with
@@ -182,7 +193,8 @@ pub(crate) fn call_host_fn(it: &mut Interp, name: &str, args: &[Value]) -> Optio
         "state_get_int" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, int(name, args, 1)?))).map(|(k, d)| Value::Int(it.state.get(k).and_then(|s| s.trim().parse::<i64>().ok()).unwrap_or(d))),
         "state_set_int" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, int(name, args, 1)?))).and_then(|(k, v)| it.state.set(k, &format!("{}", v))).map(|_| Value::Unit),
         "mod_name" => want(name, args, 0).map(|_| Value::str(it.mod_name)),
-        _ => return None,
+        // The rest of the host functions are in script/ext/.
+        _ => return crate::script::ext::call(it, name, args),
     };
     Some(match r {
         Ok(v) => Ok(v),
@@ -197,6 +209,8 @@ pub struct SessionHost<'g> {
     pub g: &'g mut crate::session::Session,
     pub rng: u32,
     pub mod_name: String,
+    /// The data folder, for `tmp_read` and `tmp_write`.
+    pub data_dir: String,
 }
 
 impl SessionHost<'_> {
@@ -339,6 +353,14 @@ impl Host for SessionHost<'_> {
 
     fn set_mod(&mut self, name: &str) {
         self.mod_name = String::from(name);
+    }
+
+    fn session(&mut self) -> Option<&mut crate::session::Session> {
+        Some(&mut *self.g)
+    }
+
+    fn data_dir(&mut self) -> String {
+        self.data_dir.clone()
     }
 }
 

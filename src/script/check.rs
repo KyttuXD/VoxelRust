@@ -14,12 +14,15 @@ pub struct Report {
     /// The hooks it defines.
     pub hooks: Vec<String>,
     pub warnings: Vec<String>,
+    /// Calls to functions that do not exist, or with the wrong number of arguments (see `lint.rs`).
+    pub mistakes: Vec<String>,
 }
 
 /// Read `src` as a script called `file`. `Err` is the first mistake in it.
 pub fn check_source(file: &str, src: &str) -> Result<Report, ScriptError> {
     let script = Script::load(file, src)?;
     let mut r = Report::default();
+    r.mistakes = crate::script::lint::lint(&script.prog);
     for (name, def) in &script.prog.fns {
         r.functions.push(String::from(&**name));
         match HOOKS.iter().find(|h| h.name == &**name) {
@@ -52,6 +55,12 @@ pub fn check_file(path: &str) -> Result<(), String> {
         Ok(r) => {
             for w in &r.warnings {
                 crate::sys::log(&format!("warning: {}", w));
+            }
+            for m in &r.mistakes {
+                crate::sys::log(&format!("error: {}", m));
+            }
+            if !r.mistakes.is_empty() {
+                return Err(format!("{} has mistakes in it", path));
             }
             crate::sys::log(&format!("{}: ok ({} function(s); hooks: {})", path, r.functions.len(), if r.hooks.is_empty() { String::from("none") } else { r.hooks.join(", ") }));
             Ok(())

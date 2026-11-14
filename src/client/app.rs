@@ -1627,6 +1627,7 @@ impl App {
                     draw(g, r, &view);
                 }
             }
+            crate::script::ext::draw::draw_world(g, r, cam.pos, self.third_person, &light_at);
         }
         // Other players, with their names over their heads.
         if let Some(net) = &g.net {
@@ -2833,6 +2834,9 @@ impl App {
             // The chest's own 27 slots.
             // A chest's 27 slots, or storage a mod's own code keeps.
             let kept = self.chest_ext.and_then(|(name, which)| {
+                if name == crate::script::ext::STORAGE_KEY {
+                    return crate::script::ext::storage::pointer(g, which);
+                }
                 let storage = crate::native::active().find(|(_, n)| n.name == name).and_then(|(_, n)| n.storage)?;
                 storage(g, which)
             });

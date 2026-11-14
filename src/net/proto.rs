@@ -37,6 +37,9 @@ pub mod channel {
     pub const HIT: u8 = 2;
     /// What is in the chest at `key` ("x y z"); kept.
     pub const CHEST: u8 = 3;
+    /// Messages of mods' scripts to the same mod's scripts elsewhere
+    /// (`net_send` and `on_net`, see script/ext/net.rs); the key is `mod\x1fkey`.
+    pub const SCRIPT: u8 = 4;
     /// From here up: the mods' own code, one channel each (see
     /// `Session::send_ext`).
     pub const NATIVE: u8 = 32;

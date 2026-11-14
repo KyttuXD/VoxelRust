@@ -30,11 +30,13 @@ pub mod builtins_list;
 pub mod builtins_text;
 pub mod check;
 pub mod error;
+pub mod ext;
 pub mod fmt;
 pub mod host;
 pub mod interp;
 pub mod lexer;
 pub mod limits;
+pub mod lint;
 pub mod numeric;
 pub mod ops;
 pub mod parser;
@@ -44,6 +46,8 @@ pub mod value;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod mods_tests;
 
 use crate::script::ast::{Name, Program};
 use crate::script::error::ScriptError;
@@ -76,6 +80,7 @@ pub const HOOKS: &[HookDoc] = &[
     HookDoc { name: "on_block_place", params: &["x", "y", "z", "id"], what: "the player is about to place a block; return false to stop it" },
     HookDoc { name: "on_entity_spawn", params: &["kind"], what: "a creature appeared; return false to take it away again" },
     HookDoc { name: "on_entity_death", params: &["kind", "x", "y", "z"], what: "a creature died (any cause)" },
+    HookDoc { name: "on_entity_hit", params: &["id", "kind", "x", "y", "z"], what: "the player hit a creature (it may have died of it): its id (see `mob_info`), its kind and where it was" },
     HookDoc { name: "on_player_hurt", params: &["amount", "cause"], what: "the player is about to take damage; return the amount to apply instead (0 or false cancels)" },
     HookDoc { name: "on_chat", params: &["text"], what: "the player typed a line (commands too); return false to swallow it" },
     HookDoc { name: "on_item_use", params: &["item"], what: "the player pressed use holding an item; return false to stop it" },
@@ -83,6 +88,10 @@ pub const HOOKS: &[HookDoc] = &[
     HookDoc { name: "on_event", params: &["name", "what"], what: "any event pack scripts can answer with `when` (see MODDING.md)" },
     HookDoc { name: "on_command", params: &["name", "args"], what: "a /command the game does not know; return true (or a reply string) if it is yours" },
     HookDoc { name: "on_explode", params: &["x", "y", "z", "power", "source"], what: "an explosion is about to happen; return false to cancel or a number to change its power" },
+    HookDoc { name: "on_update", params: &["dt"], what: "once a frame, before the player moves: the place to move things, carry the player (`hold_player`) and ask for pictures (`draw_model`, `hud_rect`)" },
+    HookDoc { name: "on_interact", params: &["reach"], what: "the player's hands, before the game's own handling of a click (`reach` is how far the block looked at is); return true if the click was used up" },
+    HookDoc { name: "on_condition", params: &["name", "args"], what: "an `/if` condition the game does not know (`/if name args`); return true or false if it is yours, nothing if it is not" },
+    HookDoc { name: "on_net", params: &["key", "text"], what: "another player's copy of this mod sent a message with `net_send`" },
 ];
 
 /// One script file, read and ready.
@@ -167,6 +176,12 @@ impl Script {
 pub fn is_script_path(path: &str) -> bool {
     let p = path.replace('\\', "/");
     p.starts_with("scripts/") && p.ends_with(".rs") && !p.split('/').any(|c| c == ".." || c.is_empty())
+}
+
+/// Whether a mod's own compiled code (the opt-in `native-mods` feature) is
+/// in this build: it then runs instead of the mod's scripts, never both.
+pub fn native_wins(mod_name: &str) -> bool {
+    crate::native::all().iter().any(|n| n.name == mod_name)
 }
 
 /// A mod's name as a file name.
@@ -312,6 +327,15 @@ impl ScriptHost {
 
     /// Add (or replace) a mod's scripts.
     pub fn add_mod(&mut self, name: &str, files: &[(String, Vec<u8>)]) -> Vec<String> {
+        // A mod that has its compiled code in this build (`native-mods`) runs
+        // that, and its scripts stay off: the two would do everything twice.
+        if native_wins(name) {
+            self.mods.retain(|m| m.name != name);
+            if files.iter().any(|f| is_script_path(&f.0)) {
+                crate::sys::log(&format!("voxelrust: the mod `{}` has compiled code in this build, so its scripts are not run", name));
+            }
+            return Vec::new();
+        }
         let mut problems: Vec<String> = Vec::new();
         let mut wanted: Vec<&(String, Vec<u8>)> = files.iter().filter(|f| is_script_path(&f.0)).collect();
         wanted.sort_by(|a, b| a.0.cmp(&b.0));
@@ -412,12 +436,21 @@ impl ScriptHost {
     /// each returned (a script that returns nothing is not reported) and
     /// answers `true` to stop asking the rest.
     pub fn call_hook(&mut self, host: &mut dyn Host, world: &str, hook: &str, args: &[Value], on_result: &mut dyn FnMut(&Value) -> bool) {
+        self.call_hook_in(host, world, None, hook, args, on_result);
+    }
+
+    /// As [`ScriptHost::call_hook`], for the scripts of one mod only (`only`)
+    /// or, with `None`, for all of them.
+    pub fn call_hook_in(&mut self, host: &mut dyn Host, world: &str, only: Option<&str>, hook: &str, args: &[Value], on_result: &mut dyn FnMut(&Value) -> bool) {
         self.prepare(host, world);
         if hook.is_empty() {
             return;
         }
         let mut errors = Vec::new();
         'mods: for m in self.mods.iter_mut() {
+            if only.map_or(false, |o| o != m.name) {
+                continue;
+            }
             host.set_mod(&m.name);
             let ModScripts { name, state, scripts, .. } = m;
             for s in scripts.iter_mut() {

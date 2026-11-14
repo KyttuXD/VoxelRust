@@ -7,6 +7,7 @@
 | [MULTIPLAYER.md](MULTIPLAYER.md) | Hosting from inside the game or with a server, joining, what is and is not shared, server-hosted packs, the map-data relay |
 | [EARTH.md](EARTH.md) | Real-world terrain: data sources and attribution, scales, roads, buildings and fields, the map screen |
 | [MODDING.md](MODDING.md) | Content packs, where mods are looked for, where mods are looked for (no mod comes with the game), mods from a server and switching mods on and off, reloading, scripts and pack commands (events, variables, conditions), Blockbench models, player skins |
+| [SCRIPT-COMPAT.md](SCRIPT-COMPAT.md) | Which mods run as scripts with no compiled code, what each one needs, the matrix of mod by capability (`tools/script_compat.py`), what stays native (Earth) and what the two protected mods would still lack |
 | [SCRIPTING.md](SCRIPTING.md) | Mod scripts: plain `.rs` files, a small subset of Rust, that the game runs while it plays (no compiling): the language, the library, the hooks, the host API (`give`, `spawn`, `set_block`...), limits and errors, `--script-check`, worked examples |
 | [DATA.md](DATA.md) | The content file format: every keyword, including sounds, dimensions, features, commands and scripts |
 | [BUILDING.md](BUILDING.md) | Building for each platform, packaging a release, build names and how the game updates itself, tests, the GitHub workflows, icons |

@@ -647,6 +647,7 @@ impl Session {
                 hit(self, id, kind, at);
             }
         }
+        crate::script::bridge::entity_hit(self, id, kind, at);
     }
 
     fn mob_killed(&mut self, kind: usize, at: [f64; 3]) {
@@ -754,6 +755,9 @@ impl Session {
             name => {
                 // A condition of some mod's own code, perhaps.
                 if let Some(holds) = crate::native::active().filter_map(|(_, n)| n.condition).find_map(|condition| condition(self, cond)) {
+                    return holds;
+                }
+                if let Some(holds) = crate::script::bridge::condition(self, cond) {
                     return holds;
                 }
                 let have = match name {
@@ -1768,6 +1772,7 @@ impl Session {
                         }
                         // A mod's own code talking to itself on another
                         // player's machine.
+                        ch::SCRIPT => crate::script::bridge::net_message(self, &key, &text),
                         c if c >= ch::NATIVE => {
                             if let Some(n) = crate::native::all().get((c - ch::NATIVE) as usize).filter(|n| reg().has(n.name)) {
                                 if let Some(message) = n.message {
@@ -2116,6 +2121,7 @@ impl Session {
                 update(g, dt, c, audio)
             }
         });
+        crate::script::bridge::update(self, dt, c);
         let seat = self.seat;
         self.carried = seat.is_some();
         self.posing.climbing = false;
@@ -2463,6 +2469,9 @@ impl Session {
                 used = interact(g, c, near_block, audio);
             }
         });
+        if !used {
+            used = crate::script::bridge::interact(self, c, near_block);
+        }
         if used || self.carried {
             self.bow.reset();
             self.eating.reset();
