@@ -35,6 +35,7 @@ exports:
                _socket, _connect, _bind, _listen, _accept, _send, _recv, _close,
                _getaddrinfo, _freeaddrinfo, _setsockopt, _getsockopt, _getsockname,
                _fcntl, _poll, ___error, _opendir, _readdir, _closedir, __NSGetExecutablePath, _rename, _unlink, _mkdir, _chmod, _signal, _usleep,
+               _time, _open, _read, _getpeername,
                dyld_stub_binder ]
 ...
 TBD
