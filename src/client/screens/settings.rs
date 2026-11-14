@@ -64,7 +64,10 @@ impl App {
                     changed |= step_list(ui, x, row(3), bw, bh, &tf, &mut st.target_fps, &[0, 30, 60, 85, 120, 144, 250]);
                     let mf = if st.max_fps == 0 { String::from("FRAME RATE LIMIT  < NONE >") } else { alloc::format!("FRAME RATE LIMIT  < {} >", st.max_fps) };
                     changed |= step_list(ui, x, row(4), bw, bh, &mf, &mut st.max_fps, &[0, 30, 60, 85, 120, 144, 250, 500]);
-                    changed |= ui.toggle(x, row(5), bw, bh, "VSYNC", &mut st.vsync);
+                    let half = (bw - 4.0 * s) * 0.5;
+                    changed |= ui.toggle(x, row(5), half, bh, "VSYNC", &mut st.vsync);
+                    let gl = if st.gpu_limit >= 100 { String::from("GPU LIMIT  < NONE >") } else { alloc::format!("GPU LIMIT  < {}% >", st.gpu_limit) };
+                    changed |= step_list(ui, x + half + 4.0 * s, row(5), half, bh, &gl, &mut st.gpu_limit, &[30, 40, 50, 60, 75, 90, 100]);
                     changed |= ui.toggle(x, row(6), bw, bh, "SHOW FRAME RATE", &mut st.show_fps);
                     let half = (bw - 4.0 * s) * 0.5;
                     let mut fs = st.fullscreen;

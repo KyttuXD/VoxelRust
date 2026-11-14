@@ -18,6 +18,9 @@ pub struct Facts {
     pub max_fps: i32,
     /// A scripted run (pictures, benchmarks): nothing is slowed down.
     pub scripted: bool,
+    /// The most of its time the game may spend drawing, in percent (100 = no limit; only
+    /// without vsync, which paces the frames by itself).
+    pub gpu_limit: i32,
 }
 
 /// Frames per second in a menu.
@@ -45,6 +48,18 @@ pub fn cap(f: &Facts) -> Option<i32> {
         return lowest(own, MENU_FPS);
     }
     own
+}
+
+/// Milliseconds to rest after a frame that took `spent` seconds so that drawing takes at
+/// most `limit` percent of the time: a card that is asked for frames as fast as it can make
+/// them sits at 100 percent, and this leaves it idle the rest of the time.
+pub fn gpu_wait_ms(limit: i32, spent: f64) -> u32 {
+    if !(10..100).contains(&limit) || spent <= 0.0 {
+        return 0;
+    }
+    let rest = spent * (100.0 / limit as f64 - 1.0) * 1000.0;
+    // Never more than 100 ms in one go: a hitch must not freeze the game.
+    (rest.min(100.0) + 0.5) as u32
 }
 
 /// Milliseconds to wait at the end of a frame that took `spent` seconds, to
@@ -75,7 +90,7 @@ mod tests {
     use super::*;
 
     fn facts() -> Facts {
-        Facts { in_menu: false, focused: true, minimised: false, vsync: false, max_fps: 0, scripted: false }
+        Facts { in_menu: false, focused: true, minimised: false, vsync: false, max_fps: 0, scripted: false, gpu_limit: 100 }
     }
 
     #[test]
@@ -116,5 +131,15 @@ mod tests {
         assert!(w == 6 || w == 7, "{}", w);
         assert_eq!(wait_ms(Some(60), 0.0), 17);
         assert_eq!(wait_ms(Some(0), 0.0), 0);
+    }
+
+    #[test]
+    fn the_gpu_limit_leaves_the_card_idle_for_the_rest_of_the_frame() {
+        // Drawing for 5 ms at a 50 percent limit: rest 5 ms more.
+        assert_eq!(gpu_wait_ms(50, 0.005), 5);
+        assert_eq!(gpu_wait_ms(75, 0.006), 2);
+        assert_eq!(gpu_wait_ms(100, 0.005), 0, "no limit");
+        assert_eq!(gpu_wait_ms(0, 0.005), 0, "nonsense is no limit");
+        assert_eq!(gpu_wait_ms(20, 1.0), 100, "a hitch is not stretched out");
     }
 }

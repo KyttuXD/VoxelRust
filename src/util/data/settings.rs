@@ -83,6 +83,9 @@ pub struct Settings {
     pub target_fps: i32,
     /// Frame-rate cap when vsync is off (0 = none).
     pub max_fps: i32,
+    /// The most of its time the game spends drawing, in percent (30 to 100; 100 = no limit).
+    /// Keeps the graphics card from sitting at 100 percent.
+    pub gpu_limit: i32,
     pub show_fps: bool,
     // Audio, 0..=10
     pub master_volume: i32,
@@ -183,6 +186,7 @@ impl Default for Settings {
             gui_scale: 0,
             target_fps: 0,
             max_fps: 0,
+            gpu_limit: 75,
             show_fps: false,
             master_volume: 8,
             effects_volume: 8,
@@ -296,6 +300,7 @@ impl Settings {
             gui_scale: int("gui_scale", d.gui_scale, 0, 6),
             target_fps: int("target_fps", d.target_fps, 0, 1000),
             max_fps: int("max_fps", d.max_fps, 0, 1000),
+            gpu_limit: int("gpu_limit", d.gpu_limit, 30, 100),
             show_fps: flag("show_fps", d.show_fps),
             master_volume: int("master_volume", d.master_volume, 0, 10),
             effects_volume: int("effects_volume", d.effects_volume, 0, 10),
@@ -389,7 +394,7 @@ impl Settings {
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\nslim_arms={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.slim_arms as i32));
         s.push_str(&alloc::format!("map_zoom={}\nmap_preset_1={}\nmap_preset_2={}\nmap_preset_3={}\nmap_follow={}\nmap_grid={}\nmap_waypoints={}\n", self.map_zoom, self.map_preset[0], self.map_preset[1], self.map_preset[2], self.map_follow as i32, self.map_grid as i32, self.map_waypoints as i32));
         s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\ntexture_pack={}\npack_hue={}\npack_saturation={}\npack_brightness={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.texture_pack, self.pack_hue, self.pack_saturation, self.pack_brightness, self.auto_update as i32));
-        s.push_str(&alloc::format!("picker_dir={}\nupdate_mirror={}\nshader={}\n", self.picker_dir, self.update_mirror, self.shader));
+        s.push_str(&alloc::format!("picker_dir={}\nupdate_mirror={}\nshader={}\ngpu_limit={}\n", self.picker_dir, self.update_mirror, self.shader, self.gpu_limit));
         s.push_str(&alloc::format!(
             "voice_hear={}\nvoice_mic={}\nvoice_activation={}\nvoice_threshold={}\nvoice_volume={}\nvoice_device={}\n",
             self.voice_hear as i32,

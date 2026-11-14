@@ -1571,8 +1571,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
         // Do not spin the CPU in menus, with the window behind others or minimised, and honour
         // the frame-rate limit (client/pacing).
         let in_menu = !matches!(app.screen, Screen::Game | Screen::Inventory);
-        let facts = crate::client::pacing::Facts { in_menu, focused: !app.unfocused, minimised: app.minimised, vsync: app.settings.vsync, max_fps: app.settings.max_fps, scripted };
-        let wait = crate::client::pacing::wait_ms(crate::client::pacing::cap(&facts), sys::now() - frame_start);
+        let facts = crate::client::pacing::Facts { in_menu, focused: !app.unfocused, minimised: app.minimised, vsync: app.settings.vsync, max_fps: app.settings.max_fps, scripted, gpu_limit: app.settings.gpu_limit };
+        let spent = sys::now() - frame_start;
+        let mut wait = crate::client::pacing::wait_ms(crate::client::pacing::cap(&facts), spent);
+        if !scripted && !app.settings.vsync && !facts.minimised {
+            wait = wait.max(crate::client::pacing::gpu_wait_ms(app.settings.gpu_limit, spent));
+        }
         if wait > 0 {
             unsafe { (api.SDL_Delay)(wait) };
         }
