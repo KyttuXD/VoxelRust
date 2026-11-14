@@ -334,9 +334,9 @@ mod tests {
             );
         }
         assert_eq!(calls, 1);
-        // Many different places: only so many are worked out, the rest are dark.
+        // Many different cells (400 of them): only so many are worked out, the rest are dark.
         for i in 0..400 {
-            let l = c.level(eye, [i as f64 * 0.1, 60.0, 10.5 + (i / 100) as f64], || 5);
+            let l = c.level(eye, [(i % 50) as f64 + 0.5, 60.0, 10.5 + (i / 50) as f64], || 5);
             assert!(l == 5 || l == 0);
         }
         assert_eq!(c.worked(), MAX_FRESH);

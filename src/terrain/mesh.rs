@@ -681,7 +681,8 @@ mod tests {
             }
         };
         let glass = reg().block("glass").unwrap();
-        for wall in [glass, wk.leaves, wk.water, wk.ice] {
+        // (Ice is a plain opaque cube in the base pack, so it is not in this list.)
+        for wall in [glass, wk.leaves, wk.water] {
             let mut c = ChunkData::new();
             stone_section(&mut c);
             // A one-cell tunnel through the rock, closed in the middle by the block under test.

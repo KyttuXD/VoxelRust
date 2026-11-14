@@ -319,7 +319,7 @@ mod tests {
                 let (x, y, z) = match axis {
                     0 => (i, 9, 2),
                     1 => (3, i, 12),
-                    _ => (15, 0, i),
+                    _ => (5, 7, i),
                 };
                 open[cell(x, y, z)] = 1;
             }
