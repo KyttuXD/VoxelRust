@@ -127,6 +127,12 @@ impl<'a> ModApi<'a> {
         Ok(self.cmd(Cmd::Image { at, dx: hudcmd::num(dx, 8192.0), dy: hudcmd::num(dy, 8192.0), w: hudcmd::num(w, 8192.0), h: hudcmd::num(h, 8192.0), uv, col: hud_image::tinted(tint, alpha), img: found.id }))
     }
 
+    /// A picture at a place and size given as fractions of the screen (0 to 1; from `hud_frac_image`).
+    pub fn hud_image_frac(&mut self, data_dir: &str, file: &str, x: f32, y: f32, w: f32, h: f32, alpha: f32) -> bool {
+        let Some(found) = self.picture(data_dir, file) else { return false };
+        self.cmd(Cmd::ImageFrac { x, y, w, h, col: hud_image::tinted(0xFFFFFF, alpha as f64), img: found.id })
+    }
+
     /// Fit a picture to the whole screen: `"cover"` fills it (and crops), `"contain"` shows all of it.
     pub fn hud_image_fit(&mut self, data_dir: &str, file: &str, mode: &str, alpha: f64) -> Result<bool, String> {
         let Some(fit) = hud_image::Fit::parse(mode) else { return Err(format!("`{}` is not a fit (\"cover\" or \"contain\")", mode)) };

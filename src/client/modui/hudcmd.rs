@@ -80,6 +80,8 @@ pub enum Cmd {
     /// A mod's picture (or part of it, `uv` = u0, v0, u1, v1) with a tint and opacity in `col`;
     /// `img` is its number in `hud_image::Images`.
     Image { at: Anchor, dx: f32, dy: f32, w: f32, h: f32, uv: [f32; 4], col: Color, img: u32 },
+    /// A mod's picture at a place and size given as fractions of the screen (`hud_frac_image`).
+    ImageFrac { x: f32, y: f32, w: f32, h: f32, col: Color, img: u32 },
     /// A mod's picture fitted to the whole screen.
     Fit { img: u32, iw: u32, ih: u32, fit: crate::client::modui::hud_image::Fit, col: Color },
 }
@@ -238,7 +240,7 @@ pub fn place(cmd: &Cmd, f: &Frame, out: &mut Vec<Prim>) {
                 out.push(Prim::Block { x, y, size, id: id.clone() });
             }
         }
-        Cmd::Image { .. } | Cmd::Fit { .. } => crate::client::modui::hud_image::place(cmd, f, out),
+        Cmd::Image { .. } | Cmd::ImageFrac { .. } | Cmd::Fit { .. } => crate::client::modui::hud_image::place(cmd, f, out),
         Cmd::Bar { at, dx, dy, w, h, frac, col } => {
             let (w, h) = (w.clamp(0.0, 4096.0) * f.s, h.clamp(0.0, 4096.0) * f.s);
             let (x, y) = origin(f, *at, *dx, *dy, w, h);

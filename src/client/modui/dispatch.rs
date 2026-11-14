@@ -13,6 +13,12 @@ pub fn frame(g: &mut Session, dt: f32) {
     if with_ui(|u| u.hud.frame(dt)).is_none() {
         return;
     }
+    // Pictures the scripts asked for with `hud_frac_image` (from `on_update`, before this frame began).
+    for p in crate::script::ext::draw::take_pics(g) {
+        with_ui(|u| {
+            ModApi::new(u, &p.owner).hud_image_frac(&p.dir, &p.file, p.x, p.y, p.w, p.h, p.alpha);
+        });
+    }
     for (_, n) in crate::native::active() {
         if let Some(f) = n.on_hud {
             with_ui(|u| f(&*g, &mut ModApi::new(u, n.name)));

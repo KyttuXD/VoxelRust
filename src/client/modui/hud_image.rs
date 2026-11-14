@@ -286,6 +286,18 @@ pub fn place(cmd: &Cmd, f: &Frame, out: &mut Vec<Prim>) {
                 out.push(Prim::Image { x: r[0], y: r[1], w: r[2], h: r[3], uv, col: *col, img: *img });
             }
         }
+        Cmd::ImageFrac { x, y, w, h, col, img } => {
+            if col[3] == 0 || !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+                return;
+            }
+            let r = [x * f.w, y * f.h, w * f.w, h * f.h];
+            if r[2] <= 0.0 || r[3] <= 0.0 {
+                return;
+            }
+            if let Some((r, uv)) = clip_with_uv(r, [0.0, 0.0, 1.0, 1.0], f.w, f.h) {
+                out.push(Prim::Image { x: r[0], y: r[1], w: r[2], h: r[3], uv, col: *col, img: *img });
+            }
+        }
         Cmd::Fit { img, iw, ih, fit, col } => {
             if col[3] == 0 {
                 return;
@@ -516,5 +528,27 @@ mod tests {
         assert_eq!(tinted(-5, 7.0), [0, 0, 0, 255]);
         assert_eq!(tinted(0xFFFFFF, f64::NAN)[3], 0);
         assert_eq!(tinted(i64::MAX, 0.0), [255, 255, 255, 0]);
+    }
+
+    #[test]
+    fn a_picture_by_fractions_covers_that_part_of_the_screen() {
+        let mm = m;
+        let f = Frame { w: 400.0, h: 200.0, s: 2.0, measure: &mm };
+        let mut out = Vec::new();
+        place(&Cmd::ImageFrac { x: 0.0, y: 0.0, w: 1.0, h: 1.0, col: [255; 4], img: 5 }, &f, &mut out);
+        assert_eq!(out, [Prim::Image { x: 0.0, y: 0.0, w: 400.0, h: 200.0, uv: [0.0, 0.0, 1.0, 1.0], col: [255; 4], img: 5 }]);
+        out.clear();
+        place(&Cmd::ImageFrac { x: 0.25, y: 0.5, w: 0.5, h: 0.25, col: [255, 255, 255, 128], img: 5 }, &f, &mut out);
+        assert_eq!(out, [Prim::Image { x: 100.0, y: 100.0, w: 200.0, h: 50.0, uv: [0.0, 0.0, 1.0, 1.0], col: [255, 255, 255, 128], img: 5 }]);
+        // Seen, nothing, or nonsense: nothing is drawn.
+        for bad in [
+            Cmd::ImageFrac { x: 0.0, y: 0.0, w: 1.0, h: 1.0, col: [255, 255, 255, 0], img: 5 },
+            Cmd::ImageFrac { x: 0.0, y: 0.0, w: 0.0, h: 1.0, col: [255; 4], img: 5 },
+            Cmd::ImageFrac { x: f32::NAN, y: 0.0, w: 1.0, h: 1.0, col: [255; 4], img: 5 },
+        ] {
+            let mut o = Vec::new();
+            place(&bad, &f, &mut o);
+            assert!(o.is_empty(), "{bad:?}");
+        }
     }
 }

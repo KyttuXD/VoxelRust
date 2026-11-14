@@ -5,7 +5,7 @@
 //! asked for in the frame before is kept.
 
 use super::args::{finite, num, text, want};
-use super::data::{data, DrawModel, HudRect, HudText, MAX_MODELS, MAX_RECTS, MAX_SPECKS, MAX_TEXTS};
+use super::data::{data, DrawModel, HudPic, HudRect, HudText, MAX_MODELS, MAX_PICS, MAX_RECTS, MAX_SPECKS, MAX_TEXTS};
 use super::Ctx;
 use crate::block;
 use crate::game::hooks::HudSink;
@@ -18,6 +18,7 @@ use alloc::vec::Vec;
 
 pub const FUNCTIONS: &[(&str, &str)] = &[
     ("hud_frac_rect(x: f64, y: f64, w: f64, h: f64, r: i64, g: i64, b: i64, a: i64)", "fill a rectangle of the HUD this frame; x, y, w and h are fractions of the screen (0 to 1), the colour and opacity 0 to 255; at most 64 a frame"),
+    ("hud_frac_image(file: &str, x: f64, y: f64, w: f64, h: f64, alpha: f64)", "draw a picture of the mod on the HUD this frame (callable from `on_update` like `hud_frac_rect`): `file` is a png or tga in the mod's folder (like \"images/scare.png\"), x, y, w and h are fractions of the screen (0 to 1; the whole screen is 0, 0, 1, 1), `alpha` the opacity 0 to 1; at most 8 a frame, and the pictures of a mod are cached (16 a mod, see `hud_image`)"),
     ("hud_frac_text(x: f64, y: f64, scale: f64, text: &str, r: i64, g: i64, b: i64)", "write text on the HUD this frame; x and y are fractions of the screen, `scale` times the size of the game's own interface (0.5 to 8); at most 32 a frame"),
     ("draw_model(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, tint: f64)", "draw a model (a model id, or the id of a creature to use its model) in the world this frame, `height` blocks tall; `phase` is the walk or wheel cycle in radians; `tint` is 0 to 1 for a fixed brightness, or -1 for the light of the place; at most 200 a frame"),
     ("draw_model_own(model: &str, x: f64, y: f64, z: f64, yaw: f64, height: f64, phase: f64, tint: f64)", "as `draw_model`, for the thing the player sits in or wears: it is drawn only when the player sees themselves from outside (third person)"),
@@ -49,6 +50,24 @@ pub fn call(g: &mut Session, _ctx: &Ctx, name: &str, args: &[Value]) -> Result<V
             let d = data(g);
             if d.rects.len() < MAX_RECTS {
                 d.rects.push(rect);
+            }
+            Ok(Value::Unit)
+        }
+        "hud_frac_image" => {
+            want(name, args, 6)?;
+            let pic = HudPic {
+                owner: _ctx.mod_name.clone(),
+                dir: _ctx.data_dir.clone(),
+                file: String::from(text(name, args, 0)?).chars().take(120).collect(),
+                x: finite(name, args, 1)?.clamp(-1.0, 2.0) as f32,
+                y: finite(name, args, 2)?.clamp(-1.0, 2.0) as f32,
+                w: finite(name, args, 3)?.clamp(0.0, 2.0) as f32,
+                h: finite(name, args, 4)?.clamp(0.0, 2.0) as f32,
+                alpha: finite(name, args, 5)?.clamp(0.0, 1.0) as f32,
+            };
+            let d = data(g);
+            if d.pics.len() < MAX_PICS {
+                d.pics.push(pic);
             }
             Ok(Value::Unit)
         }
@@ -143,6 +162,15 @@ pub fn draw_world(g: &Session, r: &mut Renderer, eye: [f64; 3], third_person: bo
         let sparks: Vec<([f32; 3], [u8; 3])> = d.specks.iter().map(|(at, col)| ([(at[0] - eye[0]) as f32, (at[1] - eye[1]) as f32, (at[2] - eye[2]) as f32], *col)).collect();
         r.draw_sparks(&sparks);
     }
+}
+
+/// The pictures the scripts asked for this frame (taken: the HUD's drawing commands take them on).
+pub fn take_pics(g: &mut Session) -> Vec<HudPic> {
+    match g.ext_ref::<super::ScriptData>(super::KEY) {
+        Some(d) if !d.pics.is_empty() => {}
+        _ => return Vec::new(),
+    }
+    core::mem::take(&mut data(g).pics)
 }
 
 /// The game's side: draw the HUD the scripts asked for.

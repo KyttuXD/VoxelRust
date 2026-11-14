@@ -19,6 +19,7 @@ pub const MAX_MODELS: usize = 200;
 pub const MAX_SPECKS: usize = 300;
 pub const MAX_RECTS: usize = 64;
 pub const MAX_TEXTS: usize = 32;
+pub const MAX_PICS: usize = 8;
 /// Most bodies and storages, over all mods.
 pub const MAX_BODIES: usize = 256;
 pub const MAX_STORAGES: usize = 128;
@@ -51,6 +52,19 @@ pub struct HudRect {
     pub col: [u8; 4],
 }
 
+/// A mod's picture asked for with `hud_frac_image`, to be drawn on the HUD: a place and size as
+/// fractions of the screen.
+pub struct HudPic {
+    pub owner: String,
+    pub dir: String,
+    pub file: String,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub alpha: f32,
+}
+
 /// A line of text on the HUD; the position is a fraction of the screen.
 pub struct HudText {
     pub x: f32,
@@ -75,6 +89,7 @@ pub struct ScriptData {
     pub specks: Vec<([f64; 3], [u8; 3])>,
     pub rects: Vec<HudRect>,
     pub texts: Vec<HudText>,
+    pub pics: Vec<HudPic>,
     /// A colour over the whole screen this frame (`hud_tint`).
     pub tint: Option<[u8; 4]>,
     /// Physics bodies: their number and the body.
@@ -122,6 +137,7 @@ pub fn new_frame(g: &mut Session) {
     d.models.clear();
     d.specks.clear();
     d.rects.clear();
+    d.pics.clear();
     d.texts.clear();
     d.tint = None;
     d.net_sent = 0;
