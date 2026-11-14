@@ -739,7 +739,7 @@ fn label_coloured(r: &mut Renderer, x: f32, y: f32, s: f32, line: &str, alpha: u
 /// How far the hand has swung: a blow or a use, 0..1 (the cooldowns that
 /// follow them).
 fn hand_swing(g: &session::Session) -> f32 {
-    (g.cooldown[0] / 0.35).max(g.cooldown[1] / 0.5).clamp(0.0, 1.0)
+    (g.blow_left() / 0.35).max(g.cooldown[1] / 0.5).clamp(0.0, 1.0)
 }
 
 /// What the first-person hand is doing: the swing of a blow or use (from its
@@ -749,7 +749,7 @@ fn hand_view_of(g: &session::Session, held: crate::client::hand::Held, speed: f3
     let index = g.held().map(|h| h.0);
     let id = index.map_or(0, |i| i as u16);
     // The cooldowns count down from a blow's or a use's start; the swing runs up from it.
-    let left = (g.cooldown[0] / 0.35).max(g.cooldown[1] / 0.5).clamp(0.0, 1.0);
+    let left = (g.blow_left() / 0.35).max(g.cooldown[1] / 0.5).clamp(0.0, 1.0);
     let swing = if left > 0.0 { (1.0 - left).max(0.001) } else { 0.0 };
     let draw = if matches!(held, Held::Bow(_)) { g.bow.shown(id) } else { 0.0 };
     let eat = g.eating.shown(id);

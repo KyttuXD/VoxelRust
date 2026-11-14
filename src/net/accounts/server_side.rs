@@ -453,6 +453,7 @@ impl Server {
         self.conns[i].joined = true;
         self.sync.joined += 1;
         self.conns[i].sync.order = self.sync.joined;
+        self.pvp_admitted(i);
         // (A player who has just joined may ask for a challenge at once.)
         self.conns[i].acct.ask_gap = 5.0;
         self.send_perms(Some(i));

@@ -8,7 +8,7 @@ use super::state::Bucket;
 use super::store::{Account, KIND_PIN};
 use super::strikes::Strikes;
 use crate::netplay::{Client, Event, Welcome};
-use crate::proto::{Inbox, Msg, Next, PERM_BUILD, PERM_COMMANDS, PERM_GAMEMODE, PERM_VOICE};
+use crate::proto::{Inbox, Msg, Next, PERM_BUILD, PERM_COMMANDS, PERM_GAMEMODE, PERM_PVP, PERM_VOICE};
 use crate::server::{Config, Server};
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -320,12 +320,12 @@ fn nobody_can_register_a_reserved_name_and_the_administrator_logs_in_with_every_
     let (mut guest, _) = h.join("Bob", None).ok().unwrap();
     let events = pump(&mut guest, 200);
     let perms: Vec<u8> = events.iter().filter_map(|e| if let Event::Perms(f) = e { Some(*f) } else { None }).collect();
-    assert_eq!(perms.last(), Some(&(PERM_BUILD | PERM_VOICE)));
+    assert_eq!(perms.last(), Some(&(PERM_BUILD | PERM_VOICE | PERM_PVP)));
     // The administrator: all of it, a star in the list, and the commands.
     let (mut admin, _) = h.join("kyttu", Some("482915")).ok().expect("administrator login");
     let events = pump(&mut admin, 300);
     let perms: Vec<u8> = events.iter().filter_map(|e| if let Event::Perms(f) = e { Some(*f) } else { None }).collect();
-    assert_eq!(perms.last(), Some(&(PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE)));
+    assert_eq!(perms.last(), Some(&(PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE | PERM_PVP)));
     assert!(chats(&events).iter().any(|l| l.contains("ADMINISTRATOR")), "{:?}", chats(&events));
     admin.send_chat("/list");
     let events = pump(&mut admin, 300);

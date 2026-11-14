@@ -31,6 +31,11 @@ pub struct Remote {
     pub effects: Vec<(String, u8, u32)>,
     /// Their health, hunger, armour and ping, as last said (None until the first message; see `net/sync`).
     pub vitals: Option<crate::net::sync::vitals::Vitals>,
+    /// Seconds since their arm began a swing (when the swing flag of their pose came up);
+    /// a big number at rest (see `content::pose::swing`).
+    pub swing_t: f32,
+    /// Seconds left of the red flash of a hit (see `game::pvp`).
+    pub hurt: f32,
 }
 
 pub enum Event {
@@ -237,7 +242,7 @@ impl Client {
                     Msg::Join { id, name } => {
                         events.push(Event::Chat(alloc::format!("{} JOINED", name.to_ascii_uppercase())));
                         events.push(Event::Joined(name.clone()));
-                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, pace: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new(), vitals: None });
+                        self.players.insert(id, Remote { name, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, phase: 0.0, stride: 0.0, pace: 0.0, seen: false, pose: 0, body: Default::default(), emote: 0, emote_t: 0.0, effects: Vec::new(), vitals: None, swing_t: crate::content::pose::swing::REST, hurt: 0.0 });
                     }
                     Msg::Leave { id } => {
                         self.skin_in.forget(id);
@@ -249,6 +254,10 @@ impl Client {
                     Msg::Move { id, pos, yaw, pitch, held, pose } => {
                         if let Some(p) = self.players.get_mut(&id) {
                             p.held = held;
+                            // A swing begins when its flag comes up.
+                            if crate::content::pose::swing::starts(p.pose, pose) {
+                                p.swing_t = 0.0;
+                            }
                             p.pose = pose;
                             let (dx, dz) = ((pos[0] - p.pos[0]) as f32, (pos[2] - p.pos[2]) as f32);
                             let step = crate::math::sqrtf(dx * dx + dz * dz);
@@ -335,6 +344,8 @@ impl Client {
             p.stride *= 1.0 - (dt * 3.0).min(1.0);
             p.pace *= 1.0 - (dt * 0.5).min(1.0);
             p.body.update(crate::content::pose::unpack(p.pose).0, dt);
+            p.swing_t = (p.swing_t + dt).min(crate::content::pose::swing::REST);
+            p.hurt = (p.hurt - dt).max(0.0);
             // An emote runs on while they stand still, and stops when they move off.
             if p.emote != 0 {
                 p.emote_t += dt;
@@ -556,16 +567,16 @@ mod tests {
         let (mut ann, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
         let ea = pump(&mut ann, 80);
         // The first player is the operator and may do everything.
-        assert!(ea.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE)), "no such event");
+        assert!(ea.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE | PERM_PVP)), "no such event");
         let (mut bob, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
         let eb = pump(&mut bob, 100);
         // Everyone else may build, and nothing more, and starts in survival.
-        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_VOICE)), "no such event");
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_VOICE | PERM_PVP)), "no such event");
         pump(&mut ann, 40);
         ann.send_chat("/default -build");
         pump(&mut ann, 60);
         let eb = pump(&mut bob, 100);
-        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_VOICE)), "no such event");
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_VOICE | PERM_PVP)), "no such event");
         // Bob's edit goes nowhere...
         let stone = crate::block::reg().wk.stone;
         bob.send_block(2, 70, 2, stone);
@@ -576,7 +587,7 @@ mod tests {
         ann.send_chat("/perm Bob +build");
         pump(&mut ann, 60);
         let eb = pump(&mut bob, 100);
-        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_VOICE)), "no such event");
+        assert!(eb.iter().any(|e| matches!(e, Event::Perms(f) if *f == PERM_BUILD | PERM_VOICE | PERM_PVP)), "no such event");
         bob.send_block(2, 70, 2, stone);
         pump(&mut bob, 60);
         let ea = pump(&mut ann, 100);

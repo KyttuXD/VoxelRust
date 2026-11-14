@@ -53,6 +53,7 @@ voxelrust --server --world myworld
 | `--log FILE` | also write the server's output to a file |
 | `--no-update` | do not keep the server up to date (see below) |
 | `update_check_seconds=N` (in `settings.txt` in `--data`) | how often the server looks for a new release: 90 by default, kept between 30 and 600 |
+| `pvp=on\|off` and `spawn_protection_seconds=N` (in `settings.txt` in `--data`) | whether players may hurt each other (on by default; `/pvp` overrides it once used) and the seconds of protection after joining or respawning (5 by default, 0 to 60); see [Player versus player](#player-versus-player) |
 | `--update-mirror URL` | fetch updates from this web folder over plain HTTP, tried before the release (or `update_mirror=URL` in `settings.txt` in `--data`) |
 
 The server prints who joins and leaves, chat, and relay requests. Stop it
@@ -304,6 +305,69 @@ The permissions and mutes are kept with the operators in the server's
 permissions file (`voicerange N` and `mute NAME` lines beside the `perm`
 lines). Files written before voice chat existed still allow it.
 
+## Player versus player
+
+Players can hit each other. The server decides every hit; nothing about it
+changes the protocol (the messages are state messages on channels 7 to 10,
+which games from before it ignore).
+
+**How a hit goes.** The attacker's game finds the player under the crosshair
+(a ray against the other players' boxes, 0.6 wide and 1.8 tall, within the
+reach of the item in hand, at most 4.5 blocks; a block in front stops it) and
+swings at once, with the hit sound. It sends the server "I hit player N" with
+the item in hand and the blow it worked out: the same blow as against a
+creature (the item's damage, 1 for a bare hand, then strength or weakness and
+the `damage` attribute), at most one hit every 0.35 seconds. The server then
+checks:
+
+- the switch is on (`pvp=on`, the default; `/pvp off` turns it off for everyone
+  and takes `pvp` out of every player's permissions) and both players have the
+  `pvp` permission (`/perm NAME -pvp`; allowed by default; a player without it
+  can neither hit nor be hit);
+- both are in survival mode (creative players are immune and never hit
+  anyone) and alive;
+- the target is another player who has joined, whose game takes part (see
+  below);
+- the target has no **spawn protection**: nobody can be hurt in the first 5
+  seconds after joining or respawning (`spawn_protection_seconds` in
+  `settings.txt`, 0 to 60);
+- from the attacker's eyes to the target's body is at most **5.2 blocks**
+  (reach plus room for lag), by the last positions each sent;
+- the attacker's last hit that counted was at least 0.35 seconds ago (0.04 is
+  forgiven, for messages that come in a bunch).
+
+A hit that fails any of these does nothing, silently. A hit that passes is
+cut to what the weapon allows (at most four times its damage plus 4, never
+over 40: a changed game cannot claim more), and the **target's armour** is
+taken off it with the game's own armour maths (`Armour and wear` in
+PLAYING.md). The target's game tells the server its defense points and toughness
+(clamped to 20 and 8 here) and whether it is alive in a gear message whenever
+they change, at most four times a second and at least every 10 seconds, so that
+armour cannot be claimed for more than the most a player can wear.
+
+The server then tells the target "you were hit for N by NAME" (and which way
+to be thrown, away from the attacker) and tells everyone within 64 blocks, the
+attacker included, who was hit (the red flash of the model for 0.35 seconds
+and the hurt sound). The target's game takes the damage from its own health (a
+player owns their health: the server never changes it), with the red screen
+vignette and the hearts as for any blow, throws the player back, and wears
+the armour. Friendly fire is on: there are no teams.
+
+**Deaths.** When a player's game says it has died and it was hit by another
+player in the last 15 seconds, the server tells everyone "A was slain by B"
+and counts a kill for B (`/kills`). Other deaths say nothing here.
+
+**Older games** (protocol 13, or 14 games from before fighting) never send
+the gear message, so they are not fighting players: they can hit no one
+and take **no damage** from anyone. A server that only has such games never sees
+a fight.
+
+**The swing.** Clicking the attack button with nothing in reach swings the arm
+too (a quarter of a second between swings; it never delays mining). Other
+players see your arm swing, 0.3 seconds, whenever the pose byte of your
+position messages has its swing flag: right arm back, then forward and up,
+the forearm following.
+
 ## Server-hosted packs
 
 A server started with packs (`pack.txt` in its data folder, anything in its
@@ -454,9 +518,11 @@ what the game itself does not know is passed to the server.
 | `/ban NAME`, `/pardon NAME` | operators | keep a name out, or let it back |
 | `/say TEXT` | operators | a message from the server to everyone |
 | `/time 0..1` | operators | set the time of day (0.25 is noon) |
-| `/perm NAME [+build -build +gamemode -gamemode +commands -commands +voice -voice]` | operators | show or change what one player may do; `/default [...]` sets it for everyone without an entry of their own |
+| `/perm NAME [+build -build +gamemode -gamemode +commands -commands +voice -voice +pvp -pvp]` | operators | show or change what one player may do; `/default [...]` sets it for everyone without an entry of their own |
 | `/mute NAME`, `/unmute NAME` | operators | take away or give back a player's voice chat (kept in the permissions file) |
 | `/voicerange BLOCKS` | operators | how far a voice carries (2 to 128, 24 by default); with no number, shows it |
+| `/pvp on`, `/pvp off` | operators | allow or stop fighting between players (kept in the permissions file); `/pvp` alone, for anyone, shows it |
+| `/kills [NAME]` | anyone | the kills of a player since the server started (not kept) |
 
 Operators and bans are kept in `<world>.server-ops.txt` beside the world.
 A name is free for anyone unless it has an account: a name can be protected by

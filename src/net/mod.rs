@@ -14,3 +14,4 @@ pub mod skinslot;
 pub mod skinqueue;
 pub mod skinwork;
 pub mod sync;
+pub mod pvp;

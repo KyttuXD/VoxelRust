@@ -135,7 +135,9 @@ impl App {
                     Some(t) => *t,
                     None => r.entity_texture(&crate::pack_entities::skin_picture(crate::pack_entities::default_skin_for(&p.name))),
                 };
-                r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l]);
+                // A player who was just hit glows red (see game/pvp.rs).
+                let tint = if p.hurt > 0.0 { [255, l / 3, l / 3] } else { [l, l, l] };
+                r.draw_model(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, tint);
                 // The armour they wear (from their health message).
                 if let Some(v) = p.vitals.filter(|v| v.worn.iter().any(|&w| w != 0)) {
                     r.draw_model_armor(model, &drawn.pose, rel(drawn.at), drawn.yaw, crate::player::HEIGHT as f32, [l, l, l], &crate::client::render::armor::looks(&crate::client::playerlist::worn_slots(&v.worn)));

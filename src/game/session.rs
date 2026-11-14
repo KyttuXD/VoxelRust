@@ -225,6 +225,10 @@ pub struct Session {
     /// Lines of text scripts put on the screen (host call `hud`).
     pub script_hud: crate::script::hud::HudLines,
     pub cooldown: [f32; 2],
+    /// Seconds left of the arm's swing for a click that hit nothing (see `game/pvp.rs`).
+    pub punch: f32,
+    /// What the game told the server about fights (see `game/pvp.rs`).
+    pub pvp: crate::game::pvp::Client,
     /// A bow being drawn (see game/bow.rs) and food being eaten (game/eating.rs).
     pub bow: crate::game::bow::Bow,
     pub eating: crate::game::eating::Eating,
@@ -607,6 +611,8 @@ impl Session {
             note: (String::new(), 0.0),
             script_hud: Default::default(),
             cooldown: [0.0; 2],
+            punch: 0.0,
+            pvp: Default::default(),
             bow: Default::default(),
             eating: Default::default(),
             was_airborne: false,
@@ -1771,6 +1777,7 @@ impl Session {
             c.1 -= dt;
         }
         let held = self.held().map_or(0, |h| h.0 as u16 + 1);
+        self.pvp_tick(dt);
         let polled = match self.net.as_mut() {
             Some(n) => {
                 n.send_move(dt, self.player.pos, self.player.yaw, self.player.pitch, held);
@@ -1836,6 +1843,7 @@ impl Session {
                                 }
                             }
                         }
+                        ch::PVP_HURT | ch::PVP_SEEN => self.pvp_message(from, channel, &data),
                         ch::CHEST => {
                             let c: Vec<i32> = key.split(' ').filter_map(|v| v.parse().ok()).collect();
                             if let [x, y, z] = c[..] {
@@ -2417,6 +2425,7 @@ impl Session {
         for t in self.cooldown.iter_mut() {
             *t -= dt;
         }
+        self.punch = (self.punch - dt).max(0.0);
         if !self.dead {
             self.use_items(dt, c, audio);
         } else {
@@ -2714,6 +2723,16 @@ impl Session {
                     }
                 }
             }
+        }
+
+        // Another player under the crosshair: the hit is sent to the server (see game/pvp.rs).
+        if c.break_held && !struck && self.cooldown[0] <= 0.0 {
+            let held_id = held.map_or(0, |h| h.0 as u16 + 1);
+            struck = self.strike_player(self.reach().min(4.5), item.x.damage, held_id, audio);
+        }
+        // A click that hits nothing still swings the arm (and holds nothing up).
+        if c.break_held && !struck && self.target.is_none() {
+            self.air_punch();
         }
 
         // Breaking.

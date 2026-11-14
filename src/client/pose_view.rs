@@ -3,7 +3,7 @@
 
 use crate::block::{def, Block, Usable};
 use crate::content::pose::{self, Body, Kind};
-use crate::math::{floord, floorf, sqrtf, PI};
+use crate::math::{floord, sqrtf, PI};
 use crate::model::Pose;
 
 /// A body ready to draw: its pose, where its feet are (world) and which way it faces.
@@ -59,10 +59,13 @@ pub fn remote(p: &crate::netplay::Remote, clock: f32) -> Drawn {
     let (_, flags) = pose::unpack(p.pose);
     let mut body = p.body.body();
     body.flags = flags;
-    if flags & pose::SWING != 0 {
-        // Only that they strike is sent: keep striking.
-        let x = clock * 2.2;
-        body.swing = (x - floorf(x)).max(0.001);
+    // Only that they strike is sent: the swing runs through from when the flag came up.
+    match pose::swing::phase(p.swing_t, flags & pose::SWING != 0) {
+        Some(phase) => {
+            body.flags |= pose::SWING;
+            body.swing = phase;
+        }
+        None => body.flags &= !pose::SWING,
     }
     // Their pace tells a sprint from a walk (the body is leaning into it only on foot).
     body.run = pose::gait::run_amount(p.pace);

@@ -22,6 +22,9 @@ use alloc::vec::Vec;
 #[path = "accounts/server_side.rs"]
 mod accounts_flow;
 use self::accounts_flow::Gate;
+/// The server's half of player versus player (see `net/pvp`).
+#[path = "pvp/server_side.rs"]
+mod pvp_flow;
 
 /// The server's half of the sync of shared games (health, pings, who runs the creatures, a
 /// guest who comes back too soon): also a child module, for the same reason.
@@ -86,6 +89,8 @@ struct Conn {
     acct: crate::net::accounts::state::ConnAuth,
     /// Their health, death, emote, ping and place in the order of arrival (see `net/sync`).
     sync: crate::net::sync::state::ConnSync,
+    /// Player versus player: their gear, last hit, spawn protection (see `net/pvp`).
+    pvp: crate::net::pvp::state::ConnPvp,
 }
 
 pub struct Server {
@@ -126,9 +131,13 @@ pub struct Server {
     pub acct: crate::net::accounts::state::AccountState,
     /// The chat history, remembered health and the like (see `net/sync`).
     sync: crate::net::sync::state::ServerSync,
+    /// Player versus player: the switches, the clock and the kills (see `net/pvp`).
+    pub pvp: crate::net::pvp::state::Pvp,
 }
 
 const SEND_TIMEOUT: u32 = 3000;
+/// Mark on a permission line of the permissions file: written since fighting between players had a flag.
+const FILE_HAS_PVP: u8 = 64;
 
 /// Most block changes the server keeps (a hostile player may not grow the
 /// list, and the memory behind it, for ever; changes to blocks already in it
@@ -146,7 +155,7 @@ impl Server {
         let listener = TcpListener::bind(cfg.port)?;
         Ok(Server { listener, conns: Vec::new(), edits: BTreeMap::new(), cfg, next_id: 1, time: 0.12, time_timer: 0.0, dirty: false,
             kept: BTreeMap::new(), kept_bytes: 0, ops: Vec::new(), banned: Vec::new(), ops_dirty: false, spots: BTreeMap::new(), spots_dirty: false,
-            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE, perms: Vec::new(), creative: Vec::new(), voice: Default::default(), acct: Default::default(), sync: Default::default() })
+            default_perms: crate::proto::PERM_BUILD | crate::proto::PERM_VOICE | crate::proto::PERM_PVP, perms: Vec::new(), creative: Vec::new(), voice: Default::default(), acct: Default::default(), pvp: Default::default(), sync: Default::default() })
     }
 
     /// A player number no one here has: never 0 (the server) or 65535 (what
@@ -199,12 +208,16 @@ impl Server {
         use crate::proto::*;
         let lower = who.to_ascii_lowercase();
         let mut f = if self.ops.iter().any(|o| o.eq_ignore_ascii_case(who)) || self.is_admin(who) {
-            PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE
+            PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE | PERM_PVP
         } else {
             self.perms.iter().find(|p| p.0 == lower).map_or(self.default_perms, |p| p.1)
         };
         if self.creative.contains(&lower) {
             f |= PERM_CREATIVE;
+        }
+        // Fighting is off for everybody when the server says so.
+        if !self.pvp.rules.on {
+            f &= !PERM_PVP;
         }
         f
     }
@@ -226,13 +239,14 @@ impl Server {
     pub fn perm_text(&self) -> String {
         // Flag 128 marks lines written since voice chat existed: older files
         // have no voice bit, and voice is allowed unless a line says otherwise.
-        let mut t = alloc::format!("default {}\n", self.default_perms | 128);
+        let mut t = alloc::format!("default {}\n", self.default_perms | 128 | FILE_HAS_PVP);
         for (n, f) in &self.perms {
-            t.push_str(&alloc::format!("perm {} {}\n", f | 128, n));
+            t.push_str(&alloc::format!("perm {} {}\n", f | 128 | FILE_HAS_PVP, n));
         }
         for n in &self.creative {
             t.push_str(&alloc::format!("creative {}\n", n));
         }
+        t.push_str(&self.pvp_text());
         t.push_str(&self.voice.text());
         t
     }
@@ -240,7 +254,9 @@ impl Server {
     /// Flags as written to the permissions file: files from before voice chat
     /// (no 128 mark) allow voice.
     fn read_flags(f: u8) -> u8 {
-        let kept = f & (crate::proto::PERM_BUILD | crate::proto::PERM_GAMEMODE | crate::proto::PERM_COMMANDS | crate::proto::PERM_VOICE);
+        let kept = f & (crate::proto::PERM_BUILD | crate::proto::PERM_GAMEMODE | crate::proto::PERM_COMMANDS | crate::proto::PERM_VOICE | crate::proto::PERM_PVP);
+        // (Files from before player versus player have no 64 mark: fighting is allowed.)
+        let kept = if f & FILE_HAS_PVP == 0 { kept | crate::proto::PERM_PVP } else { kept };
         if f & 128 == 0 { kept | crate::proto::PERM_VOICE } else { kept }
     }
 
@@ -254,6 +270,7 @@ impl Server {
                 }
             }
             Some(("creative", n)) => self.creative.push(n.to_ascii_lowercase()),
+            Some(("pvp", v)) => return self.pvp_load_line(v),
             _ => return self.voice.load_line(line),
         }
         true
@@ -273,6 +290,7 @@ impl Server {
                 "gamemode" => PERM_GAMEMODE,
                 "commands" => PERM_COMMANDS,
                 "voice" => PERM_VOICE,
+                "pvp" => PERM_PVP,
                 _ => return None,
             };
             flags = if on { flags | bit } else { flags & !bit };
@@ -283,7 +301,7 @@ impl Server {
     fn describe(flags: u8) -> String {
         use crate::proto::*;
         let mut v: Vec<&str> = Vec::new();
-        for (bit, n) in [(PERM_BUILD, "build"), (PERM_GAMEMODE, "gamemode"), (PERM_COMMANDS, "commands"), (PERM_VOICE, "voice")] {
+        for (bit, n) in [(PERM_BUILD, "build"), (PERM_GAMEMODE, "gamemode"), (PERM_COMMANDS, "commands"), (PERM_VOICE, "voice"), (PERM_PVP, "pvp")] {
             if flags & bit != 0 {
                 v.push(n);
             }
@@ -308,9 +326,10 @@ impl Server {
                 alloc::format!("online ({}): {}   (* = operator or administrator)", names.len(), names.join(", "))
             }
             "/help" if arg(1) == "accounts" => String::from("accounts: /register PIN PIN (protect your name; 4 or 6 digits)  /pin OLD NEW  /forgetpin (the game, not the server).  administrators: /resetpin NAME [PIN]  /accounts"),
+            "/pvp" | "/kills" => self.pvp_command(who, &w, is_op).unwrap_or_default(),
             "/register" | "/pin" | "/login" => self.plain_account_command(),
             "/resetpin" | "/accounts" => self.admin_command(who, &w),
-            "/help" => String::from("server: /list /version /gamemode creative|survival (if allowed)   operators: /op /deop /kick /ban /pardon NAME  /say TEXT  /time 0..1  /perm NAME [+build -gamemode +commands +voice]  /default [+build ...]  /mute NAME  /unmute NAME  /voicerange BLOCKS  /gamemode NAME creative|survival"),
+            "/help" => String::from("server: /list /version /gamemode creative|survival (if allowed)   operators: /op /deop /kick /ban /pardon NAME  /say TEXT  /time 0..1  /perm NAME [+build -gamemode +commands +voice +pvp]  /default [+build ...]  /mute NAME  /unmute NAME  /voicerange BLOCKS  /gamemode NAME creative|survival  /pvp on|off.  anyone: /pvp  /kills [NAME]"),
             "/gamemode" if arg(2).is_empty() || !is_op => {
                 // Your own game mode, if you may choose it.
                 let mode = if arg(2).is_empty() { arg(1) } else { arg(2) };
@@ -345,7 +364,7 @@ impl Server {
                         self.send_perms(None);
                         alloc::format!("{} may now: {}", arg(1), Self::describe(f))
                     }
-                    None => String::from("use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice"),
+                    None => String::from("use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice +pvp -pvp"),
                 }
             }
             "/mute" | "/unmute" if !arg(1).is_empty() => {
@@ -381,7 +400,7 @@ impl Server {
                         self.send_perms(None);
                         alloc::format!("players may now by default: {}", Self::describe(f))
                     }
-                    None => String::from("use /default +build -build +gamemode -gamemode +commands -commands +voice -voice"),
+                    None => String::from("use /default +build -build +gamemode -gamemode +commands -commands +voice -voice +pvp -pvp"),
                 }
             }
             "/op" if !arg(1).is_empty() => {
@@ -541,6 +560,7 @@ impl Server {
     /// for a relay request line. Returns lines for the server's log.
     pub fn tick(&mut self, dt: f32, tile: &mut dyn FnMut(&str) -> Option<Vec<u8>>) -> Vec<String> {
         let mut log = Vec::new();
+        self.pvp.now += dt as f64;
         self.time += dt / 1200.0;
         if self.time >= 1.0 {
             self.time -= 1.0;
@@ -569,7 +589,7 @@ impl Server {
                         continue;
                     }
                     stream.set_nodelay(true);
-                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: crate::net::skinslot::SkinSlot::deferred(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default() });
+                    self.conns.push(Conn { stream, inbox: Inbox::default(), id: 0, name: String::new(), joined: false, last_move: None, skin: crate::net::skinslot::SkinSlot::deferred(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default() });
                 }
                 _ => break,
             }
@@ -781,6 +801,16 @@ impl Server {
                             }
                             continue;
                         }
+                        // Fights: a hit and the gear are the server's to read, and the news of a hit
+                        // is the server's alone to give (never passed on from a player).
+                        match channel {
+                            ch::PVP_HIT => self.pvp_hit(i, &data),
+                            ch::PVP_GEAR => self.pvp_gear(i, &data, &mut log),
+                            _ => {}
+                        }
+                        if (ch::PVP_HIT..=ch::PVP_GEAR).contains(&channel) {
+                            continue;
+                        }
                         let flags = self.flags_for(&self.conns[i].name);
                         // The creatures are the business of the one player who runs
                         // them; what is in a chest is for those who may build.
@@ -988,29 +1018,29 @@ mod tests {
         let mut s = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new(), mods: Vec::new() }).unwrap();
         s.ops.push(String::from("Ann"));
         // By default players build, and nothing else; operators do everything.
-        assert_eq!(s.flags_for("Bob"), PERM_BUILD | PERM_VOICE);
-        assert_eq!(s.flags_for("ann"), PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE);
+        assert_eq!(s.flags_for("Bob"), PERM_BUILD | PERM_VOICE | PERM_PVP);
+        assert_eq!(s.flags_for("ann"), PERM_BUILD | PERM_GAMEMODE | PERM_COMMANDS | PERM_VOICE | PERM_PVP);
         // Bob may not choose his game mode until he is allowed to.
         assert_eq!(s.command("Bob", "/gamemode creative"), "you may not change your game mode here");
         assert_eq!(s.command("Bob", "/perm Bob +gamemode"), "only operators may do that");
-        assert_eq!(s.command("Ann", "/perm Bob +gamemode -build"), "Bob may now: gamemode voice");
-        assert_eq!(s.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE);
+        assert_eq!(s.command("Ann", "/perm Bob +gamemode -build"), "Bob may now: gamemode voice pvp");
+        assert_eq!(s.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE | PERM_PVP);
         assert_eq!(s.command("Bob", "/gamemode creative"), "Bob is now in creative mode");
-        assert_eq!(s.flags_for("Bob"), PERM_GAMEMODE | PERM_VOICE | PERM_CREATIVE);
+        assert_eq!(s.flags_for("Bob"), PERM_GAMEMODE | PERM_VOICE | PERM_PVP | PERM_CREATIVE);
         assert_eq!(s.command("Bob", "/gamemode Ann survival"), "only operators may change someone else's game mode");
         // The default for everyone else.
-        assert_eq!(s.command("Ann", "/default -build"), "players may now by default: voice");
-        assert_eq!(s.flags_for("Cy"), PERM_VOICE);
-        assert_eq!(s.command("Ann", "/default +build +commands"), "players may now by default: build commands voice");
-        assert_eq!(s.command("Ann", "/perm Bob +fly"), "use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice");
+        assert_eq!(s.command("Ann", "/default -build"), "players may now by default: voice pvp");
+        assert_eq!(s.flags_for("Cy"), PERM_VOICE | PERM_PVP);
+        assert_eq!(s.command("Ann", "/default +build +commands"), "players may now by default: build commands voice pvp");
+        assert_eq!(s.command("Ann", "/perm Bob +fly"), "use /perm NAME +build -build +gamemode -gamemode +commands -commands +voice -voice +pvp -pvp");
         // It is all kept.
         let text = s.perm_text();
         let mut t = Server::bind(Config { port: 0, seed: 1, kind: String::from("normal"), max_players: 4, content: 0, states: 10, pack: Vec::new(), mods: Vec::new() }).unwrap();
         for line in text.lines() {
             assert!(t.load_perm_line(line), "{line}");
         }
-        assert_eq!(t.default_perms, PERM_BUILD | PERM_COMMANDS | PERM_VOICE);
-        assert_eq!(t.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE | PERM_CREATIVE);
+        assert_eq!(t.default_perms, PERM_BUILD | PERM_COMMANDS | PERM_VOICE | PERM_PVP);
+        assert_eq!(t.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE | PERM_PVP | PERM_CREATIVE);
     }
 
     #[test]
@@ -1051,7 +1081,7 @@ mod tests {
         assert_eq!(s.command("Ann", "/voicerange 40"), "voices now carry 40 blocks");
         assert!(s.command("Ann", "/voicerange far").starts_with("use /voicerange"));
         assert_eq!(s.command("Ann", "/voicerange"), "voices carry 40 blocks");
-        assert_eq!(s.command("Ann", "/perm Bob -voice"), "Bob may now: build");
+        assert_eq!(s.command("Ann", "/perm Bob -voice"), "Bob may now: build pvp");
         assert_eq!(s.flags_for("Bob") & PERM_VOICE, 0);
         // All of it is kept, and files from before voice chat still allow voice.
         let mut t = Server::bind(cfg()).unwrap();
@@ -1064,8 +1094,8 @@ mod tests {
         let mut old = Server::bind(cfg()).unwrap();
         assert!(old.load_perm_line("default 1"));
         assert!(old.load_perm_line("perm 1 eve"));
-        assert_eq!(old.flags_for("Zed"), PERM_BUILD | PERM_VOICE);
-        assert_eq!(old.flags_for("Eve"), PERM_BUILD | PERM_VOICE);
+        assert_eq!(old.flags_for("Zed"), PERM_BUILD | PERM_VOICE | PERM_PVP);
+        assert_eq!(old.flags_for("Eve"), PERM_BUILD | PERM_VOICE | PERM_PVP);
     }
 
     fn plain_config() -> Config {
@@ -1081,7 +1111,7 @@ mod tests {
         // One still in use after the counter went round is not given out again.
         let mut s = Server::bind(plain_config()).unwrap();
         let stream = crate::sys::net::TcpStream::connect("127.0.0.1", s.port(), 2000).unwrap();
-        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default() });
+        s.conns.push(Conn { stream, inbox: Inbox::default(), id: 7, name: String::from("Ann"), joined: true, last_move: None, skin: Default::default(), skin_out: Default::default(), proto: 0, voice_flags: 0, voice_bucket: Default::default(), quiet: 0, idle: 0.0, throttle: Default::default(), gone: false, mod_out: Default::default(), mods_asked: false, effects: Vec::new(), acct: Default::default(), sync: Default::default(), pvp: Default::default() });
         s.next_id = 6;
         assert_eq!((s.fresh_id(), s.fresh_id()), (6, 8));
     }
