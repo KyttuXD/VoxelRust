@@ -1064,7 +1064,9 @@ impl Renderer {
             let shade = (150.0 + 105.0 * day) as u8;
             let col = [shade, shade, shade, 230];
             let aspect = self.w as f32 / self.h.max(1) as f32;
-            Self::load_matrices(&math::perspective(cam.fov, aspect, 2.0, half * 1.7), &view);
+            // The same near plane as the world's, so the depths compare: with another one the
+            // clouds would draw over blocks that stand in front of them.
+            Self::load_matrices(&math::perspective(cam.fov, aspect, 0.08, half * 1.7), &view);
             unsafe {
                 (g.DepthMask)(0);
                 (g.Fogf)(gl::FOG_START, (far * 1.1).max(120.0));

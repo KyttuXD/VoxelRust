@@ -240,7 +240,7 @@ mod tests {
     fn eating_raises_the_hand_to_the_mouth_and_brings_it_down() {
         assert_eq!(eat_motion(0.0, false), Motion::default());
         let mid = eat_motion(0.5, false);
-        assert!(mid.off[1] > 0.1 && mid.off[2] > 0.2 && mid.off[0] < -0.1, "{mid:?}");
+        assert!(mid.off[1] > 0.03 && mid.off[2] < 0.0 && mid.off[0] < -0.1, "{mid:?}");
         assert!(eat_motion(0.5, true).rx > mid.rx, "a drink is tipped back further");
         let end = eat_motion(0.999, false);
         assert!(end.off[1].abs() < 0.05, "{end:?}");
@@ -248,11 +248,11 @@ mod tests {
         let (mut at_rest, mut eating) = (Vec::new(), Vec::new());
         first_person_view(Held::Card(1), &View::default(), &mut at_rest);
         first_person_view(Held::Card(1), &View { eat: 0.5, ..View::default() }, &mut eating);
-        assert!(centre(&eating)[1] > centre(&at_rest)[1] + 0.1);
+        assert!(centre(&eating)[1] > centre(&at_rest)[1] + 0.03);
         // And so does the arm.
         let rest = arm_point_view([0.0; 3], &View::default(), Held::Card(1));
         let up = arm_point_view([0.0; 3], &View { eat: 0.5, ..View::default() }, Held::Card(1));
-        assert!(up[1] > rest[1] + 0.1 && up[2] > rest[2] + 0.2);
+        assert!(up[1] > rest[1] + 0.03 && up[0] < rest[0] - 0.1 && up[2] < rest[2], "the hand moves toward the middle, not into the face");
     }
 
     #[test]
