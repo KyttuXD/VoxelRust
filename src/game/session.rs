@@ -214,6 +214,8 @@ pub struct Session {
     /// The block being mined and how far along, 0..1.
     pub mining: Option<([i32; 3], f32)>,
     pub note: (String, f32),
+    /// Lines of text scripts put on the screen (host call `hud`).
+    pub script_hud: crate::script::hud::HudLines,
     pub cooldown: [f32; 2],
     /// A bow being drawn (see game/bow.rs) and food being eaten (game/eating.rs).
     pub bow: crate::game::bow::Bow,
@@ -571,6 +573,7 @@ impl Session {
             target: None,
             mining: None,
             note: (String::new(), 0.0),
+            script_hud: Default::default(),
             cooldown: [0.0; 2],
             bow: Default::default(),
             eating: Default::default(),
@@ -1959,6 +1962,7 @@ impl Session {
         self.world.far_radius = if far > distance { far } else { 0 };
         self.clock += dt;
         self.note.1 -= dt;
+        self.script_hud.tick(dt);
         self.net_update(dt);
         self.hurt_flash = (self.hurt_flash - dt).max(0.0);
         // A full day lasts twenty minutes. (No `%` on floats: that would

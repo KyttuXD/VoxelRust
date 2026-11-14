@@ -1772,6 +1772,14 @@ impl App {
             r.rect(2.0 * s, y - s, Renderer::text_width(&plain, s) + 4.0 * s, 10.0 * s, [0, 0, 0, a / 3]);
             label_coloured(r, 4.0 * s, y, s, line, a);
         }
+        // Lines scripts ask for (host call `hud`), under the frame rate.
+        if !self.show_debug {
+            for (i, line) in g.script_hud.texts().enumerate() {
+                let y = 14.0 * s + i as f32 * 10.0 * s;
+                r.rect(2.0 * s, y - s, Renderer::text_width(line, s) + 4.0 * s, 10.0 * s, [0, 0, 0, 90]);
+                r.label(4.0 * s, y, s, line, WHITE);
+            }
+        }
         if g.note.1 > 0.0 {
             let tw = Renderer::text_width(&g.note.0, s * 2.0);
             r.label((w - tw) * 0.5, h * 0.3, s * 2.0, &g.note.0, [255, 240, 170, 255]);
