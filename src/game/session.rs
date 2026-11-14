@@ -1568,23 +1568,13 @@ impl Session {
         let tick = self.weather_tick >= 0.4;
         if tick {
             self.weather_tick = 0.0;
-            if self.sky.rain > 0.2 && !self.sky.snow {
-                audio.play(Sound::Rain, self.sky.rain);
-            }
-            // Near open water at sea level, waves wash in now and then;
-            // louder the more water there is around.
-            if roll() % 5 == 0 && (self.player.pos[1] as i32 - crate::worldgen::SEA).abs() < 14 {
-                let near = [(-9, 0), (9, 0), (0, -9), (0, 9), (-6, -6), (6, 6), (-6, 6), (6, -6)]
-                    .iter()
-                    .filter(|d| crate::block::is_water(self.world.get(px + d.0, crate::worldgen::SEA, pz + d.1)))
-                    .count();
-                if near >= 2 {
-                    audio.play(Sound::Wave, 0.25 + near as f32 * 0.09);
-                }
-            }
+            // Rain, wind, waves, lava, fire and cave air are beds the sound
+            // system layers itself from what is around the player.
+            audio.set_environment(crate::game::ambience_probe::sample(&self.world, self.player.pos, self.sky));
             if self.sky.storm && roll() % 24 == 0 {
                 self.flash = 0.22;
-                audio.play(Sound::Thunder, 1.0);
+                // The strike is somewhere 25 to 265 blocks off; its thunder is late by that.
+                audio.thunder(25.0 + (roll() % 2400) as f32 / 10.0);
             }
             // Snow settles on open ground while it falls.
             let layer = reg().wk.snow_layer;

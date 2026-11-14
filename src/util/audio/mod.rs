@@ -6,6 +6,14 @@ use alloc::vec::Vec;
 
 pub mod clip;
 
+// How the game sounds around you: see docs/SOUND.md.
+pub mod ambience;
+pub mod bed;
+pub mod grains;
+pub mod limiter;
+pub mod rand;
+pub mod variation;
+
 /// The rate the mixer runs at.
 pub const RATE: u32 = 22050;
 /// Longest sound taken, in seconds, and biggest file, in bytes.

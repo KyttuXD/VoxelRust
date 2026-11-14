@@ -89,6 +89,8 @@ pub struct Settings {
     pub effects_volume: i32,
     pub steps_volume: i32,
     pub ui_volume: i32,
+    /// Rain, wind, water, fire, lava and cave sounds (default 6).
+    pub ambience_volume: i32,
     // Voice chat (multiplayer servers only)
     /// Hear other players' voices (default on).
     pub voice_hear: bool,
@@ -184,6 +186,7 @@ impl Default for Settings {
             effects_volume: 8,
             steps_volume: 6,
             ui_volume: 6,
+            ambience_volume: 6,
             voice_hear: true,
             voice_mic: false,
             voice_activation: false,
@@ -294,6 +297,7 @@ impl Settings {
             effects_volume: int("effects_volume", d.effects_volume, 0, 10),
             steps_volume: int("steps_volume", d.steps_volume, 0, 10),
             ui_volume: int("ui_volume", d.ui_volume, 0, 10),
+            ambience_volume: int("ambience_volume", d.ambience_volume, 0, 10),
             voice_hear: flag("voice_hear", true),
             voice_mic: flag("voice_mic", false),
             voice_activation: flag("voice_activation", false),
@@ -351,7 +355,7 @@ impl Settings {
     pub fn to_text(&self) -> String {
         let mut s = alloc::format!(
             "distance={}\nfar_distance={}\nlod_real={}\nlod_trees={}\nlod_detail={}\nfov={}\nclouds={}\nvsync={}\nfullscreen={}\ngui_scale={}\ntarget_fps={}\nmax_fps={}\nshow_fps={}\n\
-             master_volume={}\neffects_volume={}\nsteps_volume={}\nui_volume={}\nsens={}\ninvert_y={}\nplayer_name={}\nautosave_seconds={}\nview_bobbing={}\n",
+             master_volume={}\neffects_volume={}\nsteps_volume={}\nui_volume={}\nambience_volume={}\nsens={}\ninvert_y={}\nplayer_name={}\nautosave_seconds={}\nview_bobbing={}\n",
             self.distance,
             self.far_distance,
             self.lod_real,
@@ -369,6 +373,7 @@ impl Settings {
             self.effects_volume,
             self.steps_volume,
             self.ui_volume,
+            self.ambience_volume,
             self.sens,
             self.invert_y as i32,
             self.player_name,
@@ -418,6 +423,18 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn ambience_volume_defaults_to_six_clamps_and_round_trips() {
+        assert_eq!(Settings::default().ambience_volume, 6);
+        assert_eq!(Settings::parse("master_volume=8\n").ambience_volume, 6);
+        assert_eq!(Settings::parse("ambience_volume=99\n").ambience_volume, 10);
+        assert_eq!(Settings::parse("ambience_volume=-3\n").ambience_volume, 0);
+        let mut s = Settings::default();
+        s.ambience_volume = 3;
+        assert_eq!(Settings::parse(&s.to_text()).ambience_volume, 3);
+        assert!(Settings::parse(&s.to_text()).extra("ambience_volume").is_empty());
+    }
 
     #[test]
     fn round_trip_and_clamping() {

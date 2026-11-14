@@ -862,10 +862,16 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   coarser farther off). Fine detail and many tiles cost time on a slow
   computer. The settings are `lod_real`, `lod_trees` and `lod_detail` in
   `settings.txt`.
-- **AUDIO**: master, effects, footsteps and interface volume, and SUBTITLES
+- **AUDIO**: master, effects, footsteps and interface volume, AMBIENCE
+  VOLUME (0 to 10, 6 to start with: rain, wind, running water and waves,
+  lava, fire and the air of a cave; saved as `ambience_volume` in
+  `settings.txt`), and SUBTITLES
   FOR SOUNDS, which names what you hear (`THUNDER`, `DOOR`, `WOLF HOWLS`) at
   the right of the screen for a couple of seconds. All sound stops when you
-  leave a world.
+  leave a world. Rain and wind are quieter and duller under a roof, a wash
+  under water, and fade in and out over a couple of seconds as the weather
+  changes; the ambience stops while a menu is open. How it is made is in
+  [SOUND.md](SOUND.md).
 - **CONTROLS**: mouse speed, invert mouse, and a KEY BINDINGS... page with
   every key marked * above and RESET KEYS. Click a binding, then press the new key (Esc cancels).
   Mods can add keys of their own: they come after the game's, each mod under a
