@@ -3,7 +3,8 @@
 # More creatures for the meadows, ponds, woods, deserts and caves: frogs,
 # toads, newts, turtles, lizards and snakes; owls, ducks, geese and gulls;
 # bats, dragonflies, butterflies and bees; deer, foxes, rabbits, hedgehogs,
-# otters, beavers, boars, squirrels and badgers. Most come in several looks
+# otters, beavers, boars, squirrels and badgers; and the Boomer, a walking
+# gourd that explodes, dressed to match the biome it appears in. Most come in several looks
 # (a blue tree frog, a black cottontail), and the ones that have young have
 # them. Each look is its own model with its own texture, drawn in the OCD
 # style (docs/TEXTURING.md).
@@ -29,6 +30,9 @@ sound grunt effects 0.30 0.50 130 90 0.20 0.55 A grunt
 sound whirr effects 0.45 0.45 280 320 0.60 0.18 Wings whirr
 sound tick effects 0.06 0.40 3000 2500 0.90 0.25 Ticking
 sound bark_deer effects 0.22 0.45 300 240 0.35 0.50 A deer barks
+sound rustle effects 0.30 0.90 800 500 0.50 0.25 Leaves rustle
+sound fuse_hiss effects 1.50 0.95 2800 1800 0.90 0.50 A fuse hisses
+sound boomer_boom effects 0.50 0.70 120 40 0.25 0.70 Something goes boom
 
 model tree_frog file models/tree_frog.bbmodel
 model tree_frog_blue file models/tree_frog_blue.bbmodel
@@ -152,6 +156,16 @@ model squirrel file models/squirrel.bbmodel
 model squirrel_grey file models/squirrel_grey.bbmodel
 model squirrel_black file models/squirrel_black.bbmodel
 model squirrel_ginger file models/squirrel_ginger.bbmodel
+model boomer file models/boomer.bbmodel
+model boomer_desert file models/boomer_desert.bbmodel
+model boomer_snow file models/boomer_snow.bbmodel
+model boomer_swamp file models/boomer_swamp.bbmodel
+model boomer_badlands file models/boomer_badlands.bbmodel
+model boomer_mountain file models/boomer_mountain.bbmodel
+model boomer_jungle file models/boomer_jungle.bbmodel
+model cave_boomer file models/cave_boomer.bbmodel
+model cave_boomer_ember file models/cave_boomer_ember.bbmodel
+model cave_boomer_crystal file models/cave_boomer_crystal.bbmodel
 model badger file models/badger.bbmodel
 model badger_honey file models/badger_honey.bbmodel
 model badger_dark file models/badger_dark.bbmodel
@@ -669,6 +683,44 @@ entity squirrel
   variant Grey model squirrel_grey
   variant Black model squirrel_black
   variant Ginger model squirrel_ginger
+entity boomer
+  name Boomer
+  model boomer
+  height 1.44
+  width 0.45
+  speed 3.3
+  health 20
+  behavior hostile
+  weight 3
+  drops gunpowder 2
+  damage 0
+  anim walk
+  sound rustle
+  explodes 2.0 1.5 3.0
+  variant Desert model boomer_desert biomes desert savanna
+  variant Snow model boomer_snow biomes tundra
+  variant Swamp model boomer_swamp biomes swamp
+  variant Badlands model boomer_badlands biomes badlands
+  variant Mountain model boomer_mountain biomes mountain
+  variant Jungle model boomer_jungle biomes jungle
+entity cave_boomer
+  name Cave Boomer
+  model cave_boomer
+  height 1.44
+  width 0.45
+  speed 3
+  health 20
+  behavior hostile
+  weight 4
+  biomes cave mushroom_cave crystal_cave lush_cave frozen_cave magma_cave webbed_cave
+  drops gunpowder 2
+  damage 0
+  anim walk
+  sound rustle
+  explodes 2.0 1.5 3.0
+  glow 6
+  variant Ember model cave_boomer_ember biomes magma_cave
+  variant Crystal model cave_boomer_crystal biomes crystal_cave frozen_cave
 entity badger
   name Badger
   model badger

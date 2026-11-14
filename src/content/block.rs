@@ -345,6 +345,10 @@ pub struct Variant {
     /// Its picture (`data/textures/entity/<tex>.png`, see `pack_entities`);
     /// empty = the model's own.
     pub tex: String,
+    /// Surface or cave biomes this look is for (camouflage). With any, it is
+    /// only given to creatures that appear in one of them, and always to
+    /// those; empty = a look for anywhere. See `entity_variant`.
+    pub biomes: Vec<String>,
 }
 
 /// The parts of a creature that only some have.
@@ -381,6 +385,10 @@ pub struct EntityExtra {
     /// The creatures it hunts, by id: its place in the food chain. (With
     /// none named, a `hunter` goes after anything marked `prey`.)
     pub hunts: Vec<String>,
+    /// `explodes <power> <fuse seconds> <trigger range>`: it closes in on a
+    /// player, and when within range for the whole fuse it blows up (see
+    /// `entity_explode`).
+    pub explodes: Option<(f32, f32, f32)>,
 }
 
 /// A part of a pack kept as written, for a mod's own code to read: a
@@ -1336,7 +1344,7 @@ impl Parser<'_> {
                     Some(&"villager") => e.behavior = Behavior::Villager,
                     _ => bad = Some("behavior must be wander, npc, hostile, swim, fly or villager"),
                 },
-                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" => {
+                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" | "explodes" => {
                     e.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "tint" => {
@@ -1867,7 +1875,14 @@ impl Registry {
                     biomes: e.biomes.clone(),
                     night: e.night,
                     weight: e.weight,
-                    drop: e.drop.as_ref().and_then(|(id, n)| items.iter().position(|it| it.id == *id).map(|i| (i, *n))),
+                    drop: e.drop.as_ref().and_then(|(id, n)| {
+                        let found = items.iter().position(|it| it.id == *id);
+                        if found.is_none() {
+                            // A creature that drops something a pack lacks still works.
+                            warnings.push(alloc::format!("entity {}: drops unknown item `{}`", e.id, id));
+                        }
+                        found.map(|i| (i, *n))
+                    }),
                     x: {
                         let mut x = EntityExtra::default();
                         let item = |id: &str| items.iter().position(|it| it.id == id && it.brush == 0);
@@ -1888,16 +1903,16 @@ impl Registry {
                                     Some(t) => x.anim = t.1,
                                     None => ok = false,
                                 },
-                                // variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>]
+                                // variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>] [biomes <names...>]
                                 "variant" => {
                                     let num = |k: usize| word(k).parse::<u8>().ok();
-                                    let mut v = Variant { name: word(0).replace('_', " "), model, tint: e.tint, size: 1.0, tex: String::new() };
+                                    let mut v = Variant { name: word(0).replace('_', " "), model, tint: e.tint, size: 1.0, tex: String::new(), biomes: Vec::new() };
                                     let mut k = 1;
                                     if let (Some(r), Some(g), Some(b)) = (num(1), num(2), num(3)) {
                                         v.tint = [r, g, b];
                                         k = 4;
                                     }
-                                    while k + 1 < a.len() {
+                                    while k < a.len() {
                                         match word(k) {
                                             "model" => match models.iter().position(|m| m.id == word(k + 1)) {
                                                 Some(m) => v.model = m,
@@ -1905,6 +1920,15 @@ impl Registry {
                                             },
                                             "size" => v.size = word(k + 1).parse::<f32>().unwrap_or(1.0).clamp(0.2, 3.0),
                                             "tex" => v.tex = crate::pack_entities::clean_name(word(k + 1)),
+                                            "biomes" => {
+                                                // Every word up to the next keyword is a biome.
+                                                k += 1;
+                                                while k < a.len() && !matches!(word(k), "model" | "size" | "tex" | "biomes") {
+                                                    v.biomes.push(word(k).to_ascii_lowercase());
+                                                    k += 1;
+                                                }
+                                                continue;
+                                            }
                                             _ => ok = false,
                                         }
                                         k += 2;
@@ -1937,6 +1961,14 @@ impl Registry {
                                 "hunts" => {
                                     x.hunts.extend(a.iter().cloned());
                                     x.traits |= traits::HUNTER;
+                                }
+                                // explodes <power> <fuse seconds> <trigger range>
+                                "explodes" => {
+                                    let f = |k: usize| word(k).parse::<f32>().ok().filter(|v| v.is_finite());
+                                    match (f(0), f(1), f(2)) {
+                                        (Some(power), Some(fuse), Some(range)) => x.explodes = Some((power.clamp(0.1, 16.0), fuse.clamp(0.2, 30.0), range.clamp(0.5, 16.0))),
+                                        _ => ok = false,
+                                    }
                                 }
                                 _ => {}
                             }
@@ -2537,5 +2569,20 @@ mod tests {
         });
         assert_eq!(asked, ["mods/extra.txt"]);
         assert!(r.block("extra").is_some());
+    }
+
+    #[test]
+    fn variants_name_their_biomes_and_creatures_can_explode() {
+        let pack = "model m builtin pig\nentity bang\n  name Bang\n  model m\n  explodes 2.5 1.5 3\n  variant Dry biomes desert savanna\n  variant Wet biomes swamp model m size 1.2 tex x\n  variant Odd\nentity dud\n  name Dud\n  model m\n  explodes 2\n  variant Bad model nothing_real\n";
+        let r = Registry::from_sources(&[("base.txt", BASE_DATA), ("p", pack)], &mut |_| None);
+        let e = r.entities.iter().find(|e| e.id == "bang").expect("bang");
+        assert_eq!(e.x.explodes, Some((2.5, 1.5, 3.0)));
+        assert_eq!(e.x.variants.len(), 3);
+        assert_eq!(e.x.variants[0].biomes, ["desert", "savanna"]);
+        assert_eq!((e.x.variants[1].biomes.as_slice(), e.x.variants[1].size), (&["swamp".to_string()][..], 1.2));
+        assert!(e.x.variants[2].biomes.is_empty());
+        let dud = r.entities.iter().find(|e| e.id == "dud").expect("dud");
+        assert_eq!(dud.x.explodes, None);
+        assert!(r.warnings.iter().any(|w| w.contains("explodes 2")), "{:?}", r.warnings);
     }
 }

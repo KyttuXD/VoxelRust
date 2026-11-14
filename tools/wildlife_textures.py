@@ -907,6 +907,40 @@ def ladybird(m, p, a):
         m.pair("leg%d" % (k + 1), ("Leg-L%d" % (k + 1), "Leg-R%d" % (k + 1)), (-3.0, 0, z - 0.3), (-1.7, 0.7, z + 0.3), "dark")
 
 
+def boomer_marks(p, seed):
+    """The markings of a boomer, by the palette's `pat`: what it carries to blend into its ground."""
+    pat = p.get("pat", "patch")
+    every = ("up", "east", "west", "north", "south")
+    if pat == "spines":       # a cactus: rows of spines on sand
+        return [where("mark", lambda q: q.i % 3 == 1 and q.j % 3 == 1, every)]
+    if pat == "frost":        # snow: a frosted top and a few flakes
+        return [topc("mark", 0.3), spots("mark", seed, 0.2, 3, 1, every)]
+    if pat == "moss":         # a swamp: moss on the lower half and in clumps
+        return [where("mark", lambda q: q.face in SIDES and q.ly < 0.3), spots("mark2", seed, 0.35, 3, 2, every)]
+    if pat == "bands":        # badlands: stripes of clay
+        return [band("mark", 4, 1, 0, "y", SIDES), band("mark2", 4, 1, 2, "y", SIDES)]
+    if pat == "ore":          # mountain and crystal: specks in the rock
+        return [spots("mark", seed, 0.3, 3, 1, every), spots("mark2", seed + 5, 0.2, 4, 1, every)]
+    if pat == "flowers":      # jungle: blossoms
+        return [spots("mark", seed, 0.3, 3, 1, every), spots("mark2", seed + 9, 0.3, 3, 1, every)]
+    if pat == "glow":         # a cave: glowing spots
+        return [spots("mark", seed, 0.35, 3, 1, every), spots("mark2", seed + 2, 0.2, 3, 2, every)]
+    if pat == "embers":       # deep down: cracks with embers
+        return [where("mark", lambda q: q.face in SIDES and (q.i + 2 * q.j) % 7 == 0), spots("mark2", seed, 0.2, 3, 1, every)]
+    return [spots("mark", seed, 0.4, 3, 2, every), spots("mark2", seed + 7, 0.25, 3, 1, every)]   # bark patches
+
+
+def boomer(m, p, a):
+    """A walking gourd with a fuse for a stem and a grim face: it blows up when you come close."""
+    m.box("body", "Body", (-4, 3, -3.5), (4, 9, 3.5), "body", boomer_marks(p, a["seed"]))
+    m.bone("Head", (0, 9, 0))
+    face = [pxs("eye", "north", [(1, 1), (2, 1), (1, 2), (2, 2)]), pxs("mouth", "north", [(2, 3), (3, 3), (1, 4)])]
+    m.box("head", "Head", (-3.5, 9, -3.5), (3.5, 15, 3.5), "head", boomer_marks(p, a["seed"] + 1) + face)
+    m.box("stem", "Head", (-0.8, 15, -0.8), (0.8, 18, 0.8), "stem")
+    m.box("leaf", "Head", (0.8, 16.5, -0.8), (3.8, 17.5, 0.8), "stem")
+    legs4(m, -2.0, 2.0, 3.0, 2.2, 2.6, 2.6, "leg", "leg")
+
+
 # ======================================================================
 #  The species
 # ======================================================================
@@ -1064,6 +1098,14 @@ def b_warthog(m, p):
     m.pair("wartp", "Head", (-3.0, hcy - 0.6, fz - 5.0), (-2.4, hcy + 1.0, fz - 3.6), "wart", frame=False)
 
 
+def b_boomer(m, p):
+    boomer(m, p, dict(seed=101))
+
+
+def b_cave_boomer(m, p):
+    boomer(m, p, dict(seed=111))
+
+
 def b_squirrel(m, p):
     mammal(m, p, dict(body=(3.2, 3.2, 5.6), leg=2.6, legsz=(1.1, 1.3), legsz_b=(1.4, 2.4), head=(3.0, 2.8, 2.8), snout=(1.4, 1.2, 1.2), ears=(1.0, 1.8, 0.6), ear_in=0.3, seed=89, belly_h=0.35, head_h=0.7, eye=(1, 0),
                       tail_box=((-1.4, 3.4, 1.9), (1.4, 10.6, 4.1), (-20, 0, 0)), knee=0.5, bz=0.2))
@@ -1199,6 +1241,18 @@ PALETTE = {
     "warthog": dict(base=dict(body="8c7860", belly="a89478", head="8c7860", muzzle="a89478", nose="2c2420", eye="1c1814", ear="8c7860", leg="7c6850", sock="4c3c30", tail="8c7860", tailtip="2c2420", mane="d8c8a0", tusk="f4ecd4", wart="b8a484", back="7c6850"),
                     variants=[("Red", dict(body="b86c3c", head="b86c3c", ear="b86c3c", leg="a45c30", sock="5c3418", belly="d8a878", muzzle="d8a878", mane="f0e0b8", back="a45c30", tail="b86c3c", wart="d89c68")),
                               ("Dark", dict(body="4c4038", head="4c4038", ear="4c4038", leg="403630", sock="2c2420", belly="6c5c50", muzzle="6c5c50", mane="a89880", back="403630", tail="4c4038", wart="7c6c5c"))]),
+    # Boomers blend into the ground they appear on: the look is chosen by the biome
+    # (`biomes` below), the plain look being the forest's and the fallback.
+    "boomer": dict(base=dict(body="5c9a3c", head="5c9a3c", leg="4a7c30", mark="7a5a38", mark2="3c6a28", eye="181c10", mouth="181c10", stem="3c7a2c", pat="patch"),
+                   variants=[("Desert", dict(body="d8c080", head="d8c080", leg="c4a868", mark="6a4a28", mark2="6a9a48", stem="6a9a48", eye="2c2418", mouth="2c2418", pat="spines", biomes="desert savanna")),
+                             ("Snow", dict(body="eef2f6", head="eef2f6", leg="d0dae4", mark="a8d0ec", mark2="a8d0ec", stem="8cb0c8", eye="28303c", mouth="28303c", pat="frost", biomes="tundra")),
+                             ("Swamp", dict(body="5a6a38", head="5a6a38", leg="48562c", mark="94b84c", mark2="38401e", stem="4c7a38", eye="d8e070", mouth="2c3418", pat="moss", biomes="swamp")),
+                             ("Badlands", dict(body="b4583c", head="b4583c", leg="9c4830", mark="e0a878", mark2="7c3824", stem="8a5a34", eye="2c1810", mouth="2c1810", pat="bands", biomes="badlands")),
+                             ("Mountain", dict(body="8a8a90", head="8a8a90", leg="707078", mark="d8c060", mark2="58c0d0", stem="64646c", eye="181820", mouth="181820", pat="ore", biomes="mountain")),
+                             ("Jungle", dict(body="3cae3c", head="3cae3c", leg="2c8a34", mark="e84c78", mark2="f0d848", stem="287a28", eye="182010", mouth="182010", pat="flowers", biomes="jungle"))]),
+    "cave_boomer": dict(base=dict(body="2c2c38", head="2c2c38", leg="22222c", mark="58e8c8", mark2="38a890", eye="9cf8e0", mouth="9cf8e0", stem="3c3c4c", pat="glow"),
+                        variants=[("Ember", dict(body="3a2420", head="3a2420", leg="2c1a18", mark="ff8a28", mark2="ffd048", eye="ffd048", mouth="ff8a28", stem="4c2c24", pat="embers", biomes="magma_cave")),
+                                  ("Crystal", dict(body="7088b8", head="7088b8", leg="586898", mark="d8f0ff", mark2="a8c8f0", eye="182038", mouth="182038", stem="8098c8", pat="ore", biomes="crystal_cave frozen_cave"))]),
     "squirrel": dict(base=dict(body="b8582c", belly="f0e4d0", head="b8582c", muzzle="f0e4d0", nose="1c1814", eye="1c1814", ear="b8582c", leg="a44c24", sock="a44c24", tail="b8582c", tailtip="f0d4b0"),
                      variants=[("Grey", dict(body="8c8c88", head="8c8c88", ear="8c8c88", leg="7c7c78", sock="7c7c78", tail="a8a8a4", tailtip="e8e8e4", belly="f0f0ec", muzzle="f0f0ec")),
                                ("Black", dict(body="2c2830", head="2c2830", ear="2c2830", leg="241f28", sock="241f28", tail="342f38", tailtip="4c4654", belly="4c4654", muzzle="4c4654")),
@@ -1248,6 +1302,10 @@ ENTITIES = [
     ("beaver", "Beaver", dict(len=0.85, speed=1.8, hp=21, behavior="wander", biomes="swamp forest taiga", weight=4, trait="lazy", anim="waddle", baby="0.45 420", drops="stick 3", sound="grunt")),
     ("warthog", "Warthog", dict(len=1.1, speed=3.6, hp=34, behavior="wander", biomes="savanna", weight=5, trait="herd territorial pack", damage=4, anim="walk", baby="0.45 420", drops="raw_meat 3", sound="grunt")),
     ("squirrel", "Squirrel", dict(len=0.42, speed=3.2, hp=7, behavior="wander", biomes="forest taiga jungle", weight=8, trait="flees jumps", anim="hop", baby="0.5 300", sound="chitter")),
+    # Hostile, and it blows up: `explodes <power> <fuse seconds> <trigger range>` (docs/CREATURES.md).
+    ("boomer", "Boomer", dict(len=0.56, speed=3.3, hp=20, behavior="hostile", weight=3, damage=0, anim="walk", sound="rustle", drops="gunpowder 2", explodes="2.0 1.5 3.0")),
+    ("cave_boomer", "Cave Boomer", dict(len=0.56, speed=3.0, hp=20, behavior="hostile", biomes="cave mushroom_cave crystal_cave lush_cave frozen_cave magma_cave webbed_cave", weight=4, damage=0, anim="walk", sound="rustle",
+                                        drops="gunpowder 2", explodes="2.0 1.5 3.0", glow=6)),
     ("badger", "Badger", dict(len=0.9, speed=2.4, hp=24, behavior="wander", biomes="forest taiga mountain", weight=4, trait="territorial", damage=3, anim="walk", baby="0.45 420", drops="raw_meat 2", sound="snuffle")),
 ]
 
@@ -1269,6 +1327,9 @@ SOUNDS = [
     "sound whirr effects 0.45 0.45 280 320 0.60 0.18 Wings whirr",
     "sound tick effects 0.06 0.40 3000 2500 0.90 0.25 Ticking",
     "sound bark_deer effects 0.22 0.45 300 240 0.35 0.50 A deer barks",
+    "sound rustle effects 0.30 0.90 800 500 0.50 0.25 Leaves rustle",
+    "sound fuse_hiss effects 1.50 0.95 2800 1800 0.90 0.50 A fuse hisses",
+    "sound boomer_boom effects 0.50 0.70 120 40 0.25 0.70 Something goes boom",
 ]
 
 
@@ -1282,6 +1343,8 @@ def palette_of(sid, k):
     pal = {key: v for key, v in spec["base"].items() if v is not None}
     if k > 0:
         for key, v in spec["variants"][k - 1][1].items():
+            if key == "biomes":      # where a look is for: not a colour (see write_pack)
+                continue
             if v is None:
                 pal.pop(key, None)
             else:
@@ -1325,7 +1388,8 @@ def write_pack(models):
 # More creatures for the meadows, ponds, woods, deserts and caves: frogs,
 # toads, newts, turtles, lizards and snakes; owls, ducks, geese and gulls;
 # bats, dragonflies, butterflies and bees; deer, foxes, rabbits, hedgehogs,
-# otters, beavers, boars, squirrels and badgers. Most come in several looks
+# otters, beavers, boars, squirrels and badgers; and the Boomer, a walking
+# gourd that explodes, dressed to match the biome it appears in. Most come in several looks
 # (a blue tree frog, a black cottontail), and the ones that have young have
 # them. Each look is its own model with its own texture, drawn in the OCD
 # style (docs/TEXTURING.md).
@@ -1369,7 +1433,7 @@ def write_pack(models):
             out.append("  drops " + spec["drops"])
         if spec.get("trait"):
             out.append("  trait " + spec["trait"])
-        if spec.get("damage"):
+        if "damage" in spec:
             out.append("  damage %d" % spec["damage"])
         if spec.get("anim"):
             out.append("  anim " + spec["anim"])
@@ -1381,8 +1445,13 @@ def write_pack(models):
             out.append("  sound " + spec["sound"])
         if spec.get("hunts"):
             out.append("  hunts " + spec["hunts"])
-        for k, (vname, _) in enumerate(PALETTE[sid]["variants"]):
-            out.append("  variant %s model %s" % (vname, model_id(sid, k + 1)))
+        if spec.get("explodes"):
+            out.append("  explodes " + spec["explodes"])
+        if spec.get("glow"):
+            out.append("  glow %d" % spec["glow"])
+        for k, (vname, look) in enumerate(PALETTE[sid]["variants"]):
+            where_ = (" biomes " + look["biomes"]) if look.get("biomes") else ""
+            out.append("  variant %s model %s%s" % (vname, model_id(sid, k + 1), where_))
     with open(os.path.join(MOD, "pack.txt"), "w") as f:
         f.write("\n".join(out) + "\n")
 
