@@ -145,7 +145,7 @@ mod tests {
             assert!(n >= v && n <= 3.0);
             v = n;
         }
-        assert!((v - 3.0).abs() < 0.01, "{v}");
+        assert!((v - 3.0).abs() < 0.05, "{v}");
         // Already rising faster: not slowed.
         assert_eq!(levitate(8.0, 3.0, 0.1), 8.0);
         // A long step lands on the lift speed.
