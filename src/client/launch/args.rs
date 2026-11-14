@@ -33,6 +33,14 @@ Run it with no options for the title screen. Options:
   --mods-dir DIR      read mods from DIR instead of the data folder's mods
   --serve-mods LIST   with --server (or --host): the mods players download,
                       comma separated (default: every mod without `client no`)
+  --require-accounts yes|no|optional
+                      with --server: whether players need an account (a PIN)
+                      (default optional; also `require_accounts=` in the data
+                      folder's settings.txt, with `admins=NAME,NAME` for the
+                      administrators; see docs/ACCOUNTS.md)
+  --set-pin NAME PIN  with --server: set the PIN of an account (4 or 6 digits)
+                      in the server's data folder, and exit. How an
+                      administrator's account is made
   --screenshot FILE   load the world, save one BMP frame, and exit
   --bench N           load the world, time N frames, and exit
   --flypass N         like --bench, but flying straight ahead over the land
@@ -101,6 +109,10 @@ pub(super) struct Opts {
     pub(super) mods_dir: Option<String>,
     /// `--serve-mods a,b`: the mods a server sends to players.
     pub(super) serve_mods: Option<String>,
+    /// `--require-accounts yes|no|optional`: whether a server's players need accounts.
+    pub(super) require_accounts: Option<crate::net::accounts::config::Require>,
+    /// `--set-pin NAME PIN`: set an account's PIN in the server's data folder, and exit.
+    pub(super) set_pin: Option<(String, String)>,
     /// `--texture-pack DIR` (repeatable): texture pack folders to use this time.
     pub(super) texture_packs: Vec<String>,
     pub(super) screenshot: Option<String>,
@@ -209,6 +221,15 @@ pub(super) fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--pack" => o.packs.push(next(&mut i, a)?),
             "--mods-dir" => o.mods_dir = Some(next(&mut i, a)?),
             "--serve-mods" => o.serve_mods = Some(next(&mut i, a)?),
+            "--require-accounts" => {
+                let v = next(&mut i, a)?;
+                o.require_accounts = Some(crate::net::accounts::config::Require::parse(&v).filter(|_| !v.is_empty()).ok_or_else(|| alloc::format!("--require-accounts: `{}` should be yes, no or optional", v))?);
+            }
+            "--set-pin" => {
+                let who = next(&mut i, a)?;
+                let pin = next(&mut i, a)?;
+                o.set_pin = Some((who, pin));
+            }
             "--texture-pack" => o.texture_packs.push(next(&mut i, a)?),
             "--screenshot" => o.screenshot = Some(next(&mut i, a)?),
             "--write-icon" => o.write_icon = Some(next(&mut i, a)?),
@@ -275,5 +296,35 @@ pub(super) fn parse_args(args: &[String]) -> Result<Opts, String> {
         }
         i += 1;
     }
+    if o.set_pin.is_some() && !o.server {
+        return Err(String::from("--set-pin works with --server (and --data): it sets a PIN in the server's data folder"));
+    }
     Ok(o)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(line: &str) -> Vec<String> {
+        core::iter::once("voxelrust").chain(line.split_whitespace()).map(String::from).collect()
+    }
+
+    #[test]
+    fn set_pin_and_require_accounts_are_read() {
+        let o = parse_args(&args("--server --data /var/lib/voxelrust --set-pin KYTTU 482915")).unwrap();
+        assert_eq!(o.set_pin, Some((String::from("KYTTU"), String::from("482915"))));
+        assert!(o.server && o.require_accounts.is_none());
+        let o = parse_args(&args("--server --require-accounts yes")).unwrap();
+        assert_eq!(o.require_accounts, Some(crate::net::accounts::config::Require::Yes));
+        assert_eq!(parse_args(&args("--server --require-accounts Optional")).unwrap().require_accounts, Some(crate::net::accounts::config::Require::Optional));
+    }
+
+    #[test]
+    fn bad_account_options_are_refused() {
+        assert!(parse_args(&args("--server --set-pin KYTTU")).is_err(), "a PIN is needed");
+        assert!(parse_args(&args("--set-pin KYTTU 482915")).is_err(), "only with --server");
+        assert!(parse_args(&args("--server --require-accounts maybe")).is_err());
+        assert!(parse_args(&args("--server --require-accounts")).is_err());
+    }
 }

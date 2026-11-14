@@ -13,6 +13,27 @@ const K: [u32; 64] = [
 
 /// The SHA-256 of `data`, as 64 lower-case hex digits.
 pub fn hex(data: &[u8]) -> String {
+    let h = words(data);
+    let mut out = String::with_capacity(64);
+    for word in h {
+        for shift in [28, 24, 20, 16, 12, 8, 4, 0] {
+            out.push(char::from_digit((word >> shift) & 15, 16).unwrap_or('0'));
+        }
+    }
+    out
+}
+
+/// The SHA-256 of `data`, as 32 bytes (what accounts and their login proofs are made of).
+pub fn digest(data: &[u8]) -> [u8; 32] {
+    let h = words(data);
+    let mut out = [0u8; 32];
+    for (i, word) in h.iter().enumerate() {
+        out[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
+    }
+    out
+}
+
+fn words(data: &[u8]) -> [u32; 8] {
     let mut h: [u32; 8] = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
     // The message, a 1 bit, zeros, and its length in bits, in 64-byte blocks.
     let mut tail = alloc::vec::Vec::from(&data[data.len() - data.len() % 64..]);
@@ -46,13 +67,7 @@ pub fn hex(data: &[u8]) -> String {
             h[i] = h[i].wrapping_add(v[i]);
         }
     }
-    let mut out = String::with_capacity(64);
-    for word in h {
-        for shift in [28, 24, 20, 16, 12, 8, 4, 0] {
-            out.push(char::from_digit((word >> shift) & 15, 16).unwrap_or('0'));
-        }
-    }
-    out
+    h
 }
 
 #[cfg(test)]
@@ -63,5 +78,18 @@ mod tests {
         assert_eq!(super::hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
         let long = [b'a'; 1000];
         assert_eq!(super::hex(&long), "41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3");
+    }
+
+    #[test]
+    fn the_raw_digest_is_the_same_hash() {
+        let d = super::digest(b"abc");
+        assert_eq!(d[0], 0xba);
+        assert_eq!(d[31], 0xad);
+        let mut text = alloc::string::String::new();
+        for b in d {
+            text.push(char::from_digit((b >> 4) as u32, 16).unwrap());
+            text.push(char::from_digit((b & 15) as u32, 16).unwrap());
+        }
+        assert_eq!(text, super::hex(b"abc"));
     }
 }

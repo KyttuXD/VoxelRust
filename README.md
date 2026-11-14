@@ -110,6 +110,7 @@ Vehicles, Natural Disasters, Holidays...) live in a separate repository,
 | [docs/PLAYING.md](docs/PLAYING.md) | controls, game modes, crafting, farming, baking, furnaces, furniture, bows, caves, vehicles and railways, dimensions, chat commands, settings, command-line options |
 | [docs/CREATURES.md](docs/CREATURES.md) | wildlife, monsters and villagers: what lives where, milk, wool and eggs, taming, trading |
 | [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | hosting and joining, what is shared |
+| [docs/ACCOUNTS.md](docs/ACCOUNTS.md) | PIN accounts and administrators on servers, and what they are worth |
 | [docs/EARTH.md](docs/EARTH.md) | real-world terrain, the map, data sources |
 | [docs/MODDING.md](docs/MODDING.md) | packs, the mods folder, mods from a server, scripts and commands, models, skins |
 | [docs/DATA.md](docs/DATA.md) | the content file format |

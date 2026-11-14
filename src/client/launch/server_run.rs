@@ -56,6 +56,8 @@ pub(super) fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String
             }
         }
     }
+    // Accounts: the settings (settings.txt, --require-accounts) and the accounts file.
+    crate::net::accounts::persist::load(&mut server, base, &edits_path, crate::net::accounts::config::override_value());
     // Where players were when they left, so they come back to the same place.
     let spots_path = edits_path.replace(".server-edits.txt", ".server-spots.txt");
     if let Some(text) = sys::read_file(&spots_path) {
@@ -135,6 +137,7 @@ pub(super) fn server_loop(mut server: crate::server::Server, edits_path: String,
                 ops_wait = 10.0;
             }
         }
+        crate::net::accounts::persist::flush(&mut server, &edits_path, false);
         spot_timer += dt;
         if spot_timer > 10.0 {
             spot_timer = 0.0;
@@ -161,6 +164,7 @@ pub(super) fn server_loop(mut server: crate::server::Server, edits_path: String,
     if server.dirty {
         sys::write_file_atomic(&edits_path, server.save_text().as_bytes());
     }
+    crate::net::accounts::persist::flush(&mut server, &edits_path, true);
     // Where everyone stands as the server stops, so they come back to it.
     server.snapshot_spots();
     sys::write_file_atomic(&edits_path.replace(".server-edits.txt", ".server-spots.txt"), server.spots_text().as_bytes());
@@ -181,6 +185,13 @@ extern "C" fn on_terminate(_: c_int) {
 /// `voxelrust --server`: host a world for others, with no window.
 pub(super) fn run_server(opts: &Opts, base: &str, pack_text: &[u8], pack_paths: &[String], mods_off: &str) -> Result<(), String> {
     let name = opts.world.clone().unwrap_or_else(|| String::from("server"));
+    // `--set-pin NAME PIN`: write the account and leave (see net/accounts/set_pin.rs).
+    if let Some((who, pin)) = &opts.set_pin {
+        return crate::net::accounts::set_pin::run(base, &name, who, pin);
+    }
+    if let Some(mode) = opts.require_accounts {
+        crate::net::accounts::config::set_override(mode);
+    }
     let new_kind = crate::native::active().filter_map(|(_, n)| n.option_kind).find_map(|kind| kind());
     let port = opts.port.unwrap_or(crate::proto::DEFAULT_PORT);
     let only = opts.serve_mods.as_deref().and_then(crate::net::modsync::serve::parse_serve_list);

@@ -832,6 +832,30 @@ it are mostly there for packs, which run them from scripts and can add
 commands of their own. Variables, conditions and the rest of the scripting
 commands are explained in [MODDING.md](MODDING.md#scripts-and-commands).
 
+## Accounts and PINs
+
+On a multiplayer server a name can be protected by a PIN of 4 or 6 digits
+(per server; singleplayer has nothing to do with it). Type `/register 4821 4821`
+(the PIN twice; use your own) in the chat of a server that has accounts, or
+let the server ask when it requires one. From then on nobody can join under
+your name without the PIN: the MULTIPLAYER screen asks for it, dots on screen,
+with a switch to **remember the PIN** (kept in plain text in `server-pins.txt`
+in the data folder: anyone who can read that file can log in as you, so leave it
+off on a shared computer). `/pin OLD NEW` changes it, `/forgetpin` makes the game
+forget a remembered PIN. Five wrong tries lock the name for a minute, then two,
+four... up to an hour.
+
+**Be clear about what this is worth.** A 4 or 6 digit PIN stops casual
+impersonation: a friend who joins under your name. It does not stop someone who
+can watch your network traffic (the connection is not encrypted, so they can
+record a login and guess the PIN offline, which takes seconds for 4 digits), and
+the server's owner can always see or reset what the server stores. Do not reuse
+a PIN you use anywhere else. Real passwords will come later. The whole story, for
+players and for server owners, is in [ACCOUNTS.md](ACCOUNTS.md).
+
+An older game (protocol 13) can still join a server as a guest, with a name
+that has no account; for a name with an account it is told to update.
+
 ## Voice chat
 
 On a multiplayer server you can talk to the players near you, and hear them.
@@ -1107,6 +1131,8 @@ marked "From the Earth mod").
 | `--log FILE` | also write what the game prints to FILE |
 | `--pack FILE` | extra content file (blocks, items, textures); may be given several times |
 | `--mods-dir DIR` | read mods from `DIR` instead of the data folder's `mods` |
+| `--require-accounts yes\|no\|optional` | with `--server`: whether players need an account (a PIN); default `optional` (see [ACCOUNTS.md](ACCOUNTS.md)) |
+| `--set-pin NAME PIN` | with `--server` (and `--data`, `--world`): set the PIN of an account in the server's data folder, and exit. How an administrator's account is made |
 | `--serve-mods LIST` | with `--server` or `--host`: the mods players download, comma separated (default: every mod that does not say `client no` and has no native code) |
 | `--screenshot FILE` | load the world, save one BMP frame, and exit |
 | `--bench N` | load the world, time N frames, and exit |

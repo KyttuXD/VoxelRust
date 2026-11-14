@@ -14,11 +14,13 @@ use alloc::vec::Vec;
 /// (`game/creature_wire.rs`) and added the mods' message channel
 /// ([`channel::MODMSG`], `net/modmsg.rs`). Version 14 added big (HD) skins in
 /// pieces ([`Msg::SkinCaps`], [`Msg::SkinBegin`], [`Msg::SkinPart`],
-/// `net/skinxfer.rs`).
+/// `net/skinxfer.rs`) and the accounts ([`Msg::AuthChallenge`] and the
+/// messages around it, `net/accounts`).
 pub const VERSION: u16 = 14;
 /// The oldest protocol a server still lets in: version 13 clients know every
 /// message a 14 server sends them (it sends them the 64 x 64 version of a
-/// big skin, as a plain [`Msg::Skin`]).
+/// big skin, as a plain [`Msg::Skin`], and none of the account messages: a
+/// name with an account is refused to them, see `net::accounts::OLDEST_ACCEPTED`).
 pub const MIN_VERSION: u16 = 13;
 
 /// What a player may do on a server (the flags of [`Msg::Perms`]).
@@ -146,6 +148,17 @@ pub enum Msg {
     /// "Send me these mods" (names from the [`Msg::ModList`]); answered with
     /// [`Msg::ModPart`]s, one mod after the other in the order asked.
     ModsWant { names: Vec<String> },
+    /// The answer to a login [`Msg::AuthChallenge`]: the HMAC of the nonce and the name under
+    /// the key the PIN makes (`net/accounts/keys.rs`). The PIN itself is never sent.
+    AuthLogin { proof: [u8; 32] },
+    /// The answer to a register challenge: the key the new PIN makes with the salt the server
+    /// chose (the server keeps it as the account's verifier).
+    AuthRegister { key: [u8; 32] },
+    /// The answer to a change challenge: the proof for the old PIN and the key of the new one.
+    AuthChange { proof: [u8; 32], key: [u8; 32] },
+    /// "Give me a challenge" for `op` (`accounts::state::op`), from a player already in the game
+    /// (`/register`, `/pin`).
+    AuthAsk { op: u8 },
     // Server to client.
     Welcome { id: u16, seed: u32, time: f32, kind: String },
     /// The server will not let you in.
@@ -171,6 +184,18 @@ pub enum Msg {
     /// what is in a chest. `channel` says which; `key` names the thing;
     /// with `keep` the server remembers the latest for players who join later.
     State { id: u16, channel: u8, keep: bool, key: String, data: Vec<u8> },
+    /// A challenge for a login, a registration or a PIN change (`op`, see
+    /// `accounts::state::op`). `salt` is the account's, `new_salt` is for a new PIN's key,
+    /// `nonce` is fresh for this challenge, `rounds` how often the PIN is hashed, `tries` how
+    /// many wrong tries are left, `flags` as in `accounts::state::flag`.
+    AuthChallenge { op: u8, flags: u8, rounds: u32, tries: u8, salt: [u8; 16], new_salt: [u8; 16], nonce: [u8; 16] },
+    /// How an account step went (`ok`), and what to tell the player. `tries` is how many
+    /// wrong tries are left after a wrong PIN.
+    AuthResult { ok: bool, tries: u8, text: String },
+    /// What the server's accounts say about this player, sent after [`Msg::Welcome`] and again
+    /// when it changes: the server's mode (0 no accounts, 1 optional, 2 required) and
+    /// `accounts::state::flag` bits.
+    Account { mode: u8, flags: u8 },
     /// Which program the server is: its build name, release number (0 when
     /// built by hand) and commit. Sent right after [`Msg::Welcome`]; only
     /// for showing to the player (the protocol version decides whether a
@@ -223,6 +248,9 @@ impl R<'_> {
     }
     fn u8(&mut self) -> Option<u8> {
         Some(self.take(1)?[0])
+    }
+    fn array<const N: usize>(&mut self) -> Option<[u8; N]> {
+        self.take(N)?.try_into().ok()
     }
     fn u16(&mut self) -> Option<u16> {
         Some(u16::from_le_bytes(self.take(2)?.try_into().ok()?))
@@ -404,6 +432,44 @@ impl Msg {
                 w.u16(n as u16);
                 w.0.extend_from_slice(&data[..n]);
             }
+            Msg::AuthLogin { proof } => {
+                w.u8(40);
+                w.0.extend_from_slice(proof);
+            }
+            Msg::AuthRegister { key } => {
+                w.u8(41);
+                w.0.extend_from_slice(key);
+            }
+            Msg::AuthChange { proof, key } => {
+                w.u8(42);
+                w.0.extend_from_slice(proof);
+                w.0.extend_from_slice(key);
+            }
+            Msg::AuthAsk { op } => {
+                w.u8(43);
+                w.u8(*op);
+            }
+            Msg::AuthChallenge { op, flags, rounds, tries, salt, new_salt, nonce } => {
+                w.u8(44);
+                w.u8(*op);
+                w.u8(*flags);
+                w.u32(*rounds);
+                w.u8(*tries);
+                w.0.extend_from_slice(salt);
+                w.0.extend_from_slice(new_salt);
+                w.0.extend_from_slice(nonce);
+            }
+            Msg::AuthResult { ok, tries, text } => {
+                w.u8(45);
+                w.u8(*ok as u8);
+                w.u8(*tries);
+                w.str(text);
+            }
+            Msg::Account { mode, flags } => {
+                w.u8(46);
+                w.u8(*mode);
+                w.u8(*flags);
+            }
             Msg::Welcome { id, seed, time, kind } => {
                 w.u8(10);
                 w.u16(*id);
@@ -551,6 +617,13 @@ impl Msg {
                 Msg::ModPart { index, last, data: r.take(n)?.to_vec() }
             }
             22 => Msg::Info { build: r.str()?, release: r.u32()?, commit: r.str()? },
+            40 => Msg::AuthLogin { proof: r.array()? },
+            41 => Msg::AuthRegister { key: r.array()? },
+            42 => Msg::AuthChange { proof: r.array()?, key: r.array()? },
+            43 => Msg::AuthAsk { op: r.u8()? },
+            44 => Msg::AuthChallenge { op: r.u8()?, flags: r.u8()?, rounds: r.u32()?, tries: r.u8()?, salt: r.array()?, new_salt: r.array()?, nonce: r.array()? },
+            45 => Msg::AuthResult { ok: r.u8()? != 0, tries: r.u8()?, text: r.str()? },
+            46 => Msg::Account { mode: r.u8()?, flags: r.u8()? },
             10 => Msg::Welcome { id: r.u16()?, seed: r.u32()?, time: r.f32()?, kind: r.str()? },
             11 => Msg::Refuse { reason: r.str()? },
             12 => Msg::Join { id: r.u16()?, name: r.str()? },
@@ -684,6 +757,14 @@ mod tests {
             Msg::ModList { mods: Vec::new() },
             Msg::ModPart { index: 3, last: false, data: alloc::vec![7; 1000] },
             Msg::ModPart { index: 0, last: true, data: Vec::new() },
+            Msg::AuthLogin { proof: [7; 32] },
+            Msg::AuthRegister { key: [8; 32] },
+            Msg::AuthChange { proof: [1; 32], key: [2; 32] },
+            Msg::AuthAsk { op: 2 },
+            Msg::AuthChallenge { op: 1, flags: 5, rounds: 20_000, tries: 3, salt: [1; 16], new_salt: [2; 16], nonce: [3; 16] },
+            Msg::AuthResult { ok: false, tries: 2, text: String::from("wrong PIN") },
+            Msg::AuthResult { ok: true, tries: 0, text: String::new() },
+            Msg::Account { mode: 1, flags: 3 },
         ];
         let mut inbox = Inbox::default();
         for m in &all {
