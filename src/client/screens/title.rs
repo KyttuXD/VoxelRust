@@ -170,6 +170,11 @@ impl App {
         ui.text_field(30, x, by + step * 2.0, bw - side - 3.0 * s, bh, &mut self.form_import, 200, ui::any_char);
         if ui.button(x + bw - side, by + step * 2.0, side, bh, "IMPORT") {
             let path = String::from(self.form_import.trim());
+            if path.is_empty() {
+                // (An empty name would be read as the data folder itself.)
+                self.status = String::from("TYPE THE PATH OF A .VXWORLD FILE");
+                return;
+            }
             // The world is named after the file.
             let stem = path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or("").trim_end_matches(".vxworld");
             let mut name = crate::settings::clean_world_name(stem, 24);

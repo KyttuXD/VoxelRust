@@ -6,6 +6,11 @@ use super::*;
 impl App {
     pub(super) fn key_down(&mut self, r: &Renderer, inp: &mut UiInput, sc: i32, repeat: bool) {
         if let Some(i) = self.rebinding.take() {
+            // Scancode 0 is "no key" (settings read none below 1): keep waiting for a real one.
+            if sc == 0 {
+                self.rebinding = Some(i);
+                return;
+            }
             if sc != key::ESCAPE {
                 crate::client::modui::bind_page::rebind(&mut self.settings, i, sc);
             }
@@ -110,17 +115,18 @@ impl App {
             }
             Screen::Pause if sc == key::ESCAPE => self.set_screen(Screen::Game),
             Screen::Chat if sc == key::ESCAPE => self.set_screen(Screen::Game),
-            Screen::Join if sc == key::ESCAPE && !typing => self.set_screen(Screen::Title),
-            Screen::EditWorld if sc == key::ESCAPE && !typing => self.set_screen(Screen::Worlds),
+            // Escape leaves even with a text box focused (a box has no use for it).
+            Screen::Join if sc == key::ESCAPE => self.set_screen(Screen::Title),
+            Screen::EditWorld if sc == key::ESCAPE => self.set_screen(Screen::Worlds),
             Screen::SkinUrl if sc == key::ESCAPE => self.set_screen(Screen::Settings),
-            Screen::ModUi if sc == key::ESCAPE && !typing => self.set_screen(Screen::Game),
+            Screen::ModUi if sc == key::ESCAPE => self.set_screen(Screen::Game),
             Screen::Picker if sc == key::ESCAPE => {
                 self.close_picker(None);
             }
             Screen::AddServer if sc == key::ESCAPE => self.set_screen(Screen::Join),
             Screen::Map if sc == key::ESCAPE || sc == k_map => self.set_screen(Screen::Game),
             Screen::FullMap if !typing && (sc == key::ESCAPE || sc == k_map || sc == k_waypoints) => self.close_full_map(),
-            Screen::Settings if sc == key::ESCAPE && !typing => self.leave_settings(),
+            Screen::Settings if sc == key::ESCAPE => self.leave_settings(),
             Screen::NewWorld if sc == key::ESCAPE => self.set_screen(Screen::Worlds),
             Screen::Worlds if sc == key::ESCAPE => self.set_screen(Screen::Title),
             _ => {}
@@ -174,7 +180,7 @@ impl App {
                     // A picture dropped on the window: the pointer at offset 8, freed with SDL_free.
                     let p = ev.ptr_at(8) as *mut core::ffi::c_char;
                     if !p.is_null() {
-                        let path = unsafe { sys::from_cstr(p as *const core::ffi::c_char) };
+                        let path = unsafe { sys::from_cstr_utf8(p as *const core::ffi::c_char) };
                         unsafe { (api.SDL_free)(p as *mut core::ffi::c_void) };
                         self.skin_dropped(r, &path);
                     }

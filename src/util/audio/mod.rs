@@ -149,6 +149,43 @@ mod tests {
         assert!(decode(&make_wav(RATE, 1, 16, &alloc::vec![0u8; RATE as usize * 2 * 60])).is_none());
     }
 
+    #[test]
+    fn a_flac_cut_off_in_its_header_or_with_a_wild_rate_is_refused() {
+        // STREAMINFO announced (34 bytes) but not there.
+        let mut f = alloc::vec::Vec::from(&b"fLaC"[..]);
+        f.extend_from_slice(&[0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert!(decode(&f).is_none());
+        // A rate of 1,048,575 Hz (the most 20 bits hold) is no sound the mixer can play.
+        let mut f = alloc::vec::Vec::from(&b"fLaC"[..]);
+        f.extend_from_slice(&[0x80, 0, 0, 34]);
+        let mut info = [0u8; 34];
+        info[10] = 0xFF;
+        info[11] = 0xFF;
+        info[12] = 0xF0; // rate's last 4 bits, 1 channel, bits per sample high bit
+        info[13] = 0x00; // 1 bit a sample
+        f.extend_from_slice(&info);
+        f.extend_from_slice(&[0xFF, 0xF8, 0x69, 0x08, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert!(decode(&f).is_none());
+    }
+
+    #[test]
+    fn a_microsoft_adpcm_file_with_wild_steps_does_not_overflow() {
+        // One block of two channels' worth of header, then nibbles that make the step grow every time.
+        let mut extra = alloc::vec![0u8, 0, 1, 0];
+        extra.extend_from_slice(&[0xFF, 0x7F, 0xFF, 0x7F]); // one coefficient pair, both 32767
+        let mut data = alloc::vec![0u8; 7];
+        data[1] = 0xFF;
+        data[2] = 0x7F; // delta 32767
+        data[3] = 0xFF;
+        data[4] = 0x7F; // sample 1
+        data[5] = 0xFF;
+        data[6] = 0x7F; // sample 2
+        data.extend(core::iter::repeat(0x77u8).take(400));
+        let mut out = alloc::vec::Vec::new();
+        assert!(adpcm::ms_adpcm(&data, 1, 407, &extra, &mut out).is_some());
+        assert!(out.iter().all(|v| v.abs() <= 1.0));
+    }
+
     fn rms_error(a: &[i16], b: &[i16]) -> f64 {
         let n = a.len().min(b.len());
         let sum: f64 = (0..n).map(|i| (a[i] as f64 - b[i] as f64).powi(2)).sum();

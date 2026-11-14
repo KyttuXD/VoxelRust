@@ -236,13 +236,32 @@ pub unsafe fn from_cstr(p: *const c_char) -> String {
     s
 }
 
+/// Like [`from_cstr`], but a path: UTF-8 is kept (a user called Jürgen has a
+/// folder with that name; turning each byte of it into `?` pointed the game
+/// at a folder that does not exist).
+///
+/// # Safety
+/// `p` must be null or point at a NUL-terminated string.
+pub unsafe fn from_cstr_utf8(p: *const c_char) -> String {
+    if p.is_null() {
+        return String::new();
+    }
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut q = p as *const u8;
+    while *q != 0 {
+        bytes.push(*q);
+        q = q.add(1);
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 pub fn env(name: &str) -> Option<String> {
     let n = cstr(name);
     let p = unsafe { getenv(n.as_ptr() as *const c_char) };
     if p.is_null() {
         None
     } else {
-        Some(unsafe { from_cstr(p) })
+        Some(unsafe { from_cstr_utf8(p) })
     }
 }
 
@@ -309,7 +328,14 @@ pub fn handle_termination(handler: extern "C" fn(c_int)) {
 pub fn sleep_real_ms(ms: u32) {
     #[cfg(all(unix, not(target_arch = "wasm32")))]
     unsafe {
-        usleep(ms.saturating_mul(1000));
+        // usleep may refuse a second or more (EINVAL) and then return at once:
+        // a polling loop would spin. Sleep in halves of a second.
+        let mut left = ms;
+        while left > 0 {
+            let step = left.min(500);
+            usleep(step * 1000);
+            left -= step;
+        }
     }
     #[cfg(windows)]
     unsafe {
@@ -539,7 +565,7 @@ pub fn list_dir(path: &str) -> Vec<String> {
                 if e.is_null() {
                     break;
                 }
-                names.push(from_cstr(e.add(NAME) as *const c_char));
+                names.push(from_cstr_utf8(e.add(NAME) as *const c_char));
             }
             closedir(dir);
         }
@@ -552,7 +578,7 @@ pub fn list_dir(path: &str) -> Vec<String> {
         let h = FindFirstFileA(pattern.as_ptr() as *const c_char, data.as_mut_ptr());
         if h as isize != -1 {
             loop {
-                names.push(from_cstr(data.as_ptr().add(44) as *const c_char));
+                names.push(from_cstr_utf8(data.as_ptr().add(44) as *const c_char));
                 if FindNextFileA(h, data.as_mut_ptr()) == 0 {
                     break;
                 }
@@ -568,7 +594,42 @@ pub fn list_dir(path: &str) -> Vec<String> {
     names
 }
 
-/// Read a whole file. `None` when it does not exist or cannot be read.
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn a_path_keeps_its_non_ascii_letters() {
+        let raw = b"/home/J\xc3\xbcrgen/saves\0";
+        let s = unsafe { from_cstr_utf8(raw.as_ptr() as *const c_char) };
+        assert_eq!(s, "/home/J\u{fc}rgen/saves");
+        // A name that is not UTF-8 still comes out (as the replacement character), and null is empty.
+        let bad = b"a\xffb\0";
+        assert_eq!(unsafe { from_cstr_utf8(bad.as_ptr() as *const c_char) }, "a\u{fffd}b");
+        assert_eq!(unsafe { from_cstr_utf8(core::ptr::null()) }, "");
+        // The display version still shows each such byte as `?`.
+        assert_eq!(unsafe { from_cstr(raw.as_ptr() as *const c_char) }, "/home/J??rgen/saves");
+    }
+}
+
+/// Whether a file can be opened for reading.
+pub fn file_exists(path: &str) -> bool {
+    let p = cstr(path);
+    let api = sdl::sdl();
+    unsafe {
+        let rw = (api.SDL_RWFromFile)(p.as_ptr() as *const c_char, b"rb\0".as_ptr() as *const c_char);
+        if rw.is_null() {
+            return false;
+        }
+        ((*rw).close)(rw);
+        true
+    }
+}
+
+/// The biggest file [`read_file`] takes, in bytes.
+const MAX_READ: i64 = 1 << 30;
+
+/// Read a whole file. `None` when it does not exist, cannot be read, or is over a gigabyte.
 pub fn read_file(path: &str) -> Option<Vec<u8>> {
     let p = cstr(path);
     let api = sdl::sdl();
@@ -578,6 +639,12 @@ pub fn read_file(path: &str) -> Option<Vec<u8>> {
             return None;
         }
         let size = ((*rw).size)(rw);
+        // A folder opens like a file on some systems and then reports a size of
+        // 2^63: nothing real is over a gigabyte, and it must not be allocated.
+        if size > MAX_READ {
+            ((*rw).close)(rw);
+            return None;
+        }
         let mut out = Vec::new();
         if size > 0 {
             out.resize(size as usize, 0u8);
@@ -594,6 +661,26 @@ pub fn read_file(path: &str) -> Option<Vec<u8>> {
         ((*rw).close)(rw);
         Some(out)
     }
+}
+
+/// Like [`read_file`], but a file bigger than `max` bytes is not read at all
+/// (`None`): for files the player points at (a dropped "picture" may be a
+/// film of several gigabytes, which must not be pulled into memory).
+pub fn read_file_limit(path: &str, max: usize) -> Option<Vec<u8>> {
+    let p = cstr(path);
+    let api = sdl::sdl();
+    unsafe {
+        let rw = (api.SDL_RWFromFile)(p.as_ptr() as *const c_char, b"rb\0".as_ptr() as *const c_char);
+        if rw.is_null() {
+            return None;
+        }
+        let size = ((*rw).size)(rw);
+        ((*rw).close)(rw);
+        if size < 0 || size as u64 > max as u64 {
+            return None;
+        }
+    }
+    read_file(path)
 }
 
 /// Make a folder, if it is not there already. `true` if it is there now.

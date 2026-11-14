@@ -223,7 +223,7 @@ impl Audio {
             let Some(stem) = [".wav", ".flac", ".aiff", ".aif", ".ogg", ".mp3"].iter().find_map(|e| lower.strip_suffix(e)) else { continue };
             let id = &f[..stem.len()];
             let path = alloc::format!("{}{}", dir, f);
-            if let Some(samples) = crate::sys::read_file(&path).and_then(|b| crate::wav::decode(&b)) {
+            if let Some(samples) = crate::sys::read_file_limit(&path, crate::wav::MAX_BYTES).and_then(|b| crate::wav::decode(&b)) {
                 // (A long one is decoded again when it plays, not kept.)
                 let clip = crate::wav::clip::Clip::new(&path, samples);
                 self.stop_clips();

@@ -159,7 +159,7 @@ pub fn pack_image(name: &str) -> Option<Image> {
     let idx = index()?;
     for n in pack_names(name) {
         if let Some(path) = idx.files.get(&n) {
-            if let Some(img) = crate::sys::read_file(path).and_then(|b| crate::image::decode(&b)) {
+            if let Some(img) = crate::sys::read_file_limit(path, crate::image::MAX_BYTES).and_then(|b| crate::image::decode(&b)) {
                 return Some(img);
             }
         }

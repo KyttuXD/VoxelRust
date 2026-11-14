@@ -161,7 +161,8 @@ pub fn entry<'a>(list: &'a str, build: &str) -> Option<(&'a str, &'a str, usize)
         }
         let (file, sum, size) = (w.next()?, w.next()?, w.next()?.parse::<usize>().ok()?);
         // A plain file name and a real checksum, or nothing.
-        let plain = !file.is_empty() && file.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'));
+        // (Not a name that starts with a dot: `..` is a folder, not a file.)
+        let plain = !file.is_empty() && !file.starts_with('.') && file.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'));
         if plain && sum.len() == 64 && sum.chars().all(|c| c.is_ascii_hexdigit()) && size > 10_000 && size < 200_000_000 {
             Some((file, sum, size))
         } else {
@@ -289,11 +290,11 @@ pub(crate) fn fetch_signed_list(base: &str, folder: &str) -> Result<String, bool
     let list_path = alloc::format!("{}nightly.txt", folder);
     let sig_path = alloc::format!("{}nightly.txt.sig", folder);
     sys::remove_file(&sig_path);
-    let Some(bytes) = fetch(&alloc::format!("{}nightly.txt", base), &list_path, 15) else {
+    let Some(bytes) = fetch(&alloc::format!("{}nightly.txt", base), &list_path, 15, LIST_LIMIT) else {
         log("could not read the release list");
         return Err(false);
     };
-    let sig = fetch(&alloc::format!("{}nightly.txt.sig", base), &sig_path, 15);
+    let sig = fetch(&alloc::format!("{}nightly.txt.sig", base), &sig_path, 15, LIST_LIMIT);
     sys::remove_file(&sig_path);
     let Some(sig) = sig else {
         log("could not read the release list's signature; the list is not used");
@@ -310,19 +311,24 @@ fn log(what: &str) {
     logf!("voxelrust: update: {}", what);
 }
 
-fn fetch(url: &str, to: &str, seconds: u32) -> Option<Vec<u8>> {
+/// `max` is the most bytes taken: a server that sends more (or for ever) is cut off
+/// by curl, and a file that still came out bigger is refused.
+fn fetch(url: &str, to: &str, seconds: u32, max: usize) -> Option<Vec<u8>> {
     let (u, t) = (sys::shell_arg(url)?, sys::shell_arg(to)?);
     let cmd = alloc::format!(
-        "curl -fsSL --connect-timeout 8 --max-time {} -A \"VoxelRust/{}\" -o {} {}",
+        "curl -fsSL --connect-timeout 8 --max-time {} --max-filesize {} -A \"VoxelRust/{}\" -o {} {}",
         seconds,
+        max,
         env!("CARGO_PKG_VERSION"),
         t,
         u
     );
     if sys::run_command(&cmd) != 0 {
+        // What was written before it stopped is not a file.
+        sys::remove_file(to);
         return None;
     }
-    sys::read_file(to)
+    sys::read_file_limit(to, max)
 }
 
 /// Whether the program at `program` runs and says it is the build the list
@@ -460,7 +466,7 @@ fn run_inner(build: &str, folder: &str, install: bool, mirror: &str) {
     // Left by an earlier update on Windows; it may still be locked, then it stays.
     sys::remove_file(&old);
 
-    let ok = match fetch(&alloc::format!("{}{}", base, file), &fresh, 300) {
+    let ok = match fetch(&alloc::format!("{}{}", base, file), &fresh, 300, size) {
         Some(bytes) => bytes.len() == size && crate::sha256::hex(&bytes) == sum.to_ascii_lowercase(),
         None => false,
     };
@@ -569,6 +575,10 @@ mod tests {
         assert_eq!(entry(&list, "windows-x86_64"), None);
         assert_eq!(entry(&list, "macos-x86_64"), None);
         assert_eq!(listed_commit("commit not-a-hash\n"), None);
+        // A name that is only dots is a folder, not a program.
+        let dots = alloc::format!("linux-x86_64 .. {} 1500000\nwindows-x86_64 ..hidden {} 1500000\n", sum, sum);
+        assert_eq!(entry(&dots, "linux-x86_64"), None);
+        assert_eq!(entry(&dots, "windows-x86_64"), None);
     }
 
     // A list signed with a throwaway key (made with `openssl pkeyutl -sign -rawin`).
