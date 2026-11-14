@@ -1495,6 +1495,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     // ends. A browser cannot be kept waiting in a loop, so there each call
     // runs one frame and returns, and the page calls again for the next
     // (see the end of this function, and docs/WEB.md).
+    let mut dt_smooth = 0.0f32;
     let frames = move || -> Result<bool, String> {
     loop {
         let frame_start = sys::now();
@@ -1505,7 +1506,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
         let now = sys::now();
         let real_dt = (now - last) as f32;
         last = now;
-        let dt = real_dt.clamp(0.0, 0.1);
+        // Frame times wobble (the driver, the frame limiter, the system's timer): moving by each
+        // raw one makes the camera and the hand shake. A running average moves things evenly
+        // and still adds up to the real time; a long hitch is taken as it is.
+        dt_smooth = if real_dt > dt_smooth * 2.5 + 0.004 || dt_smooth <= 0.0 { real_dt } else { dt_smooth + (real_dt - dt_smooth) * 0.2 };
+        let dt = dt_smooth.clamp(0.0, 0.1);
         if real_dt > 0.0 {
             app.fps += (1.0 / real_dt - app.fps) * 0.05;
         }

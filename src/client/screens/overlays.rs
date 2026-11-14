@@ -11,7 +11,8 @@ impl App {
         if ui.text_field_case(20, 4.0 * s, y, w * 0.6, 14.0 * s, &mut self.form_chat, 100, ui::any_char, ui::FieldCase::Cased) {
             let text = core::mem::take(&mut self.form_chat);
             let name = self.settings.player_name.clone();
-            let command = text.trim().to_ascii_lowercase();
+            let online = self.session.as_ref().map_or(false, |g| g.net.is_some());
+            let command = crate::game::aliases::expand(&text.trim().to_ascii_lowercase(), online);
             if command == "/reload" {
                 self.want_reload = true;
             } else if command == "/help" {
@@ -46,7 +47,9 @@ impl App {
                     // (/list, /op, /kick...): pass it on.
                     None if command.starts_with('/') && g.net.is_some() => {
                         if let Some(n) = g.net.as_mut() {
-                            n.send_chat(&text);
+                            // (An alias goes as the full command.)
+                            let sent = if command.starts_with("/gamemode") { command.clone() } else { text.clone() };
+                            n.send_chat(&sent);
                         }
                     }
                     None if command.starts_with('/') => g.push_chat(String::from("NO SUCH COMMAND. TRY /HELP")),

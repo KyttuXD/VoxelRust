@@ -6,6 +6,7 @@ pub mod give;
 pub mod cmd_limits;
 pub mod interact;
 pub mod loot;
+pub mod aliases;
 pub mod entity;
 pub mod entity_explode;
 pub mod entity_variant;

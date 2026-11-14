@@ -544,4 +544,26 @@ mod tests {
         run(&mut p, Input { descend: true, ..Default::default() }, 3.0, &pool);
         assert!((p.pos[1] - 10.0).abs() < 1e-2, "dived to {}", p.pos[1]);
     }
+
+    #[test]
+    fn walking_speed_does_not_depend_on_the_frame_rate() {
+        let w = world(&[]);
+        let mut went = alloc::vec::Vec::new();
+        for fps in [20.0f32, 30.0, 60.0, 144.0, 500.0] {
+            let mut p = Player::new([2.5, 121.0, 2.5]);
+            p.yaw = 0.0;
+            run(&mut p, Input::default(), 1.0, &w);
+            let start = p.pos;
+            let inp = Input { forward: 1.0, ..Default::default() };
+            let steps = (3.0 * fps) as i32;
+            for _ in 0..steps {
+                p.update(1.0 / fps, &inp, &w);
+            }
+            let d = ((p.pos[0] - start[0]).powi(2) + (p.pos[2] - start[2]).powi(2)).sqrt();
+            went.push(d / 3.0);
+        }
+        for v in &went {
+            assert!(*v > 3.6 && *v < 4.4, "walked {v} blocks a second: {went:?}");
+        }
+    }
 }

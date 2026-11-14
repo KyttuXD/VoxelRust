@@ -827,6 +827,7 @@ blocks from it.
 | `/set X Y Z BLOCK [TURNS]` | put a block at that position (whole numbers; the place must be loaded). TURNS, 0 to 3, picks which way a block with `rotate` faces | no |
 | `/spawn CREATURE [N] [young]` | put N of a creature (1 to 20) in front of you; with `young`, young ones if that kind has them | only for the player whose game runs the creatures (see [MULTIPLAYER.md](MULTIPLAYER.md#what-is-shared-and-what-is-not)) |
 | `/mode creative` or `/mode survival` | switch game mode | no |
+| `/gm c`, `/gm s`, `/gm 1`, `/gm 0`, `/gmc`, `/gms` | short forms of the game mode commands (`/gamemode` on a server; operators add a name: `/gm bob c`) | no |
 | `/weather clear`, `rain` or `storm` | hold the weather that way; any other word (or none) gives it back to the game | no |
 | `/seed` | show the world's seed | works |
 | `/dim NAME`, `/dim home` | go to a dimension, or back (see [Dimensions](#dimensions)) | no |

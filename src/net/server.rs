@@ -312,6 +312,15 @@ impl Server {
     /// A command typed by the player `who`. Anyone may ask /list and
     /// /help; the rest are for operators. Returns what to tell them.
     pub fn command(&mut self, who: &str, line: &str) -> String {
+        // /gm c, /gmc and the like (older games send them as typed).
+        let first = line.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+        let spelled;
+        let line = if matches!(first.as_str(), "/gm" | "/gmc" | "/gms" | "/gamemode") {
+            spelled = crate::game::aliases::expand(&line.to_ascii_lowercase(), true);
+            spelled.as_str()
+        } else {
+            line
+        };
         let w: Vec<&str> = line.split_whitespace().collect();
         let arg = |k: usize| w.get(k).copied().unwrap_or("");
         let is_op = self.ops.iter().any(|o| o.eq_ignore_ascii_case(who)) || self.is_admin(who);
@@ -1026,6 +1035,8 @@ mod tests {
         assert_eq!(s.command("Ann", "/perm Bob +gamemode -build"), "Bob may now: gamemode voice pvp");
         assert_eq!(s.flags_for("bob"), PERM_GAMEMODE | PERM_VOICE | PERM_PVP);
         assert_eq!(s.command("Bob", "/gamemode creative"), "Bob is now in creative mode");
+        assert_eq!(s.command("Bob", "/gm s"), "Bob is now in survival mode");
+        assert_eq!(s.command("Bob", "/gmc"), "Bob is now in creative mode");
         assert_eq!(s.flags_for("Bob"), PERM_GAMEMODE | PERM_VOICE | PERM_PVP | PERM_CREATIVE);
         assert_eq!(s.command("Bob", "/gamemode Ann survival"), "only operators may change someone else's game mode");
         // The default for everyone else.
