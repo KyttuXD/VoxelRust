@@ -14,3 +14,5 @@ pub mod update;
 pub mod voice;
 pub mod startup;
 pub mod pack_text;
+pub mod pose_view;
+pub mod emote_wheel;

@@ -629,6 +629,8 @@ pub struct Registry {
     pub sections: Vec<Section>,
     /// Status effects: poison, burning... (see content/effects.rs).
     pub fx: crate::content::effects::EffectTable,
+    /// Emotes the player can play (see content/emotes.rs).
+    pub emotes: crate::content::emotes::EmoteTable,
     pub lines: Vec<(String, String, Vec<String>)>,
     /// Item tabs, in the order they first appear.
     pub categories: Vec<String>,
@@ -876,6 +878,8 @@ enum Cur {
     Section(usize),
     /// An `effect <id>` block (see content/effects.rs).
     Effect(usize),
+    /// An `emote <id> ...` block (see content/emotes.rs).
+    Emote(usize),
 }
 
 struct Parser<'a> {
@@ -887,6 +891,8 @@ struct Parser<'a> {
     sections: Vec<Section>,
     /// The `effect <id>` blocks, read by content/effects.rs.
     effects: Vec<Section>,
+    /// The `emote` blocks, read by content/emotes.rs.
+    emotes: crate::content::emotes::EmoteTable,
     lines: Vec<(String, String, Vec<String>)>,
     /// `(file:line, words)` for each `recipe` line, resolved once items exist.
     recipes: Vec<(String, Vec<String>)>,
@@ -1086,6 +1092,14 @@ impl Parser<'_> {
                         cur = Cur::None;
                     }
                 },
+                // An emote: its `key` lines are read by content/emotes.rs.
+                "emote" if indent == 0 => match crate::content::emotes::begin(&mut self.emotes, &args) {
+                    Ok(i) => cur = Cur::Emote(i),
+                    Err(m) => {
+                        self.warn(file, line_no, &m);
+                        cur = Cur::None;
+                    }
+                },
                 // A section some mod's code has claimed: kept as written.
                 k if indent == 0 && crate::native::reads_section(k) => {
                     let id = match args.first() {
@@ -1183,6 +1197,11 @@ impl Parser<'_> {
                     Cur::Entity(i) => self.entity_prop(file, line_no, i, key, &args, &rest),
                     Cur::Section(i) => self.sections[i].props.push((String::from(key), args.iter().map(|a| a.to_string()).collect())),
                     Cur::Effect(i) => self.effects[i].props.push((String::from(key), args.iter().map(|a| a.to_string()).collect())),
+                    Cur::Emote(i) => {
+                        if let Err(m) = crate::content::emotes::line(&mut self.emotes, i, key, &args) {
+                            self.warn(file, line_no, &m);
+                        }
+                    }
                     Cur::None => self.warn(file, line_no, &alloc::format!("unexpected `{}`", key)),
                 },
             }
@@ -1464,6 +1483,7 @@ impl Registry {
             entities: Vec::new(),
             sections: Vec::new(),
             effects: Vec::new(),
+            emotes: Default::default(),
             lines: Vec::new(),
             recipes: Vec::new(),
             groups: Vec::new(),
@@ -1477,7 +1497,7 @@ impl Registry {
         for (path, text) in sources {
             p.parse(path, text);
         }
-        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, groups: raw_groups, rules: raw_rules, clips, models, entities: raw_entities, sections, effects: raw_effects, lines, mut warnings, .. } = p;
+        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, groups: raw_groups, rules: raw_rules, clips, models, entities: raw_entities, sections, effects: raw_effects, emotes: raw_emotes, lines, mut warnings, .. } = p;
 
         let tile_of = |id: &str, warnings: &mut Vec<String>, what: &str| -> u16 {
             match tiles.iter().position(|t| t.id == id) {
@@ -2380,6 +2400,7 @@ impl Registry {
             entities,
             sections,
             fx,
+            emotes: raw_emotes,
             lines,
             categories,
             ores,

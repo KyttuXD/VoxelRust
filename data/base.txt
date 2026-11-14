@@ -2443,6 +2443,7 @@ block cave_vine
   category Nature
   light 6
   drops berries 40
+  tag climb
 block stalagmite
   name Stalagmite
   tex stone
@@ -6669,6 +6670,25 @@ item rotten_flesh
   category Food
   food 2
 craft golden_apple 1 apple 1 copper_ingot 4
+
+# ---- Emotes ----
+#   emote <id> <name> <seconds> [loop]
+#     key <time> <bone> <x> <y> <z>     degrees added to the bone's own turn, eased between keys
+emote wave Wave 2.4
+  key 0.0 R-Arm 0 0 0
+  key 0.45 R-Arm 0 0 150
+  key 1.95 R-Arm 0 0 150
+  key 2.4 R-Arm 0 0 0
+  key 0.45 R-Forearm 0 0 0
+  key 0.7 R-Forearm 0 0 -24
+  key 0.95 R-Forearm 0 0 24
+  key 1.2 R-Forearm 0 0 -24
+  key 1.45 R-Forearm 0 0 24
+  key 1.7 R-Forearm 0 0 -24
+  key 1.95 R-Forearm 0 0 0
+  key 0.45 Head 0 0 6
+  key 1.95 Head 0 0 6
+  key 2.4 Head 0 0 0
 
 include effects.txt
 

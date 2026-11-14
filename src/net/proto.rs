@@ -7,7 +7,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub const VERSION: u16 = 8;
+pub const VERSION: u16 = 9;
 
 /// What a player may do on a server (the flags of [`Msg::Perms`]).
 pub const PERM_BUILD: u8 = 1;
@@ -52,7 +52,13 @@ pub enum Msg {
     Hello { version: u16, content: u32, name: String },
     /// Where I am (also relayed to everyone else, with my id).
     /// `held` is the item in hand as its index plus one (0 = empty hand).
-    Move { id: u16, pos: [f64; 3], yaw: f32, pitch: f32, held: u16 },
+    /// `pose` is the body's posture in the low four bits (sitting, lying,
+    /// crouching, swimming...) and what the arms are doing above (see
+    /// `content::pose::pack`).
+    Move { id: u16, pos: [f64; 3], yaw: f32, pitch: f32, held: u16, pose: u8 },
+    /// I started playing an emote (its place in the content's emote list
+    /// plus one), or stopped (0). Relayed to the others with my id.
+    Emote { id: u16, emote: u16 },
     /// A block changed (sent by whoever changed it, relayed to the rest).
     SetBlock { x: i32, y: i32, z: i32, block: u16 },
     Chat { id: u16, text: String },
@@ -185,7 +191,7 @@ impl Msg {
                 w.u32(*content);
                 w.str(name);
             }
-            Msg::Move { id, pos, yaw, pitch, held } => {
+            Msg::Move { id, pos, yaw, pitch, held, pose } => {
                 w.u8(2);
                 w.u16(*id);
                 for p in pos {
@@ -194,6 +200,12 @@ impl Msg {
                 w.f32(*yaw);
                 w.f32(*pitch);
                 w.u16(*held);
+                w.u8(*pose);
+            }
+            Msg::Emote { id, emote } => {
+                w.u8(9);
+                w.u16(*id);
+                w.u16(*emote);
             }
             Msg::SetBlock { x, y, z, block } => {
                 w.u8(3);
@@ -294,8 +306,9 @@ impl Msg {
         let mut r = R(body);
         let m = match kind {
             1 => Msg::Hello { version: r.u16()?, content: r.u32()?, name: r.str()? },
-            2 => Msg::Move { id: r.u16()?, pos: [r.coord()?, r.coord()?, r.coord()?], yaw: r.f32()?, pitch: r.f32()?, held: r.u16()? },
+            2 => Msg::Move { id: r.u16()?, pos: [r.coord()?, r.coord()?, r.coord()?], yaw: r.f32()?, pitch: r.f32()?, held: r.u16()?, pose: r.u8()? },
             3 => Msg::SetBlock { x: r.i32()?, y: r.i32()?, z: r.i32()?, block: r.u16()? },
+            9 => Msg::Emote { id: r.u16()?, emote: r.u16()? },
             4 => Msg::Chat { id: r.u16()?, text: r.str()? },
             5 => {
                 let id = r.u16()?;
@@ -414,7 +427,9 @@ mod tests {
     fn every_message_round_trips() {
         let all = [
             Msg::Hello { version: VERSION, content: 0xDEAD_BEEF, name: String::from("Kyttu_1") },
-            Msg::Move { id: 7, pos: [1.5, -64.25, 1e6], yaw: -3.1, pitch: 0.5, held: 9 },
+            Msg::Move { id: 7, pos: [1.5, -64.25, 1e6], yaw: -3.1, pitch: 0.5, held: 9, pose: 0x23 },
+            Msg::Emote { id: 3, emote: 12 },
+            Msg::Emote { id: 3, emote: 0 },
             Msg::SetBlock { x: -100_000, y: 127, z: 5, block: 4095 },
             Msg::Chat { id: 2, text: String::from("hello there") },
             Msg::Skin { id: 4, png: alloc::vec![1, 2, 3, 250], slim: true },
@@ -459,7 +474,7 @@ mod tests {
             assert_eq!(i.next(), Next::Bad, "{bad:?}");
         }
         // A position no block could be at is not this protocol either.
-        let mut far = Msg::Move { id: 1, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0 }.encode();
+        let mut far = Msg::Move { id: 1, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0, pose: 0 }.encode();
         far[5..13].copy_from_slice(&1.0e300f64.to_le_bytes());
         let mut i = Inbox::default();
         i.push(&far);

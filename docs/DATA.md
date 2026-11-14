@@ -1090,6 +1090,97 @@ and `effect_<id>`, `effect_flame` (see
 `when effectstart poison do ...`, `/if effect poison [level] then ...`
 (see [MODDING.md](MODDING.md)).
 
+## Emotes
+
+An emote is a short animation of the player's body that the emote wheel (B)
+plays. The game ships exactly one, `wave` (written by `tools/gen_base.py`
+into `data/base.txt`); every other comes from a pack or a mod. An emote is an
+`emote` line and the `key` lines under it:
+
+```
+emote <id> <name> <seconds> [loop]
+  key <time> <bone> <x> <y> <z>
+```
+
+| Part | Meaning |
+| --- | --- |
+| `<id>` | lower case letters, digits and `_`, 24 at most. Redefining an id replaces the emote |
+| `<name>` | what the wheel shows (one or more words, 16 characters at most, shown in capitals) |
+| `<seconds>` | how long it lasts, 0.2 to 60 |
+| `loop` | plays until the player moves or stops it, instead of ending after `<seconds>` |
+| `key <time> <bone> <x> <y> <z>` | at `<time>` seconds (0 to the emote's length) the bone is turned by x, y and z **degrees** on top of its own turn. `<bone>` is the name of a bone of the model (`R-Arm`, `L-Forearm`, `Head`, `Chest`, `L-Thigh`... case does not matter) |
+
+Between the keys of a bone the turn eases smoothly from one to the next.
+Before its first key and after its last, the bone eases from and back to no
+turn at all, so a key at 0 and one at the end are only needed to hold a pose;
+in a `loop` emote the last key eases round to the first. A key at a time a
+bone already has one replaces it. Up to 64 emotes, 24 bones in one and 64
+keys on a bone. Emotes are listed in the order they are defined (the base
+game's first), which is also what the network sends: everyone on a server
+reads the same pack, so the numbers agree.
+
+Turns are about the bone's pivot, in the model's own axes (front is -z):
+**x** swings the lower end of a hanging limb forward (and raises the face of
+the head), **y** turns the front toward the left, **z** swings a hanging limb
+toward +x, which is out to the side for the right arm (`R-Arm`) and across the
+body for the left one. The player model's bones are `Pelvis`, `Belly`,
+`Chest`, `Head`, `L-Arm`, `L-Forearm`, `L-Hand`, `R-Arm`, `R-Forearm`, `R-Hand`,
+`L-Thigh`, `L-Calf`, `L-Foot`, `R-Thigh`, `R-Calf` and `R-Foot`; a bone is the
+child of the one above it in that list's nesting (a forearm turns with its
+arm).
+
+An emote that moves an arm or a hand (a bone whose name has `arm` or `hand`
+in it) is shown in the first-person view, as the arm only. Others play on the
+body that other players, and you in the third-person view, see.
+
+The base game's wave:
+
+```
+emote wave Wave 2.4
+  key 0.0 R-Arm 0 0 0
+  key 0.45 R-Arm 0 0 150
+  key 1.95 R-Arm 0 0 150
+  key 2.4 R-Arm 0 0 0
+  key 0.7 R-Forearm 0 0 -24
+  key 0.95 R-Forearm 0 0 24
+  key 1.2 R-Forearm 0 0 -24
+  key 1.45 R-Forearm 0 0 24
+```
+
+A pack of two more (a bow, and a dance that goes on until you move):
+
+```
+emote bow Bow 2.0
+  key 0.5 Belly -45 0 0
+  key 0.5 Head 20 0 0
+  key 1.4 Belly -45 0 0
+  key 1.4 Head 20 0 0
+
+emote dance Dance 1.6 loop
+  key 0.0 Chest 0 -12 0
+  key 0.4 Chest 0 12 0
+  key 0.8 Chest 0 -12 0
+  key 0.4 L-Arm 0 0 -120
+  key 0.4 R-Arm 0 0 40
+  key 1.2 L-Arm 0 0 -40
+  key 1.2 R-Arm 0 0 120
+  key 0.0 Belly 0 8 0
+  key 0.8 Belly 0 -8 0
+```
+
+Problems (an unknown line, a time outside the emote, a number that is not a
+number) are reported in the log as pack warnings and the line is skipped.
+
+### Poses
+
+Bodies of a person's shape (a model with arms and legs: the player, and
+creatures such as the zombie or the skeleton) take postures by themselves,
+with no data: crouching, sitting, sleeping, swimming, climbing, falling, riding,
+and while drawing a bow, eating or striking. Bones are recognised by name
+(`content/pose`). A block with `tag climb` can be climbed (the base game's
+`cave_vine` has it). A block with `seat` (see Blocks) is sat on; a block
+with `use bed` is slept in; creatures standing still on them sit or lie.
+
 ## Commands and scripts
 
 ```

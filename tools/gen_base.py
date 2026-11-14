@@ -427,7 +427,7 @@ block("brown_mushroom", "Mushroom", "brown_mushroom", shape="cross", cat="Nature
 block("crystal_cluster", "Crystal Cluster", "crystal_cluster", shape="cross", cat="Nature", light=11, drops="crystal", hardness=0.8, tool="pick")
 block("icicle", "Icicle", "icicle", shape="cross", cat="Nature", drops="nothing")
 block("magma", "Magma", "magma", cat="Nature", hardness=2.5, tool="pick", light=12, hurts=2)
-block("cave_vine", "Glow Vine", "cave_vine", shape="cross", cat="Nature", light=6, drops="berries 40")
+block("cave_vine", "Glow Vine", "cave_vine", shape="cross", cat="Nature", light=6, drops="berries 40", tag="climb")
 block("stalagmite", "Stalagmite", "stone", cat="Nature", hardness=1.0, tool="pick", drops="cobble",
       box=["5 0 5 11 6 11", "6 6 6 10 11 10", "7 11 7 9 16 9"])
 block("cobweb", "Cobweb", "cobweb", shape="cross", cat="Nature", hardness=0.6, drops="string", slow=25)
@@ -845,6 +845,27 @@ effect("frozen", "Frozen", "bad", [
 effect("saturation", "Saturation", "good", ["hunger -1"], "220 130 60", 5)
 effect("night_vision", "Night Vision", "good", ["vision"], "60 60 200", 180)
 effect("jump_boost", "Jump Boost", "good", ["jump 40"], "100 220 110", 30)
+# ---- Emotes ----
+# The one emote the game ships; mods add the rest (docs/DATA.md, "Emotes").
+w("""
+# ---- Emotes ----
+#   emote <id> <name> <seconds> [loop]
+#     key <time> <bone> <x> <y> <z>     degrees added to the bone's own turn, eased between keys
+emote wave Wave 2.4
+  key 0.0 R-Arm 0 0 0
+  key 0.45 R-Arm 0 0 150
+  key 1.95 R-Arm 0 0 150
+  key 2.4 R-Arm 0 0 0
+  key 0.45 R-Forearm 0 0 0
+  key 0.7 R-Forearm 0 0 -24
+  key 0.95 R-Forearm 0 0 24
+  key 1.2 R-Forearm 0 0 -24
+  key 1.45 R-Forearm 0 0 24
+  key 1.7 R-Forearm 0 0 -24
+  key 1.95 R-Forearm 0 0 0
+  key 0.45 Head 0 0 6
+  key 1.95 Head 0 0 6
+  key 2.4 Head 0 0 0""")
 w("\ninclude effects.txt")
 
 if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "creatures.txt")):

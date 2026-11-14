@@ -565,6 +565,40 @@ entity, simply `model <name>` for those the base data already declares.
 
 Redefining the model `player` replaces every player's body.
 
+A model of a person (it has arms and legs: `Arm-L`/`L-Arm`, `Leg-L`/`L-Thigh`)
+also takes the postures: sitting, lying, crouching, swimming, climbing and
+the walking bends of the elbows and knees. A `Forearm-` or `Calf-`/`Shin-`
+child bone is bent for those, and the torso is one bone called `Body`, or
+three called `Pelvis`, `Belly` and `Chest`. Bones that are not named like
+those are left to their own animation. Emotes turn any bone by name (see
+below).
+
+### Emotes
+
+A pack or mod adds emotes to the wheel (B) with `emote` lines and `key` lines
+of bone turns over time. The format is in [DATA.md](DATA.md#emotes); the
+names of the bones are those of the model (the player's are listed there).
+For example, a pack file `emotes.txt` beside `pack.txt`, included with
+`include emotes.txt`:
+
+```
+emote clap Clap 2 loop
+  key 0.0 L-Arm 55 0 -12
+  key 0.0 R-Arm 55 0 12
+  key 0.0 L-Forearm 60 0 0
+  key 0.0 R-Forearm 60 0 0
+  key 0.15 L-Arm 55 0 -2
+  key 0.15 R-Arm 55 0 2
+  key 0.3 L-Arm 55 0 -12
+  key 0.3 R-Arm 55 0 12
+```
+
+The same emote list is read by every player of a server from the server's
+pack, so the emote numbers on the wire (`Msg::Emote`) match.
+Emotes are not hooks of the mods' code, but code can start one for the
+player by `Session::play_emote(index)` (the index is the place of the emote
+in `block::reg().emotes.list`).
+
 To look at every creature model at once:
 
 ```sh
