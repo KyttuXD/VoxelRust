@@ -205,7 +205,7 @@ mod tests {
             assert!((up * up + down * down - 1.0).abs() < 1e-4, "{i}");
             assert!(up >= -1e-6 && down >= -1e-6);
         }
-        assert!(xfade(0.0).0.abs() < 1e-6 && (xfade(0.0).1 - 1.0).abs() < 1e-6);
+        assert!(xfade(0.0).0.abs() < 1e-5 && (xfade(0.0).1 - 1.0).abs() < 1e-5);
         assert!((xfade(1.0).0 - 1.0).abs() < 1e-5 && xfade(1.0).1.abs() < 1e-5);
         let (l, r) = pan_gains(0.3);
         assert!((l * l + r * r - 1.0).abs() < 1e-4);

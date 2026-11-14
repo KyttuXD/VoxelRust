@@ -589,11 +589,12 @@ mod tests {
     fn a_flow_is_as_tall_as_its_level_and_a_column_is_full() {
         let r = reg();
         let e = ChunkData::new();
-        // A lone flow at level 3 stands 14 * 3 / 8 = 5 sixteenths high.
+        // A lone flow at level 3 would stand 14 * 3 / 8 = 5 sixteenths high flat, but its
+        // corners fall away toward the open air around it: between 1 and 5.
         let mut c = ChunkData::new();
         c.set(8, 60, 8, r.flow[0][3]);
         let lone = hood(&c, &e);
-        assert!(lone.water.iter().all(|v| v.pos[1] == 60 * 16 || v.pos[1] == 60 * 16 + 5), "{:?}", lone.water.iter().map(|v| v.pos[1]).collect::<Vec<_>>());
+        assert!(lone.water.iter().all(|v| (60 * 16..=60 * 16 + 5).contains(&v.pos[1])), "{:?}", lone.water.iter().map(|v| v.pos[1]).collect::<Vec<_>>());
         // A falling column: the cell at the bottom has the same liquid above it,
         // so its surface is full height and its sides reach the top of the cell
         // above (61 * 16). The top of the column is a level-7 flow, 12 high.
