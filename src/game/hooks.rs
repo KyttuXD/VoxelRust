@@ -214,6 +214,7 @@ pub fn draw_hud(g: &Session, r: &mut Renderer, w: f32, h: f32, s: f32) {
     for f in crate::native::active().filter_map(|(_, n)| n.on_draw_hud) {
         f(g, &mut hud);
     }
+    crate::script::ext::draw::draw_hud(g, &mut hud);
 }
 
 #[cfg(test)]

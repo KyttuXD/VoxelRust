@@ -929,6 +929,30 @@ a mod with a `code/mod.rs` is never offered for download.
 `mods/SHIPPED` names the mods whose files the `native-mods` test build reads,
 and `mods/tests.rs` holds the tests for those mods; nothing is shipped.
 
+Most of what code does can also be done by a [script](SCRIPTING.md), which needs
+no build and can come down from a server: Trains, Vehicles and The Man From The
+Fog all run as scripts by default (`scripts/*.rs`), with their `code/` kept as the
+same logic for the `native-mods` build, which runs the code **instead of** the
+scripts (never both). Only what scripts cannot reach still needs code: new
+terrain and dimensions, fetching from the network (Earth's map tiles) and screens
+of the mod's own. [SCRIPT-COMPAT.md](SCRIPT-COMPAT.md) has the table.
+
+#### Lines and sections for scripts
+
+A pack with scripts keeps its own lines and sections the same way code does,
+by claiming them (it has no code to say so) with top-level lines in its `pack.txt`:
+
+```
+claims line manfromthefog      # lines "manfromthefog <key> <value>" are kept for scripts
+claims section vehicle         # sections "vehicle <id>" with their indented lines are kept
+```
+
+A claim holds for every pack read in the same loading, in whatever order, so the
+Boats pack can write `vehicle` sections for the script of the Vehicles pack. The
+words the game reads itself cannot be claimed. A claimed section also becomes an
+item with the section's id, as for code. Scripts read them with `pack_lines`,
+`pack_sections`, `pack_prop` and `pack_props` (see [SCRIPTING.md](SCRIPTING.md#more-host-calls)).
+
 ### Scripts that mods bring
 
 A mod may carry scripts, `.rs` files in its folder (for the runtime script

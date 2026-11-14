@@ -948,6 +948,9 @@ struct Parser<'a> {
     palettes: crate::palette::Palettes,
     load: &'a mut dyn FnMut(&str) -> Option<Vec<u8>>,
     depth: u32,
+    /// Lines and sections packs say are for scripts (`claims`, content/script_claims.rs).
+    claim_lines: Vec<String>,
+    claim_sections: Vec<String>,
 }
 
 fn dir_of(path: &str) -> &str {
@@ -1167,7 +1170,7 @@ impl Parser<'_> {
                     }
                 },
                 // A section some mod's code has claimed: kept as written.
-                k if indent == 0 && crate::native::reads_section(k) => {
+                k if indent == 0 && (crate::native::reads_section(k) || self.claim_sections.iter().any(|c| c == k)) => {
                     let id = match args.first() {
                         Some(id) => id.to_string(),
                         None => {
@@ -1190,13 +1193,13 @@ impl Parser<'_> {
                     cur = Cur::Section(i);
                 }
                 // A line some mod's code has claimed: kept as written.
-                k if indent == 0 && crate::native::reads_line(k) => {
+                k if indent == 0 && (crate::native::reads_line(k) || self.claim_lines.iter().any(|c| c == k)) => {
                     cur = Cur::None;
                     self.lines.push((String::from(k), alloc::format!("{}:{}", file, line_no), args.iter().map(|a| a.to_string()).collect()));
                 }
                 // What a mod says about itself (`version 1.2`, `client no`): read by
                 // the mods list and the server's download (net::modsync), not here.
-                "version" | "client" if indent == 0 => cur = Cur::None,
+                "version" | "client" | "claims" if indent == 0 => cur = Cur::None,
                 // (Inside a block or creature, `sound <id>` names the sound it makes.)
                 "ore" | "plant" | "sound" | "command" | "when" | "dimension" | "feature" | "episode" | "setting" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
                     cur = Cur::None;
@@ -1569,7 +1572,12 @@ impl Registry {
             palettes: Vec::new(),
             load,
             depth: 0,
+            claim_lines: Vec::new(),
+            claim_sections: Vec::new(),
         };
+        for (_, text) in sources {
+            crate::content::script_claims::scan(text, &mut p.claim_lines, &mut p.claim_sections);
+        }
         for (path, text) in sources {
             p.parse(path, text);
         }

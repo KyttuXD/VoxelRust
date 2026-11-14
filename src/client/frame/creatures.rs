@@ -100,6 +100,7 @@ impl App {
                     draw(g, r, &view);
                 }
             }
+            crate::script::ext::draw::draw_world(g, r, cam.pos, self.third_person, &light_at);
         }
         // Other players, with their names over their heads.
         if let Some(net) = &g.net {

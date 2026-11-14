@@ -14,6 +14,7 @@ pub mod pack_entities;
 pub mod emotes;
 pub mod pose;
 pub mod mod_runtime;
+pub mod script_claims;
 
 #[cfg(test)]
 mod core_tests;
