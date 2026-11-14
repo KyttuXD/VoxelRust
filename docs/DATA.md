@@ -2,9 +2,10 @@
 
 Textures, blocks, items, recipes, models, creatures, vehicles, sounds,
 dimensions, chat commands and scripts are declared in plain text. The game's own content is [data/base.txt](../data/base.txt),
-which includes [data/creatures.txt](../data/creatures.txt) (models) and
-[data/wildlife.txt](../data/wildlife.txt) (every creature); all three are
-built into the program. Packs are read after it:
+which includes [data/creatures.txt](../data/creatures.txt) (models),
+[data/wildlife.txt](../data/wildlife.txt) (every creature) and
+[data/effects.txt](../data/effects.txt) (status effects, written by
+`tools/gen_base.py`); all of them are built into the program. Packs are read after it:
 
 1. `pack.txt` in the game's data folder, if it exists (the folder is printed
    at start-up; `--data DIR` chooses another).
@@ -849,6 +850,80 @@ Both mods come with the game, so they are on unless switched off. Any other
 name is accepted and does nothing: a `feature` line can only switch on code
 that is already built in.
 
+## Effects
+
+A status effect (poison, burning, regeneration, slowness...) is declared
+with an `effect <id>` line and the indented lines under it. The game's own
+are in [data/effects.txt](../data/effects.txt); a pack may add effects or
+redefine one by reusing its id (the new block replaces the old, it does not
+add to it). Ids are lower case letters, digits and `_`, 32 at most.
+
+```
+effect poison
+  name Poison
+  kind bad
+  damage 1
+  lethal no
+  heart poison
+  colour 120 200 60
+  secs 12
+  from entity spider 8 1
+  from eat raw_fish 8 1 15
+```
+
+| Line | Meaning |
+| --- | --- |
+| `name <text>` | the name shown in the effect list (the id if left out) |
+| `kind good\|bad\|neutral` | how the list colours the time left |
+| `damage <n>` | health points lost a second at level 1, times the level (0 to 1000; decimals are kept until they add up to a whole point) |
+| `lethal yes\|no` | whether that damage may take the last health point (`no`: it stops at half a heart; yes if left out) |
+| `heal <n>` | health points gained a second, likewise |
+| `ticks <n>` | how many lumps a second damage and healing are dealt in (0.5 to 20; 1 if left out). `damage 2` with `ticks 4` takes a point every quarter second and a half |
+| `speed <percent>` | change of walking speed per level; `-15` slows, `20` quickens. Added over all active effects; never below 5% or above 400% |
+| `jump <percent>` | the same for the speed of a jump |
+| `melee <percent>` | the same for the damage you deal with a left click (never below 1 point) |
+| `hunger <n>` | hunger points lost a second at level 1; negative feeds |
+| `absorb <n>` | health points of padding per level, taken before health when hurt; it fills when the effect starts and goes when it ends |
+| `vision` | night vision: the night and dark places are drawn lighter |
+| `flame` | a flame is drawn beside the hearts while it lasts |
+| `extinguish` | being in water ends it (burning) |
+| `heart normal\|poison\|wither\|frozen` | the style of the hearts while it lasts; with several, wither beats poison beats frozen |
+| `colour <r> <g> <b>` | its colour, for icons that have no picture |
+| `secs <n>` | how long it lasts when a command or a source does not say (30 if left out) |
+| `icon <texture>` | the icon's picture (`effect_<id>` if left out; the base game paints `effect_poison` and the others itself) |
+| `from <what> <id> [seconds] [level] [chance]` | something that starts it (below) |
+
+Several effects at once add up. Giving an effect that is already active keeps
+the stronger: a higher level replaces it (and its time), the same level takes
+the longer time, a lower level changes nothing. Level 1 is the base
+strength; at level 3 the damage, healing, speed change and the rest are three
+times as much.
+
+**Sources**, the `from` lines. Seconds default to the effect's `secs`, level
+to 1, chance (a percent) to 100.
+
+| Line | Starts it when |
+| --- | --- |
+| `from block <block> [secs] [level]` | a survival player is in, on or against that block (`lava` and also `lava_1` to `lava_8`, the flowing states). It is kept going while they are, and runs on for `secs` after |
+| `from entity <creature> [secs] [level] [chance]` | that creature bites the player or its shot hits them |
+| `from hit <item> [secs] [level] [chance]` | the player strikes a creature with that item in hand: the creature gets the effect |
+| `from eat <item> [secs] [level] [chance]` | the player eats or drinks that item (the `eat` event) |
+| `from event <name>[:<what>] [secs] [level] [chance]` | the script event is raised (`wake`, `kill:spider`, or anything raised with `/fire`) |
+
+An id that names no block, creature or item just never matches. Creatures
+carry effects too, given by `from hit` or `/effect mob`: poison, burning and
+wither take their health (they never drop or count as kills), regeneration
+heals them, slowness slows them, and water puts a fire out. Effects on the
+player are saved with the world (`effects=` and `absorb=` in its meta file);
+an effect a pack no longer defines is dropped when the world is opened.
+
+The pictures for the hearts and icons are textures: `heart_empty`,
+`heart_full`, `heart_half`, `heart_<poison|wither|frozen|absorb|hardcore>_<full|half>`,
+and `effect_<id>`, `effect_flame` (see
+[TEXTURING.md](TEXTURING.md#hearts-and-effect-icons)). Events and conditions:
+`when effectstart poison do ...`, `/if effect poison [level] then ...`
+(see [MODDING.md](MODDING.md)).
+
 ## Commands and scripts
 
 ```
@@ -860,7 +935,8 @@ when <event> [what] do <commands separated by ;>
 after it). `when` runs commands when something happens: `start`, `every
 <seconds>`, `break <block>`, `place <block>`, `use <block>`, `useitem
 <item>`, `eat <item>`, `hit <entity>`, `kill <entity>`, `tame <entity>`,
-`ride <entity>`, `dimension <name>`, `night`, `day`, `death`, `episode <id>`,
+`ride <entity>`, `dimension <name>`, `night`, `day`, `death`, `wake`,
+`effectstart <effect>`, `effectend <effect>`, `episode <id>`,
 `episode_end <id>`, and the newer events listed in
 [MODDING.md](MODDING.md#hooks-reference) (`entitydeath`, `playerhurt`, `chat`,
 `craft`, `weather`...). `when` lines

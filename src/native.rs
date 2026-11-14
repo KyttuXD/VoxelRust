@@ -135,6 +135,13 @@ pub struct Native {
     pub after_explode: Option<fn(g: &mut Session, info: &ExplosionInfo, destroyed: usize)>,
     /// A block of TNT at that cell is about to be lit: return false to stop it.
     pub on_prime: Option<fn(g: &mut Session, cell: [i32; 3]) -> bool>,
+    /// An effect (poison, burning...) is about to be given to the player:
+    /// its id, seconds and level (both may be changed). Return false to
+    /// refuse it. Not asked when it would change nothing.
+    pub effect_apply: Option<fn(g: &mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool>,
+    /// Every frame an effect of the player's is running: its id, seconds
+    /// left, level, and the time that passed.
+    pub effect_tick: Option<fn(g: &mut Session, id: &str, secs_left: f32, level: i32, dt: f32)>,
     /// A message another player's copy of this code sent with
     /// `Session::send_ext`.
     pub message: Option<fn(g: &mut Session, key: &str, text: &str)>,
@@ -233,6 +240,8 @@ impl Native {
         before_explode: None,
         after_explode: None,
         on_prime: None,
+        effect_apply: None,
+        effect_tick: None,
         message: None,
         share: None,
         storage: None,

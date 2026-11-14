@@ -160,11 +160,45 @@ second with the button held (see [The hand](#the-hand)).
 | Egg | 1 | chickens and ducks |
 | Cooked Fish | 6 | oven, or crafting table with coal |
 | Cooked Meat | 8 | oven, or crafting table with coal |
+| Golden Apple | 4 | crafting table: an apple and four copper ingots; gives regeneration and absorption |
+| Rotten Flesh | 2 | creative menu; makes you hungry |
+
+Some food can make you ill: raw meat and raw fish now and then poison, and
+raw meat can make you hungry. See [Status effects](#status-effects).
 
 More filling food is made at a crafting table or baked in an oven; see
 [The oven and baking](#the-oven-and-baking). Some food can also be set out
 as a block and eaten where it stands; see
 [Furniture and food on the table](#furniture-and-food-on-the-table).
+
+### Status effects
+
+Poison, burning, regeneration, slowness and the others are status effects.
+While one lasts, the list at the top right of the screen (under the minimap)
+shows its icon, its name and level, and the time left, blinking in its last
+ten seconds. Their damage, healing and hunger, and the blocks and bites that start them, only count in survival.
+
+| Effect | What it does | Where it comes from |
+| --- | --- | --- |
+| Poison | takes a point of health a second, but never the last one; the hearts turn green | a spider's or snake's bite; now and then raw meat or fish |
+| Burning | about a heart (2 points) a second, with a flame beside the hearts; water puts it out | lava, a campfire |
+| Regeneration | gives back a point of health every two and a half seconds | a golden apple; waking in the morning after a night in bed |
+| Slowness | walk 15% slower | cobwebs, snow layers |
+| Speed | walk 20% faster | `/effect give` |
+| Hunger | hunger drains quicker | rotten flesh, now and then raw meat |
+| Weakness, Strength | your blows are a quarter weaker, or 30% stronger | `/effect give` |
+| Wither | takes a point of health a second, and can kill; the hearts turn black | `/effect give` |
+| Absorption | a row of yellow hearts above the red ones takes blows first | a golden apple |
+| Frozen | slows you and chills you (never fatal); the hearts turn blue | icicles |
+| Saturation | fills your hunger bar, a point a second | `/effect give` |
+| Night Vision | the night and caves are drawn lighter | `/effect give` |
+| Jump Boost | jump 40% higher | `/effect give` |
+
+Having an effect again keeps the stronger one: a higher level replaces it,
+the same level takes the longer time. Dying clears them all. Creatures can be
+poisoned or set on fire too (`/effect mob`, or a weapon a pack gives that
+power). Packs can add effects and sources of their own: see
+[DATA.md](DATA.md#effects).
 
 ### Tools and ores
 
@@ -637,6 +671,10 @@ blocks from it.
 | `/heal [N]` | give yourself N health (4 if left out) | works |
 | `/feed [N]` | give yourself N hunger points (4 if left out) | works |
 | `/hurt [N]` | take N damage (1 if left out, 100 at most) | works |
+| `/effect give ID [SECONDS] [LEVEL]` | give yourself a status effect (see [Status effects](#status-effects)); the effect's own time and level 1 if left out. `/effect give` alone lists the ids | works |
+| `/effect clear [ID]` | take one effect away, or all of them | works |
+| `/effect list` | the effects you have, with level and time left | works |
+| `/effect mob ID [SECONDS] [LEVEL]` | give an effect to the creature you are looking at | works |
 | `/launch [UP] [FORWARD]` | throw yourself upward and the way you face, in blocks per second (8 and 0 if left out; -40 to 40) | works |
 | `/shoot [DAMAGE] [SPEED] [BLOCK]` | loose a shot the way you look (damage 4 and speed 30 if left out). BLOCK, if given, is left where the shot lands | no |
 | `/aim BLOCK` | put that block against the face you are pointing at | no |

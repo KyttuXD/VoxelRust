@@ -184,6 +184,8 @@ pub struct Session {
     /// 0 (starving) ..= 20 (full); survival only.
     pub hunger: i32,
     hunger_clock: f32,
+    /// Poison, burning and the like in force (see game/effects).
+    pub fx: crate::game::effects::Effects,
     /// What is stored in each chest, by the chest's position.
     pub chests: BTreeMap<[i32; 3], Inventory>,
     /// A block the player just used: the screen to open, and where it is.
@@ -540,6 +542,7 @@ impl Session {
             health: kv(&meta, "health").and_then(|v| v.parse::<i32>().ok()).unwrap_or(MAX_HEALTH).clamp(1, MAX_HEALTH),
             hunger: kv(&meta, "hunger").and_then(|v| v.parse::<i32>().ok()).unwrap_or(MAX_HUNGER).clamp(0, MAX_HUNGER),
             hunger_clock: 0.0,
+            fx: crate::game::effects::Effects::from_text(kv(&meta, "effects").unwrap_or(""), kv(&meta, "absorb").and_then(|v| v.parse::<i32>().ok()).unwrap_or(0), &crate::game::effects::apply::lookup),
             chests,
             opened_ext: None,
             chests_path,
@@ -682,6 +685,8 @@ impl Session {
     pub fn fire(&mut self, event: &str, what: &str) {
         let event = crate::game::events::canonical(event);
         crate::game::hooks::event(self, event, what);
+        // Effects that start from an event (`from eat ...`).
+        crate::game::effects::apply::on_event(self, event, what);
         let r = reg();
         if r.scripts.is_empty() {
             return;
@@ -696,7 +701,7 @@ impl Session {
     /// Whether a condition of `/if` is true. Conditions: `chance N`,
     /// `holding ITEM`, `has ITEM [N]`, `dim NAME`, `night`, `day`,
     /// `creative`, `survival`, `riding`, `hurt` (health below full),
-    /// `hungry`, `NAME OP NUMBER` for a variable (= != < > <= >=); and
+    /// `hungry`, `effect ID [LEVEL]`, `NAME OP NUMBER` for a variable (= != < > <= >=); and
     /// `not` in front of any of them.
     fn holds(&mut self, cond: &[&str]) -> bool {
         let w = |k: usize| cond.get(k).copied().unwrap_or("");
@@ -717,6 +722,8 @@ impl Session {
             "riding" => self.riding_mob.is_some() || self.carried,
             "hurt" => self.health < MAX_HEALTH,
             "hungry" => self.hunger < MAX_HUNGER,
+            // `effect ID [LEVEL]`: that status effect is active (at that level or more).
+            "effect" => self.fx.level(w(1)) >= w(2).parse::<i32>().unwrap_or(1).max(1),
             // A switch a pack put in the settings (`setting <id> ...`).
             "setting" => self.flags.iter().find(|f| f.0 == w(1)).map_or_else(|| r.toggles.iter().any(|t| t.0 == w(1) && t.1), |f| f.1),
             "storm" => self.sky.storm,
@@ -766,6 +773,7 @@ impl Session {
         // Cheating commands need the server's say-so.
         if online && !self.may(crate::proto::PERM_COMMANDS) {
             let cheat = ["/give", "/take", "/tp", "/heal", "/feed", "/hurt", "/launch", "/spawn", "/pull"].contains(&arg(0))
+                || (arg(0) == "/effect" && arg(1) != "list")
                 || r.commands.iter().any(|c| c.0 == arg(0));
             if cheat {
                 return Some(String::from("YOU MAY NOT USE THAT COMMAND ON THIS SERVER"));
@@ -1026,6 +1034,8 @@ impl Session {
                 }
                 String::new()
             }
+            // /effect give|clear|list|mob: poison, burning and the like.
+            "/effect" => crate::game::effects::apply::command(self, &words),
             "/hurt" => {
                 self.pending_hurt += arg(1).parse::<i32>().unwrap_or(1).clamp(0, 100);
                 self.ev.pending_cause = String::from("command");
@@ -1813,6 +1823,13 @@ impl Session {
             None => cause,
         };
         if !crate::game::hooks::player_hurt(self, &mut amount, &cause) {
+        // A bite may poison; absorption takes what it can of the blow.
+        if let Some(kind) = attacker {
+            crate::game::effects::apply::on_bitten(self, kind);
+        }
+        let amount = self.fx.absorb_hit(amount);
+        if amount <= 0 {
+            self.hurt_flash = 0.2;
             return;
         }
         self.health -= amount;
@@ -1845,6 +1862,7 @@ impl Session {
         self.air = MAX_AIR;
         self.dead = false;
         self.fire(crate::game::events::RESPAWN, "");
+        crate::game::effects::apply::clear_all(self);
     }
 
     /// Whether the server lets this player do what `perm` (a `proto::PERM_*`
@@ -1905,6 +1923,7 @@ impl Session {
         let (time, still_asleep) = tick_clock(self.time, dt, self.sleeping);
         if self.sleeping && !still_asleep {
             self.say("GOOD MORNING");
+            self.fire("wake", "");
         }
         self.time = time;
         self.sleeping = still_asleep;
@@ -2031,6 +2050,13 @@ impl Session {
         let (fx, fy, fz) = (floord(self.player.pos[0]), floord(self.player.pos[1] + 0.1), floord(self.player.pos[2]));
         let slow = block::def(self.world.get(fx, fy, fz)).x.slow.max(block::def(self.world.get(fx, fy + 1, fz)).x.slow);
         self.player.speed_scale = if slow > 0 { slow as f32 / 100.0 } else { 1.0 };
+        // Effects: slowness, speed, jump boost; then the effects themselves run.
+        {
+            use crate::game::effects::apply as fxa;
+            self.player.speed_scale *= fxa::speed_scale(&self.fx, &fxa::lookup);
+            self.player.jump_scale = fxa::jump_scale(&self.fx, &fxa::lookup);
+            fxa::step(self, dt, audio);
+        }
         // Movement. Until the ground under the player exists, hold still:
         // unloaded space counts as solid and must never be "stood on".
         let (px, pz) = (floord(self.player.pos[0]), floord(self.player.pos[2]));
@@ -2465,7 +2491,9 @@ impl Session {
                     let at = self.mobs.list[i].body.pos;
                     let mid = self.mobs.list[i].id;
                     self.mob_hit(mid, kind, at);
-                    let killed = self.strike(i, if creative { 1000 } else { item.x.damage.max(3) }, eye);
+                    let blow = crate::game::effects::apply::melee_damage(&self.fx, &crate::game::effects::apply::lookup, item.x.damage.max(3));
+                    crate::game::effects::apply::on_strike(self, i, &item.id);
+                    let killed = self.strike(i, if creative { 1000 } else { blow }, eye);
                     if let (true, false, Some((drop, n))) = (killed, creative, reg().entities[kind].drop) {
                         self.inv.add(drop as u16, n);
                     }
@@ -2769,7 +2797,7 @@ impl Session {
             sys::write_file(&self.vars_path, vars.as_bytes());
         }
         let text = alloc::format!(
-            "seed={}\ndim={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\ninventory={}\n",
+            "seed={}\ndim={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\neffects={}\nabsorb={}\ninventory={}\n",
             self.base_seed,
             self.dim,
             self.kind.to_text(),
@@ -2787,6 +2815,8 @@ impl Session {
             self.selected,
             self.health.max(1),
             self.hunger,
+            self.fx.to_text(),
+            self.fx.absorb,
             self.inv.save(),
         );
         let ok = sys::write_file(&self.meta_path, text.as_bytes()) && !self.store.write_failed;

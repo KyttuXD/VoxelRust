@@ -181,6 +181,9 @@ command <name> <commands separated by ;>
 | `night` | night falls | none |
 | `day` | day breaks | none |
 | `death` | you die | none |
+| `wake` | you sleep through the night and wake in the morning | none |
+| `effectstart <effect>` | a status effect starts on you, from a source, a mod or `/effect give` (not when it is only made stronger or longer) | effect id |
+| `effectend <effect>` | it runs out, is put out by water, or is cleared (and for each one when you respawn after dying) | effect id |
 | `episode <id>` | an episode of a pack begins (see [Episodes](#episodes)) | episode id |
 | `episode_end <id>` | that episode ends | episode id |
 | `tntprimed <block>` | a block of TNT is lit (by fire, lava, an explosion or the flint and steel) | block id |
@@ -229,6 +232,9 @@ Eating (in survival) and shooting come before `useitem`, so it suits
 items that are neither food nor weapons.
 
 ```
+when useitem tonic do /effect give regeneration 30 2; /effect give speed 30; /take tonic
+when effectstart wither do /say &8THE AIR TURNS COLD
+when kill spider do /if effect poison then /heal 6
 when use arcane_portal do /sound portal; /dim arcane; /say &dYOU STEP THROUGH
 when useitem fire_wand do /sound spell; /shoot 10 38 hot_coals
 when eat healing_potion do /heal 14
@@ -305,6 +311,7 @@ written with `$`.
 | `riding` | you are on a creature or in a vehicle |
 | `hurt` | your health is below full |
 | `hungry` | your hunger is below full |
+| `effect ID [LEVEL]` | that status effect is active on you, at that level or more (1 if left out) |
 | `driving` | you are in a vehicle (the Vehicles mod is on); `riding` is true then too |
 | `setting ID` | that switch is on in SETTINGS > GAME (a pack's `setting` line) |
 | `storm` | a storm is on |
@@ -802,12 +809,31 @@ a world being opened, saved or reloaded, each frame, clicks, chat commands,
 `/if` conditions, the player killing a creature (`killed`) and being hurt
 (`hurt`, which may lessen or cancel the blow and says which creature bit),
 explosions (`before_explode`, `after_explode`) and TNT being lit (`on_prime`),
+status effects (`effect_apply` may change the seconds and level of an effect
+about to be given to the player, or refuse it; `effect_tick` is called every
+frame for each effect that is running),
 the events of the [Hooks reference](#hooks-reference) (breaking and placing,
 creatures appearing and dying, chat, crafting, using items, the HUD),
 messages and state shared between players, drawing, the map,
 rows in SETTINGS > GAME, and answers to a server. A mod claims pack lines and
 indented sections by name; the game keeps those word for word for the code to
 read, and each section also becomes an item.
+
+The effect hooks, in full (see [DATA.md](DATA.md#effects) for what effects are):
+
+```rust
+effect_apply: Some(|g, id, secs, level| { /* id: &str, secs: &mut f32, level: &mut i32 */ true }),
+effect_tick: Some(|g, id, secs_left, level, dt| { /* every frame, for each running effect */ }),
+```
+
+`effect_apply` is asked before an effect is given to the player (by a source,
+`/effect give` or `game::effects::apply::give`); it may change `secs` and
+`level`, and returns `false` to refuse. It is not asked when the effect would
+change nothing (the player already has a stronger one), nor each frame for
+blocks that keep an effect going. A mod gives, asks about and clears effects
+with `crate::game::effects::apply::{give, clear, clear_all}`, and reads them
+from `Session::fx` (`fx.has(id)`, `fx.level(id)`). Damage an effect deals goes
+through the `hurt` hook like any other, with no attacker.
 
 The code runs only while a loaded pack says `feature <name>` for that mod, so
 switching the mod off in SETTINGS > MODS switches its code off too.
@@ -850,7 +876,7 @@ also passed to the mod's `on_event` hook.
 | (each frame) | the HUD is drawn in play | | `on_draw_hud` | `fn(&Session, &mut dyn HudSink)` |
 | `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itempickup`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
 | `explode`, `blockexploded`, `tntprimed` | an explosion happens, breaks blocks, or TNT is lit | see [Explosions](#explosions) | `before_explode`: `false` cancels; `after_explode` and `on_prime` after | `fn(&mut Session, &mut ExplosionInfo) -> bool` |
-| status effects | see status effects | | | |
+| `effectstart`, `effectend`, `wake` | a status effect starts or ends on the player; the player wakes | effect id | `effect_apply`: `false` refuses it; `effect_tick` every frame per running effect | `fn(&mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool` |
 
 Older hooks (`update`, `interact`, `killed`, `hit`, `hurt`, `open`, `save` and so
 on) are described in `src/native.rs` and work as before. `open` and `save` also
@@ -904,6 +930,8 @@ dispatcher in [src/game/hooks.rs](../src/game/hooks.rs) built on `hooks::allow`.
 
 A mod's code is called only at the hooks in `src/native.rs`. Anything those
 hooks do not reach stays the game's own. A pack alone cannot add a kind of
-terrain, a vehicle's physics or a new kind of effect: those need code, and
+terrain, a vehicle's physics or an effect that does more than the `effect` lines
+of [DATA.md](DATA.md#effects) cover (damage, healing, speed, jump, melee
+damage, hunger, absorption, night vision): those need code, and
 code needs a rebuild. What a pack can do is run the episodes and scripts
 described above.

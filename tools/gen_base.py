@@ -740,6 +740,70 @@ w("item flint_and_steel\n  name Flint and Steel\n  icon flint_and_steel\n  categ
 w("craft gunpowder 2 coal 2 sand 1")
 w("craft tnt 1 gunpowder 5 sand 4")
 w("craft flint_and_steel 1 iron_ingot 1 gravel 1")
+# ---- Status effects ----
+# The pictures of the HUD's hearts and the effects' icons are painted by
+# src/content/art/hud.rs; the effects themselves go in data/effects.txt
+# (included below), written by this script too. See docs/DATA.md, "Effects".
+w("""
+# ---- Status effects ----
+#   hearts and icons for the HUD, painted by code (the colours are ignored)
+#   effect <id> ... lives in effects.txt""")
+for t in ["heart_empty", "heart_full", "heart_half", "heart_hardcore_full", "heart_hardcore_half"]:
+    tex(t, f"paint {t} 0 0 0")
+for look in ["poison", "wither", "frozen", "absorb"]:
+    for part in ["full", "half"]:
+        tex(f"heart_{look}_{part}", f"paint heart_{look}_{part} 0 0 0")
+EFFECT_IDS = ["poison", "burning", "regeneration", "slowness", "speed", "hunger", "weakness", "strength",
+              "wither", "absorption", "frozen", "saturation", "night_vision", "jump_boost"]
+for t in EFFECT_IDS + ["flame"]:
+    tex(f"effect_{t}", f"paint effect_{t} 0 0 0")
+# Foods that start effects (see the `from eat` lines of the effects).
+tex("golden_apple", "paint fruit 240 196 52")
+tex("rotten_flesh", "paint meat 120 140 72")
+w("item golden_apple\n  name Golden Apple\n  icon golden_apple\n  category Food\n  food 4")
+w("item rotten_flesh\n  name Rotten Flesh\n  icon rotten_flesh\n  category Food\n  food 2")
+w("craft golden_apple 1 apple 1 copper_ingot 4")
+
+fx = []
+def effect(id, name, kind, lines, colour, secs):
+    fx.append(f"effect {id}\n  name {name}\n  kind {kind}\n  colour {colour}\n  secs {secs}")
+    for l in lines:
+        fx.append("  " + l)
+
+fx.append("""# Status effects (written by tools/gen_base.py; see docs/DATA.md, "Effects").
+#   effect <id>
+#     name <text>        kind good|bad|neutral     colour <r> <g> <b>     secs <default seconds>
+#     damage <points a second>   lethal yes|no     heal <points a second>   ticks <lumps a second>
+#     speed <percent>    jump <percent>     melee <percent>     (per level; negative slows/weakens)
+#     hunger <points a second, negative feeds>     absorb <health points>   vision   flame   extinguish
+#     heart normal|poison|wither|frozen            icon <texture>
+#     from block|entity|hit|eat|event <id> [seconds] [level] [chance]
+""")
+effect("poison", "Poison", "bad", [
+    "damage 1", "lethal no", "heart poison",
+    "from entity spider 8 1", "from entity cave_spider 6 1", "from entity snake 10 1", "from entity viper 12 1",
+    "from eat raw_fish 8 1 15", "from eat raw_meat 8 1 15"], "120 200 60", 12)
+effect("burning", "Burning", "bad", [
+    "damage 2", "flame", "extinguish",
+    "from block lava 6 1", *[f"from block lava_{n} 6 1" for n in range(1, 9)],
+    "from block campfire 4 1", "from block fire 6 1"], "240 120 30", 6)
+effect("regeneration", "Regeneration", "good", [
+    "heal 0.4", "from eat golden_apple 8 2", "from event wake 10 1"], "230 90 130", 20)
+effect("slowness", "Slowness", "bad", [
+    "speed -15", "from block cobweb 3 1", "from block snow_layer 2 1"], "130 150 190", 15)
+effect("speed", "Speed", "good", ["speed 20"], "120 220 240", 30)
+effect("hunger", "Hunger", "bad", [
+    "hunger 0.2", "from eat rotten_flesh 30 1 80", "from eat raw_meat 20 1 25"], "150 130 60", 30)
+effect("weakness", "Weakness", "bad", ["melee -25"], "130 130 140", 30)
+effect("strength", "Strength", "good", ["melee 30"], "170 40 40", 30)
+effect("wither", "Wither", "bad", ["damage 1", "heart wither"], "60 60 70", 10)
+effect("absorption", "Absorption", "good", ["absorb 4", "from eat golden_apple 120 1"], "240 190 40", 120)
+effect("frozen", "Frozen", "bad", [
+    "damage 0.5", "lethal no", "speed -20", "heart frozen", "from block icicle 4 1"], "110 200 240", 8)
+effect("saturation", "Saturation", "good", ["hunger -1"], "220 130 60", 5)
+effect("night_vision", "Night Vision", "good", ["vision"], "60 60 200", 180)
+effect("jump_boost", "Jump Boost", "good", ["jump 40"], "100 220 110", 30)
+w("\ninclude effects.txt")
 
 if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "creatures.txt")):
     w("\n# Models, then every creature, live in their own files.\ninclude creatures.txt")
@@ -758,6 +822,8 @@ else:
   biomes plains forest
   weight 30""")
 
+fx_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "effects.txt")
+open(fx_path, "w").write("\n".join(fx) + "\n")
 path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "base.txt")
 open(path, "w").write("\n".join(out) + "\n")
 print("wrote", os.path.normpath(path), len(out), "lines")

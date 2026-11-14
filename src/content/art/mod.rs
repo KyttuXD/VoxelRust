@@ -2,3 +2,4 @@
 //! per subject. `textures::painted` asks these first.
 
 pub mod bow;
+pub mod hud;

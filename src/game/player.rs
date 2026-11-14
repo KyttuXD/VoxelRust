@@ -39,6 +39,8 @@ pub struct Player {
     pub height: f64,
     /// Multiplies walking speed (creatures are slower than players).
     pub speed_scale: f32,
+    /// Multiplies the speed of a jump (a jump boost effect).
+    pub jump_scale: f32,
 }
 
 impl Player {
@@ -59,6 +61,7 @@ impl Player {
             half_width: width * 0.5,
             height,
             speed_scale: 1.0,
+            jump_scale: 1.0,
         }
     }
 
@@ -135,7 +138,7 @@ impl Player {
             self.vel[2] += (wz * speed - self.vel[2]) * k;
             self.vel[1] = (self.vel[1] - 30.0 * dt).max(-60.0);
             if inp.jump && self.on_ground {
-                self.vel[1] = 8.8;
+                self.vel[1] = 8.8 * self.jump_scale;
             }
         }
 
