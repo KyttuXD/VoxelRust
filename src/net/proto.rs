@@ -7,7 +7,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub const VERSION: u16 = 8;
+pub const VERSION: u16 = 9;
 
 /// What a player may do on a server (the flags of [`Msg::Perms`]).
 pub const PERM_BUILD: u8 = 1;
@@ -44,6 +44,23 @@ pub mod channel {
 /// Longest message body accepted.
 pub const MAX_BODY: usize = 60_000;
 
+/// One mod a server offers for download (see [`Msg::ModList`] and
+/// `net::modsync`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModInfo {
+    pub name: String,
+    /// What its pack.txt says (`version 1.2`); empty if it says nothing.
+    pub version: String,
+    /// First 8 bytes of the SHA-256 of the mod's bundle.
+    pub sum: u64,
+    /// Bytes of the bundle that will be sent, and how many files are in it.
+    pub size: u32,
+    pub files: u16,
+}
+
+/// Most mods in one [`Msg::ModList`].
+pub const MAX_MOD_LIST: usize = 64;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Msg {
     // Client to server.
@@ -68,6 +85,9 @@ pub enum Msg {
     /// to hear others and whether it may talk (its microphone is on). Players
     /// start with both off, so a client that never sends this costs nothing.
     VoiceState { flags: u8 },
+    /// "Send me these mods" (names from the [`Msg::ModList`]); answered with
+    /// [`Msg::ModPart`]s, one mod after the other in the order asked.
+    ModsWant { names: Vec<String> },
     // Server to client.
     Welcome { id: u16, seed: u32, time: f32, kind: String },
     /// The server will not let you in.
@@ -82,6 +102,12 @@ pub enum Msg {
     Pack { last: bool, data: Vec<u8> },
     /// What you may do here (`PERM_` flags), sent on joining and whenever it changes.
     Perms { flags: u8 },
+    /// The mods the server offers, sent on joining (after the pack, even
+    /// when there are none).
+    ModList { mods: Vec<ModInfo> },
+    /// A piece of one mod's bundle (`index` is its place in the list);
+    /// `last` ends it.
+    ModPart { index: u16, last: bool, data: Vec<u8> },
     /// Shared state of the game, passed between players through the
     /// server (sent by a client, relayed with its id): creatures, chests,
     /// what is in a chest. `channel` says which; `key` names the thing;
@@ -228,6 +254,34 @@ impl Msg {
                 w.u8(8);
                 w.u8(*flags);
             }
+            Msg::ModsWant { names } => {
+                w.u8(9);
+                let n = names.len().min(MAX_MOD_LIST);
+                w.u8(n as u8);
+                for name in &names[..n] {
+                    w.str(name);
+                }
+            }
+            Msg::ModList { mods } => {
+                w.u8(18);
+                let n = mods.len().min(MAX_MOD_LIST);
+                w.u8(n as u8);
+                for m in &mods[..n] {
+                    w.str(&m.name);
+                    w.str(&m.version);
+                    w.0.extend_from_slice(&m.sum.to_le_bytes());
+                    w.u32(m.size);
+                    w.u16(m.files);
+                }
+            }
+            Msg::ModPart { index, last, data } => {
+                w.u8(19);
+                w.u16(*index);
+                w.u8(*last as u8);
+                let n = data.len().min(MAX_PACK_PART);
+                w.u16(n as u16);
+                w.0.extend_from_slice(&data[..n]);
+            }
             Msg::Welcome { id, seed, time, kind } => {
                 w.u8(10);
                 w.u16(*id);
@@ -313,6 +367,38 @@ impl Msg {
                 Msg::Voice { id, seq, gain, frame: r.take(n)?.to_vec() }
             }
             8 => Msg::VoiceState { flags: r.u8()? },
+            9 => {
+                let n = r.u8()? as usize;
+                if n > MAX_MOD_LIST {
+                    return None;
+                }
+                let mut names = Vec::with_capacity(n);
+                for _ in 0..n {
+                    names.push(r.str()?);
+                }
+                Msg::ModsWant { names }
+            }
+            18 => {
+                let n = r.u8()? as usize;
+                if n > MAX_MOD_LIST {
+                    return None;
+                }
+                let mut mods = Vec::with_capacity(n);
+                for _ in 0..n {
+                    let (name, version) = (r.str()?, r.str()?);
+                    let sum = u64::from_le_bytes(r.take(8)?.try_into().ok()?);
+                    mods.push(ModInfo { name, version, sum, size: r.u32()?, files: r.u16()? });
+                }
+                Msg::ModList { mods }
+            }
+            19 => {
+                let (index, last) = (r.u16()?, r.u8()? != 0);
+                let n = r.u16()? as usize;
+                if n > MAX_PACK_PART {
+                    return None;
+                }
+                Msg::ModPart { index, last, data: r.take(n)?.to_vec() }
+            }
             10 => Msg::Welcome { id: r.u16()?, seed: r.u32()?, time: r.f32()?, kind: r.str()? },
             11 => Msg::Refuse { reason: r.str()? },
             12 => Msg::Join { id: r.u16()?, name: r.str()? },
@@ -420,6 +506,12 @@ mod tests {
             Msg::Voice { id: 5, seq: 65_535, gain: 200, frame: alloc::vec![9; 163] },
             Msg::Voice { id: 0, seq: 0, gain: 0, frame: Vec::new() },
             Msg::VoiceState { flags: VOICE_HEAR | VOICE_TALK },
+            Msg::ModsWant { names: alloc::vec![String::from("earth"), String::from("my-mod")] },
+            Msg::ModsWant { names: Vec::new() },
+            Msg::ModList { mods: alloc::vec![ModInfo { name: String::from("earth"), version: String::from("1.2"), sum: 0xDEAD_BEEF_0123_4567, size: 123_456, files: 40 }, ModInfo { name: String::from("x"), version: String::new(), sum: 0, size: 0, files: 0 }] },
+            Msg::ModList { mods: Vec::new() },
+            Msg::ModPart { index: 3, last: false, data: alloc::vec![7; 1000] },
+            Msg::ModPart { index: 0, last: true, data: Vec::new() },
         ];
         let mut inbox = Inbox::default();
         for m in &all {

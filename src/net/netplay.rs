@@ -30,6 +30,10 @@ pub enum Event {
     Perms(u8),
     /// A piece of the server's content pack; the flag marks the last one.
     Pack(bool, Vec<u8>),
+    /// The mods the server offers for download.
+    ModList(Vec<crate::proto::ModInfo>),
+    /// A piece of one mod's bundle: its place in the list, whether it is the last piece, the bytes.
+    ModPart(u16, bool, Vec<u8>),
     /// A player's skin image arrived, and whether their arms are slim.
     Skin(u16, Vec<u8>, bool),
     /// Shared state from another player: who, channel, key, data.
@@ -182,6 +186,8 @@ impl Client {
                     Msg::Skin { id, png, slim } => events.push(Event::Skin(id, png, slim)),
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
+                    Msg::ModList { mods } => events.push(Event::ModList(mods)),
+                    Msg::ModPart { index, last, data } => events.push(Event::ModPart(index, last, data)),
                     Msg::Voice { id, seq, gain, frame } => {
                         if self.voice_in.len() >= MAX_VOICE_WAITING {
                             self.voice_in.remove(0);
@@ -251,6 +257,11 @@ impl Client {
         self.send(&Msg::Voice { id, seq, gain: 255, frame: frame.to_vec() });
     }
 
+    /// Ask for these mods from the server's list (see [`Msg::ModsWant`]).
+    pub fn send_mods_want(&mut self, names: &[String]) {
+        self.send(&Msg::ModsWant { names: names.to_vec() });
+    }
+
     pub fn send_chat(&mut self, text: &str) {
         let id = self.id;
         self.send(&Msg::Chat { id, text: String::from(text) });
@@ -273,6 +284,13 @@ mod tests {
         assert_eq!(parse_address(":5"), None);
     }
 
+    /// A mod of one big file (so that it comes in several pieces) and a pack.
+    fn test_mod() -> crate::net::modsync::serve::ServedMod {
+        let files = alloc::vec![(String::from("pack.txt"), b"version 1.5\nblock m\n".to_vec()), (String::from("textures/big.png"), (0..100_000u32).map(|i| (i % 251) as u8).collect())];
+        let data = crate::net::modsync::bundle::encode(&files).unwrap();
+        crate::net::modsync::serve::ServedMod { name: String::from("testmod"), version: String::from("1.5"), sum: crate::net::modsync::bundle::sum_of(&data), files: 2, data }
+    }
+
     /// Run a server on a free port in a background thread.
     fn start_server(max_players: usize) -> (u16, Arc<AtomicBool>, std::thread::JoinHandle<Server>) {
         let cfg = Config {
@@ -283,6 +301,7 @@ mod tests {
             content: content_checksum(),
             states: crate::block::reg().blocks.len() as u16,
             pack: b"block server_special\n tex stone\n".to_vec(),
+            mods: alloc::vec![test_mod()],
         };
         let mut server = Server::bind(cfg).unwrap();
         let port = server.port();
@@ -305,6 +324,39 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         all
+    }
+
+    #[test]
+    fn mods_are_announced_and_sent_only_when_asked() {
+        let (port, stop, handle) = start_server(8);
+        let (mut c, _) = Client::connect("127.0.0.1", port, "Mia").unwrap();
+        let events = pump(&mut c, 120);
+        let list = events.iter().find_map(|e| if let Event::ModList(l) = e { Some(l.clone()) } else { None }).expect("no announcement");
+        assert_eq!(list.len(), 1);
+        assert_eq!((list[0].name.as_str(), list[0].version.as_str()), ("testmod", "1.5"));
+        // Nothing is sent unasked.
+        assert!(!events.iter().any(|e| matches!(e, Event::ModPart(..))));
+        c.send_mods_want(&[String::from("nosuchmod"), String::from("testmod"), String::from("testmod")]);
+        let mut got: Vec<u8> = Vec::new();
+        let mut ended = 0;
+        for _ in 0..40 {
+            for e in pump(&mut c, 50) {
+                if let Event::ModPart(index, last, data) = e {
+                    assert_eq!(index, 0);
+                    got.extend_from_slice(&data);
+                    ended += last as usize;
+                }
+            }
+            if ended > 0 {
+                break;
+            }
+        }
+        assert_eq!(ended, 1, "the mod is sent once, whole");
+        assert_eq!(got.len(), list[0].size as usize);
+        assert_eq!(crate::net::modsync::bundle::sum_of(&got), list[0].sum);
+        assert_eq!(crate::net::modsync::bundle::decode(&got).unwrap().len(), 2);
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
     }
 
     #[test]
@@ -408,7 +460,7 @@ mod tests {
         assert_eq!(server.edits.len(), 2);
         let text = server.save_text();
         assert!(text.contains("1 70 -3 stone"), "{text}");
-        let mut again = Server::bind(Config { port: 0, seed: 1, kind: String::new(), max_players: 1, content: 0, states: 1, pack: Vec::new() }).unwrap();
+        let mut again = Server::bind(Config { port: 0, seed: 1, kind: String::new(), max_players: 1, content: 0, states: 1, pack: Vec::new(), mods: Vec::new() }).unwrap();
         again.load_text(&text);
         assert_eq!(again.edits, server.edits);
     }

@@ -19,32 +19,35 @@ In this order, each able to override the ones before:
 1. The built-in data.
 2. `pack.txt` in the data folder, if it exists. (The game prints
    `voxelrust: data in ...` at start-up; `--data DIR` chooses another folder.)
-3. Every mod in each of four `mods` folders, unless switched off:
-   1. `mods/` beside the program. This is where the mods that come with the
-      game are in the Linux and Windows archives.
-   2. `../Resources/mods/` as seen from the program: inside a Mac app, that
-      is `VoxelRust.app/Contents/Resources/mods`.
-   3. `<data folder>/mods/`: the place for mods you install.
-   4. `./mods/`, a `mods` folder where the game was started (handy while
+3. Every mod in the mods folder, unless switched off:
+   1. `<data folder>/mods/`: the place for mods you install. The game makes
+      it when it starts and puts a `README.txt` in it that says how.
+      `--mods-dir DIR` uses the folder `DIR` instead (and then the next one
+      is not read).
+   2. `./mods/`, a `mods` folder where the game was started (handy while
       making one. The mods are not in the source tree: to run from it, link or copy
-   the `VoxelRust-Mods` folder there as `mods`, e.g. `ln -s ../VoxelRust-Mods mods`).
+      the `VoxelRust-Mods` folder there as `mods`, e.g. `ln -s ../VoxelRust-Mods mods`).
 4. Every file given with `--pack FILE`, in the order given.
+
+No mod comes with the game, none sits beside the program and none is built
+into it. On a server, the mods the server sends (see below) are used instead
+of these.
 
 A mod goes by the name of its folder (or of its file without `.txt`). **A
 mod found twice is loaded once**: the first one found, in the order above,
-is used and later ones of the same name are left out. So a mod in the data
-folder cannot replace one of the same name beside the program; give it
-another name, or switch the other off.
+is used and later ones of the same name are left out.
 
 For each file it reads from disk, the game prints `voxelrust: content from
 <path>`.
 
-### Mods that come with the game
+### The author's mods
 
-Eight mods come with the game. They are not inside the program: each is an
-ordinary folder with a `pack.txt`, and can be read, changed, switched off or
-deleted like any other mod. Earth and Vehicles also have Rust code of their
-own (see [Code that mods bring](#code-that-mods-bring)).
+The game ships no mods. The author keeps the mods below in a separate
+repository (`VoxelRust-Mods`); each is an ordinary folder with a `pack.txt`
+that is installed like any other mod (see above), and can be read, changed,
+switched off or deleted. Earth and Vehicles also have Rust code of their
+own, which works only in a program built with the `native-mods` feature (see
+[Code that mods bring](#code-that-mods-bring)).
 
 | Mod | Folder | What it holds |
 | --- | --- | --- |
@@ -57,19 +60,12 @@ own (see [Code that mods bring](#code-that-mods-bring)).
 | Land Vehicles | `mods/landvehicles` | the buggy, the truck and the kart, their icons and their recipes, and their model, `models/car.bbmodel` |
 | Holidays | `mods/holidays` | trees, presents, lights and treats for the year's feasts, four of them big props |
 
-Where they are:
-
-- in the source: a separate folder, `VoxelRust-Mods`, beside the repository
-  (the eight folders above, with `SHIPPED` and `tests.rs`, and any other mod
-  of the author's). The build reads it from `VOXELRUST_MODS_DIR`, default
-  `../VoxelRust-Mods` (see [BUILDING.md](BUILDING.md#mod-code));
-- in the Linux and Windows archives, a `mods/` folder beside the program;
-- in the Mac apps, `Contents/Resources/mods`.
-
-If the game cannot find them (a program copied somewhere without its `mods`
-folder, say) it still runs, but without any of the eight: no Earth terrain,
-disasters, vehicles, boats, trains, planes, land vehicles or holidays. The
-browser version has no folders and so has none of them.
+Where they are: in the separate folder `VoxelRust-Mods`, beside the game's
+repository (with `SHIPPED` and `tests.rs`, which only the `native-mods` build
+uses; see [BUILDING.md](BUILDING.md#mod-code)). Copy the folders you want into
+`<data folder>/mods/`. Without them the game still runs, with no Earth
+terrain, disasters, vehicles, boats, trains, planes, land vehicles or
+holidays. The browser version has no folders and so has no mods.
 
 Vehicles are not in the base game (`data/base.txt` has no vehicles and no
 rails). Boats, trains, planes and land vehicles are mods that write `vehicle`
@@ -92,15 +88,22 @@ with no code behind it does nothing. See [DATA.md](DATA.md#features).
 
 ### Switching mods on and off
 
-SETTINGS > MODS lists every mod found in the mods folders, the ones that come with the
-game included, each with a switch. A change takes effect at once (the
-content is reloaded). The names switched off are kept in `settings.txt` as
+SETTINGS > MODS lists every mod found in the mods folder, each with its
+name, its version (the `version` line of its pack.txt, if it has one) and a
+switch. While you are on a server, the mods the server sent are listed after
+them, marked FROM SERVER; those have no switch (they are the server's, for
+this visit). A change takes effect at once (the content is reloaded). The names switched off are kept in `settings.txt` as
 `mods_off`, a list separated by commas, for example
 `mods_off=disasters,landvehicles`. A mod goes by the name of its folder, or
 of its file without `.txt`.
 
 The data folder's own `pack.txt` and files given with `--pack` are not mods
 and have no switch.
+
+A pack can say two things about its mod, as top-level lines: `version 1.2`
+(shown in the list and announced to players) and `client no` (a mod only a
+server needs: it is not offered for download unless named in `--serve-mods`).
+The game reads nothing else into them.
 
 A pack's `setting` switches (see [Episodes](#episodes)) are saved in
 `settings.txt` as `flag_<id>=0` or `flag_<id>=1`. Settings keys the game does
@@ -524,9 +527,12 @@ Renaming an id counts as removing it and adding a new one.
 
 ## Packs on a server
 
-A server (or a game hosted from the menu) sends its packs and mods, and
-every texture, model and include they use, to each player on joining. Players need to install nothing, and get their own
-packs back when they return to singleplayer. See
+A server (or a game hosted from the menu) sends its packs, and every texture,
+model and include they use, to each player on joining, and offers its mods
+(whole folders, scripts included) for download. Players need to install
+nothing, and get their own packs back when they return to singleplayer.
+Downloaded mods are kept in `<data folder>/tmp/mods/<server>/` for that visit
+only. See
 [MULTIPLAYER.md](MULTIPLAYER.md#server-hosted-packs).
 
 Keep server packs modest: the whole bundle is sent to every player each time
@@ -852,16 +858,29 @@ through the `hurt` hook like any other, with no attacker.
 The code runs only while a loaded pack says `feature <name>` for that mod, so
 switching the mod off in SETTINGS > MODS switches its code off too.
 
-The code is built in, not loaded. To change it, change the source and rebuild
-the program. A mod folder with code copied into a data folder or a `mods`
-folder adds its pack but not its code, since the program has only the code it
-was built with; a `feature` line for code that is not there does nothing. A
-server's packs can switch on only the code that a player's build has, because
-the packs are sent to players and the code is not.
+The code is built in, not loaded, and only when asked for: a plain build
+compiles in no mod code; `cargo build --features native-mods` compiles in the
+code of the mods in `VOXELRUST_MODS_DIR` (default `../VoxelRust-Mods`). To
+change it, change the source and rebuild the program. A mod folder with code
+copied into the mods folder adds its pack but not its code, since the program
+has only the code it was built with; a `feature` line for code that is not
+there does nothing. A server's packs can switch on only the code that a
+player's build has, because the packs are sent to players and the code is not:
+a mod with a `code/mod.rs` is never offered for download.
 
-`mods/SHIPPED` lists the mods that come with the game, one folder name a line.
-The release scripts and the tests use it, and `mods/tests.rs` holds the tests
-for those mods.
+`mods/SHIPPED` names the mods whose files the `native-mods` test build reads,
+and `mods/tests.rs` holds the tests for those mods; nothing is shipped.
+
+### Scripts that mods bring
+
+A mod may carry scripts, `.rs` files in its folder (for the runtime script
+engine in `src/script/`, which is separate from the pack text). Unlike
+compiled code they can be downloaded from a server. The game hands every
+downloaded mod that has scripts to a script host through
+`content::mod_runtime` (`ScriptHost::load_mod(name, version, files)` when the
+mod arrives and `unload_all()` when the player leaves the server); the host
+registers itself with `mod_runtime::set_host`. With no host, scripts are
+downloaded and kept but not run.
 
 ## Hooks reference
 

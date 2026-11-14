@@ -808,15 +808,21 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
 - **VOICE**: proximity voice chat on servers, see [Voice chat](#voice-chat).
 - **SKIN**: pick one of the built-in looks or choose your own 64 x 64 picture with the built-in file browser. See
   [MODDING.md](MODDING.md#player-skins).
-- **MODS**: a switch for every mod, and UPDATE THE GAME AUTOMATICALLY. See
+- **MODS**: every installed mod with its version and a switch (plus the ones
+  a server sent, read only), and UPDATE THE GAME AUTOMATICALLY. See
   [Mods](#mods) and [Updating](#updating).
 
 ### Mods
 
-SETTINGS > MODS lists every mod the game has found, with an on/off switch:
-the eight that come with the game and any you have added (see
-[MODDING.md](MODDING.md#where-packs-are-read-from)). Six are shown at a
-time; the mouse wheel scrolls. Under ADD A MOD FROM A FOLDER OR .ZIP, type the
+No mods come with the game. Put the ones you want in the `mods` folder of the
+data folder (the game makes it at start-up and leaves a README.txt in it;
+`--mods-dir DIR` uses another folder), or join a server: it sends the mods it
+uses for that visit and removes them when you leave.
+
+SETTINGS > MODS lists every mod the game has found, with its version and an
+on/off switch (see [MODDING.md](MODDING.md#where-packs-are-read-from)). On a
+server, the mods it sent are listed too, marked FROM SERVER, without a
+switch. Six are shown at a time; the mouse wheel scrolls. Under ADD A MOD FROM A FOLDER OR .ZIP, type the
 path of a folder, a .zip or a pack file to bring one in. A change takes
 effect at once: the content is read again, as with `/reload`. The mods
 switched off are remembered in `settings.txt` (`mods_off`).
@@ -925,6 +931,8 @@ marked "From the Earth mod").
 | `--data DIR` | where worlds and settings are kept; the folder is made if it is not there |
 | `--log FILE` | also write what the game prints to FILE |
 | `--pack FILE` | extra content file (blocks, items, textures); may be given several times |
+| `--mods-dir DIR` | read mods from `DIR` instead of the data folder's `mods` |
+| `--serve-mods LIST` | with `--server` or `--host`: the mods players download, comma separated (default: every mod that does not say `client no` and has no native code) |
 | `--screenshot FILE` | load the world, save one BMP frame, and exit |
 | `--bench N` | load the world, time N frames, and exit |
 | `--flypass N` | like `--bench`, but flying straight ahead over the land for N frames; saves four pictures (`flypass-1.bmp` to `flypass-4.bmp` in the data folder) and reports frames spent waiting for terrain. A render test |

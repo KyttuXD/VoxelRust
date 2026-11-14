@@ -9,12 +9,14 @@ which includes [data/creatures.txt](../data/creatures.txt) (models),
 
 1. `pack.txt` in the game's data folder, if it exists (the folder is printed
    at start-up; `--data DIR` chooses another).
-2. Every mod, unless switched off, in a `mods` folder beside the program,
-   in `../Resources/mods` (inside a Mac app), in the data folder's `mods`
-   folder, and in a `mods` folder where the game was started. The mods that
-   come with the game (the folders named in `SHIPPED` in the `VoxelRust-Mods` folder, which is outside this repository: see [BUILDING.md](BUILDING.md#mod-code))
-   are found this way; they are folders, not part of the program. A mod
-   found twice is loaded once.
+2. Every mod, unless switched off, in the data folder's `mods` folder (or the
+   one named by `--mods-dir`) and, without `--mods-dir`, in a `mods` folder
+   where the game was started. No mod comes with the game or is part of the
+   program (the author's are in the separate `VoxelRust-Mods` folder: see
+   [BUILDING.md](BUILDING.md#mod-code)). A mod found twice is loaded once.
+   A pack may also say `version 1.2` and `client no` at the top level; the
+   mods list and the server's mod download read them (see
+   [MODDING.md](MODDING.md#switching-mods-on-and-off)).
 3. Every file given with `--pack FILE`.
 
 Mods are switched on and off in SETTINGS > MODS (see
@@ -983,9 +985,11 @@ says `feature <name>`. Changing it needs a rebuild. Its hooks are the table
 | `earth` | the EARTH terrain choice, the `--earth` and `--scale` options, the map screen and place-name notices | the Earth mod (`mods/earth`) |
 | `vehicles` | how vehicles move, board and are kept, the `/vehicle`, `/board` and `/vehicles` commands and the `driving` condition | the Vehicles mod (`mods/vehicles`) |
 
-Both mods come with the game, so they are on unless switched off. Any other
-name is accepted and does nothing: a `feature` line can only switch on code
-that is already built in.
+Both are mods of the author's (not shipped with the game) and their code is
+in the program only when it is built with `--features native-mods`. Their
+`feature` lines are on unless the mod is switched off. Any other name is
+accepted and does nothing: a `feature` line can only switch on code that is
+already built in.
 
 ## Effects
 

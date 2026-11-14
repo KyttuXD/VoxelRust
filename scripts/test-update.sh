@@ -11,7 +11,6 @@
 #   sh scripts/test-update.sh
 set -eu
 cd "$(dirname "$0")/.."
-. scripts/mods-dir.sh
 # The toolchain to build with (TOOLCHAIN=1.77.0 to check the older one).
 work="$(mktemp -d)"
 port=8765

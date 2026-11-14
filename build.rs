@@ -36,7 +36,7 @@ fn embed_data() {
     std::fs::write(dest, out).unwrap();
 }
 
-/// Where the mods are built from: the folder named by VOXELRUST_MODS_DIR
+/// Where the mods are built from (only with the `native-mods` feature): the folder named by VOXELRUST_MODS_DIR
 /// (relative paths are taken from the repository), else `../VoxelRust-Mods`
 /// beside the repository. The folder may be absent: the game then builds
 /// with no mod code and the tests of the shipped mods are skipped.
@@ -54,6 +54,14 @@ fn mods_dir() -> std::path::PathBuf {
 /// the mods that come with the game (those named in `<mods dir>/SHIPPED`).
 fn embed_mods() {
     use std::fmt::Write as _;
+    let dest = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("native_mods.rs");
+    // Without the `native-mods` feature the game carries no mods: no code,
+    // no files, and the mods folder is not even looked at.
+    if std::env::var_os("CARGO_FEATURE_NATIVE_MODS").is_none() {
+        let none = "pub static NATIVES: &[&crate::native::Native] = &[];\n#[cfg(test)]\npub static SHIPPED: &[(&str, &[u8])] = &[];\n";
+        std::fs::write(dest, none).unwrap();
+        return;
+    }
     let root = mods_dir();
     println!("cargo:rerun-if-changed={}", root.display());
     // For the tests of the mods, which also read mods that do not ship.
@@ -106,7 +114,7 @@ fn embed_mods() {
     if tests.is_file() {
         writeln!(out, "#[cfg(test)]\n#[path = {:?}]\nmod shipped_tests;", tests.display().to_string()).unwrap();
     }
-    std::fs::write(std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("native_mods.rs"), out).unwrap();
+    std::fs::write(dest, out).unwrap();
 }
 
 fn main() {

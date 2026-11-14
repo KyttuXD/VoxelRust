@@ -12,7 +12,6 @@
 # Result: dist/macos-legacy/voxelrust
 set -eu
 cd "$(dirname "$0")/.."
-. scripts/mods-dir.sh
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
 SDK="$PWD/target/macos-legacy-sdk"

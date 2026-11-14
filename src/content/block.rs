@@ -1081,6 +1081,9 @@ impl Parser<'_> {
                     cur = Cur::None;
                     self.lines.push((String::from(k), alloc::format!("{}:{}", file, line_no), args.iter().map(|a| a.to_string()).collect()));
                 }
+                // What a mod says about itself (`version 1.2`, `client no`): read by
+                // the mods list and the server's download (net::modsync), not here.
+                "version" | "client" if indent == 0 => cur = Cur::None,
                 // (Inside a block or creature, `sound <id>` names the sound it makes.)
                 "ore" | "plant" | "sound" | "command" | "when" | "dimension" | "feature" | "episode" | "setting" if !(key == "sound" && args.len() == 1 && !matches!(cur, Cur::None)) => {
                     cur = Cur::None;

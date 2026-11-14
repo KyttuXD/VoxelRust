@@ -3,7 +3,8 @@
 //! A pack's text can only say so much. A mod that needs more (a new kind
 //! of terrain, a machine with its own physics) carries Rust of its own in
 //! `<mods folder>/<name>/code/mod.rs` (see `build.rs`). The build finds every such folder and
-//! compiles it in as a module of the game; the game itself names none of
+//! compiles it in as a module of the game (only when built with the
+//! `native-mods` feature: a plain build has no mod code at all); the game itself names none of
 //! them. Each one offers a [`Native`]: a table of hooks the game calls at
 //! fixed points. A hook that is `None` is simply not called.
 //!

@@ -44,6 +44,9 @@ Run it with no options for the title screen. Options:
   --data DIR          where worlds and settings are kept
   --log FILE          also write what the game prints to FILE
   --pack FILE         extra content file (blocks, items, textures); repeatable
+  --mods-dir DIR      read mods from DIR instead of the data folder's mods
+  --serve-mods LIST   with --server (or --host): the mods players download,
+                      comma separated (default: every mod without `client no`)
   --screenshot FILE   load the world, save one BMP frame, and exit
   --bench N           load the world, time N frames, and exit
   --flypass N         like --bench, but flying straight ahead over the land
@@ -116,6 +119,10 @@ struct Opts {
     data: Option<String>,
     log: Option<String>,
     packs: Vec<String>,
+    /// `--mods-dir DIR`: where the player's mods are (default `<data>/mods`).
+    mods_dir: Option<String>,
+    /// `--serve-mods a,b`: the mods a server sends to players.
+    serve_mods: Option<String>,
     /// `--texture-pack DIR` (repeatable): texture pack folders to use this time.
     texture_packs: Vec<String>,
     screenshot: Option<String>,
@@ -209,6 +216,8 @@ fn parse_args(args: &[String]) -> Result<Opts, String> {
             "--data" => o.data = Some(next(&mut i, a)?),
             "--log" => o.log = Some(next(&mut i, a)?),
             "--pack" => o.packs.push(next(&mut i, a)?),
+            "--mods-dir" => o.mods_dir = Some(next(&mut i, a)?),
+            "--serve-mods" => o.serve_mods = Some(next(&mut i, a)?),
             "--texture-pack" => o.texture_packs.push(next(&mut i, a)?),
             "--screenshot" => o.screenshot = Some(next(&mut i, a)?),
             "--write-icon" => o.write_icon = Some(next(&mut i, a)?),
@@ -485,6 +494,10 @@ struct App {
     skin_sent: bool,
     /// Pack files read at start-up, for reading again on request.
     pack_paths: Vec<String>,
+    /// Where the player's mods are (see `--mods-dir`), without a trailing slash.
+    mods_dir: String,
+    /// `--serve-mods`: the mods a game hosted from the menu sends to players (None: all that allow it).
+    serve_mods: Option<Vec<String>>,
     /// The packs in use, bundled; empty when there are none.
     pack_text: Vec<u8>,
     /// Playing with content a server sent rather than our own packs.
@@ -684,6 +697,10 @@ impl App {
         // The map's selection, name box and view belong to the world it was in.
         self.full = None;
         if let Some(mut s) = self.session.take() {
+            // Leaving a server: its mods (downloaded for this visit only) go.
+            if let Some(sync) = s.mod_sync.as_mut() {
+                sync.end();
+            }
             // Items lying in the crafting grid are saved with the inventory.
             self.craft.put_away(&mut s.inv);
             if !self.scripted && !s.save() {
@@ -708,7 +725,7 @@ impl App {
         self.close_world(r);
         let name = crate::settings::clean_world_name(&self.form_host, 24);
         let port = crate::proto::DEFAULT_PORT;
-        let (server, edits) = match open_server(if name.is_empty() { "shared" } else { &name }, None, None, port, 16, &self.base, &self.pack_text, &self.settings) {
+        let (server, edits) = match open_server(if name.is_empty() { "shared" } else { &name }, None, None, port, 16, &self.base, &self.pack_text, crate::client::mods::serving::served(&self.pack_paths, &self.settings.mods_off, self.serve_mods.as_deref()), &self.settings) {
             Ok(v) => v,
             Err(e) => {
                 self.status = e.to_ascii_uppercase();
@@ -1331,6 +1348,10 @@ impl App {
         if let Some(g) = self.session.as_ref() {
             if !g.playable && self.screen == Screen::Game && self.loading_since > 0.0 && sys::now() - self.loading_since > 0.35 {
                 draw_loading(r, w, h, s, g, self.distance);
+            }
+            // The server's mods are still arriving.
+            if let Some((done, total)) = g.mod_sync.as_ref().and_then(|m| m.progress()) {
+                crate::client::mods::progress::draw(r, w, h, s, done, total, !g.playable);
             }
         }
         let before = self.screen;
@@ -2139,20 +2160,20 @@ impl App {
                     skin_changed |= ui.toggle(cx, row(5) + 4.0 * s, cw, bh, "SLIM ARMS (ALEX SKINS)", &mut st.slim_arms);
                 }
                 5 => {
-                    // Every mod, built in or from a mods folder, with a
-                    // switch. Changes take effect at once.
-                    let names = all_mods(&self.pack_paths);
-                    let hidden = names.len().saturating_sub(6) as i32;
+                    // Every mod in the mods folder, with its version and a
+                    // switch (changes take effect at once), then the ones
+                    // the server sent for this session, which stay as they are.
+                    let installed = all_mods(&self.pack_paths);
+                    let sent: Vec<(String, String)> = self.session.as_ref().and_then(|g| g.mod_sync.as_ref()).map(|m| m.taken.iter().map(|t| (t.name.clone(), t.version.clone())).collect()).unwrap_or_default();
+                    let list = crate::client::mods::rows::rows(&installed, &st.mods_off, &sent);
+                    let hidden = list.len().saturating_sub(6) as i32;
                     self.mods_scroll = (self.mods_scroll - ui.inp.wheel).clamp(0, hidden);
-                    ui.text(x, row(0) - 9.0 * s, if names.is_empty() { "NO MODS FOUND" } else { "MODS (PUT YOUR OWN IN THE MODS FOLDER)" }, ui::DIM);
-                    for (k, name) in names.iter().skip(self.mods_scroll as usize).take(6).enumerate() {
-                        let mut on = !st.mods_off.split(',').any(|o| o == name);
-                        if ui.toggle(x, row(k), bw, bh, &name.to_ascii_uppercase().replace('_', " "), &mut on) {
-                            let mut off: Vec<&str> = st.mods_off.split(',').filter(|o| !o.is_empty() && o != name).collect();
-                            if !on {
-                                off.push(name);
-                            }
-                            st.mods_off = off.join(",");
+                    ui.text(x, row(0) - 9.0 * s, if list.is_empty() { "NO MODS INSTALLED (SEE THE README IN THE MODS FOLDER)" } else { "MODS (PUT YOUR OWN IN THE MODS FOLDER)" }, ui::DIM);
+                    for (k, m) in list.iter().skip(self.mods_scroll as usize).take(6).enumerate() {
+                        let mut on = m.on;
+                        let flipped = ui.toggle(x, row(k), bw, bh, &m.label(), &mut on);
+                        if flipped && !m.from_server {
+                            st.mods_off = crate::client::mods::rows::toggled(&st.mods_off, &m.name, on);
                             changed = true;
                             self.want_reload = true;
                         }
@@ -2164,7 +2185,7 @@ impl App {
                     ui.text(x, row(7) - 9.0 * s, "ADD A MOD FROM A FOLDER OR .ZIP (TYPE ITS PATH)", ui::DIM);
                     ui.text_field(41, x, row(7), bw - 44.0 * s, bh, &mut self.form_mod_path, 200, ui::any_char);
                     if ui.button(x + bw - 41.0 * s, row(7), 41.0 * s, bh, "ADD") {
-                        self.status = import_mod(&self.base, &self.form_mod_path);
+                        self.status = import_mod(&self.mods_dir, &self.form_mod_path);
                         if self.status.starts_with("ADDED") {
                             self.form_mod_path.clear();
                             self.want_reload = true;
@@ -3136,6 +3157,15 @@ fn heart(r: &mut Renderer, x: f32, y: f32, s: f32, fill: i32) {
     }
 }
 
+/// Where the player's mods are: `--mods-dir`, else `<data>/mods` (no
+/// trailing slash).
+fn mods_folder(opts: &Opts, base: &str) -> String {
+    match opts.mods_dir.as_deref().map(|d| d.trim_end_matches(|c| c == '/' || c == '\\')).filter(|d| !d.is_empty()) {
+        Some(d) => String::from(d),
+        None => alloc::format!("{}mods", base),
+    }
+}
+
 fn run(args: Vec<String>) -> Result<(), String> {
     let opts = parse_args(&args)?;
     crate::update::remember_args(&args);
@@ -3221,7 +3251,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     }
     crate::session::migrate_worlds(&base);
     if let Some(from) = &opts.import_mod {
-        let said = import_mod(&base, from);
+        let said = import_mod(&mods_folder(&opts, &base), from);
         logf!("voxelrust: {}", said.to_ascii_lowercase());
         return if said.starts_with("ADDED") { Ok(()) } else { Err(String::from("the mod was not added")) };
     }
@@ -3285,18 +3315,20 @@ fn run(args: Vec<String>) -> Result<(), String> {
         let dir = base.trim_end_matches(|c| c == '/' || c == '\\');
         sys::run_command(&if cfg!(windows) { alloc::format!("mkdir \"{}\" 2>nul", dir) } else { alloc::format!("mkdir -p \"{}\"", dir) });
     }
-    // Then every mod in the data folder's `mods`, and in a `mods` folder
-    // beside where the game was started (handy while making one).
-    // Mods are looked for beside the program (where the ones that come
-    // with the game are; inside the app on a Mac), in the data folder, and
-    // in a `mods` folder where the game was started (handy while making one).
-    let exe = sys::exe_dir();
-    let mut pack_paths = alloc::vec![auto_pack.clone()];
-    for folder in [alloc::format!("{}mods", exe), alloc::format!("{}../Resources/mods", exe), alloc::format!("{}mods", base), String::from("mods")] {
-        let pattern = alloc::format!("{}/*", folder);
-        if !pack_paths.contains(&pattern) && (folder == "mods" || !exe.is_empty() || folder.starts_with(base.as_str())) {
-            pack_paths.push(pattern);
-        }
+    // Then every mod in the mods folder (`<data>/mods`, or --mods-dir), and,
+    // unless another folder was named, in a `mods` folder where the game was
+    // started (handy while making one). No mods come with the game or sit
+    // beside the program: the player installs them, or a server sends them.
+    let mods_dir = mods_folder(&opts, &base);
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        crate::client::mods::folder::ensure(&mods_dir);
+        // Mods a server sent last time (a crash can leave them behind) go.
+        crate::net::modsync::tmp::clean_all(&base);
+    }
+    let mut pack_paths = alloc::vec![auto_pack.clone(), alloc::format!("{}/*", mods_dir)];
+    if opts.mods_dir.is_none() && mods_dir != "mods" {
+        pack_paths.push(String::from("mods/*"));
     }
     pack_paths.extend(opts.packs.iter().cloned());
     for p in &opts.packs {
@@ -3348,7 +3380,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
     }
     if opts.server {
-        return run_server(&opts, &base, &pack_text);
+        return run_server(&opts, &base, &pack_text, &pack_paths, &mods_off);
     }
     let scripted_early = opts.screenshot.is_some() || opts.bench.is_some();
     let settings_path = alloc::format!("{}settings.txt", base);
@@ -3505,6 +3537,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         skin_png: Vec::new(),
         skin_sent: false,
         pack_paths,
+        mods_dir,
+        serve_mods: opts.serve_mods.as_deref().and_then(crate::net::modsync::serve::parse_serve_list),
         pack_text,
         server_content: false,
         want_reload: false,
@@ -3873,7 +3907,7 @@ fn mods_in(folder: &str) -> Vec<String> {
                     }
                 }
             }
-        } else if name.ends_with(".txt") && name != "mods.txt" {
+        } else if name.ends_with(".txt") && name != "mods.txt" && !name.eq_ignore_ascii_case("README.txt") {
             found.push(path);
         } else {
             let pack = alloc::format!("{}/pack.txt", path);
@@ -3916,22 +3950,16 @@ fn read_mod_file(path: &str) -> Option<Vec<u8>> {
     }
 }
 
-/// The mods that come inside the program (`data/packs/<name>/pack.txt`).
-fn bundled_mods() -> Vec<(String, &'static [u8])> {
-    block::embedded::FILES.iter().filter(|f| f.0.starts_with("packs/") && f.0.ends_with("/pack.txt")).map(|f| (String::from(f.0), f.1)).collect()
-}
-
 /// Bring a mod in from somewhere else on the machine: a folder, a .zip,
 /// or a lone pack file. It is copied into the data folder's `mods`, where
 /// the game then finds it. Returns what to tell the player.
 #[cfg(not(target_arch = "wasm32"))]
-fn import_mod(base: &str, from: &str) -> String {
+fn import_mod(mods: &str, from: &str) -> String {
     let from = from.trim().trim_end_matches(|c| c == '/' || c == '\\');
     // The path goes on a command line: nothing that could end the quotes.
     if from.is_empty() || from.chars().any(|c| matches!(c, '"' | '`' | '$' | '\n' | '\r' | '%' | '!')) {
         return String::from("TYPE WHERE THE MOD IS: A FOLDER, A .ZIP OR A PACK FILE");
     }
-    let mods = alloc::format!("{}mods", base);
     let name: String = mod_name(from).trim_end_matches(".zip").chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')).take(32).collect();
     if name.is_empty() {
         return String::from("THAT NAME WILL NOT DO FOR A MOD");
@@ -3973,32 +4001,27 @@ fn import_mod(_: &str, _: &str) -> String {
     String::from("NOT POSSIBLE IN A BROWSER")
 }
 
-/// Every mod there is to switch on or off: those built in, then those in
-/// the mods folders.
-fn all_mods(pack_paths: &[String]) -> Vec<String> {
-    let mut names: Vec<String> = bundled_mods().iter().map(|m| mod_name(&m.0)).collect();
+/// Every mod there is to switch on or off, as (name, version): those in
+/// the mods folders. (No mod is built into the program.)
+fn all_mods(pack_paths: &[String]) -> Vec<(String, String)> {
+    let mut mods: Vec<(String, String)> = Vec::new();
     for p in pack_paths {
         if let Some(folder) = p.strip_suffix("/*") {
             for m in mods_in(&alloc::format!("{}/", folder)) {
                 let n = mod_name(&m);
-                if !names.contains(&n) {
-                    names.push(n);
+                if !mods.iter().any(|x| x.0 == n) {
+                    let version = read_mod_file(&m).map(|b| crate::net::modsync::bundle::read_meta(&String::from_utf8_lossy(&b)).version).unwrap_or_default();
+                    mods.push((n, version));
                 }
             }
         }
     }
-    names
+    mods
 }
 
 fn load_content(pack_paths: &[String], off: &str) -> (Registry, Vec<u8>) {
     let mut sources: Vec<(String, String)> = alloc::vec![(String::from("base.txt"), String::from(block::BASE_DATA))];
     let is_off = |name: &str| off.split(',').any(|o| o == name);
-    // The mods built into the program come first.
-    for (path, bytes) in bundled_mods() {
-        if !is_off(&mod_name(&path)) {
-            sources.push((path, String::from_utf8_lossy(bytes).into_owned()));
-        }
-    }
     // Mods are looked for afresh each time, so one dropped into the folder
     // while the game runs is there after a reload.
     let mut all: Vec<String> = Vec::new();
@@ -4118,7 +4141,7 @@ static HOST_STOP: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBoo
 
 /// Open the server for the world `name`: its small save (seed, kind and
 /// every edit) is read, or made on first use.
-fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u16, players: usize, base: &str, pack: &[u8], settings: &Settings) -> Result<(crate::server::Server, String), String> {
+fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u16, players: usize, base: &str, pack: &[u8], mods: Vec<crate::net::modsync::serve::ServedMod>, settings: &Settings) -> Result<(crate::server::Server, String), String> {
     use crate::server::{Config, Server};
     if name.is_empty() || name != crate::settings::clean_world_name(name, 24) {
         return Err(String::from("world names use only letters, digits, spaces, - and _ (24 at most)"));
@@ -4151,6 +4174,7 @@ fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String>, port: u1
         content: crate::proto::content_checksum(),
         states: reg().blocks.len() as u16,
         pack: pack.to_vec(),
+        mods,
     };
     let mut server = Server::bind(cfg).map_err(|e| alloc::format!("could not listen on port {}: {:?}", port, e))?;
     // Operators and bans are kept beside the world: "op NAME" / "ban NAME".
@@ -4242,10 +4266,11 @@ extern "C" fn on_terminate(_: c_int) {
 }
 
 /// `voxelrust --server`: host a world for others, with no window.
-fn run_server(opts: &Opts, base: &str, pack_text: &[u8]) -> Result<(), String> {
+fn run_server(opts: &Opts, base: &str, pack_text: &[u8], pack_paths: &[String], mods_off: &str) -> Result<(), String> {
     let name = opts.world.clone().unwrap_or_else(|| String::from("server"));
     let new_kind = crate::native::active().filter_map(|(_, n)| n.option_kind).find_map(|kind| kind());
     let port = opts.port.unwrap_or(crate::proto::DEFAULT_PORT);
+    let only = opts.serve_mods.as_deref().and_then(crate::net::modsync::serve::parse_serve_list);
     // The server keeps itself up to date too: an update is installed as soon
     // as it is found, and the server restarts into it once nobody is playing.
     sys::handle_termination(on_terminate);
@@ -4256,7 +4281,7 @@ fn run_server(opts: &Opts, base: &str, pack_text: &[u8]) -> Result<(), String> {
         let (scratch, install) = (String::from(base), true);
         sys::thread::spawn(alloc::boxed::Box::new(move || crate::update::watch(BUILD, &scratch, install)));
     }
-    let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, &Settings::default())?;
+    let (server, edits_path) = open_server(&name, opts.seed, new_kind, port, opts.players.unwrap_or(16), base, pack_text, crate::client::mods::serving::served(pack_paths, mods_off, only.as_deref()), &Settings::default())?;
     let address = sys::net::local_address().unwrap_or_else(|| String::from("<this machine's address>"));
     logf!("voxelrust: players join with:  voxelrust --join {}:{}", address, server.port());
     if server_loop(server, edits_path, false) {

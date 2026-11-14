@@ -12,3 +12,4 @@ pub mod skinfile;
 pub mod audio;
 pub mod update;
 pub mod voice;
+pub mod mods;
