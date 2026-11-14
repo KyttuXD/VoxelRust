@@ -1,18 +1,8 @@
 /target
 /dist
-# Mods are kept out of the repository, except the ones that come with
-# the game.
-/mods/*
-!/mods/disasters/
-!/mods/earth/
-!/mods/landvehicles/
-!/mods/boats/
-!/mods/trains/
-!/mods/planes/
-!/mods/holidays/
-!/mods/vehicles/
-!/mods/SHIPPED
-!/mods/tests.rs
+# The mods live outside the repository, in ../VoxelRust-Mods (or the folder
+# named by VOXELRUST_MODS_DIR). A mods/ folder here is a stray copy.
+/mods/
 # Libraries shipped beside the game are fetched, not kept (see vendor/README.md).
 /vendor/*
 !/vendor/README.md

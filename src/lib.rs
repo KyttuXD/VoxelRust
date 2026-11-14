@@ -20,7 +20,8 @@ pub mod game;
 pub mod net;
 pub mod client;
 pub mod native;
-/// The code of the mods found in `mods/` when the game was built (see
+/// The code of the mods found in the mods folder (VOXELRUST_MODS_DIR, default
+/// `../VoxelRust-Mods`) when the game was built (see
 /// [`native`]).
 pub mod mods {
     include!(concat!(env!("OUT_DIR"), "/native_mods.rs"));

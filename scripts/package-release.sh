@@ -17,6 +17,8 @@
 # own, and the updater only ever takes its own.
 set -eu
 cd "$(dirname "$0")/.."
+. scripts/mods-dir.sh
+need_mods
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
 COMMIT="${VOXELRUST_COMMIT:-$(git rev-parse --short=12 HEAD)}"
@@ -84,7 +86,7 @@ package() { # package NAME PROGRAM-OR-APP FORMAT
   case "$2" in
     *.app) ;; # the app carries its mods (and SDL2) inside
     *) mkdir -p "$dir/mods"
-       for m in $(grep -v '^#' mods/SHIPPED); do cp -R "mods/$m" "$dir/mods/"; done ;;
+       for m in $(grep -v '^#' "$MODS/SHIPPED"); do cp -R "$MODS/$m" "$dir/mods/"; done ;;
   esac
   if [ "$3" = "tar.gz" ]; then
     mkdir -p "$dir/share"

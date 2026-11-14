@@ -33,8 +33,9 @@ import uuid
 from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODS_DIR = os.path.abspath(os.environ.get("VOXELRUST_MODS_DIR") or os.path.join(ROOT, "..", "VoxelRust-Mods"))  # the mods live outside the repository
 OUT_DIR = os.path.join(ROOT, "data", "models")
-PACK_DIR = os.path.join(ROOT, "mods", "spellsNmagic", "models")  # the fantasy pack
+PACK_DIR = os.path.join(MODS_DIR, "spellsNmagic", "models")  # the fantasy pack
 CREATURES = os.path.join(ROOT, "data", "creatures.txt")
 FACES = ("north", "south", "east", "west", "up", "down")
 # Brightness the game gives each face (src/model.rs), for the preview.
@@ -5339,7 +5340,7 @@ SPELLS_N_MAGIC = [dragon, wyvern, phoenix, unicorn, griffin, wisp, imp, mimic, f
 # Giants, dragons and prehistoric beasts, written to mods/titanlands/models/.
 # The dragons, the stag and the moth are pale so that entities can tint them.
 
-TITAN_DIR = os.path.join(ROOT, "mods", "titanlands", "models")
+TITAN_DIR = os.path.join(MODS_DIR, "titanlands", "models")
 
 
 def banded(base, dark, period=4, axis="z", belly=None, belly_y=-1e9):
@@ -7662,7 +7663,7 @@ TITANLANDS = [titan, behemoth, hydra, wyrm, emberwing, stormwing, pocket_dragon,
 # two hanging ones, HG_HANGING, are built down from y = 16 instead). Nothing
 # here moves: every box hangs on `Body` and articulate() leaves them alone.
 
-HG_DIR = os.path.join(ROOT, "mods", "hearthgarden", "models")
+HG_DIR = os.path.join(MODS_DIR, "hearthgarden", "models")
 HG_HANGING = {"chandelier", "hanging_lantern"}
 
 CLEAR = (0, 0, 0, 0)
@@ -9285,16 +9286,16 @@ RIGID.update(fn.__name__ for fn in HEARTH_GARDEN)
 ANIMALS = [cow, pig, chicken, cat, dog, tiger, elephant, bear, gator, snake, fish, squid, worm, ant, sheep, horse, frog, duck]
 VEHICLES = [boat, cargo_boat, cart, chest_cart, plane]
 LAND_VEHICLES = [car]   # the car belongs to the landvehicles mod
-LAND_DIR = os.path.join(ROOT, "mods", "landvehicles", "models")
+LAND_DIR = os.path.join(MODS_DIR, "landvehicles", "models")
 
 # Where each set of models is written: (output directory, model functions). A
 # plain run writes them all; add a pack by adding a folder and its list here.
 OUTPUTS = [
     (OUT_DIR, ANIMALS + MORE_ANIMALS + FARM + MONSTERS),
     # Vehicles belong to their mods.
-    (os.path.join(ROOT, "mods", "boats", "models"), [boat, cargo_boat]),
-    (os.path.join(ROOT, "mods", "trains", "models"), [cart, chest_cart]),
-    (os.path.join(ROOT, "mods", "planes", "models"), [plane]),
+    (os.path.join(MODS_DIR, "boats", "models"), [boat, cargo_boat]),
+    (os.path.join(MODS_DIR, "trains", "models"), [cart, chest_cart]),
+    (os.path.join(MODS_DIR, "planes", "models"), [plane]),
     (PACK_DIR, SPELLS_N_MAGIC),
     (TITAN_DIR, TITANLANDS),
     (LAND_DIR, LAND_VEHICLES),

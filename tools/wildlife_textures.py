@@ -34,7 +34,8 @@ import uuid
 from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MOD = os.path.join(ROOT, "mods", "wildlife")
+MODS_DIR = os.path.abspath(os.environ.get("VOXELRUST_MODS_DIR") or os.path.join(ROOT, "..", "VoxelRust-Mods"))  # the mods live outside the repository
+MOD = os.path.join(MODS_DIR, "wildlife")
 FACES = ("north", "south", "east", "west", "up", "down")
 SIDES = ("north", "south", "east", "west")
 FRAME = 0.80          # how much darker the one pixel frame of every face is

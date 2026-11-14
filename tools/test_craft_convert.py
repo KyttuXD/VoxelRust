@@ -10,6 +10,7 @@ sys.path.insert(0, HERE)
 import craft_convert as c  # noqa: E402
 
 ROOT = os.path.join(HERE, "..")
+MODS_DIR = os.path.abspath(os.environ.get("VOXELRUST_MODS_DIR") or os.path.join(ROOT, "..", "VoxelRust-Mods"))  # the mods live outside the repository
 
 
 def read(path):
@@ -84,11 +85,11 @@ class Check(unittest.TestCase):
         self.assertEqual(len(g), 2)
 
     def test_the_games_own_recipes_have_no_clash(self):
-        files = [os.path.join(ROOT, "data", "base.txt")] + sorted(glob.glob(os.path.join(ROOT, "mods", "*", "pack.txt")))
+        files = [os.path.join(ROOT, "data", "base.txt")] + sorted(glob.glob(os.path.join(MODS_DIR, "*", "pack.txt")))
         self.assertEqual(c.find_conflicts([read(f) for f in files]), [])
 
     def test_the_files_are_already_converted(self):
-        for f in [os.path.join(ROOT, "data", "base.txt")] + sorted(glob.glob(os.path.join(ROOT, "mods", "*", "pack.txt"))):
+        for f in [os.path.join(ROOT, "data", "base.txt")] + sorted(glob.glob(os.path.join(MODS_DIR, "*", "pack.txt"))):
             text = read(f)
             self.assertEqual(c.convert_text(text), text, f)
 

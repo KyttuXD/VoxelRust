@@ -20,12 +20,17 @@ cargo build --release
 The program is `target/release/voxelrust`. To run it, install the SDL2
 runtime library (`libsdl2-2.0-0` on Debian and Ubuntu).
 
-The mods that come with the game are not inside the program: they are the
-folders named in `mods/SHIPPED` (see [Mod code](#mod-code)). The game finds
-them in a `mods` folder beside the program or in `./mods`, so run a program
-you built from the top of the source tree (`cargo run --release` does), or
-copy those folders into a `mods` folder next to it. Without them the game
-still runs, with no Earth worlds, disasters, boats, trains, planes, land
+The mods are not in this repository. They live in a separate folder,
+`VoxelRust-Mods`, which the build looks for beside the repository
+(`../VoxelRust-Mods`) or in the folder named by the environment variable
+`VOXELRUST_MODS_DIR` (see [Mod code](#mod-code)). Without it the build still
+works, with a warning, and the game has no native mods.
+
+The mods that come with the game are not inside the program either: they are
+the folders named in `SHIPPED` in the mods folder. The game finds them in a
+`mods` folder beside the program or in `./mods`, so copy those folders into a
+`mods` folder next to the program (the release scripts do). Without them the
+game still runs, with no Earth worlds, disasters, boats, trains, planes, land
 vehicles or holidays.
 
 ## Windows (64-bit)
@@ -103,7 +108,8 @@ on a system older than 10.12. If you give the script an `SDL2.framework`,
 it is copied inside the app, which then needs nothing else installed. For
 Mac OS X 10.6 use the official SDL2 2.0.4 framework.
 
-The script also copies the mods listed in `mods/SHIPPED` into the app, as
+The script also copies the mods listed in `SHIPPED` (in the mods folder, see
+[Mod code](#mod-code)) into the app, as
 `Contents/Resources/mods`, which is one of the places the game looks.
 
 ## Packaging a release
@@ -128,8 +134,10 @@ of a release out in `dist/nightly/`:
 | `BUILDS.txt`, `SHA256SUMS.txt` | for people: which file is for which machine, and checksums |
 
 Each program archive also holds `README.md`, `LICENSE`, `docs/` and `examples/`.
-The Linux and Windows archives hold the mods listed in `mods/SHIPPED` (one
-folder name a line; `scripts/package-release.sh` copies each one) in a `mods/`
+The Linux and Windows archives hold the mods listed in `SHIPPED` in the mods
+folder (one folder name a line; `scripts/package-release.sh` copies each one
+from `VOXELRUST_MODS_DIR`, default `../VoxelRust-Mods`, and refuses to run
+without it) in a `mods/`
 folder beside the program; the Mac apps carry them inside, in
 `Contents/Resources/mods`. The game's own data (`data/`) is inside the
 program. SDL2 is not in the Linux archive; the Windows and Mac files include
@@ -245,9 +253,21 @@ are untouched. The two Mac builds are different files on purpose: a Mac on
 
 ## Mod code
 
-A mod is a folder under `mods/`. Its `pack.txt` is plain text and needs no
-build. A mod that needs Rust brings it in `mods/<name>/code/mod.rs`, and may
-have more files beside it (`mods/vehicles/code/physics.rs` does). At build
+Mods are kept outside this repository, in their own repository,
+`VoxelRust-Mods`. `build.rs` reads that folder from the environment variable
+`VOXELRUST_MODS_DIR` (a relative path is taken from the top of this
+repository), and when it is not set from `../VoxelRust-Mods`, beside the
+repository. If the folder is missing the build prints a warning and goes on
+with no native mods and no shipped mods, and the tests of the shipped mods
+skip themselves. `scripts/` read the same variable.
+
+```sh
+VOXELRUST_MODS_DIR=/path/to/VoxelRust-Mods cargo build --release
+```
+
+A mod is a folder in the mods folder. Its `pack.txt` is plain text and needs no
+build. A mod that needs Rust brings it in `<mods>/<name>/code/mod.rs`, and may
+have more files beside it (`vehicles/code/physics.rs` does). At build
 time `build.rs` (`embed_mods`) finds every folder whose `code/mod.rs` exists
 and compiles each one into the program as a module. The folder name must be
 letters, digits or `_`, starting with a letter. The build does not check git:
@@ -262,12 +282,13 @@ loaded at run time: after changing anything under `code/`, rebuild.
 
 Two shipped mods have code: `earth` and `vehicles`.
 
-`mods/SHIPPED` lists the mods that come with the game, one folder name a
+`SHIPPED` (in the mods folder) lists the mods that come with the game, one folder name a
 line: `disasters`, `earth`, `vehicles`, `boats`, `trains`, `planes`,
 `landvehicles` and `holidays`. The release scripts copy them (see
 [Packaging a release](#packaging-a-release)). `build.rs` also includes their
-files in the test build only. `mods/tests.rs` is compiled in as a test module,
-so `cargo test --lib` checks the shipped mods.
+files in the test build only. The mods folder's `tests.rs` is compiled in as a test module,
+so `cargo test --lib` checks the shipped mods (it skips with a message when
+the folder is missing).
 
 ## Tests
 
@@ -277,7 +298,7 @@ cargo test --lib
 
 The tests are unit tests inside the library. They open no window and need no
 SDL2, graphics card or network. (The game itself is `no_std`; the tests build
-against `std` so that plain `cargo test` works.) They include `mods/tests.rs`,
+against `std` so that plain `cargo test` works.) They include the mods folder's `tests.rs`,
 the tests of the shipped mods (see [Mod code](#mod-code)).
 
 ## GitHub workflows
@@ -346,9 +367,8 @@ Rebuild after changing anything under `data/`.
 The mods that come with the game are **not** embedded in the data. Their
 packs are read from the `mods` folders when the game starts, and their code
 is compiled in (see [Mod code](#mod-code)). Each is a folder written by hand,
-named in `mods/SHIPPED`, and shows in SETTINGS > MODS under its folder name.
-Git tracks only the shipped folders, `mods/SHIPPED` and `mods/tests.rs`
-(`.gitignore` ignores the rest of `mods/`). Changing a `pack.txt` needs no
+named in `SHIPPED`, and shows in SETTINGS > MODS under its folder name.
+All of them are in the `VoxelRust-Mods` repository, not this one. Changing a `pack.txt` needs no
 rebuild: `/reload` reads it again. Changing the Rust under `code/` does.
 
 ## Icons

@@ -82,7 +82,7 @@ own procedurally painted textures and its own terrain generator.
 
 ## The mods that come with the game
 
-Each is a folder in `mods/`, and each is named in `mods/SHIPPED`. SETTINGS >
+Each is a folder in the separate `VoxelRust-Mods` folder (not in this repository), and each is named in its `SHIPPED` file. SETTINGS >
 MODS switches it off.
 
 | Folder | What it adds |
@@ -152,16 +152,20 @@ Details: [docs/BUILDING.md](docs/BUILDING.md). `voxelrust --help` lists the
 command-line options.
 
 The game reads the mods that come with it from a `mods` folder beside
-the program (inside the app on a Mac) or from `./mods`, so start a program
-built by hand from the top of the source tree, as `cargo run` does.
+the program (inside the app on a Mac) or from `./mods`. The mods are not in
+this repository: they are in `VoxelRust-Mods`, a folder beside it (or the one
+named by the environment variable `VOXELRUST_MODS_DIR`), which the build
+compiles the mods' Rust code from and the release scripts copy the shipped mods
+from. To run from the source tree, link it as `mods`:
+`ln -s ../VoxelRust-Mods mods` (git ignores `/mods/`), then `cargo run`.
 
 ## Repository layout
 
 | Path | What is in it |
 | --- | --- |
 | `src/` | The game. `src/native.rs` holds the table of hooks (`struct Native`) that mod code fills in. |
-| `mods/<name>/` | A mod: a `pack.txt`, and a `code/` folder if it has Rust. `build.rs` compiles each `code/mod.rs` into the program, so changing mod code needs a rebuild. The code runs only while a loaded pack says `feature <name>`. |
-| `mods/SHIPPED` | The mods that come with the game, one folder name a line. The release scripts and `mods/tests.rs` use it. |
+| `../VoxelRust-Mods/<name>/` (or `$VOXELRUST_MODS_DIR/<name>/`) | A mod: a `pack.txt`, and a `code/` folder if it has Rust. `build.rs` compiles each `code/mod.rs` into the program, so changing mod code needs a rebuild. The code runs only while a loaded pack says `feature <name>`. |
+| `../VoxelRust-Mods/SHIPPED` | The mods that come with the game, one folder name a line. The release scripts and the mods' `tests.rs` use it. |
 | `data/` | The base content (`base.txt`, `creatures.txt`, `wildlife.txt`) and its models. |
 | `scripts/` | Build, cross-build and release scripts. |
 | `tools/` | Python generators for the data, icons and models. |

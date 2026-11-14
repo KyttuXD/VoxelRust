@@ -26,7 +26,8 @@ In this order, each able to override the ones before:
       is `VoxelRust.app/Contents/Resources/mods`.
    3. `<data folder>/mods/`: the place for mods you install.
    4. `./mods/`, a `mods` folder where the game was started (handy while
-      making one; in the source tree it is where the mods that come with the game live).
+      making one. The mods are not in the source tree: to run from it, link or copy
+   the `VoxelRust-Mods` folder there as `mods`, e.g. `ln -s ../VoxelRust-Mods mods`).
 4. Every file given with `--pack FILE`, in the order given.
 
 A mod goes by the name of its folder (or of its file without `.txt`). **A
@@ -58,9 +59,10 @@ own (see [Code that mods bring](#code-that-mods-bring)).
 
 Where they are:
 
-- in the source tree, `mods/` at the top (the eight folders above, with
-  `mods/SHIPPED` and `mods/tests.rs`, are the only things under `mods/` that
-  git tracks);
+- in the source: a separate folder, `VoxelRust-Mods`, beside the repository
+  (the eight folders above, with `SHIPPED` and `tests.rs`, and any other mod
+  of the author's). The build reads it from `VOXELRUST_MODS_DIR`, default
+  `../VoxelRust-Mods` (see [BUILDING.md](BUILDING.md#mod-code));
 - in the Linux and Windows archives, a `mods/` folder beside the program;
 - in the Mac apps, `Contents/Resources/mods`.
 
@@ -122,9 +124,10 @@ appears after `/reload`, and one taken out disappears. A mod can be switched
 off without removing it: see
 [Switching mods on and off](#switching-mods-on-and-off).
 
-In the source tree, everything under `mods/` is ignored by git except the
-mods that come with the game, `mods/SHIPPED` and `mods/tests.rs`, so a mod
-under development there is not committed by accident.
+The mods are kept outside the game's repository, in the `VoxelRust-Mods`
+folder (its own git repository, beside this one; `VOXELRUST_MODS_DIR` names
+another place). A `mods/` folder at the top of the game's source tree is
+ignored by git, so a mod under development there is not committed by accident.
 
 A pack can pull in more files with `include`, and refers to textures (`.tga`)
 and models (`.bbmodel`) by paths relative to the pack file itself.
@@ -719,9 +722,8 @@ folder, or into a folder of their own under `mods/`:
 
 ### A larger example: Spells & Magic
 
-A bigger pack, "Spells & Magic", lives in `mods/spellsNmagic/` on the
-author's machine. That folder is ignored by git, so it is **not in the
-repository**. If you have the folder, its `pack.txt` is a worked example of
+A bigger pack, "Spells & Magic", lives in `spellsNmagic/` of the author's
+mods folder, which is **not in the repository**. If you have the folder, its `pack.txt` is a worked example of
 the newer features together: its own sounds, wands and potions driven by
 `when` scripts, chat commands, a dimension reached through portal blocks,
 and creatures (a dragon that shoots, a unicorn to tame) with their own
@@ -729,11 +731,11 @@ Blockbench models.
 
 ### A larger example still: Titanlands
 
-"Titanlands", in `mods/titanlands/`, is likewise **not in the
+"Titanlands", in `titanlands/` of the mods folder, is likewise **not in the
 repository**. It is an original pack in the big-adventure style: its names,
 content and models were made for VoxelRust, and it is **not a port of any
 existing mod**. Its `pack.txt` is written by a script,
-`mods/titanlands/gen.py`, from tables, which is a practical way to make a
+`titanlands/gen.py`, from tables, which is a practical way to make a
 pack of this size. It has 68 creatures, about 130 blocks and 173 items:
 hatch stones, a capture net and cages, three more metal tiers, crops and
 fruit trees, ants with nests, dinosaurs, robots, worms, sea creatures, birds,

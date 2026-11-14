@@ -12,7 +12,7 @@ which includes [data/creatures.txt](../data/creatures.txt) (models),
 2. Every mod, unless switched off, in a `mods` folder beside the program,
    in `../Resources/mods` (inside a Mac app), in the data folder's `mods`
    folder, and in a `mods` folder where the game was started. The mods that
-   come with the game (the folders named in [mods/SHIPPED](../mods/SHIPPED))
+   come with the game (the folders named in `SHIPPED` in the `VoxelRust-Mods` folder, which is outside this repository: see [BUILDING.md](BUILDING.md#mod-code))
    are found this way; they are folders, not part of the program. A mod
    found twice is loaded once.
 3. Every file given with `--pack FILE`.
