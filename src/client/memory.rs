@@ -30,6 +30,14 @@ const ATLAS_BYTES: usize = crate::textures::ATLAS * crate::textures::ATLAS * 4 *
 /// Fonts, clouds, the interface and skins.
 const UI_TEXTURE_BYTES: usize = 3 << 20;
 
+/// Main-memory bytes of skins: the PNGs the hub keeps, and the RGBA and PNG
+/// bytes of the decode jobs running now. The GPU copies are counted in
+/// `Renderer::skin_bytes`. Counted under pictures, so the soft budget sees
+/// them; the hard ceiling is not changed.
+fn skin_cpu_bytes() -> usize {
+    crate::client::skins::hub::kept_bytes().saturating_add(crate::client::skins::work::inflight_bytes())
+}
+
 pub struct MemWatch {
     pub budget: Budget,
     pub ladder: Ladder,
@@ -72,7 +80,7 @@ impl MemWatch {
         self.audio_bytes = audio.clip_bytes();
         b.set(Cat::Audio, self.audio_bytes);
         b.set(Cat::Meshes, r.vbo_bytes);
-        b.set(Cat::Textures, ATLAS_BYTES + UI_TEXTURE_BYTES + r.model_tex_bytes + r.hd_bytes + r.skin_bytes + crate::client::modui::with_ui(|u| u.images.bytes()).unwrap_or(0));
+        b.set(Cat::Textures, ATLAS_BYTES + UI_TEXTURE_BYTES + r.model_tex_bytes + r.hd_bytes + r.skin_bytes + skin_cpu_bytes() + crate::client::modui::with_ui(|u| u.images.bytes()).unwrap_or(0));
         b.set(Cat::Models, r.model_bytes());
         b.set(Cat::Other, BASE_BYTES);
         match g {
