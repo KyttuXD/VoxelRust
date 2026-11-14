@@ -1293,6 +1293,25 @@ and while drawing a bow, eating or striking. Bones are recognised by name
 `cave_vine` has it). A block with `seat` (see Blocks) is sat on; a block
 with `use bed` is slept in; creatures standing still on them sit or lie.
 
+## Shaders
+
+```
+shader <id> <file> [<file2> [<file3>]]
+```
+
+A post-processing shader: the body of a GLSL ES 1.00 fragment shader that runs over
+the finished 3D picture. `<id>` is letters, digits, `_` and `-` (up to 32); each file
+(a path relative to the pack, `.glsl`, plain text up to 16 KB) is one pass, run in order,
+at most 3. The player chooses a shader in SETTINGS > VIDEO; nothing runs until one is
+chosen. A later line with the same id replaces the shader; at most 32 shaders in all.
+The uniforms, the rules of the language and what happens on an error are in
+[SHADERS.md](SHADERS.md).
+
+```
+shader soft_bloom shaders/soft_bloom.glsl
+shader night_eyes shaders/blur.glsl shaders/green.glsl
+```
+
 ## Commands and scripts
 
 ```
@@ -1416,6 +1435,7 @@ Likewise the textures `sun` and `moon`, and the model `player`.
 | Stack size | 999 |
 | World height | 256 blocks (heights 0 to 255). There are no vertical chunk sections: a chunk is one 16 x 16 column of that height |
 | Script variables | 256 in a world |
+| Shaders | 32 in all packs, 3 passes each, 16 KB a file; 16 uniform names set by scripts, each between -1000 and 1000 |
 | Commands waiting on `/after` | 64 |
 | Nesting of pack commands, `/if` and `/repeat` | 6 |
 

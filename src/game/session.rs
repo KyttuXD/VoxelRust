@@ -131,6 +131,8 @@ pub struct Session {
     touch_timer: f32,
     /// Sounds asked for by commands, played when the sound system is at hand.
     pub sound_queue: Vec<String>,
+    /// What scripts have set for the post-processing shader (`set_shader_uniform`).
+    pub shader_uniforms: crate::client::shaders::names::UserUniforms,
     /// How many `/fire` events are being acted on at once (see the `/fire` command).
     fire_depth: u8,
     /// Asleep in a bed: the night passes quickly (see [`tick_clock`]).
@@ -516,6 +518,7 @@ impl Session {
             tick_timer: 0.0,
             touch_timer: 0.0,
             sound_queue: Vec::new(),
+            shader_uniforms: Default::default(),
             fire_depth: 0,
             sleeping: false,
             pending_hurt: 0,

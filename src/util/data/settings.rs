@@ -75,6 +75,8 @@ pub struct Settings {
     pub fullscreen_mode: i32,
     /// Percentage of full resolution the 3D view is drawn at (25..=100).
     pub render_scale: i32,
+    /// The post-processing shader in use (a mod's `shader` id; empty = off).
+    pub shader: String,
     /// 0 = automatic.
     pub gui_scale: i32,
     /// Frames per second to hold by adjusting the view distance (0 = off).
@@ -173,6 +175,7 @@ impl Default for Settings {
             fullscreen: false,
             fullscreen_mode: 0,
             render_scale: 100,
+            shader: String::new(),
             gui_scale: 0,
             target_fps: 0,
             max_fps: 0,
@@ -282,6 +285,7 @@ impl Settings {
             fullscreen: flag("fullscreen", d.fullscreen),
             fullscreen_mode: int("fullscreen_mode", 0, 0, FULLSCREEN_MODES.len() as i32 - 1),
             render_scale: int("render_scale", 100, 25, 100),
+            shader: clean_name(kv(text, "shader").unwrap_or(""), 32),
             gui_scale: int("gui_scale", d.gui_scale, 0, 6),
             target_fps: int("target_fps", d.target_fps, 0, 1000),
             max_fps: int("max_fps", d.max_fps, 0, 1000),
@@ -374,7 +378,7 @@ impl Settings {
         s.push_str(&alloc::format!("fullscreen_mode={}\nrender_scale={}\nskin={}\nweather={}\nminimap={}\nslim_arms={}\n", self.fullscreen_mode, self.render_scale, self.skin, self.weather as i32, self.minimap as i32, self.slim_arms as i32));
         s.push_str(&alloc::format!("map_zoom={}\nmap_preset_1={}\nmap_preset_2={}\nmap_preset_3={}\nmap_follow={}\nmap_grid={}\nmap_waypoints={}\n", self.map_zoom, self.map_preset[0], self.map_preset[1], self.map_preset[2], self.map_follow as i32, self.map_grid as i32, self.map_waypoints as i32));
         s.push_str(&alloc::format!("auto_tuned={}\nsubtitles={}\nmods_off={}\ntexture_pack={}\npack_hue={}\npack_saturation={}\npack_brightness={}\nauto_update={}\n", self.auto_tuned as i32, self.subtitles as i32, self.mods_off, self.texture_pack, self.pack_hue, self.pack_saturation, self.pack_brightness, self.auto_update as i32));
-        s.push_str(&alloc::format!("picker_dir={}\nupdate_mirror={}\n", self.picker_dir, self.update_mirror));
+        s.push_str(&alloc::format!("picker_dir={}\nupdate_mirror={}\nshader={}\n", self.picker_dir, self.update_mirror, self.shader));
         s.push_str(&alloc::format!(
             "voice_hear={}\nvoice_mic={}\nvoice_activation={}\nvoice_threshold={}\nvoice_volume={}\nvoice_device={}\n",
             self.voice_hear as i32,

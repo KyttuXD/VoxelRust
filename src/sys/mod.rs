@@ -7,6 +7,7 @@
 
 pub mod gl;
 pub mod heap;
+pub mod gl_shader;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod net;
 pub mod sdl;

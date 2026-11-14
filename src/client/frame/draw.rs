@@ -6,6 +6,7 @@ use super::*;
 impl App {
     pub(super) fn draw(&mut self, r: &mut Renderer, inp: &UiInput) {
         r.render_scale = self.settings.render_scale;
+        crate::client::shaders::hook::sync(r, &self.settings.shader, self.session.as_ref().map(|g| &g.shader_uniforms));
         let mut underwater = false;
         let mut new_tags = Vec::new();
         if let Some(g) = &self.session {

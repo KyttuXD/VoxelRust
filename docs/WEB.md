@@ -137,7 +137,10 @@ loop:
   atlas's fifth mip level, so there distant blocks are drawn without mip
   levels and shimmer a little. Anything the game asks for that the
   JavaScript does not do is reported in the console as `NOT IMPLEMENTED`,
-  never ignored.
+  never ignored. The calls for the mods' post-processing shaders
+  ([SHADERS.md](SHADERS.md): `glCreateShader`, `glUseProgram`...) hand the
+  game's own program to WebGL for the length of one full-screen draw; its
+  vertices come from a buffer object, since WebGL cannot read the game's memory.
 - **Sockets** (`src/sys/web/net.rs`): always fail.
 
 **The main loop.** A page must return to the browser after each frame. The

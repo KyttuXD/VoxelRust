@@ -65,6 +65,11 @@ pub trait Host {
     fn effect_level(&mut self, _who: &str, _id: &str) -> i64 {
         0
     }
+    /// Set a number the post-processing shader reads as `u_<name>` (see
+    /// docs/SHADERS.md); false for a bad name or a value that is not a number.
+    fn set_shader_uniform(&mut self, _name: &str, _value: f64) -> bool {
+        false
+    }
     /// The mod whose script is about to run (for the log).
     fn set_mod(&mut self, _name: &str) {}
     /// The running game, for the host functions of `script/ext/` (world
@@ -143,6 +148,7 @@ pub const HOST_FUNCTIONS: &[(&str, &str)] = &[
     ("state_get_int(key: &str, default: i64) -> i64", "a saved whole number (the default if there is none)"),
     ("state_set_int(key: &str, value: i64)", "save a whole number"),
     ("mod_name() -> String", "the name of the mod this script belongs to"),
+    ("set_shader_uniform(name: &str, value: f64) -> bool", "set the number `u_<name>` that the player's post-processing shader reads (see SHADERS.md)"),
 ];
 
 // ---- argument helpers (also used by the built-in library)
@@ -243,6 +249,7 @@ pub(crate) fn call_host_fn(it: &mut Interp, name: &str, args: &[Value]) -> Optio
         "state_get_int" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, int(name, args, 1)?))).map(|(k, d)| Value::Int(it.state.get(k).and_then(|s| s.trim().parse::<i64>().ok()).unwrap_or(d))),
         "state_set_int" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, int(name, args, 1)?))).and_then(|(k, v)| it.state.set(k, &format!("{}", v))).map(|_| Value::Unit),
         "mod_name" => want(name, args, 0).map(|_| Value::str(it.mod_name)),
+        "set_shader_uniform" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, num(name, args, 1)?))).map(|(n, v)| Value::Bool(it.host.set_shader_uniform(n, v))),
         // The rest of the host functions are in script/host_ui.rs and script/ext/.
         _ => return crate::script::host_ui::call(it, name, args).or_else(|| crate::script::ext::call(it, name, args)),
     };
@@ -411,6 +418,10 @@ impl Host for SessionHost<'_> {
 
     fn dimension(&mut self) -> String {
         self.g.dim.clone()
+    }
+
+    fn set_shader_uniform(&mut self, name: &str, value: f64) -> bool {
+        self.g.shader_uniforms.set(name, value)
     }
 
     fn set_mod(&mut self, name: &str) {
@@ -584,6 +595,10 @@ pub mod mock {
         fn setting_on(&mut self, mod_name: &str, id: &str) -> bool {
             let name = alloc::format!("{}.{}", mod_name, id);
             self.switches.iter().find(|s| s.0 == name).map_or(false, |s| s.1)
+        }
+        fn set_shader_uniform(&mut self, name: &str, value: f64) -> bool {
+            self.calls.push(format!("shader_uniform {} {}", name, value));
+            crate::client::shaders::names::valid_user_name(name) && value.is_finite()
         }
     }
 }

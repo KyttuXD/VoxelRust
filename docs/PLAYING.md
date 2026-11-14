@@ -846,7 +846,11 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   **DETAIL AND DISTANCE...** opens a second page with view distance (2-48
   chunks), distant terrain (0-256 chunks, 0 is off), the distant builds and
   trees rows below, 3D DETAIL (draws the 3D view at a lower resolution; a big
-  help on old graphics cards) and clouds.
+  help on old graphics cards), clouds and **SHADER** (OFF, or one of the
+  post-processing shaders that your mods bring, such as the Shaders mod's soft
+  bloom or retro dither; it says NOT SUPPORTED HERE on a graphics card that
+  cannot run them, and a shader that fails is switched off; see
+  [SHADERS.md](SHADERS.md)).
   Vsync is off unless you turn it on.
   Three rows set how the distant terrain is made: **DISTANT BUILDS AND TREES**
   (0-8 tiles; a tile is 4 x 4 chunks), **TREES** (none, some, all) and

@@ -175,6 +175,34 @@
   let quadCapacity = 0;
   let indexType = 0;
   let glDebug = false;
+  // The game's own shaders (post-processing: glCreateShader and friends):
+  // objects by the numbers the game was given. Number 0 is never used.
+  let mainProgram = null; // the shader that stands in for fixed function
+  let customProgram = null; // the game's program, while it has one in use
+  const shaderObjects = [null];
+  const programObjects = [null];
+  const uniformLocations = [null];
+  const locationNumbers = new Map(); // "program:name" -> number
+
+  // The text at `ptr` in the game's memory, up to its closing zero.
+  function cString(ptr) {
+    const mem = bytes();
+    let end = ptr;
+    while (mem[end] !== 0) end++;
+    return decoder.decode(mem.subarray(ptr, end));
+  }
+
+  // Write `text` to `dst` (at most `cap` - 1 bytes and a zero), and its length to `lenPtr`.
+  function putLog(text, cap, lenPtr, dst) {
+    const encoded = new TextEncoder().encode(text).subarray(0, Math.max(0, cap - 1));
+    bytes().set(encoded, dst);
+    bytes()[dst + encoded.length] = 0;
+    if (lenPtr) view().setInt32(lenPtr, encoded.length, true);
+  }
+
+  function location(number) {
+    return number > 0 ? uniformLocations[number] : null;
+  }
 
   function compile(kind, source) {
     const shader = gl.createShader(kind);
@@ -203,6 +231,7 @@
       throw new Error("shader program: " + gl.getProgramInfoLog(program));
     }
     gl.useProgram(program);
+    mainProgram = program;
     for (const name of ["uModelView", "uProjection", "uTexture0", "uTexture1", "uPointSize", "uSampler0", "uSampler1", "uFogColor", "uFog", "uAlphaRef"]) {
       uniforms[name] = gl.getUniformLocation(program, name);
     }
@@ -378,6 +407,16 @@
 
   function drawArrays(mode, first, count) {
     if (count <= 0) return;
+    if (customProgram) {
+      // The game's own shader (a full-screen pass): its attributes were set
+      // by glVertexAttribPointer, and unit 0 holds the picture it reads.
+      const t = textures[state.textureBound[0]];
+      hold(0, t ? t.object : null);
+      gl.drawArrays(mode, first, count);
+      stats.draws++;
+      stats.vertices += count;
+      return;
+    }
     stats.draws++;
     stats.vertices += count;
     applyState();
@@ -586,6 +625,109 @@
     },
     glActiveTexture(unit) { state.activeTexture = textureUnit("glActiveTexture", unit); },
     glClientActiveTexture(unit) { state.clientActiveTexture = textureUnit("glClientActiveTexture", unit); },
+    glCreateShader(kind) {
+      shaderObjects.push(gl.createShader(kind));
+      return shaderObjects.length - 1;
+    },
+    glShaderSource(id, count, strings, lengths) {
+      const mem = view();
+      let source = "";
+      for (let i = 0; i < count; i++) {
+        const p = mem.getUint32(strings + i * 4, true);
+        const n = lengths ? mem.getInt32(lengths + i * 4, true) : -1;
+        source += n >= 0 ? decoder.decode(bytes().subarray(p, p + n)) : cString(p);
+      }
+      if (shaderObjects[id]) gl.shaderSource(shaderObjects[id], source);
+    },
+    glCompileShader(id) { if (shaderObjects[id]) gl.compileShader(shaderObjects[id]); },
+    glGetShaderiv(id, name, out) {
+      const s = shaderObjects[id];
+      let v = 0;
+      if (s && name === 0x8B81) v = gl.getShaderParameter(s, gl.COMPILE_STATUS) ? 1 : 0;
+      else if (s && name === 0x8B84) v = (gl.getShaderInfoLog(s) || "").length + 1;
+      view().setInt32(out, v, true);
+    },
+    glGetShaderInfoLog(id, cap, lenPtr, dst) {
+      const s = shaderObjects[id];
+      putLog(s ? gl.getShaderInfoLog(s) || "" : "", cap, lenPtr, dst);
+    },
+    glDeleteShader(id) {
+      if (id && shaderObjects[id]) {
+        gl.deleteShader(shaderObjects[id]);
+        shaderObjects[id] = null;
+      }
+    },
+    glCreateProgram() {
+      programObjects.push(gl.createProgram());
+      return programObjects.length - 1;
+    },
+    glAttachShader(program, shader) {
+      if (programObjects[program] && shaderObjects[shader]) gl.attachShader(programObjects[program], shaderObjects[shader]);
+    },
+    glBindAttribLocation(program, index, namePtr) {
+      if (programObjects[program]) gl.bindAttribLocation(programObjects[program], index, cString(namePtr));
+    },
+    glLinkProgram(program) { if (programObjects[program]) gl.linkProgram(programObjects[program]); },
+    glGetProgramiv(program, name, out) {
+      const p = programObjects[program];
+      let v = 0;
+      if (p && name === 0x8B82) v = gl.getProgramParameter(p, gl.LINK_STATUS) ? 1 : 0;
+      else if (p && name === 0x8B84) v = (gl.getProgramInfoLog(p) || "").length + 1;
+      view().setInt32(out, v, true);
+    },
+    glGetProgramInfoLog(program, cap, lenPtr, dst) {
+      const p = programObjects[program];
+      putLog(p ? gl.getProgramInfoLog(p) || "" : "", cap, lenPtr, dst);
+    },
+    glUseProgram(program) {
+      customProgram = program ? programObjects[program] || null : null;
+      gl.useProgram(customProgram || mainProgram);
+    },
+    glDeleteProgram(program) {
+      if (program && programObjects[program]) {
+        if (customProgram === programObjects[program]) {
+          customProgram = null;
+          gl.useProgram(mainProgram);
+        }
+        gl.deleteProgram(programObjects[program]);
+        programObjects[program] = null;
+      }
+    },
+    glGetUniformLocation(program, namePtr) {
+      const p = programObjects[program];
+      if (!p) return -1;
+      const name = cString(namePtr);
+      const key = program + ":" + name;
+      let number = locationNumbers.get(key);
+      if (number === undefined) {
+        const found = gl.getUniformLocation(p, name);
+        if (found) {
+          uniformLocations.push(found);
+          number = uniformLocations.length - 1;
+        } else {
+          number = -1;
+        }
+        locationNumbers.set(key, number);
+      }
+      return number;
+    },
+    glUniform1i(loc, a) { if (location(loc)) gl.uniform1i(location(loc), a); },
+    glUniform1f(loc, a) { if (location(loc)) gl.uniform1f(location(loc), a); },
+    glUniform2f(loc, a, b) { if (location(loc)) gl.uniform2f(location(loc), a, b); },
+    glUniform3f(loc, a, b, c) { if (location(loc)) gl.uniform3f(location(loc), a, b, c); },
+    glUniform4f(loc, a, b, c, d) { if (location(loc)) gl.uniform4f(location(loc), a, b, c, d); },
+    glEnableVertexAttribArray(index) { gl.enableVertexAttribArray(index); },
+    glDisableVertexAttribArray(index) { gl.disableVertexAttribArray(index); },
+    glVertexAttribPointer(index, size, type, normalized, stride, ptr) {
+      // WebGL cannot read the game's memory: the game keeps its vertices in a buffer object.
+      const buffer = buffers[state.arrayBuffer];
+      if (!buffer) {
+        unimplemented("glVertexAttribPointer without a buffer");
+        return;
+      }
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.vertexAttribPointer(index, size, type, normalized !== 0, stride, ptr);
+    },
     js_gl_string(what, ptr, cap) {
       const name = what === GL_VENDOR ? gl.VENDOR : what === GL_RENDERER ? gl.RENDERER : what === GL_VERSION ? gl.VERSION : 0;
       const encoded = new TextEncoder().encode(name ? String(gl.getParameter(name)) : "").subarray(0, cap);

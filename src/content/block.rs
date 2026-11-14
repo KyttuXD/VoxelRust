@@ -653,6 +653,8 @@ pub struct Registry {
     pub fx: crate::content::effects::EffectTable,
     /// Emotes the player can play (see content/emotes.rs).
     pub emotes: crate::content::emotes::EmoteTable,
+    /// Post-processing shaders (`shader` lines; see content/shader_defs.rs).
+    pub shaders: crate::content::shader_defs::ShaderTable,
     pub lines: Vec<(String, String, Vec<String>)>,
     /// Item tabs, in the order they first appear.
     pub categories: Vec<String>,
@@ -932,6 +934,8 @@ struct Parser<'a> {
     effects: Vec<Section>,
     /// The `emote` blocks, read by content/emotes.rs.
     emotes: crate::content::emotes::EmoteTable,
+    /// The `shader` lines, read by content/shader_defs.rs.
+    shaders: crate::content::shader_defs::ShaderTable,
     lines: Vec<(String, String, Vec<String>)>,
     /// `(file:line, words)` for each `recipe` line, resolved once items exist.
     recipes: Vec<(String, Vec<String>)>,
@@ -1004,6 +1008,15 @@ impl Parser<'_> {
                             }
                         }
                         _ => self.warn(file, line_no, "picture needs: <name> file <picture.png>"),
+                    }
+                }
+                // shader <id> <file> [<file2> [<file3>]]: a post-processing shader (see content/shader_defs.rs).
+                "shader" if indent == 0 => {
+                    cur = Cur::None;
+                    let base = String::from(dir_of(file));
+                    let mut load_here = |name: &str| (self.load)(&alloc::format!("{}{}", base, name));
+                    if let Err(m) = crate::content::shader_defs::read_line(&mut self.shaders, &args, &mut load_here) {
+                        self.warn(file, line_no, &m);
                     }
                 }
                 "palette" => {
@@ -1562,6 +1575,7 @@ impl Registry {
             sections: Vec::new(),
             effects: Vec::new(),
             emotes: Default::default(),
+            shaders: Default::default(),
             lines: Vec::new(),
             recipes: Vec::new(),
             groups: Vec::new(),
@@ -1581,7 +1595,7 @@ impl Registry {
         for (path, text) in sources {
             p.parse(path, text);
         }
-        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, groups: raw_groups, rules: raw_rules, clips, pictures, models, entities: raw_entities, sections, effects: raw_effects, emotes: raw_emotes, lines, mut warnings, .. } = p;
+        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, groups: raw_groups, rules: raw_rules, clips, pictures, models, entities: raw_entities, sections, effects: raw_effects, emotes: raw_emotes, shaders: raw_shaders, lines, mut warnings, .. } = p;
 
         let tile_of = |id: &str, warnings: &mut Vec<String>, what: &str| -> u16 {
             match tiles.iter().position(|t| t.id == id) {
@@ -2493,6 +2507,7 @@ impl Registry {
             sections,
             fx,
             emotes: raw_emotes,
+            shaders: raw_shaders,
             lines,
             categories,
             ores,

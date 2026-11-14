@@ -275,6 +275,7 @@ nothing) unless the player may run them there.
 | `state_get_int(key: &str, default: i64) -> i64` | a saved whole number (the default if there is none) |
 | `state_set_int(key: &str, value: i64)` | save a whole number |
 | `mod_name() -> String` | the name of the mod this script belongs to |
+| `set_shader_uniform(name: &str, value: f64) -> bool` | set the number `u_<name>` that the player's post-processing shader reads (a shader mod can declare `uniform float u_<name>;`); the value is kept within -1000 to 1000, at most 16 names; `false` for a bad name (lower-case letters, digits and `_`, starting with a letter, up to 24 long, and not one the game provides). See [SHADERS.md](SHADERS.md) |
 
 The calls for key bindings, the HUD and screens are in
 [Controls, HUD and screens](#controls-hud-and-screens).
