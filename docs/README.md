@@ -11,6 +11,7 @@
 | [DATA.md](DATA.md) | The content file format: every keyword, including sounds, dimensions, features, commands and scripts |
 | [BUILDING.md](BUILDING.md) | Building for each platform, packaging a release, build names and how the game updates itself, tests, the GitHub workflows, icons |
 | [PORTING.md](PORTING.md) | Why the game is built the way it is, old Macs, PowerPC, the machines it has been run on, measurements |
+| [DEPLOY.md](DEPLOY.md) | Publishing a release and the website, the public server's quick self-update (check interval, restart warning, rollback), the website's pull-based updater, the deploy settings |
 | [WEB.md](WEB.md) | The browser version: building, serving and publishing it, what works there and what does not, how it is put together |
 
 ## Mods

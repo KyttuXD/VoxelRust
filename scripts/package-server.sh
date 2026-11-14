@@ -33,19 +33,10 @@ mkdir -p "$stage/lib"
 cp target/release/voxelrust "$stage/voxelrust"
 cp -L "$sdl" "$stage/lib/libSDL2-2.0.so.0"
 
-cat > "$stage/run.sh" <<'RUN'
-#!/bin/sh
-# Starts the multiplayer server with the SDL2 that comes with it.
-# Options are passed on; for example:
-#   ./run.sh --world public --port 25590 --data ./data
-here="$(cd "$(dirname "$0")" && pwd)"
-LD_LIBRARY_PATH="$here/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export LD_LIBRARY_PATH
-# The server keeps itself up to date: it installs a newer release when it
-# finds one and restarts into it once nobody is playing. Add --no-update
-# to stop that.
-exec "$here/voxelrust" --server "$@"
-RUN
+# run.sh is the supervisor: it starts the server, restarts it for an update,
+# rolls an update back if the new program dies at once, and backs off after
+# crashes (see scripts/server-supervisor.sh and docs/DEPLOY.md).
+cp scripts/server-supervisor.sh "$stage/run.sh"
 chmod +x "$stage/run.sh" "$stage/voxelrust"
 
 cat > "$stage/README.txt" <<TXT
@@ -57,9 +48,12 @@ Players join with the server's address and port. Open the port in the
 firewall. Changes are saved in the data folder every 20 seconds, and again
 when the server is stopped (Ctrl-C, or systemctl stop).
 
-The server updates itself from the project's release: when a newer one is
-out it installs it, and restarts into it once nobody is connected. Only the
-program is replaced. ./run.sh --no-update turns this off.
+The server updates itself from the project's release: it looks every 90
+seconds (update_check_seconds in the data folder's settings.txt, 30 to 600),
+and when a newer one is out it installs it, warns the players in chat,
+saves, and restarts in 30 seconds. If the new program stops within 20
+seconds, run.sh puts the previous one back. Only the program is replaced.
+./run.sh --no-update turns this off. See docs/DEPLOY.md in the source.
 
 No mods come with the server. To use some, put each one in a folder of its
 own inside the data folder's mods folder (with the example above:

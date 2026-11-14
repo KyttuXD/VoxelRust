@@ -126,7 +126,7 @@ of a release out in `dist/nightly/`:
 | `voxelrust-macos-legacy-x86_64.zip` | `VoxelRust.app` for Mac OS X 10.6 and later |
 | `voxelrust-web.zip` | the browser version (`dist/web`) |
 | `voxelrust-<build name>.bin`, `voxelrust-windows-x86_64.exe` | the bare programs, for the game's updater |
-| `nightly.txt` | the commit, the release number, and each bare program's SHA-256 and size: what the updater reads |
+| `nightly.txt` | the commit, the release number, each bare program's SHA-256 and size, and the browser zip's (a `web` line, for the website's updater): what the updater reads |
 | `nightly.txt.sig` | the Ed25519 signature of `nightly.txt` (64 bytes): the updater refuses the list without it |
 | `BUILDS.txt`, `SHA256SUMS.txt` | for people: which file is for which machine, and checksums |
 
@@ -149,6 +149,10 @@ uploaded by hand, because the workflows cannot run (see
 ```sh
 gh release upload nightly --clobber dist/nightly/*
 ```
+
+Building, signing and publishing in one go (GitHub, the mirror and the
+website, with `--dry-run`) is `scripts/deploy-server.sh`; see
+[DEPLOY.md](DEPLOY.md).
 
 ### Signing the release
 
@@ -304,8 +308,9 @@ Switching it off:
   only reports a newer version. A release replaces a program only if its
   number (`seq` in `nightly.txt`) is larger, so an old list cannot move a
   program back. The new program must pass its checksum and `--stamp` check.
-- A server (`--server`) updates itself as well, and restarts into the update
-  once nobody is connected, with the same options.
+- A server (`--server`) updates itself as well, with the same options, but
+  looks every 90 seconds (`update_check_seconds`), warns its players and
+  restarts after 30 seconds; see [DEPLOY.md](DEPLOY.md).
 - There is no check at all in scripted runs (`--screenshot`, `--bench`),
   for `--server`, or in the browser.
 
