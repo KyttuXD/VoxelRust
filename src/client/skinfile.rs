@@ -1,6 +1,6 @@
 //! Turning a picture the player picked into a skin: a square picture whose
-//! side is a multiple of 64 up to 4096 as it is, the older 2:1 layout (64 x 32,
-//! 128 x 64...) brought up to a square at its own scale (the left arm and leg
+//! side is a multiple of 64 up to 4096 as it is, the older 64 x 32 layout
+//! brought up to a square at its own scale (the left arm and leg
 //! are mirrored copies of the right ones). See `content::skin_grid`.
 
 use crate::png::Image;
@@ -80,8 +80,9 @@ mod tests {
     #[test]
     fn only_skin_sizes_are_accepted() {
         assert!(size_ok(64, 64) && size_ok(64, 32));
-        assert!(size_ok(128, 128) && size_ok(128, 64) && size_ok(1024, 1024) && size_ok(4096, 4096));
+        assert!(size_ok(128, 128) && size_ok(1024, 1024) && size_ok(4096, 4096));
         assert!(!size_ok(32, 32) && !size_ok(64, 48) && !size_ok(100, 100) && !size_ok(8192, 8192) && !size_ok(192, 64));
+        assert!(!size_ok(128, 64) && !size_ok(256, 128));
         let img = Image { w: 16, h: 16, rgba: alloc::vec![0; 16 * 16 * 4] };
         let e = from_image(&img).unwrap_err();
         assert!(e.contains("16 X 16"), "{}", e);
@@ -97,19 +98,20 @@ mod tests {
     }
 
     #[test]
-    fn an_old_layout_skin_at_twice_the_size_is_mirrored_at_its_own_scale() {
-        // 128 x 64: the right leg's front face is at (4, 20) in the 64 grid, (8, 40) here, 8 wide.
-        let mut rgba = alloc::vec![0u8; 128 * 64 * 4];
-        for (x, v) in [(8usize, 11u8), (15, 22)] {
-            let o = (40 * 128 + x) * 4;
+    fn the_old_layout_is_64_by_32_only_and_is_mirrored_at_its_own_scale() {
+        // Another 2:1 picture (128 x 64) is not a skin.
+        assert!(from_image(&Image { w: 128, h: 64, rgba: alloc::vec![0u8; 128 * 64 * 4] }).is_err());
+        // 64 x 32: the right leg's front face is at (4, 20) and (7, 20); the left leg's copy is at (23, 52) and (20, 52).
+        let mut rgba = alloc::vec![0u8; 64 * 32 * 4];
+        for (x, v) in [(4usize, 11u8), (7, 22)] {
+            let o = (20 * 64 + x) * 4;
             rgba[o..o + 4].copy_from_slice(&[v, v, v, 255]);
         }
-        let out = from_image(&Image { w: 128, h: 64, rgba: rgba.clone() }).unwrap();
-        assert_eq!(out.len(), 128 * 128 * 4);
-        assert_eq!(&out[..128 * 64 * 4], &rgba[..]);
-        // The left leg's front face is at (20, 52) on the grid: (40, 104) here, flipped across its 8 pixels.
-        assert_eq!(out[(104 * 128 + 47) * 4], 11);
-        assert_eq!(out[(104 * 128 + 40) * 4], 22);
+        let out = from_image(&Image { w: 64, h: 32, rgba: rgba.clone() }).unwrap();
+        assert_eq!(out.len(), 64 * 64 * 4);
+        assert_eq!(&out[..64 * 32 * 4], &rgba[..]);
+        assert_eq!(out[(52 * 64 + 23) * 4], 11);
+        assert_eq!(out[(52 * 64 + 20) * 4], 22);
     }
 
     #[test]

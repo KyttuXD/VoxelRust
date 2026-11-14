@@ -52,9 +52,10 @@ impl Fs for DiskFs {
 }
 
 /// Read a folder's files (paths relative to it). Files of a type that may not
-/// be sent, hidden ones and oversize ones are left out; the count of those is
-/// returned so that the log can say so. `None` if there are too many files.
-fn read_folder(fs: &dyn Fs, dir: &str, rel: &str, depth: usize, out: &mut Vec<(String, Vec<u8>)>, left_out: &mut usize) -> bool {
+/// be sent, and files over [`MAX_FILE_BYTES`] (or that cannot be read), are
+/// left out and their paths are added to `left_out` so that the log can name
+/// them. Hidden ones are skipped silently. `false` if there are too many files.
+fn read_folder(fs: &dyn Fs, dir: &str, rel: &str, depth: usize, out: &mut Vec<(String, Vec<u8>)>, left_out: &mut Vec<String>) -> bool {
     if depth > MAX_DEPTH {
         return true;
     }
@@ -68,7 +69,7 @@ fn read_folder(fs: &dyn Fs, dir: &str, rel: &str, depth: usize, out: &mut Vec<(S
                 return false;
             }
         } else if clean_rel_path(&rel_path).is_none() {
-            *left_out += 1;
+            left_out.push(rel_path);
         } else {
             match fs.read(&path) {
                 Some(d) if d.len() <= MAX_FILE_BYTES => {
@@ -77,7 +78,7 @@ fn read_folder(fs: &dyn Fs, dir: &str, rel: &str, depth: usize, out: &mut Vec<(S
                         return false;
                     }
                 }
-                _ => *left_out += 1,
+                _ => left_out.push(rel_path),
             }
         }
     }
@@ -89,7 +90,7 @@ fn read_folder(fs: &dyn Fs, dir: &str, rel: &str, depth: usize, out: &mut Vec<(S
 pub fn bundle_mod(fs: &dyn Fs, folder: &str, name: &str) -> Result<ServedMod, String> {
     let dir = alloc::format!("{}{}/", folder, name);
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-    let mut left_out = 0usize;
+    let mut left_out: Vec<String> = Vec::new();
     if fs.is_dir(&dir) {
         if fs.is_dir(&alloc::format!("{}code", dir)) && fs.read(&alloc::format!("{}code/mod.rs", dir)).is_some() {
             return Err(String::from("it has native code, which cannot be downloaded"));
@@ -106,7 +107,16 @@ pub fn bundle_mod(fs: &dyn Fs, folder: &str, name: &str) -> Result<ServedMod, St
     let pack = pack.ok_or_else(|| String::from("it has no pack.txt"))?;
     let meta = bundle::read_meta(&pack);
     let data = bundle::encode(&files).map_err(|r| String::from(r.text()))?;
-    let _ = left_out;
+    if !left_out.is_empty() {
+        logf!(
+            "mod {}: {} file{} not sent to clients (each must be at most {} MiB, and of a type a mod may send): {}",
+            name,
+            left_out.len(),
+            if left_out.len() == 1 { "" } else { "s" },
+            MAX_FILE_BYTES >> 20,
+            left_out.join(", ")
+        );
+    }
     Ok(ServedMod { name: String::from(name), version: meta.version, sum: bundle::sum_of(&data), files: files.len() as u16, data })
 }
 
@@ -309,5 +319,17 @@ mod tests {
         let m = bundle_mod(&fs, "m/", "lone").unwrap();
         assert_eq!(bundle::decode(&m.data).unwrap(), alloc::vec![(String::from("pack.txt"), b"block lone\n".to_vec())]);
         assert!(bundle_mod(&fs, "m/", "nothing").is_err());
+    }
+
+    #[test]
+    fn a_file_that_is_left_out_is_named() {
+        let fs = disk();
+        let (mut out, mut left) = (Vec::new(), Vec::new());
+        assert!(read_folder(&fs, "m/plain/", "", 0, &mut out, &mut left));
+        // A program is not a type a mod may send: it is named, not sent.
+        assert!(left.iter().any(|p| p == "bin/run.exe"), "{:?}", left);
+        assert!(!out.iter().any(|(p, _)| p == "bin/run.exe"));
+        // A hidden file is skipped without being named.
+        assert!(!left.iter().any(|p| p.contains("hidden")));
     }
 }

@@ -21,7 +21,7 @@ use crate::png::Image;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use core::sync::atomic::{AtomicPtr, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 /// The built-in skins. A player who has not chosen one wears the skin
 /// [`default_skin_for`] picks from their name; the pictures are `skin_<name>`.
@@ -177,8 +177,16 @@ pub fn builtin_image(name: &str) -> Option<Image> {
 pub fn mod_image(name: &str) -> Option<Image> {
     let name = clean_name(name);
     let bytes = &crate::block::reg().pictures.iter().find(|p| p.0 == name)?.1;
-    crate::png::decode(bytes)
+    // Read as a pack's pictures are: every format the bundle admits, not PNG only.
+    let img = crate::image::decode(bytes);
+    if img.is_none() && !MOD_PICTURE_NOTED.swap(true, Ordering::Relaxed) {
+        logf!("voxelrust: mod picture \"{}\" cannot be read (it must be a PNG, JPEG, GIF, BMP or TGA picture, at most 4096 pixels on a side and 24 MiB); the default is used", name);
+    }
+    img
 }
+
+/// Whether the note about an unreadable mod picture has been written (once is enough to find it).
+static MOD_PICTURE_NOTED: AtomicBool = AtomicBool::new(false);
 
 /// The picture for `name`: a texture pack's if it has one, else a mod's, else the game's own.
 pub fn image(name: &str) -> Option<Image> {

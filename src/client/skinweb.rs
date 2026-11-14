@@ -5,7 +5,8 @@
 //! `sys::run_command`, as the updater does) fetches it on a worker thread
 //! into `tmp/skins/` in the data folder, and the thread then judges the file
 //! (a picture the game can read, square and a multiple of 64 wide up to 4096,
-//! or 64 x 32; at most 1 MiB downloaded, which unpacks to 24 MiB at most). The menu reads the
+//! or 64 x 32; at most 24 MiB downloaded, the same limit as a picture picked
+//! from disk, `image::MAX_BYTES`). The menu reads the
 //! state every frame, so it never freezes. When the state says [`OK`] the
 //! menu takes the file through the usual skin import (`app::import_skin`).
 //!
@@ -28,9 +29,11 @@ pub const TOO_BIG: u8 = 5;
 pub const NO_HTTPS: u8 = 6;
 pub const BAD_URL: u8 = 7;
 
-/// The most that is downloaded: a skin picture is a few kilobytes, a big
-/// one a few hundred (the wire takes 1 MiB, `proto::MAX_SKIN`).
-pub const MAX_BYTES: usize = 1 << 20;
+/// The most that is downloaded: the decoder's own limit, so that a 4096 x 4096
+/// picture the file import accepts is not refused for its size here. The
+/// wire limit (`proto::MAX_SKIN`, 1 MiB) applies only to the packed copy sent
+/// to other players, not to this download.
+pub const MAX_BYTES: usize = crate::image::MAX_BYTES;
 /// Longest address accepted.
 pub const MAX_URL: usize = 300;
 

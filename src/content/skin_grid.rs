@@ -2,7 +2,8 @@
 //!
 //! A skin is a square picture whose side is a multiple of 64, from 64 up to
 //! 4096 pixels (and the older 64 x 32 layout, which is brought up to a square
-//! at its own scale, see `client::skinfile`). The player models are laid out
+//! at its own scale, see `client::skinfile`). No other rectangle is a skin:
+//! 128 x 64 and the like are refused. The player models are laid out
 //! on a 64 x 64 grid: a skin W pixels wide is that grid with every cell
 //! `W / 64` pixels across, so a face at (x, y) of the grid is at
 //! (x * W / 64, y * W / 64) in the picture. The models' texture coordinates
@@ -19,14 +20,14 @@ pub fn valid_side(side: usize) -> bool {
 }
 
 /// Whether a picture of this size is a skin: a square one of a valid side,
-/// or the old layout (twice as wide as high).
+/// or the old 64 x 32 layout (and nothing else that is not square).
 pub fn valid_size(w: usize, h: usize) -> bool {
-    valid_side(w) && (h == w || h * 2 == w)
+    (valid_side(w) && h == w) || is_old_layout(w, h)
 }
 
-/// A skin as `w` x `h` pixels is in the old 2:1 layout.
+/// A skin as `w` x `h` pixels is in the old 64 x 32 layout.
 pub fn is_old_layout(w: usize, h: usize) -> bool {
-    valid_side(w) && h * 2 == w
+    w == 64 && h == 32
 }
 
 /// The number of pixels in one cell of the 64 x 64 grid (1 for a 64 skin).
@@ -60,7 +61,7 @@ pub fn texel(grid: f32, side: usize) -> f32 {
 
 /// The words for a picture that cannot be a skin.
 pub fn refusal(w: usize, h: usize) -> alloc::string::String {
-    alloc::format!("A SKIN MUST BE SQUARE AND A MULTIPLE OF 64 PIXELS, FROM 64 X 64 TO {0} X {0} (OR 64 X 32), THIS IS {1} X {2}", MAX_SIDE, w, h)
+    alloc::format!("A SKIN MUST BE SQUARE, A MULTIPLE OF 64 PIXELS FROM 64 X 64 TO {0} X {0}, OR THE OLD 64 X 32 LAYOUT. THIS IS {1} X {2}", MAX_SIDE, w, h)
 }
 
 #[cfg(test)]
@@ -76,7 +77,9 @@ mod tests {
         for s in [0usize, 32, 63, 65, 100, 4160, 8192] {
             assert!(!valid_side(s), "{s}");
         }
-        assert!(valid_size(64, 32) && valid_size(128, 64) && is_old_layout(64, 32));
+        assert!(valid_size(64, 32) && is_old_layout(64, 32));
+        // Other 2:1 sizes are not skins, nor are other rectangles.
+        assert!(!valid_size(128, 64) && !valid_size(256, 128) && !is_old_layout(128, 64));
         assert!(!valid_size(64, 48) && !valid_size(128, 32) && !valid_size(32, 16) && !is_old_layout(64, 64));
         assert_eq!(scale(128), Some(2));
         assert_eq!(scale(100), None);
