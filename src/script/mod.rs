@@ -11,6 +11,7 @@
 //! | `value.rs`, `interp.rs`, `places.rs`, `ops.rs`, `numeric.rs`, `fmt.rs` | running the tree |
 //! | `builtins*.rs` | the library: numbers, strings, Vec, Option... |
 //! | `host.rs`, `host_ui.rs` | what scripts may do to the game (the sandbox's only door); `host_ui.rs`: controls, HUD and screens |
+//! | `host_qol.rs`, `hud.rs` | the later host calls: facing, biome, pack slots, chests, a line on the screen |
 //! | `limits.rs`, `error.rs`, `state.rs` | limits, `file:line` errors, saved state |
 //! | `bridge.rs` | the game's hooks (`game/hooks.rs`) calling into scripts |
 //!
@@ -35,6 +36,8 @@ pub mod ext;
 pub mod fmt;
 pub mod host;
 pub mod host_ui;
+pub mod host_qol;
+pub mod hud;
 pub mod interp;
 pub mod lexer;
 pub mod limits;
@@ -50,6 +53,8 @@ pub mod value;
 mod tests;
 #[cfg(test)]
 mod mods_tests;
+#[cfg(test)]
+mod tests_qol;
 
 use crate::script::ast::{Name, Program};
 use crate::script::error::ScriptError;

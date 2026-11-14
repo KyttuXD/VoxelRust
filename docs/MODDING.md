@@ -1120,6 +1120,29 @@ The language, the library, every hook and every host function, and
 worked examples are in [SCRIPTING.md](SCRIPTING.md); `voxelrust --script-check
 FILE` checks a script without starting the game.
 
+### Quality-of-life script mods
+
+Nine small mods in the mods repository are plain script mods (one `.rs`
+file each, nothing to build). Each has a README.txt; their commands are:
+
+| Mod | What it does |
+| --- | --- |
+| `waypoints` | `/wp add NAME`, `/wp del NAME`, `/wp list`, `/wp NAME`: named places with distance, compass direction and where to turn |
+| `death_marker` | remembers where you died; `/death` shows the way back, `/death hud` keeps it on the screen |
+| `light_warning` | a notice when the light at your feet is low (`/lightwarn N`, `off`, `on`) |
+| `sort_inventory` | `/sort` merges stacks and orders the pack, `/sort all` includes the hotbar |
+| `quick_stack` | `/stack` puts what the nearest chest already holds into it, `/stack all` for every chest within 6 blocks |
+| `coordinates_hud` | XYZ, facing and biome on the screen (`/coords`, `off`, `on`, `long`) |
+| `clock_hud` | the time of day and the minutes to night on the screen (`/clock`, `off`, `on`, `12`, `24`) |
+| `tree_felling` | breaking a log with an axe brings down the tree, at most 64 logs; sneak to chop one (`/treefelling off`, `on`) |
+| `veinminer` | sneak and break an ore with a pickaxe to mine the whole vein, at most 40 blocks (`/veinminer off`, `on`) |
+
+They use the host calls `heading`, `biome`, `block_light`, `block_drop`,
+`survival`, `sneaking`, `hud`, `slot_item`, `slot_count`, `move_slot` and
+`stack_to_chest` that were added for them (see [SCRIPTING.md](SCRIPTING.md)).
+The game's tests (`src/script/tests_qol.rs`) read and run every one of these
+scripts against a mock host when the mods folder is there.
+
 ## What mods cannot replace
 
 A mod's code is called only at the hooks in `src/native.rs`. Anything those

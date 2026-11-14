@@ -276,6 +276,15 @@ nothing) unless the player may run them there.
 | `state_set_int(key: &str, value: i64)` | save a whole number |
 | `mod_name() -> String` | the name of the mod this script belongs to |
 | `set_shader_uniform(name: &str, value: f64) -> bool` | set the number `u_<name>` that the player's post-processing shader reads (a shader mod can declare `uniform float u_<name>;`); the value is kept within -1000 to 1000, at most 16 names; `false` for a bad name (lower-case letters, digits and `_`, starting with a letter, up to 24 long, and not one the game provides). See [SHADERS.md](SHADERS.md) |
+| `block_light(block_id: &str) -> i64` | how much light a block gives off, 0 to 15 |
+| `block_drop(block_id: &str) -> String` | the id of the item a block gives when broken in survival (empty if none) |
+| `survival() -> bool` | whether the player plays in survival mode |
+| `sneaking() -> bool` | whether the player is crouching (the sneak key is held) |
+| `hud(text: &str)` | show a line of text at the top left of the screen (under the frame rate); it stays 1.5 seconds, so call it again within a second to keep it; empty text takes it away. One line per mod, at most 6 lines at once, 48 characters |
+| `slot_item(slot: i64) -> String` | the id of the item in a pack slot (0 to 35, the first nine are the hotbar; empty if none) |
+| `slot_count(slot: i64) -> i64` | how many items are in a pack slot |
+| `move_slot(from: i64, to: i64) -> bool` | move a pack slot's items to another slot: into an empty one, onto the same item as far as it fits, else the two swap; `false` if nothing moved |
+| `stack_to_chest(x: i64, y: i64, z: i64) -> i64` | put the items of the pack (not the hotbar) that the chest at that block already holds into it; how many moved (0 if there is no chest, or in a shared game) |
 
 The calls for key bindings, the HUD and screens are in
 [Controls, HUD and screens](#controls-hud-and-screens).
@@ -830,6 +839,7 @@ fn on_block_break(x: i64, y: i64, z: i64, id: String) {
   (`explosion::explode`) have a call of their own. To add a hook, add a `HookDoc`
   to `script::HOOKS`, a function to `bridge.rs`, the call where the event happens,
   and a row to the table above (a test checks the docs list every hook).
+- The later host calls (`heading` to `stack_to_chest`) are written in `script/host_qol.rs`, and `hud` keeps its lines in `script/hud.rs` (`Session::script_hud`, drawn by `client/app.rs`).
 - To add a host function, add it to `Host` (`script/host.rs`), to
   `SessionHost`, to `call_host_fn`, to `HOST_FUNCTIONS` and to the table above (tests
   check all four agree). The functions for controls, the HUD and screens are in
