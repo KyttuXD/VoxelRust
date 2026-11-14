@@ -736,6 +736,7 @@ entity <id>
   night                     appears only after dark
   weight <0..1000>          relative chance of spawning (default 10; 0 = never)
   drops <item> [<count>]    left behind when killed in survival (count 1..64, default 1)
+  loot <item> [<most>] [<percent>]  more it may leave: 1 to <most> of it, with that chance (repeat the line for more items)
   trait <names...>          flees herd jumps territorial hunter prey lazy pack follows
   anim walk | hop | slither | flap | scuttle | waddle | float
   variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>] [biomes <names...>]   another look

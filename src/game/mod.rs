@@ -3,6 +3,7 @@
 pub mod player;
 pub mod inventory;
 pub mod interact;
+pub mod loot;
 pub mod entity;
 pub mod entity_explode;
 pub mod entity_variant;

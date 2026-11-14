@@ -139,6 +139,21 @@ pub fn remove(world: &mut World, c: [i32; 3]) {
         world.set_block(o[0], o[1], o[2], AIR);
     }
     world.set_block(c[0], c[1], c[2], AIR);
+    // Grass, flowers and crops standing on it go with the ground.
+    let up = [c[0], c[1] + 1, c[2]];
+    if world.is_loaded(up[0], up[2]) && grows_from_below(world.get(up[0], up[1], up[2])) {
+        remove(world, up);
+    }
+}
+
+/// A plant that stands on the block below it (not vines, webs, torches or
+/// anything else that clings to something).
+fn grows_from_below(b: Block) -> bool {
+    if reg().kind[b as usize] != Kind::Cross {
+        return false;
+    }
+    let id = block::def(b).id.as_str();
+    !["vine", "web", "torch", "lantern", "chain", "rope", "ladder", "moss_hang", "root"].iter().any(|w| id.contains(w))
 }
 
 /// Let the block at `c` change if it has a `react` line and one of the
@@ -556,6 +571,16 @@ mod tests {
             assert!(place_at(&mut w, &p, item("stone_slab"), &hit));
             assert_eq!(w.get(5, 121, 6), reg().block("stone_slab").unwrap() + flipped);
         }
+    }
+
+    #[test]
+    fn plants_go_when_the_ground_under_them_is_broken() {
+        let mut w = world();
+        w.set_block(8, 120, 8, reg().wk.stone);
+        w.set_block(8, 121, 8, reg().wk.tall_grass);
+        remove(&mut w, [8, 120, 8]);
+        assert_eq!(w.get(8, 120, 8), AIR);
+        assert_eq!(w.get(8, 121, 8), AIR);
     }
 
     #[test]

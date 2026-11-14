@@ -215,6 +215,7 @@ pub fn poll(g: &mut Session, dt: f32) {
         }
         for (_, kind, at) in died.into_iter().filter(|d| d.1 < kinds) {
             hooks::entity_death(g, kind, at);
+            crate::game::loot::leave(g, kind, at);
             let name = reg().entities[kind].id.clone();
             g.fire(ENTITY_DEATH, &name);
         }

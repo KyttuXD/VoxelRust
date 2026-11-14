@@ -1401,9 +1401,6 @@ impl Session {
                 let mid = self.mobs.list[k].id;
                 self.mob_hit(mid, kind, at);
                 if self.strike(k, damage, self.player.pos) {
-                    if let (GameMode::Survival, Some((drop, n))) = (self.mode, reg().entities[kind].drop) {
-                        self.inv.add(drop as u16, n);
-                    }
                     let id = reg().entities[kind].id.clone();
                     self.fire("kill", &id);
                     self.mob_killed(kind, at);
@@ -2558,11 +2555,12 @@ impl Session {
                     let blow = crate::game::effects::apply::melee_damage(&self.fx, &crate::game::effects::apply::lookup, item.x.damage.max(3));
                     crate::game::effects::apply::on_strike(self, i, &item.id);
                     let killed = self.strike(i, if creative { 1000 } else { blow }, eye);
-                    if let (true, false, Some((drop, n))) = (killed, creative, reg().entities[kind].drop) {
-                        self.inv.add(drop as u16, n);
-                    }
                     audio.play(if killed { Sound::Pop } else { Sound::Hurt }, 0.8);
                     self.fire("hit", &reg().entities[kind].id);
+                    // A guest of someone else's world is handed the drop at once.
+                    if let (true, false, false, Some((drop, n))) = (killed, creative, self.runs_the_world(), reg().entities[kind].drop) {
+                        self.inv.add(drop as u16, n);
+                    }
                     if killed {
                         self.fire("kill", &reg().entities[kind].id);
                         self.mob_killed(kind, at);

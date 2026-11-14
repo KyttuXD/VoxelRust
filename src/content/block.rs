@@ -373,6 +373,8 @@ pub struct EntityExtra {
     pub gives: Option<(usize, f32)>,
     /// Swaps: (item wanted, count, item given, count).
     pub trades: Vec<(usize, u16, usize, u16)>,
+    /// Extra things it may leave when it dies: item, most of them, percent chance.
+    pub loot: Vec<(usize, u16, u8)>,
     /// What a villager does all day: `farmer`, `builder`, `guard`...
     pub job: String,
     /// Lives underground, in caves of these kinds.
@@ -1456,7 +1458,7 @@ impl Parser<'_> {
                     Some(&"villager") => e.behavior = Behavior::Villager,
                     _ => bad = Some("behavior must be wander, npc, hostile, swim, fly or villager"),
                 },
-                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" | "explodes" => {
+                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" | "explodes" | "loot" => {
                     e.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "tint" => {
@@ -2062,6 +2064,11 @@ impl Registry {
                                 }
                                 "gives" => match item(word(0)) {
                                     Some(i) => x.gives = Some((i, word(1).parse::<f32>().unwrap_or(120.0).max(1.0))),
+                                    None => ok = false,
+                                },
+                                // loot <item> [<most>] [<percent>]: 1 to <most> of it, with that chance.
+                                "loot" => match item(word(0)) {
+                                    Some(i) => x.loot.push((i, word(1).parse::<u16>().unwrap_or(1).clamp(1, 64), word(2).parse::<u8>().unwrap_or(100).min(100))),
                                     None => ok = false,
                                 },
                                 "trade" => match (item(word(0)), word(1).parse::<u16>(), item(word(2)), word(3).parse::<u16>()) {
