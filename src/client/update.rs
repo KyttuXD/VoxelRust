@@ -40,6 +40,10 @@ use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 
 /// Where the nightly release's files are.
+/// The project's update mirror (the GitHub repository is private).
+pub const MIRROR: &str = "https://voxelrust.games.kyttuslab.org/updates/";
+pub const MIRROR_PLAIN: &str = "http://voxelrust.games.kyttuslab.org/updates/";
+
 pub const RELEASE: &str = match option_env!("VOXELRUST_RELEASE") {
     Some(url) => url,
     None => "https://github.com/KyttuXD/VoxelRust/releases/download/nightly/",
@@ -263,6 +267,13 @@ pub(crate) fn sources(build: &str, mirror: &str) -> Vec<String> {
     let mut list = Vec::new();
     if let Some(m) = mirror_url(mirror) {
         list.push(m);
+    }
+    // The project's own mirror is always tried (the release list is signed, so
+    // the network and the host need no trust): plain HTTP for the old Mac,
+    // whose curl cannot make secure connections.
+    let own = if build.starts_with("macos-legacy") { MIRROR_PLAIN } else { MIRROR };
+    if !list.iter().any(|m| m == own) {
+        list.push(String::from(own));
     }
     if !build.starts_with("macos-legacy") {
         list.push(String::from(RELEASE));
@@ -636,14 +647,15 @@ mod tests {
     }
 
     #[test]
-    fn the_old_mac_build_looks_only_in_a_mirror() {
-        assert!(sources("macos-legacy-x86_64", "").is_empty());
-        assert!(sources("macos-legacy-x86_64", "not a url").is_empty());
-        assert_eq!(sources("macos-legacy-x86_64", "http://m.example/v"), alloc::vec![String::from("http://m.example/v/")]);
-        assert_eq!(sources("linux-x86_64", "").len(), 1);
+    fn the_old_mac_build_looks_only_in_a_plain_http_mirror() {
+        assert_eq!(sources("macos-legacy-x86_64", ""), alloc::vec![String::from(MIRROR_PLAIN)]);
+        assert_eq!(sources("macos-legacy-x86_64", "not a url"), alloc::vec![String::from(MIRROR_PLAIN)]);
+        assert_eq!(sources("macos-legacy-x86_64", "http://m.example/v"), alloc::vec![String::from("http://m.example/v/"), String::from(MIRROR_PLAIN)]);
+        assert!(MIRROR_PLAIN.starts_with("http://"));
+        assert_eq!(sources("linux-x86_64", ""), alloc::vec![String::from(MIRROR), String::from(RELEASE)]);
         let both = sources("linux-x86_64", "http://m.example/v/");
-        assert_eq!(both.len(), 2);
-        assert_eq!(both[0], "http://m.example/v/", "the mirror first");
+        assert_eq!(both.len(), 3);
+        assert_eq!(both[0], "http://m.example/v/", "your own mirror first");
     }
 
     #[test]
