@@ -294,6 +294,8 @@ enum Screen {
     EditWorld,
     /// The file browser (see `client::picker`), opened from the settings.
     Picker,
+    /// Typing a web address to fetch a skin picture from (see `client::skinweb`).
+    SkinUrl,
 }
 
 /// Which build this is: the name its download carries. An update must
@@ -515,6 +517,8 @@ struct App {
     full: Option<super::fullmap::FullMap>,
     /// World file name typed on the worlds screen.
     form_import: String,
+    /// The web address typed for a skin download.
+    skin_url: String,
     picker: crate::client::picker::Picker,
     /// Name tags to draw this frame: screen position and text.
     tags: Vec<(f32, f32, String)>,
@@ -860,6 +864,7 @@ impl App {
             Screen::Chat if sc == key::ESCAPE => self.set_screen(Screen::Game),
             Screen::Join if sc == key::ESCAPE && !typing => self.set_screen(Screen::Title),
             Screen::EditWorld if sc == key::ESCAPE && !typing => self.set_screen(Screen::Worlds),
+            Screen::SkinUrl if sc == key::ESCAPE => self.set_screen(Screen::Settings),
             Screen::Picker if sc == key::ESCAPE => {
                 self.close_picker(None);
             }
@@ -923,6 +928,80 @@ impl App {
         }
     }
 
+    /// A file was dropped on the window: on the skin settings (or the web
+    /// address panel) a picture becomes the custom skin.
+    fn skin_dropped(&mut self, r: &mut Renderer, path: &str) {
+        if !(self.screen == Screen::SkinUrl || (self.screen == Screen::Settings && self.tab == 4)) {
+            return;
+        }
+        let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+        if !SKIN_EXTS.contains(&ext.as_str()) {
+            self.status = String::from("NOT A SKIN PICTURE");
+        } else {
+            match import_skin(&self.base, path) {
+                Ok(()) => {
+                    self.settings.skin = String::from("custom");
+                    self.status = String::from("SKIN LOADED");
+                    self.load_skin(r);
+                }
+                Err(e) => self.status = e,
+            }
+        }
+        if self.screen == Screen::SkinUrl {
+            self.set_screen(Screen::Settings);
+        }
+    }
+
+    /// Open the panel to type a web address for a skin picture.
+    fn open_skin_url(&mut self) {
+        crate::client::skinweb::reset();
+        self.status.clear();
+        self.set_screen(Screen::SkinUrl);
+        self.focus = 40;
+    }
+
+    /// The panel itself: a text box, GO and BACK, and what the download is doing.
+    fn screen_skin_url(&mut self, ui: &mut Ui) {
+        use crate::client::skinweb as web;
+        let s = ui.s;
+        ui.r.rect(0.0, 0.0, ui.w(), ui.h(), [8, 10, 18, 190]);
+        let (x, y, bw, bh, step) = Self::column(ui, 7);
+        ui.centered(ui.w() * 0.5, y - 30.0 * s, 2.0, "SKIN FROM A WEB ADDRESS", WHITE);
+        ui.text(x, y - 9.0 * s, "ADDRESS OF A 64 X 64 OR 64 X 32 PICTURE", ui::DIM);
+        let busy = web::state() == web::DOWNLOADING;
+        let enter = ui.text_field(40, x, y, bw, bh, &mut self.skin_url, web::MAX_URL, ui::any_char);
+        let half = bw * 0.5 - 2.0 * s;
+        let go = ui.button(x, y + step * 1.5, half, bh, "DOWNLOAD") || enter;
+        if ui.button(x + half + 4.0 * s, y + step * 1.5, half, bh, "BACK") {
+            self.set_screen(Screen::Settings);
+            return;
+        }
+        if go && !busy {
+            web::start(&self.skin_url, &self.base, BUILD);
+        }
+        if web::take_ok() {
+            let file = web::file(&self.base);
+            let result = import_skin(&self.base, &file);
+            sys::remove_file(&file);
+            match result {
+                Ok(()) => {
+                    self.settings.skin = String::from("custom");
+                    self.status = String::from("IMPORTED");
+                    self.set_screen(Screen::Settings);
+                    self.load_skin(ui.r);
+                    return;
+                }
+                Err(e) => self.status = e,
+            }
+        }
+        let st = web::state();
+        let text = if st == web::IDLE { self.status.clone() } else { String::from(web::message(st)) };
+        let colour = if web::is_failure(st) { [255, 120, 100, 255] } else { ui::ACCENT };
+        ui.centered(ui.w() * 0.5, y + step * 3.0, 1.0, &text, colour);
+        ui.centered(ui.w() * 0.5, y + step * 4.2, 1.0, "PASTE WITH CTRL+V (CMD+V ON A MAC)", ui::DIM);
+        ui.centered(ui.w() * 0.5, y + step * 5.0, 1.0, "A DIRECT LINK TO THE PICTURE, HTTP OR HTTPS", ui::DIM);
+    }
+
     fn leave_settings(&mut self) {
         self.settings.player_name = crate::settings::clean_name(&self.settings.player_name, 16);
         if self.settings.player_name.is_empty() {
@@ -965,6 +1044,15 @@ impl App {
                     let sc = ev.i32_at(16);
                     if (0..512).contains(&sc) {
                         self.keys[sc as usize] = false;
+                    }
+                }
+                sdl::EV_DROPFILE => {
+                    // A picture dropped on the window: the pointer at offset 8, freed with SDL_free.
+                    let p = ev.ptr_at(8) as *mut core::ffi::c_char;
+                    if !p.is_null() {
+                        let path = unsafe { sys::from_cstr(p as *const core::ffi::c_char) };
+                        unsafe { (api.SDL_free)(p as *mut core::ffi::c_void) };
+                        self.skin_dropped(r, &path);
                     }
                 }
                 sdl::EV_TEXTINPUT if self.swallow_text => self.swallow_text = false,
@@ -1353,6 +1441,7 @@ impl App {
                 Screen::AddServer => self.screen_add_server(&mut ui),
                 Screen::Chat => self.screen_chat(&mut ui),
                 Screen::Picker => self.screen_picker(&mut ui),
+                Screen::SkinUrl => self.screen_skin_url(&mut ui),
             }
             clicked = ui.clicked_any;
         }
@@ -2031,7 +2120,7 @@ impl App {
         let mut changed = false;
         let mut fullscreen_clicked = false;
         let mut mode_changed = false;
-        let (mut skin_changed, mut skin_pick) = (false, false);
+        let (mut skin_changed, mut skin_pick, mut skin_web) = (false, false, false);
         {
             let st = &mut self.settings;
             match self.tab {
@@ -2116,6 +2205,9 @@ impl App {
                     ui.text(cx, row(2) - 6.0 * s, "THE USUAL SKIN LAYOUT (64 X 32 TOO).", ui::DIM);
                     if ui.button(cx, row(3) - 4.0 * s, cw, bh, "CHOOSE A SKIN FILE...") {
                         skin_pick = true;
+                    }
+                    if ui.button(cx, row(4) - 2.0 * s, cw, bh, "IMPORT FROM WEB ADDRESS...") {
+                        skin_web = true;
                     }
                     skin_changed |= ui.toggle(cx, row(5) + 4.0 * s, cw, bh, "SLIM ARMS (ALEX SKINS)", &mut st.slim_arms);
                 }
@@ -2208,6 +2300,9 @@ impl App {
         }
         if skin_pick {
             self.open_skin_picker();
+        }
+        if skin_web {
+            self.open_skin_url();
         }
         if skin_changed {
             self.load_skin(ui.r);
@@ -3487,6 +3582,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         minimap: super::fullmap::MapPicture::new(super::fullmap::MINIMAP_TEXELS),
         full: None,
         form_import: String::new(),
+        skin_url: String::new(),
         picker: crate::client::picker::Picker::new(),
         tags: Vec::new(),
         map_native: None,

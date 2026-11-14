@@ -36,6 +36,11 @@ impl Event {
     pub fn i32_at(&self, o: usize) -> i32 {
         self.u32_at(o) as i32
     }
+    pub fn ptr_at(&self, o: usize) -> usize {
+        let mut b = [0u8; core::mem::size_of::<usize>()];
+        b.copy_from_slice(&self.0[o..o + core::mem::size_of::<usize>()]);
+        usize::from_ne_bytes(b)
+    }
     pub fn u8_at(&self, o: usize) -> u8 {
         self.0[o]
     }
@@ -67,6 +72,8 @@ pub const EV_MOUSEMOTION: u32 = 0x400;
 pub const EV_MOUSEDOWN: u32 = 0x401;
 pub const EV_MOUSEUP: u32 = 0x402;
 pub const EV_MOUSEWHEEL: u32 = 0x403;
+/// A file dropped on the window (the path is a pointer at offset 8).
+pub const EV_DROPFILE: u32 = 0x1000;
 pub const WINEV_SIZE_CHANGED: u8 = 6;
 pub const WINEV_FOCUS_LOST: u8 = 13;
 
