@@ -428,6 +428,7 @@ impl App {
         let s = &self.settings;
         self.audio.set_volumes(s.master_volume, s.effects_volume, s.steps_volume, s.ui_volume);
         self.audio.set_ambience_volume(s.ambience_volume);
+        self.audio.set_music_volume_setting(s.music_volume);
         self.distance = self.distance.min(s.distance).max(2);
         if s.target_fps == 0 {
             self.distance = s.distance;
@@ -1232,6 +1233,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
     app.status.clear();
     // Sounds the player has put in the data folder's `sounds/` folder replace the game's own.
     let own_sounds = app.audio.load_folder(&base);
+    // The sound and music files of mods are found in their own folders.
+    app.audio.set_mods_dir(&app.mods_dir);
     app.refresh_mem_limit();
     if !own_sounds.is_empty() {
         logf!("voxelrust: own sounds from {}sounds/: {}", base, own_sounds.join(" "));

@@ -79,9 +79,10 @@ impl App {
                     changed |= ui.stepper(x, row(2), bw, bh, "FOOTSTEPS", &mut st.steps_volume, 0, 10, 1);
                     changed |= ui.stepper(x, row(3), bw, bh, "INTERFACE", &mut st.ui_volume, 0, 10, 1);
                     changed |= ui.stepper(x, row(4), bw, bh, "AMBIENCE VOLUME", &mut st.ambience_volume, 0, 10, 1);
-                    changed |= ui.toggle(x, row(5), bw, bh, "SUBTITLES FOR SOUNDS", &mut st.subtitles);
+                    changed |= ui.stepper(x, row(5), bw, bh, "MUSIC VOLUME", &mut st.music_volume, 0, 10, 1);
+                    changed |= ui.toggle(x, row(6), bw, bh, "SUBTITLES FOR SOUNDS", &mut st.subtitles);
                     if !self.audio.available() {
-                        ui.centered(ui.w() * 0.5, row(6) + 4.0 * s, 1.0, "NO SOUND DEVICE IS IN USE", ui::ACCENT);
+                        ui.centered(ui.w() * 0.5, row(7) + 4.0 * s, 1.0, "NO SOUND DEVICE IS IN USE", ui::ACCENT);
                     }
                 }
                 2 if self.video_detail == 1 => {

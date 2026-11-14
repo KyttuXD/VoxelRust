@@ -6,6 +6,15 @@ use alloc::vec::Vec;
 
 pub mod clip;
 
+// What mods use: playing and controlling sounds and music (docs/SOUND.md, "Sound for mods").
+pub mod fade;
+pub mod handles;
+pub mod loopseam;
+pub mod music_feed;
+pub mod resample;
+pub mod spatial;
+pub(crate) mod music_source;
+
 // How the game sounds around you: see docs/SOUND.md.
 pub mod ambience;
 pub mod bed;
@@ -90,7 +99,9 @@ mod flac;
 mod ogg;
 mod vorbis;
 mod mp3;
+mod ogg_stream;
 mod wav;
+mod wav_stream;
 
 use aiff::aiff;
 use flac::flac;

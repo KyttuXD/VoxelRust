@@ -13,6 +13,7 @@ mod mapping;
 mod mathx;
 mod mdct;
 mod residue;
+pub(crate) mod stream;
 
 use super::{Pcm, MAX_SECONDS};
 use alloc::vec;

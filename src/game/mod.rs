@@ -41,3 +41,4 @@ pub mod creature_wire;
 pub mod creature_api;
 pub mod mod_message;
 pub mod fx;
+pub mod mod_sound;

@@ -95,7 +95,7 @@ has for it (the host calls marked *new* were added in this round for them and fo
 | witherstorm: drawing the storm in pieces, heads, tentacles | `draw_model_posed` (new): one pose for a whole model; the parts of a creature's own model are moved apart with `set_bone` (rotation, offset and scale of a named bone, children follow; `model_bones` lists the names) and `set_creature_orientation` (pitch and roll of the whole model) (**closed**; a model drawn by `draw_model` still has only one pose) |
 | orespawn, witherstorm: effects of host-only logic seen by the other players (a boss's phase, a blast, a state) | `set_creature_state` / `creature_state` (64 bytes on a creature, sent with the snapshot), `send_message` / `send_message_to` and `on_message(channel, from, text)` (512 bytes, 8 a second, checked by the server) (**closed**) |
 | witherstorm: beams (`draw_quads`) | `quad_create`, `quad_move`, `quad_tint`, `quad_remove` (new): up to 256 translucent, textured, alpha or additive quads a mod, kept until removed |
-| witherstorm: sparks, sky, shake, sounds | `spawn_particles` (new: spark, smoke, flame, bubble, dust, magic, heart, cloud), `draw_speck`, `force_sky` (rain), `set_dimension_sky` (new: sky and fog colours, stars, clouds, sun, moon, least light, fixed time of day, per dimension), `shake`, `play_sound` (not placed in space) |
+| witherstorm: sparks, sky, shake, sounds | `spawn_particles` (new: spark, smoke, flame, bubble, dust, magic, heart, cloud), `draw_speck`, `force_sky` (rain), `set_dimension_sky` (new: sky and fog colours, stars, clouds, sun, moon, least light, fixed time of day, per dimension), `shake`, `play_sound`, `play_sound_at` and `loop_sound_at` (new: placed, panned, pitched, looping, with handles to stop, fade and move them), `play_music` (new) |
 | witherstorm and orespawn: flying debris, drops, blasts that burn or only throw | `spawn_falling_block`, `drop_item`, `on_item_pickup` (new), `explode(x, y, z, power, flags)` (new: `fire`, `no_blocks`, `no_damage`, `silent`; answers the blocks destroyed) |
 | orespawn: the sky of each of its five dimensions | a `dimension` line's sky properties (new, DATA.md) or `set_dimension_sky`; its terrain stays **missing** |
 | witherstorm: saved state (`witherstorm.txt`) | `state_*` (512 keys of 4 096 bytes); a storm's whole record fits |
@@ -129,7 +129,7 @@ Missing host calls, in the order they would unblock the most:
 3. **Lit TNT** (`prime_tnt(x, y, z, fuse)`): the Formidibomb and Super TNT (`explode` gives the blast but
    not the burning fuse). (Parts of a model animated apart are done: `set_bone`.)
 4. **Bigger or streamed world scans**: the storm eating a whole hillside (its dark sky is now `set_dimension_sky`, and its beams, sparks and debris are the effects above).
-5. **A positioned sound** (`play_sound_at(id, x, y, z)`).
+5. ~~**A positioned sound**~~ closed: `play_sound_at`, `loop_sound_at`, handles (`stop_sound`, `fade_sound`, `set_sound`, `is_playing`) and one streamed music channel (`play_music`, `stop_music`, `set_music_volume`, `music_playing`), with a MUSIC VOLUME setting (see SCRIPTING.md, "Sound and music").
 
 The first and second cannot be done by a script on its own at all; the rest only make
 witherstorm's behaviour exact. Nothing in either mod was edited, and the engine's host calls are written

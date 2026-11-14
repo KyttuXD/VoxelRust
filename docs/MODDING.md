@@ -3,7 +3,7 @@
 Everything in the game world is declared in text files: textures, blocks
 and what they do (doors, crops, seats, falling blocks), shapes, items, tools,
 weapons, food, recipes, ores and wild plants, models, creatures, vehicles,
-sounds, dimensions, chat commands and small scripts. The game's own
+sounds, music, dimensions, chat commands and small scripts. The game's own
 content is the small core, [data/base.txt](../data/base.txt) (built into the program: see
 [DATA.md](DATA.md) for what is in it and what is a mod). A **pack** is a file in the same format that is read after it and
 may add new things or redefine anything by reusing its id. A mod can also bring
@@ -1252,6 +1252,19 @@ of [DATA.md](DATA.md#effects) cover (damage, healing, speed, jump, melee
 damage, hunger, absorption, night vision): those need code, and
 code needs a rebuild. What a pack can do is run the episodes and scripts
 described above.
+
+### Sound and music from native code
+
+A mod's code plays sounds and music through `crate::native::sound`
+([src/game/mod_sound.rs](../src/game/mod_sound.rs)), with the session it is
+called with and its own name: `sound::play(g, "<mod>", "<sound>", volume, pitch, pan,
+at, looping)` returns a handle (0: none) for `sound::stop`, `fade`, `set` and
+`is_playing`; `sound::play_music`, `stop_music`, `set_music_volume` and
+`music_playing` drive the world's one music channel. The sounds are found, limited
+and mixed exactly as a script's are (see [SCRIPTING.md](SCRIPTING.md#sound-and-music)
+and [SOUND.md](SOUND.md)); calls queue and the game carries them out once a frame.
+`audio.play_named` still plays a sound of the data files at once, with the game's own
+variation, from the hooks that are handed the `Audio`.
 
 ## Memory
 

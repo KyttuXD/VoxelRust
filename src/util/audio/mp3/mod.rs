@@ -26,6 +26,7 @@ mod imdct;
 mod requant;
 mod scalefac;
 mod stereo;
+pub(crate) mod stream;
 mod synth;
 mod tables;
 #[cfg(test)]

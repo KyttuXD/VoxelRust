@@ -67,6 +67,7 @@ impl Audio {
             clip_len: 0,
             pos: 0.0,
             step: 1.0,
+            ..SILENT
         };
         self.start_voice(voice, false);
     }
@@ -91,7 +92,7 @@ impl Audio {
             self.pending[i].0 -= dt;
             if self.pending[i].0 <= 0.0 {
                 let (_, t) = self.pending.swap_remove(i);
-                let bus = if t.effects { self.effects } else { self.ambience };
+                let bus = if t.effects { self.effects } else { self.ambience * self.duck };
                 self.start_shot(&t.shot, bus);
             } else {
                 i += 1;
@@ -121,7 +122,7 @@ impl Audio {
             let m = &mut *self.mixer;
             for k in BedKind::ALL {
                 let t = self.amb.targets[k.index()];
-                m.beds[k.index()].set(t.level * self.ambience, t.top_hz);
+                m.beds[k.index()].set(t.level * self.ambience * self.duck, t.top_hz);
             }
             (api.SDL_UnlockAudioDevice)(self.device);
         }

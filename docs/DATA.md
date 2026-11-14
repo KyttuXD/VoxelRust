@@ -1107,7 +1107,7 @@ sound <id> <effects|steps|ui> <seconds> <noise> <hz from> <hz to> <low-pass> <lo
 All eight parts before the caption are needed. Pitch varies by a tenth
 either way each time, so repeats do not sound identical (the game varies
 every play of every sound, and limits how fast one may repeat: see
-[SOUND.md](SOUND.md)). Sixteen sounds can play at once. The low-pass is held
+[SOUND.md](SOUND.md)). Thirty-two sounds can play at once. The low-pass is held
 to 0.6 whatever is written, because brighter noise is a hiss.
 
 ```

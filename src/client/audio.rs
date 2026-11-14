@@ -8,6 +8,10 @@
 //! type is in `audio/ambient.rs`.
 
 mod ambient;
+mod modplay;
+mod music;
+
+pub use modplay::{safe_name, Ended, Request};
 
 use super::voice::stream::VoiceStream;
 use crate::sys::sdl::sdl;
@@ -66,9 +70,25 @@ struct Voice {
     clip_len: u32,
     pos: f32,
     step: f32,
+    /// Where it is heard from: the left and right gains (1 and 1 in the middle).
+    pl: f32,
+    pr: f32,
+    /// What a sound a mod controls is gliding to over the next stretch of
+    /// samples (gain, left gain, right gain, speed); negative means "not
+    /// moving". The glide hides the steps a once-a-frame update would make.
+    gain_t: f32,
+    pl_t: f32,
+    pr_t: f32,
+    step_t: f32,
+    /// Plays until stopped, the last `xf` samples crossfaded into the start
+    /// (see `util/audio/loopseam.rs`).
+    looping: bool,
+    xf: u32,
+    /// The handle a mod holds for it (0: none, see `util/audio/handles.rs`).
+    handle: u32,
 }
 
-const VOICES: usize = 16;
+const VOICES: usize = 32;
 const RATE: i32 = 22050;
 
 /// Other players' voices playing at once (proximity voice chat, see `voice`).
@@ -80,11 +100,21 @@ struct Mixer {
     beds: [Bed; BEDS],
     /// Streamed speech: fed by the game thread, played from here.
     streams: [VoiceStream; VOICE_STREAMS],
+    /// The two lanes of music (a track and the one it crossfades with).
+    music: [music::Lane; 2],
+    /// Channels the device plays: 2, or 1 when it could only open mono.
+    channels: usize,
 }
 
 impl Mixer {
     fn new() -> Mixer {
-        Mixer { voices: [SILENT; VOICES], beds: Self::fresh_beds(), streams: core::array::from_fn(|_| VoiceStream::new()) }
+        Mixer {
+            voices: [SILENT; VOICES],
+            beds: Self::fresh_beds(),
+            streams: core::array::from_fn(|_| VoiceStream::new()),
+            music: [music::Lane::empty(), music::Lane::empty()],
+            channels: 1,
+        }
     }
 
     /// Silent beds, each with its own grain pattern.
@@ -93,8 +123,31 @@ impl Mixer {
     }
 }
 
-const SILENT: Voice =
-    Voice { left: 0, total: 1, gain: 0.0, noise: 0.0, step0: 0.0, step1: 0.0, phase: 0.0, lp: 0.0, lp_k: 1.0, rng: 1, clip: core::ptr::null(), clip_len: 0, pos: 0.0, step: 1.0 };
+const SILENT: Voice = Voice {
+    left: 0,
+    total: 1,
+    gain: 0.0,
+    noise: 0.0,
+    step0: 0.0,
+    step1: 0.0,
+    phase: 0.0,
+    lp: 0.0,
+    lp_k: 1.0,
+    rng: 1,
+    clip: core::ptr::null(),
+    clip_len: 0,
+    pos: 0.0,
+    step: 1.0,
+    pl: 1.0,
+    pr: 1.0,
+    gain_t: -1.0,
+    pl_t: -1.0,
+    pr_t: -1.0,
+    step_t: -1.0,
+    looping: false,
+    xf: 0,
+    handle: 0,
+};
 
 #[repr(C)]
 struct AudioSpec {
@@ -109,34 +162,68 @@ struct AudioSpec {
     userdata: *mut c_void,
 }
 
-/// Add what one voice plays next to `acc` (sums of the voices, in 16-bit
-/// units but wider than 16 bits so many loud voices do not wrap).
-fn mix_voice(v: &mut Voice, acc: &mut [i32]) {
+/// Add what one voice plays next to `sl` and `sr` (the left and right sums
+/// of the voices, in 16-bit units but wider than 16 bits so many loud voices
+/// do not wrap).
+fn mix_voice(v: &mut Voice, sl: &mut [i32], sr: &mut [i32]) {
     if v.left == 0 {
         return;
     }
-    for s in acc.iter_mut() {
+    // A sound a mod controls glides to its new gain, pan and speed over this
+    // stretch instead of jumping.
+    let n = sl.len().max(1) as f32;
+    let glide = v.gain_t >= 0.0 || v.pl_t >= 0.0 || v.pr_t >= 0.0 || v.step_t >= 0.0;
+    let (dg, dl, dr, ds) = if glide {
+        (
+            if v.gain_t >= 0.0 { (v.gain_t - v.gain) / n } else { 0.0 },
+            if v.pl_t >= 0.0 { (v.pl_t - v.pl) / n } else { 0.0 },
+            if v.pr_t >= 0.0 { (v.pr_t - v.pr) / n } else { 0.0 },
+            if v.step_t >= 0.0 { (v.step_t - v.step) / n } else { 0.0 },
+        )
+    } else {
+        (0.0, 0.0, 0.0, 0.0)
+    };
+    for (l, r) in sl.iter_mut().zip(sr.iter_mut()) {
         if v.left == 0 {
             break;
+        }
+        if glide {
+            v.gain += dg;
+            v.pl += dl;
+            v.pr += dr;
+            v.step += ds;
         }
         if !v.clip.is_null() {
             // A recorded sound: read it at its own speed, with a short
             // fade at the end so it does not click.
-            let i = v.pos as usize;
-            if i + 1 >= v.clip_len as usize {
-                v.left = 0;
-                break;
+            let len = v.clip_len as usize;
+            let x;
+            if v.looping {
+                // SAFETY: as below: `clip` points at `clip_len` samples that outlive the voice.
+                let s = unsafe { core::slice::from_raw_parts(v.clip, len) };
+                x = crate::wav::loopseam::loop_sample(s, v.pos, v.xf as usize);
+            } else {
+                let i = v.pos as usize;
+                if i + 1 >= len {
+                    v.left = 0;
+                    break;
+                }
+                // SAFETY: `clip` points into samples that are never freed while the
+                // voice plays (see `Audio::playing_clips` and `Clip::evict`).
+                let (a, b) = unsafe { (*v.clip.add(i) as f32, *v.clip.add(i + 1) as f32) };
+                x = a + (b - a) * (v.pos - i as f32);
             }
-            // SAFETY: `clip` points into samples that are never freed while the
-            // voice plays (see `Audio::playing_clips` and `Clip::evict`).
-            let (a, b) = unsafe { (*v.clip.add(i) as f32, *v.clip.add(i + 1) as f32) };
-            let x = a + (b - a) * (v.pos - i as f32);
             // Distant sounds are duller (lp_k below 1); near ones pass as they are.
             v.lp += (x - v.lp) * v.lp_k;
-            let fade = ((v.clip_len as f32 - v.pos) / 200.0).min(1.0);
-            *s += (v.lp * fade * v.gain) as i32;
+            let m = if v.looping { v.lp * v.gain } else { v.lp * ((v.clip_len as f32 - v.pos) / 200.0).min(1.0) * v.gain };
+            *l += (m * v.pl) as i32;
+            *r += (m * v.pr) as i32;
             v.pos += v.step;
-            v.left -= 1;
+            if v.looping {
+                v.pos = crate::wav::loopseam::wrap(v.pos, len, v.xf as usize);
+            } else {
+                v.left -= 1;
+            }
             continue;
         }
         let t = 1.0 - v.left as f32 / v.total as f32; // 0 at start, 1 at end
@@ -153,44 +240,92 @@ fn mix_voice(v: &mut Voice, acc: &mut [i32]) {
         }
         // A triangle wave: soft, and needs no sine.
         let tri = if v.phase < 0.5 { v.phase * 4.0 - 1.0 } else { 3.0 - v.phase * 4.0 };
-        let sample = (v.lp * v.noise + tri * (1.0 - v.noise)) * env * v.gain;
-        *s += (sample * 14000.0) as i32;
+        let sample = (v.lp * v.noise + tri * (1.0 - v.noise)) * env * v.gain * 14000.0;
+        *l += (sample * v.pl) as i32;
+        *r += (sample * v.pr) as i32;
         v.left -= 1;
+    }
+    if glide {
+        // Arrive exactly (a voice that ended early still ends where it was sent).
+        if v.gain_t >= 0.0 {
+            v.gain = v.gain_t;
+        }
+        if v.pl_t >= 0.0 {
+            v.pl = v.pl_t;
+        }
+        if v.pr_t >= 0.0 {
+            v.pr = v.pr_t;
+        }
+        if v.step_t >= 0.0 {
+            v.step = v.step_t;
+        }
+        v.gain_t = -1.0;
+        v.pl_t = -1.0;
+        v.pr_t = -1.0;
+        v.step_t = -1.0;
     }
 }
 
-/// Fill `out` with the mix of all active voices and beds, bent softly
-/// below full scale (see `util/audio/limiter.rs`). Pure, so it can be
-/// tested. Allocates nothing: it runs in the audio callback.
-fn mix(m: &mut Mixer, out: &mut [i16]) {
+/// Fill `out` with the mix of all active voices, beds and music, bent softly
+/// below full scale (see `util/audio/limiter.rs`). `channels` is 1 (a mono
+/// device: the two sides are averaged) or 2 (left and right frames
+/// interleaved). Pure, so it can be tested. Allocates nothing: it runs in the
+/// audio callback.
+fn mix_channels(m: &mut Mixer, out: &mut [i16], channels: usize) {
     const CHUNK: usize = 256;
-    for chunk in out.chunks_mut(CHUNK) {
-        let mut sums = [0i32; CHUNK];
-        let acc = &mut sums[..chunk.len()];
+    let ch = channels.clamp(1, 2);
+    let frames = out.len() / ch;
+    let mut done = 0;
+    while done < frames {
+        let n = (frames - done).min(CHUNK);
+        let mut left = [0i32; CHUNK];
+        let mut right = [0i32; CHUNK];
+        let (sl, sr) = (&mut left[..n], &mut right[..n]);
         for v in m.voices.iter_mut() {
-            mix_voice(v, acc);
+            mix_voice(v, sl, sr);
         }
         for b in m.beds.iter_mut() {
             if b.quiet() {
                 continue;
             }
-            for a in acc.iter_mut() {
-                *a += (b.next() * 32767.0) as i32;
+            for (l, r) in sl.iter_mut().zip(sr.iter_mut()) {
+                let a = (b.next() * 32767.0) as i32;
+                *l += a;
+                *r += a;
             }
         }
-        for (o, a) in chunk.iter_mut().zip(acc.iter()) {
-            *o = soft_limit(*a);
+        for lane in m.music.iter_mut() {
+            lane.mix(sl, sr);
         }
+        // Streamed speech comes in mono on top of the limited mix.
+        let mut speech = [0i16; CHUNK];
+        for st in m.streams.iter_mut() {
+            st.mix_into(&mut speech[..n]);
+        }
+        for i in 0..n {
+            let sp = speech[i] as i32;
+            if ch == 2 {
+                out[(done + i) * 2] = (soft_limit(sl[i]) as i32 + sp).clamp(-32000, 32000) as i16;
+                out[(done + i) * 2 + 1] = (soft_limit(sr[i]) as i32 + sp).clamp(-32000, 32000) as i16;
+            } else {
+                out[done + i] = (soft_limit((sl[i] + sr[i]) / 2) as i32 + sp).clamp(-32000, 32000) as i16;
+            }
+        }
+        done += n;
     }
-    for st in m.streams.iter_mut() {
-        st.mix_into(out);
-    }
+}
+
+/// A mono mix (the tests and a mono device).
+#[cfg(test)]
+fn mix(m: &mut Mixer, out: &mut [i16]) {
+    mix_channels(m, out, 1);
 }
 
 unsafe extern "C" fn callback(user: *mut c_void, stream: *mut u8, len: c_int) {
     let m = &mut *(user as *mut Mixer);
     let out = core::slice::from_raw_parts_mut(stream as *mut i16, (len.max(0) as usize) / 2);
-    mix(m, out);
+    let ch = m.channels;
+    mix_channels(m, out, ch);
 }
 
 pub struct Audio {
@@ -224,6 +359,22 @@ pub struct Audio {
     /// Sounds from the data folder's `sounds/` folder (`<id>.wav`): they
     /// replace the sound of that name, made or recorded.
     user: Vec<(alloc::string::String, crate::wav::clip::Clip)>,
+    // ---- sound and music for mods (`audio/modplay.rs`, `audio/music.rs`)
+    /// Where the player is and which way they face (the listener).
+    listener: ([f64; 3], f32),
+    /// The sounds with handles that are playing.
+    tracked: Vec<modplay::Tracked>,
+    /// Handles whose sounds ended, until the game asks.
+    ended: Vec<u32>,
+    /// `<data>/mods`, for the sound and music files of mods.
+    mods_dir: alloc::string::String,
+    /// Sound files read out of mods' `sounds/` folders (None: looked, not there).
+    mod_clips: Vec<(alloc::string::String, Option<crate::wav::clip::Clip>)>,
+    /// Missing sounds already reported.
+    told: Vec<alloc::string::String>,
+    deck: music::Deck,
+    /// How far the ambience is turned down for music (1 = not at all).
+    duck: f32,
 }
 
 impl Audio {
@@ -237,27 +388,33 @@ impl Audio {
             if (api.SDL_InitSubSystem)(0x10) != 0 {
                 return audio;
             }
-            let want = AudioSpec {
-                freq: RATE,
-                format: if cfg!(target_endian = "big") { 0x9010 } else { 0x8010 }, // signed 16-bit, this machine's byte order
-                channels: 1,
-                silence: 0,
-                samples: 512,
-                padding: 0,
-                size: 0,
-                callback: Some(callback),
-                userdata: mixer as *mut c_void,
-            };
-            let mut got: AudioSpec = core::mem::zeroed();
-            audio.device = (api.SDL_OpenAudioDevice)(
-                core::ptr::null(),
-                0,
-                &want as *const AudioSpec as *const c_void,
-                &mut got as *mut AudioSpec as *mut c_void,
-                0,
-            );
-            if audio.device != 0 {
-                (api.SDL_PauseAudioDevice)(audio.device, 0);
+            // Stereo first (sounds with a place are panned); a device that only opens as mono gets the mixed-down sound.
+            for channels in [2u8, 1] {
+                let want = AudioSpec {
+                    freq: RATE,
+                    format: if cfg!(target_endian = "big") { 0x9010 } else { 0x8010 }, // signed 16-bit, this machine's byte order
+                    channels,
+                    silence: 0,
+                    samples: 512,
+                    padding: 0,
+                    size: 0,
+                    callback: Some(callback),
+                    userdata: mixer as *mut c_void,
+                };
+                let mut got: AudioSpec = core::mem::zeroed();
+                audio.device = (api.SDL_OpenAudioDevice)(
+                    core::ptr::null(),
+                    0,
+                    &want as *const AudioSpec as *const c_void,
+                    &mut got as *mut AudioSpec as *mut c_void,
+                    0,
+                );
+                if audio.device != 0 {
+                    // (The device is paused until below, so the callback is not running yet.)
+                    (*mixer).channels = if got.channels == 2 { 2 } else { 1 };
+                    (api.SDL_PauseAudioDevice)(audio.device, 0);
+                    break;
+                }
             }
         }
         audio
@@ -290,6 +447,14 @@ impl Audio {
             caption_timer: 0.0,
             captions: Vec::new(),
             user: Vec::new(),
+            listener: ([0.0; 3], 0.0),
+            tracked: Vec::new(),
+            ended: Vec::new(),
+            mods_dir: alloc::string::String::new(),
+            mod_clips: Vec::new(),
+            told: Vec::new(),
+            deck: music::Deck::new(),
+            duck: 1.0,
         }
     }
 
@@ -398,13 +563,16 @@ impl Audio {
         for u in &self.user {
             freed += u.1.evict(clock, idle, &playing);
         }
+        for u in self.mod_clips.iter().filter_map(|u| u.1.as_ref()) {
+            freed += u.evict(clock, idle, &playing);
+        }
         freed
     }
 
     /// Bytes of decoded recordings held now.
     pub fn clip_bytes(&self) -> usize {
         let a: usize = crate::block::reg().sounds.iter().filter_map(|s| s.clip.as_ref()).map(|c| c.resident_bytes()).sum();
-        a + self.user.iter().map(|u| u.1.resident_bytes()).sum::<usize>()
+        a + self.user.iter().map(|u| u.1.resident_bytes()).sum::<usize>() + self.mod_clips.iter().filter_map(|u| u.1.as_ref()).map(|c| c.resident_bytes()).sum::<usize>() + self.deck.bytes()
     }
 
     /// Stop everything at once (leaving a world must not leave its rain
@@ -414,6 +582,8 @@ impl Audio {
         self.pending.clear();
         self.env = Env::default();
         self.amb.reset();
+        self.silence_mods();
+        self.duck = 1.0;
         if self.device == 0 {
             return;
         }
@@ -422,6 +592,7 @@ impl Audio {
             (api.SDL_LockAudioDevice)(self.device);
             (*self.mixer).voices = [SILENT; VOICES];
             (*self.mixer).beds = Mixer::fresh_beds();
+            (*self.mixer).music = [music::Lane::empty(), music::Lane::empty()];
             for st in (*self.mixer).streams.iter_mut() {
                 st.release();
             }
@@ -436,6 +607,7 @@ impl Audio {
         }
         self.captions.retain(|c| c.1 > 0.0);
         self.clock += dt.max(0.0);
+        self.mod_tick(dt);
         self.ambient_tick(dt);
     }
 
@@ -617,6 +789,7 @@ impl Audio {
             clip_len: 0,
             pos: 0.0,
             step: 1.0,
+            ..SILENT
         };
         if let Some(c) = clip {
             voice.clip = c.as_ptr();
@@ -663,7 +836,7 @@ mod tests {
     #[test]
     fn a_voice_makes_sound_then_falls_silent() {
         let mut m = Mixer::new();
-        m.voices[0] = Voice { left: 1000, total: 1000, gain: 0.8, noise: 0.5, step0: 0.02, step1: 0.01, phase: 0.0, lp: 0.0, lp_k: 0.3, rng: 7, clip: core::ptr::null(), clip_len: 0, pos: 0.0, step: 1.0 };
+        m.voices[0] = Voice { left: 1000, total: 1000, gain: 0.8, noise: 0.5, step0: 0.02, step1: 0.01, phase: 0.0, lp: 0.0, lp_k: 0.3, rng: 7, clip: core::ptr::null(), clip_len: 0, pos: 0.0, step: 1.0, ..SILENT };
         let mut buf = [0i16; 1500];
         mix(&mut m, &mut buf);
         assert!(buf[..1000].iter().any(|&s| s.unsigned_abs() > 500), "no signal");
@@ -677,7 +850,7 @@ mod tests {
     fn many_loud_voices_do_not_overflow() {
         let mut m = Mixer::new();
         for (i, v) in m.voices.iter_mut().enumerate() {
-            *v = Voice { left: 400, total: 400, gain: 5.0, noise: 1.0, step0: 0.0, step1: 0.0, phase: 0.0, lp: 0.0, lp_k: 1.0, rng: 99 + i as u32, clip: core::ptr::null(), clip_len: 0, pos: 0.0, step: 1.0 };
+            *v = Voice { left: 400, total: 400, gain: 5.0, noise: 1.0, step0: 0.0, step1: 0.0, phase: 0.0, lp: 0.0, lp_k: 1.0, rng: 99 + i as u32, clip: core::ptr::null(), clip_len: 0, pos: 0.0, step: 1.0, ..SILENT };
         }
         let mut buf = [0i16; 400];
         mix(&mut m, &mut buf);
@@ -706,7 +879,7 @@ mod tests {
             b.set(1.0, 8000.0);
         }
         for (i, v) in m.voices.iter_mut().enumerate() {
-            *v = Voice { left: 3000, total: 3000, gain: 5.0, noise: 1.0, step0: 0.0, step1: 0.0, phase: 0.0, lp: 0.0, lp_k: 1.0, rng: 5 + i as u32, clip: core::ptr::null(), clip_len: 0, pos: 0.0, step: 1.0 };
+            *v = Voice { left: 3000, total: 3000, gain: 5.0, noise: 1.0, step0: 0.0, step1: 0.0, phase: 0.0, lp: 0.0, lp_k: 1.0, rng: 5 + i as u32, clip: core::ptr::null(), clip_len: 0, pos: 0.0, step: 1.0, ..SILENT };
         }
         let mut buf = [0i16; 3000];
         for _ in 0..10 {
@@ -728,11 +901,132 @@ mod tests {
         };
         let play = |k: f32| {
             let mut m = Mixer::new();
-            m.voices[0] = Voice { left: 70, total: 70, gain: 1.0, noise: 0.0, step0: 0.0, step1: 0.0, phase: 0.0, lp: 0.0, lp_k: k, rng: 1, clip: CLIP.as_ptr(), clip_len: 64, pos: 0.0, step: 1.0 };
+            m.voices[0] = Voice { left: 70, total: 70, gain: 1.0, noise: 0.0, step0: 0.0, step1: 0.0, phase: 0.0, lp: 0.0, lp_k: k, rng: 1, clip: CLIP.as_ptr(), clip_len: 64, pos: 0.0, step: 1.0, ..SILENT };
             let mut buf = [0i16; 40];
             mix(&mut m, &mut buf);
             buf.iter().map(|&s| (s as i32).abs()).max().unwrap()
         };
         assert!(play(0.2) < play(1.0) / 2);
+    }
+
+    /// A square-wave clip for the stereo tests.
+    fn tone_clip() -> &'static [i16] {
+        static TONE: [i16; 2000] = {
+            let mut a = [0i16; 2000];
+            let mut i = 0;
+            while i < 2000 {
+                a[i] = if (i / 10) % 2 == 0 { 6000 } else { -6000 };
+                i += 1;
+            }
+            a
+        };
+        &TONE
+    }
+
+    fn clip_voice(pl: f32, pr: f32) -> Voice {
+        let c = tone_clip();
+        Voice { left: 3000, total: 3000, gain: 1.0, lp_k: 1.0, clip: c.as_ptr(), clip_len: c.len() as u32, pl, pr, ..SILENT }
+    }
+
+    fn peaks(m: &mut Mixer, frames: usize) -> (i32, i32) {
+        let mut buf = alloc::vec![0i16; frames * 2];
+        mix_channels(m, &mut buf, 2);
+        let l = buf.iter().step_by(2).map(|&s| (s as i32).abs()).max().unwrap();
+        let r = buf.iter().skip(1).step_by(2).map(|&s| (s as i32).abs()).max().unwrap();
+        (l, r)
+    }
+
+    #[test]
+    fn a_pan_sends_the_sound_to_one_side() {
+        let mut m = Mixer::new();
+        m.voices[0] = clip_voice(1.0, 0.0);
+        let (l, r) = peaks(&mut m, 300);
+        assert!(l > 1000 && r == 0, "{l} {r}");
+        let mut m = Mixer::new();
+        m.voices[0] = clip_voice(0.0, 1.0);
+        let (l, r) = peaks(&mut m, 300);
+        assert!(r > 1000 && l == 0, "{l} {r}");
+        let mut m = Mixer::new();
+        m.voices[0] = clip_voice(1.0, 1.0);
+        let (l, r) = peaks(&mut m, 300);
+        assert!(l == r && l > 1000);
+    }
+
+    #[test]
+    fn a_mono_device_gets_the_two_sides_averaged() {
+        let mut m = Mixer::new();
+        m.voices[0] = clip_voice(1.0, 0.0);
+        let mut buf = alloc::vec![0i16; 300];
+        mix_channels(&mut m, &mut buf, 1);
+        let mono = buf.iter().map(|&s| (s as i32).abs()).max().unwrap();
+        let mut m2 = Mixer::new();
+        m2.voices[0] = clip_voice(1.0, 1.0);
+        let mut buf2 = alloc::vec![0i16; 300];
+        mix_channels(&mut m2, &mut buf2, 1);
+        let both = buf2.iter().map(|&s| (s as i32).abs()).max().unwrap();
+        assert!((both - 2 * mono).abs() <= 2, "{mono} {both}");
+    }
+
+    #[test]
+    fn a_looping_voice_plays_past_the_end_of_its_clip_until_cut() {
+        let c = tone_clip();
+        let mut m = Mixer::new();
+        let xf = crate::wav::loopseam::seam_len(c.len()) as u32;
+        m.voices[0] = Voice { looping: true, xf, left: u32::MAX, total: u32::MAX, ..clip_voice(1.0, 1.0) };
+        let mut buf = alloc::vec![0i16; 12000];
+        mix_channels(&mut m, &mut buf, 1);
+        assert!(m.voices[0].left > 0, "still playing after six clip lengths");
+        assert!(buf[10000..].iter().any(|&s| s.unsigned_abs() > 1000), "and still sounding");
+        assert!(m.voices[0].pos < c.len() as f32, "the position wrapped");
+        // Cut by the game thread: silent from then on.
+        m.voices[0].left = 0;
+        mix_channels(&mut m, &mut buf, 1);
+        assert!(buf.iter().all(|&s| s == 0));
+    }
+
+    #[test]
+    fn a_voice_glides_to_its_new_gain_instead_of_jumping() {
+        let mut m = Mixer::new();
+        m.voices[0] = clip_voice(1.0, 1.0);
+        m.voices[0].gain_t = 0.0;
+        let mut buf = alloc::vec![0i16; 256 * 2];
+        mix_channels(&mut m, &mut buf, 2);
+        let first = buf[..40].iter().map(|&s| (s as i32).abs()).max().unwrap();
+        let last = buf[420..460].iter().map(|&s| (s as i32).abs()).max().unwrap();
+        assert!(first > last * 3 + 100 || last == 0, "{first} {last}");
+        assert_eq!(m.voices[0].gain, 0.0, "it arrived");
+        assert!(m.voices[0].gain_t < 0.0, "and the glide is over");
+    }
+
+    #[test]
+    fn a_voice_can_change_its_speed_while_it_plays() {
+        let mut m = Mixer::new();
+        m.voices[0] = clip_voice(1.0, 1.0);
+        m.voices[0].step_t = 2.0;
+        let mut buf = alloc::vec![0i16; 256];
+        mix_channels(&mut m, &mut buf, 1);
+        assert_eq!(m.voices[0].step, 2.0);
+        assert!(m.voices[0].pos > 256.0 && m.voices[0].pos < 520.0, "{}", m.voices[0].pos);
+    }
+
+    #[test]
+    fn thirty_two_voices_play_at_once_and_stay_in_range() {
+        assert_eq!(VOICES, 32);
+        let mut m = Mixer::new();
+        for v in m.voices.iter_mut() {
+            *v = Voice { gain: 4.0, ..clip_voice(1.0, 1.0) };
+        }
+        let mut buf = alloc::vec![0i16; 512 * 2];
+        mix_channels(&mut m, &mut buf, 2);
+        assert!(buf.iter().all(|&s| (-32000..=32000).contains(&s)));
+    }
+
+    #[test]
+    fn music_in_a_lane_reaches_both_sides_of_the_mix() {
+        let mut m = Mixer::new();
+        m.music[0] = music::Lane::filled(&[(8000, -8000); 600], 1.0);
+        let mut buf = alloc::vec![0i16; 300 * 2];
+        mix_channels(&mut m, &mut buf, 2);
+        assert!(buf[100] > 7000 && buf[101] < -7000, "{} {}", buf[100], buf[101]);
     }
 }
