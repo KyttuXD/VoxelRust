@@ -26,7 +26,8 @@ In this order, each able to override the ones before:
       is `VoxelRust.app/Contents/Resources/mods`.
    3. `<data folder>/mods/`: the place for mods you install.
    4. `./mods/`, a `mods` folder where the game was started (handy while
-      making one; in the source tree it is where the mods that come with the game live).
+      making one. The mods are not in the source tree: to run from it, link or copy
+   the `VoxelRust-Mods` folder there as `mods`, e.g. `ln -s ../VoxelRust-Mods mods`).
 4. Every file given with `--pack FILE`, in the order given.
 
 A mod goes by the name of its folder (or of its file without `.txt`). **A
@@ -58,9 +59,10 @@ own (see [Code that mods bring](#code-that-mods-bring)).
 
 Where they are:
 
-- in the source tree, `mods/` at the top (the eight folders above, with
-  `mods/SHIPPED` and `mods/tests.rs`, are the only things under `mods/` that
-  git tracks);
+- in the source: a separate folder, `VoxelRust-Mods`, beside the repository
+  (the eight folders above, with `SHIPPED` and `tests.rs`, and any other mod
+  of the author's). The build reads it from `VOXELRUST_MODS_DIR`, default
+  `../VoxelRust-Mods` (see [BUILDING.md](BUILDING.md#mod-code));
 - in the Linux and Windows archives, a `mods/` folder beside the program;
 - in the Mac apps, `Contents/Resources/mods`.
 
@@ -122,12 +124,21 @@ appears after `/reload`, and one taken out disappears. A mod can be switched
 off without removing it: see
 [Switching mods on and off](#switching-mods-on-and-off).
 
-In the source tree, everything under `mods/` is ignored by git except the
-mods that come with the game, `mods/SHIPPED` and `mods/tests.rs`, so a mod
-under development there is not committed by accident.
+The mods are kept outside the game's repository, in the `VoxelRust-Mods`
+folder (its own git repository, beside this one; `VOXELRUST_MODS_DIR` names
+another place). A `mods/` folder at the top of the game's source tree is
+ignored by git, so a mod under development there is not committed by accident.
 
 A pack can pull in more files with `include`, and refers to textures (`.tga`)
 and models (`.bbmodel`) by paths relative to the pack file itself.
+
+A pack can also declare **palettes**, `palette <name> <colours...> [gradient
+<dir>]`, and paint textures from them: `texture ruby_ore paint ore palette
+ruby`. Colours are `#rrggbb` or `r g b`; a palette has up to six colours with
+roles (base, dark, light, accent, highlight, outline) and may spread them over
+the picture in flat bands. Palettes of the base game and of mods loaded
+earlier can be used by later packs; see
+[TEXTURING.md](TEXTURING.md#palettes-and-gradients).
 
 Mistakes never stop the game: the bad line is skipped and a message such as
 `pack.txt:19: unknown block property (`bogus`)` is printed (use `--log FILE`
@@ -181,9 +192,43 @@ command <name> <commands separated by ;>
 | `night` | night falls | none |
 | `day` | day breaks | none |
 | `death` | you die | none |
+| `wake` | you sleep through the night and wake in the morning | none |
+| `effectstart <effect>` | a status effect starts on you, from a source, a mod or `/effect give` (not when it is only made stronger or longer) | effect id |
+| `effectend <effect>` | it runs out, is put out by water, or is cleared (and for each one when you respawn after dying) | effect id |
 | `episode <id>` | an episode of a pack begins (see [Episodes](#episodes)) | episode id |
 | `episode_end <id>` | that episode ends | episode id |
+| `tntprimed <block>` | a block of TNT is lit (by fire, lava, an explosion or the flint and steel) | block id |
+| `explode` | an explosion happens, before it breaks anything (TNT, an exploding creature, `/blast`, a mod's code) | what set it off: `tnt`, `command`, a creature's id, or `mod<N>` |
+| `blockexploded <block>` | an explosion has broken blocks: once for each kind of block it took, after it is over | block id |
 | *any name* | a pack raises it with `/fire <event> [what]` | whatever it sends |
+
+The newer events, which fire in the same way:
+
+| Event | Happens when | `what` |
+| --- | --- | --- |
+| `entityspawn` | a creature appears (by itself, from an egg, from breeding) | entity id |
+| `entitydeath` | a creature dies, whatever the cause | entity id |
+| `entityhurt` | you strike a creature (it may die of it) | entity id |
+| `playerhurt` | you take damage in survival, after armour and mods | the cause: `fall`, `drown`, `hunger`, `block`, `arrow`, `command`, `other`, or the id of the creature that bit |
+| `respawn` | you come back after dying | none |
+| `chat` | you say something (a line not starting with `/`) | its first word |
+| `command` | you type a `/command` | its name without the `/` |
+| `itempickup` | you pick an item up off the ground | item id |
+| `itemdrop` | you drop an item | item id |
+| `craft` | you craft something at a table or oven | the output item id |
+| `sleep` | you lie down to sleep | none |
+| `wake` | you wake | none |
+| `weather` | the weather where you are changes | `clear`, `rain`, `snow` or `storm` |
+| `join` | another player joins a shared game | their name |
+| `leave` | another player leaves a shared game | their name |
+
+Some events have a second name, and a pack may write either:
+`blockbreak` = `break`, `blockplace` = `place`, `playerdeath` = `death`,
+`nightfall` = `night`, `daybreak` = `day`, `itemuse` = `useitem`.
+Creature events are raised by whoever runs the world: in a shared game, the
+host (the other players hear `entityhurt` for their own blows only). A mod's
+native code can also hear and cancel many of these before they happen (see
+[Hooks reference](#hooks-reference)).
 
 A pack hooks into another by raising an event with `/fire`, and the other
 answers with its own `when`. `/fire` can be used within a `when` too, but a
@@ -198,6 +243,9 @@ Eating (in survival) and shooting come before `useitem`, so it suits
 items that are neither food nor weapons.
 
 ```
+when useitem tonic do /effect give regeneration 30 2; /effect give speed 30; /take tonic
+when effectstart wither do /say &8THE AIR TURNS COLD
+when kill spider do /if effect poison then /heal 6
 when use arcane_portal do /sound portal; /dim arcane; /say &dYOU STEP THROUGH
 when useitem fire_wand do /sound spell; /shoot 10 38 hot_coals
 when eat healing_potion do /heal 14
@@ -274,6 +322,7 @@ written with `$`.
 | `riding` | you are on a creature or in a vehicle |
 | `hurt` | your health is below full |
 | `hungry` | your hunger is below full |
+| `effect ID [LEVEL]` | that status effect is active on you, at that level or more (1 if left out) |
 | `driving` | you are in a vehicle (the Vehicles mod is on); `riding` is true then too |
 | `setting ID` | that switch is on in SETTINGS > GAME (a pack's `setting` line) |
 | `storm` | a storm is on |
@@ -313,7 +362,53 @@ limit of six levels of nesting.
 | --- | --- |
 | `/take ITEM [N]` | removes N of the item (1 if left out) from the player, if they have it. Pair it with `/if has ITEM N` to charge a price |
 | `/title TEXT` | large letters in the middle of the screen for two seconds |
-| `/blast [R]` | clears a ball of blocks of radius R (1 to 5; 2 if left out) around the block the player points at; unbreakable blocks stay. Not on a server |
+| `/blast [R]` | an explosion of radius R (1 to 5; 2 if left out) round the block the player points at: it clears a rough ball of blocks (unbreakable blocks, liquids and `tag blastproof` blocks stay), hurts and throws what is near, and fires the explosion events below. Not on a server |
+
+### Explosions
+
+TNT and every other explosion (an exploding creature, `/blast`, a mod's
+code) go through one function, `explosion::explode` in
+[src/game/explosion.rs](../src/game/explosion.rs). An explosion of power P
+clears a rough ball of blocks of radius 2P (TNT has power 2.5: a ball about
+10 blocks across). Water, lava, unbreakable blocks and blocks marked
+`tag blastproof` stay. In survival about a third of what is broken drops as
+items (at most 24 a blast) and a broken chest scatters what it held. TNT in
+the ball is lit with a fuse of half a second to a second and a half, so a
+stack goes off in a chain. Creatures and the player within three times P
+blocks are hurt and thrown the less the farther they are (TNT takes 20
+health point blank, about 4 at four blocks).
+
+A block is TNT when it has `tag tnt <power>` (see [DATA.md](DATA.md#blocks)).
+It is lit by lava or a `tag fire` block (the campfire) beside it, by an
+explosion, or by right clicking it with the `flint_and_steel` item. A lit
+block leaves the world and burns a four second fuse as a block that flashes
+white, then explodes. Lit blocks are not saved with the world.
+
+Scripts hear of it with three events (see the table above): `tntprimed`,
+`explode` and `blockexploded`. `blockexploded` is raised once for each kind
+of block an explosion broke, not once for every block, and only when some
+pack has a `when blockexploded` line.
+
+```
+when tntprimed do /say &cFUSE LIT
+when explode creeper do /title SSSSS...BOOM
+when blockexploded diamond_ore do /give ruby 1
+```
+
+Mod code has three hooks for explosions (see
+[Code that mods bring](#code-that-mods-bring)):
+
+| Hook | Called | May |
+| --- | --- | --- |
+| `before_explode(g, &mut ExplosionInfo) -> bool` | before an explosion breaks anything | change `at` and `power`, or return false to cancel it |
+| `after_explode(g, &ExplosionInfo, destroyed)` | when it is over; `destroyed` is how many blocks went | |
+| `on_prime(g, cell) -> bool` | before a block of TNT is lit | return false to keep it from being lit |
+
+`ExplosionInfo` is `{ at: [f64; 3], power: f32, source: ExplosionSource }`
+and `ExplosionSource` is `Tnt`, `Creature(entity index)`, `Command` or
+`Mod(number)`. Mod code can set off its own explosion with
+`crate::explosion::explode(g, at, power, ExplosionSource::Mod(n))`; the power
+is at most 8.
 
 ### Episodes
 
@@ -495,6 +590,10 @@ block stone_lantern
 craft stone_lantern 1 stone 3 lamp 1
 ```
 
+(`craft` is a shapeless recipe: the four items go anywhere in the crafting
+grid. A `shaped` line fixes the pattern, as in `shaped stone_lantern 1 ".S."
+"SLS" ".S." with S stone L lamp`; see [Recipes](DATA.md#recipes).)
+
 - Give the block at least one `box` line. The boxes are not drawn; they are
   the solid shape, used for collision and for aiming (with none, the block is
   solid as a whole block). For something to walk
@@ -603,8 +702,8 @@ It shows:
 - a crop in three stages (`on`, `grows`, `also`) with its seeds and fruit;
 - a wand that turns one block into another and hits hard (`turns`,
   `damage`);
-- recipes by hand, at a crafting table and in an oven (`recipe`, `craft`,
-  `bake`);
+- recipes for the crafting grid, shaped or shapeless, and in an oven or a
+  furnace (`shaped`, `craft`, `group`, `bake`, `smelt`);
 - an ore in the stone and a wild plant (`ore`, `plant`);
 - a creature with traits, variants, young, a glow, something it gives and a
   food it likes;
@@ -623,9 +722,8 @@ folder, or into a folder of their own under `mods/`:
 
 ### A larger example: Spells & Magic
 
-A bigger pack, "Spells & Magic", lives in `mods/spellsNmagic/` on the
-author's machine. That folder is ignored by git, so it is **not in the
-repository**. If you have the folder, its `pack.txt` is a worked example of
+A bigger pack, "Spells & Magic", lives in `spellsNmagic/` of the author's
+mods folder, which is **not in the repository**. If you have the folder, its `pack.txt` is a worked example of
 the newer features together: its own sounds, wands and potions driven by
 `when` scripts, chat commands, a dimension reached through portal blocks,
 and creatures (a dragon that shoots, a unicorn to tame) with their own
@@ -633,11 +731,11 @@ Blockbench models.
 
 ### A larger example still: Titanlands
 
-"Titanlands", in `mods/titanlands/`, is likewise **not in the
+"Titanlands", in `titanlands/` of the mods folder, is likewise **not in the
 repository**. It is an original pack in the big-adventure style: its names,
 content and models were made for VoxelRust, and it is **not a port of any
 existing mod**. Its `pack.txt` is written by a script,
-`mods/titanlands/gen.py`, from tables, which is a practical way to make a
+`titanlands/gen.py`, from tables, which is a practical way to make a
 pack of this size. It has 68 creatures, about 130 blocks and 173 items:
 hatch stones, a capture net and cages, three more metal tiers, crops and
 fruit trees, ants with nests, dinosaurs, robots, worms, sea creatures, birds,
@@ -724,10 +822,32 @@ and the land of a dimension of its own (`dimension_terrain`),
 a world being opened, saved or reloaded, each frame, clicks, chat commands,
 `/if` conditions, the player killing a creature (`killed`) and being hurt
 (`hurt`, which may lessen or cancel the blow and says which creature bit),
+explosions (`before_explode`, `after_explode`) and TNT being lit (`on_prime`),
+status effects (`effect_apply` may change the seconds and level of an effect
+about to be given to the player, or refuse it; `effect_tick` is called every
+frame for each effect that is running),
+the events of the [Hooks reference](#hooks-reference) (breaking and placing,
+creatures appearing and dying, chat, crafting, using items, the HUD),
 messages and state shared between players, drawing, the map,
 rows in SETTINGS > GAME, and answers to a server. A mod claims pack lines and
 indented sections by name; the game keeps those word for word for the code to
 read, and each section also becomes an item.
+
+The effect hooks, in full (see [DATA.md](DATA.md#effects) for what effects are):
+
+```rust
+effect_apply: Some(|g, id, secs, level| { /* id: &str, secs: &mut f32, level: &mut i32 */ true }),
+effect_tick: Some(|g, id, secs_left, level, dt| { /* every frame, for each running effect */ }),
+```
+
+`effect_apply` is asked before an effect is given to the player (by a source,
+`/effect give` or `game::effects::apply::give`); it may change `secs` and
+`level`, and returns `false` to refuse. It is not asked when the effect would
+change nothing (the player already has a stronger one), nor each frame for
+blocks that keep an effect going. A mod gives, asks about and clears effects
+with `crate::game::effects::apply::{give, clear, clear_all}`, and reads them
+from `Session::fx` (`fx.has(id)`, `fx.level(id)`). Damage an effect deals goes
+through the `hurt` hook like any other, with no attacker.
 
 The code runs only while a loaded pack says `feature <name>` for that mod, so
 switching the mod off in SETTINGS > MODS switches its code off too.
@@ -743,10 +863,89 @@ the packs are sent to players and the code is not.
 The release scripts and the tests use it, and `mods/tests.rs` holds the tests
 for those mods.
 
+## Hooks reference
+
+Two layers react to what happens in the game. **Scripts** are `when` lines in
+a pack's text (see [Events](#events)): they run after the thing happened and
+cannot stop it. **Native hooks** are optional functions in a mod's Rust code
+(the `on_...` fields of `struct Native` in [src/native.rs](../src/native.rs)):
+they run before the thing happens where it makes sense, and may cancel or
+change it. The game raises both from the same places, and every script event is
+also passed to the mod's `on_event` hook.
+
+| Event (script) | Fires when | `what` | Native hook that can cancel it | Native signature |
+| --- | --- | --- | --- | --- |
+| `break` (`blockbreak`) | the player breaks a block | block id | `on_block_break`: `false` keeps the block | `fn(&mut Session, cell: [i32; 3], Block) -> bool` |
+| `place` (`blockplace`) | the player places a block | block id | `on_block_place`: `false` stops it | `fn(&mut Session, cell: [i32; 3], Block) -> bool` |
+| `entityspawn` | a creature appears | entity id | `on_entity_spawn`: `false` removes it again | `fn(&mut Session, kind: usize) -> bool` |
+| `entitydeath` | a creature dies | entity id | no, `on_entity_death` after | `fn(&mut Session, kind: usize, at: [f64; 3])` |
+| `playerhurt` | the player takes damage | cause | `on_player_hurt`: may change `amount`; `false` or 0 cancels | `fn(&mut Session, amount: &mut i32, cause: &str) -> bool` |
+| `chat`, `command` | the player types a line | first word / command name | `on_chat`: `false` swallows the line (commands too) | `fn(&mut Session, line: &str) -> bool` |
+| `useitem` (`itemuse`) | the player right clicks with an item that has a script | item id | `on_item_use`: asked for any held item, once per press; `false` stops the use | `fn(&mut Session, item: usize) -> bool` |
+| `craft` | the player crafts | output item id | no, `on_craft` after | `fn(&mut Session, out: usize)` |
+| `every N` | every N seconds | seconds | no, `on_tick` runs every frame | `fn(&mut Session, dt: f32)` |
+| (every event) | any event above or `/fire` | the event's | `on_event` hears it, cannot cancel | `fn(&mut Session, name: &str, what: &str)` |
+| `start` | a world is opened | none | `on_world_load` once the world is open | `fn(&mut Session)` |
+| (saving) | the world was saved | | `on_world_save` after the files are written | `fn(&mut Session)` |
+| (each frame) | the HUD is drawn in play | | `on_draw_hud` | `fn(&Session, &mut dyn HudSink)` |
+| `respawn`, `sleep`, `wake`, `weather`, `join`, `leave`, `itempickup`, `itemdrop`, `eat`, `hit`, `kill`, `tame`, `ride`, `dimension`, `night`, `day`, `death`, `episode`, `episode_end` | see [Events](#events) | see there | no hook of their own: use `on_event` | |
+| `explode`, `blockexploded`, `tntprimed` | an explosion happens, breaks blocks, or TNT is lit | see [Explosions](#explosions) | `before_explode`: `false` cancels; `after_explode` and `on_prime` after | `fn(&mut Session, &mut ExplosionInfo) -> bool` |
+| `effectstart`, `effectend`, `wake` | a status effect starts or ends on the player; the player wakes | effect id | `effect_apply`: `false` refuses it; `effect_tick` every frame per running effect | `fn(&mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool` |
+
+Older hooks (`update`, `interact`, `killed`, `hit`, `hurt`, `open`, `save` and so
+on) are described in `src/native.rs` and work as before. `open` and `save` also
+run for each dimension; `on_world_load` and `on_world_save` run once per world.
+
+How cancelling works: the mods whose code is switched on are asked in the
+order of the mods list; the first to return `false` cancels, and the ones
+after it are not asked. A hook that is `None` costs nothing; and when no mod
+has any of these hooks, each call site costs one test of a flag. Hooks that
+cannot cancel are told after the fact. A hook may call anything on `Session`;
+events it raises with `fire` are not passed back to its own `on_event`. A
+cancelled break or place leaves the world as it was (digging starts over);
+the script event is then not fired.
+
+`on_draw_hud` gets a `HudSink` with `size()`, `scale()`, `rect(x, y, w, h,
+colour)`, `text(x, y, scale, text, colour)` and `text_width(text, scale)`.
+Positions are screen pixels; multiply sizes by `scale()`.
+
+A mod's code states which interface it was written for with
+`api: API_VERSION` in its `Native`.
+
+### Stability
+
+`native::API_VERSION` (now 1) is the version of the hook interface. New hooks
+and new events do not change it: a mod written for version 1 keeps working
+when the game gains more. It goes up when a hook is removed, renamed or its
+signature or meaning changes, and the notes for that release say what to do.
+Code that says `api` higher than the game's is switched off (not called),
+rather than called with the wrong idea of a hook. The interface is young:
+until version 2, treat the signatures of the newer `on_...` hooks as likely to
+grow by an argument, and prefer `..Native::NONE` so that new fields do not
+break your code. Event names in scripts are kept for good: an event is never
+renamed without leaving the old name as an alias.
+
+### Example
+
+[examples/hooks](../examples/hooks) is a small mod that protects a block with
+`on_block_break`, softens falls with `on_player_hurt` and draws the player's
+health with `on_draw_hud`, plus a few `when` scripts for the new events.
+Copy it to `mods/hooksdemo/` and rebuild.
+
+### Adding an event or a hook
+
+A new event is one row in `REGISTRY` in
+[src/game/events.rs](../src/game/events.rs), one `Session::fire` call at the
+right place, and one row in the tables above. A new cancelling hook is a
+field in `Native` (and in `Native::NONE` and `hooks::has_any`) and a small
+dispatcher in [src/game/hooks.rs](../src/game/hooks.rs) built on `hooks::allow`.
+
 ## What mods cannot replace
 
 A mod's code is called only at the hooks in `src/native.rs`. Anything those
 hooks do not reach stays the game's own. A pack alone cannot add a kind of
-terrain, a vehicle's physics or a new kind of effect: those need code, and
+terrain, a vehicle's physics or an effect that does more than the `effect` lines
+of [DATA.md](DATA.md#effects) cover (damage, healing, speed, jump, melee
+damage, hunger, absorption, night vision): those need code, and
 code needs a rebuild. What a pack can do is run the episodes and scripts
 described above.

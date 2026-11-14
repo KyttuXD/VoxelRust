@@ -10,6 +10,7 @@
 # Result: dist/windows/voxelrust.exe  (put SDL2.dll, 64-bit, next to it)
 set -eu
 cd "$(dirname "$0")/.."
+. scripts/mods-dir.sh
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
 mkdir -p dist/windows

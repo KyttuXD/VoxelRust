@@ -66,6 +66,7 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | M | The world map: the whole map on every world (Earth worlds: the Earth map) |
 | N | The world map with waypoints, on every world |
 | T * | chat |
+| V * | push to talk (voice chat on a server, with the microphone turned on in SETTINGS > VOICE) |
 | Esc | menu / close a screen |
 | F1 | hide or show the HUD |
 | F2 | save a screenshot (`screenshot-<number>.bmp` in the data folder) |
@@ -160,11 +161,45 @@ second with the button held (see [The hand](#the-hand)).
 | Egg | 1 | chickens and ducks |
 | Cooked Fish | 6 | oven, or crafting table with coal |
 | Cooked Meat | 8 | oven, or crafting table with coal |
+| Golden Apple | 4 | crafting table: an apple and four copper ingots; gives regeneration and absorption |
+| Rotten Flesh | 2 | creative menu; makes you hungry |
+
+Some food can make you ill: raw meat and raw fish now and then poison, and
+raw meat can make you hungry. See [Status effects](#status-effects).
 
 More filling food is made at a crafting table or baked in an oven; see
 [The oven and baking](#the-oven-and-baking). Some food can also be set out
 as a block and eaten where it stands; see
 [Furniture and food on the table](#furniture-and-food-on-the-table).
+
+### Status effects
+
+Poison, burning, regeneration, slowness and the others are status effects.
+While one lasts, the list at the top right of the screen (under the minimap)
+shows its icon, its name and level, and the time left, blinking in its last
+ten seconds. Their damage, healing and hunger, and the blocks and bites that start them, only count in survival.
+
+| Effect | What it does | Where it comes from |
+| --- | --- | --- |
+| Poison | takes a point of health a second, but never the last one; the hearts turn green | a spider's or snake's bite; now and then raw meat or fish |
+| Burning | about a heart (2 points) a second, with a flame beside the hearts; water puts it out | lava, a campfire |
+| Regeneration | gives back a point of health every two and a half seconds | a golden apple; waking in the morning after a night in bed |
+| Slowness | walk 15% slower | cobwebs, snow layers |
+| Speed | walk 20% faster | `/effect give` |
+| Hunger | hunger drains quicker | rotten flesh, now and then raw meat |
+| Weakness, Strength | your blows are a quarter weaker, or 30% stronger | `/effect give` |
+| Wither | takes a point of health a second, and can kill; the hearts turn black | `/effect give` |
+| Absorption | a row of yellow hearts above the red ones takes blows first | a golden apple |
+| Frozen | slows you and chills you (never fatal); the hearts turn blue | icicles |
+| Saturation | fills your hunger bar, a point a second | `/effect give` |
+| Night Vision | the night and caves are drawn lighter | `/effect give` |
+| Jump Boost | jump 40% higher | `/effect give` |
+
+Having an effect again keeps the stronger one: a higher level replaces it,
+the same level takes the longer time. Dying clears them all. Creatures can be
+poisoned or set on fire too (`/effect mob`, or a weapon a pack gives that
+power). Packs can add effects and sources of their own: see
+[DATA.md](DATA.md#effects).
 
 ### Tools and ores
 
@@ -190,24 +225,55 @@ recipes need (see [Furnaces](#furnaces)).
 
 ### Crafting
 
-Press E. In survival the upper part of the inventory lists what you can make;
-recipes you have the ingredients for come first, and pointing at one shows
-what it needs. Click a recipe to make it. A long list scrolls with the mouse
-wheel or by dragging the scroll bar at its right edge.
+Press E. In survival the upper part of the inventory screen is a **2 x 2
+crafting grid** with the result to the right of an arrow. Put items in the
+cells (left click puts down a stack, right click one item) and the result
+appears; click it to take it. Taking the result uses up one of each
+ingredient, and the result goes onto the mouse (clicking again stacks more of
+the same on it). Shift-click the result to make as many as the grid holds
+and the inventory has room for; shift-click a cell to send its items to the
+inventory; **CLEAR** sends everything back. Whatever is in the grid when you
+close the screen goes back into the inventory.
 
-- **By hand** only a few things can be made: planks from logs, sticks, a
-  wooden pickaxe, the crafting table (4 planks), flour and dough.
-- **At a crafting table** (place it, then right click it) everything that is
-  not baked is offered: tools, hoes, swords, stairs, slabs, fences, walls,
+- A **shaped** recipe needs its pattern: a pickaxe is three heads over two
+  sticks. The pattern may sit anywhere in the grid and may be turned left to
+  right (an axe is the same either way round), but it cannot be turned
+  upside down and nothing else may be in the grid.
+- A **shapeless** recipe needs only the right items, in any places (planks
+  from a log, a coloured chest from a chest and wool).
+- Some ingredients are **any of a kind**: any planks make sticks, a table or
+  a bed's boards.
+- A few big recipes (vehicles) ask for a lot of one thing, more than the
+  grid has cells for. They then take one cell for each kind of item, and
+  that cell has to hold the whole amount (for example 10 iron ore in one
+  stack).
+- **By hand** (2 x 2) you can make what fits four cells: planks from logs,
+  sticks, the crafting table (4 planks in a square), stone bricks, wool from
+  string, flour and dough.
+- **At a crafting table** (place it, then right click it) there is a 3 x 3
+  grid for everything else: tools, hoes, swords, stairs, slabs, fences, walls,
   doors, beds, glass, coloured blocks, chests, rails, vehicles, the oven and
   so on.
-- **At an oven** (right click it) the baking recipes are offered; see
-  [The oven and baking](#the-oven-and-baking).
-- **At a furnace** the smelting recipes are offered; see
+- **The recipe book**: the BOOK button next to the grid lists what the items
+  you carry (and what is already in the grid) can make. Click a recipe and
+  the grid is filled for you from the inventory; **CAN MAKE** switches the
+  list to every recipe, and the ones you lack the items for are dim: clicking
+  one lays out what you have and shows what is missing as faint ghost items.
+  Pointing at a recipe shows what it needs.
+- In creative the inventory screen keeps its item list; the crafting table
+  still has the grid.
+- **At an oven** (right click it) the baking recipes are offered as a list to
+  click; see [The oven and baking](#the-oven-and-baking).
+- **At a furnace** the smelting recipes are offered as a list to click; see
   [Furnaces](#furnaces).
 
-There is no crafting grid: nothing is laid out in a pattern. The lists are
-the recipe book.
+A few recipes, for a taste (the rest are in the recipe book): the pickaxe
+(`III` over `.S.` over `.S.`, I the head and S a stick), the axe (`II`,
+`IS`, `.S`), the shovel (head over two sticks), the hoe (`II`, `.S`, `.S`),
+the sword (two heads over a stick), stairs (`M..`, `MM.`, `MMM`: 4 stairs),
+slabs (a row of 3: 6 slabs), a door (two columns of three), a chest (a ring
+of 8 planks), a furnace (a ring of 8 cobble), a bed (three wool over three
+planks).
 
 In the inventory, left click picks up or puts down a whole stack, right click
 picks up half or puts down one. Clicking outside the panel throws away what
@@ -229,8 +295,8 @@ digging under them brings them down.
 Each of the six woods has a door (two blocks high), a trapdoor and a gate.
 Right click opens and shuts them. A door needs room for both halves; opening
 or breaking either half does the same to the other. At a crafting table: 6
-planks make a door, 3 planks make 2 trapdoors, 2 planks and 4 sticks make a
-gate. They are in the Doors tab in creative.
+planks (two columns of three) make a door, 6 planks (two rows of three) make
+2 trapdoors, 2 planks between 4 sticks make a gate. They are in the Doors tab in creative.
 
 Each wood also has four more doors, all two blocks high:
 
@@ -410,6 +476,18 @@ anything that is not a sword) does 3 damage to a creature.
 | Iron | 10 |
 | Crystal | 12 |
 | Ruby | 15 |
+
+### TNT
+
+Gunpowder (2 from 2 coal and a sand, at a crafting table) and sand make TNT
+(1 from 5 gunpowder and 4 sand). Right click a block of TNT with a flint and
+steel (1 from an iron ingot and some gravel) to light it. TNT is also lit by
+lava or a campfire beside it, and by any explosion. A lit block flashes white
+for four seconds, then explodes: it clears a ball of blocks about ten blocks
+across (water, lava and unbreakable blocks stay), drops some of them in
+survival, sets off TNT near it a moment later, and hurts and throws whoever
+is close, you included. TNT is in the creative list's Tools tab. Lit TNT is
+not saved with the world.
 
 ### Caves
 
@@ -625,11 +703,15 @@ blocks from it.
 | `/heal [N]` | give yourself N health (4 if left out) | works |
 | `/feed [N]` | give yourself N hunger points (4 if left out) | works |
 | `/hurt [N]` | take N damage (1 if left out, 100 at most) | works |
+| `/effect give ID [SECONDS] [LEVEL]` | give yourself a status effect (see [Status effects](#status-effects)); the effect's own time and level 1 if left out. `/effect give` alone lists the ids | works |
+| `/effect clear [ID]` | take one effect away, or all of them | works |
+| `/effect list` | the effects you have, with level and time left | works |
+| `/effect mob ID [SECONDS] [LEVEL]` | give an effect to the creature you are looking at | works |
 | `/launch [UP] [FORWARD]` | throw yourself upward and the way you face, in blocks per second (8 and 0 if left out; -40 to 40) | works |
 | `/shoot [DAMAGE] [SPEED] [BLOCK]` | loose a shot the way you look (damage 4 and speed 30 if left out). BLOCK, if given, is left where the shot lands | no |
 | `/aim BLOCK` | put that block against the face you are pointing at | no |
 | `/strike [DAMAGE]` | lightning on the block you point at: thunder, a flash, and DAMAGE (12 if left out) to every creature within 4 blocks | no |
-| `/blast [R]` | clear a ball of blocks of radius R (1 to 5; 2 if left out) around the block you point at. Unbreakable blocks and height 0 stay | no |
+| `/blast [R]` | an explosion of radius R (1 to 5; 2 if left out) round the block you point at: it clears a rough ball of blocks, drops some of them in survival, and hurts and throws you if you are near. Unbreakable blocks, water, lava and height 0 stay | no |
 | `/take ITEM [N]` | remove N of an item from your inventory (1 if left out), if you have it | works |
 | `/title TEXT` | show a notice in large letters in the middle of the screen for two seconds | works |
 | `/var NAME = N`, `+ N`, `- N`, `random N` | set, add to or subtract from a numbered variable, or set it to a random whole number from 0 to N-1 | works |
@@ -642,6 +724,47 @@ work in survival too; there are no permissions. `/say` and everything after
 it are mostly there for packs, which run them from scripts and can add
 commands of their own. Variables, conditions and the rest of the scripting
 commands are explained in [MODDING.md](MODDING.md#scripts-and-commands).
+
+## Voice chat
+
+On a multiplayer server you can talk to the players near you, and hear them.
+Everything about it is in SETTINGS > VOICE, and nothing happens in single
+player.
+
+- **You are muted by default.** MICROPHONE is OFF until you turn it on, so
+  nobody hears you and the game never opens your microphone. You can still
+  hear players who have theirs on: **HEAR OTHER PLAYERS** is ON (turn it off
+  and the server stops sending you voices at all).
+- **Talking.** With the microphone ON, hold the push-to-talk key (V; the KEY
+  button, or SETTINGS > CONTROLS, changes it) and speak. Or choose TALK BY
+  VOICE: the game then sends your voice whenever it is louder than the
+  VOICE ACTIVATION LEVEL (0 hears anything, 10 only loud speech). The
+  microphone is opened only while push to talk is held (and for a moment
+  after) or, with voice activation, while the microphone is ON on a server.
+- **Who hears you.** Only players within 24 blocks (the server may change
+  that, `/voicerange`), louder the nearer they are. A server can forbid you
+  to talk (`THIS SERVER DOES NOT LET YOU TALK`) or mute you; you can still
+  hear.
+- **What you see.** A small microphone at the left of the screen while you
+  are on the air (green: your voice is being sent; grey: the microphone is
+  open and waiting for you to speak), a speaker beside the name tag of every
+  player who is talking, and their names in a short list under the
+  microphone.
+- **INPUT** chooses the microphone (DEFAULT is the system's own). **VOICE
+  VOLUME** is how loud other players are (0 to 10; 8 is as they came, then
+  the master volume on top). **TEST MICROPHONE** shows a level bar for as
+  long as you leave it on (leaving the tab turns it off); nothing is sent.
+  The bar's white mark is the voice-activation level.
+- **Privacy.** Nothing is ever recorded or stored: not by the game, not by the
+  server, which passes each 20 ms of speech to the players near you and
+  forgets it. See [MULTIPLAYER.md](MULTIPLAYER.md#voice-chat).
+- The sound is mono (the game's mixer has one channel), so voices do not
+  move left and right as you turn; they are just quieter with distance. In a
+  browser there is no microphone: you can hear but not talk.
+
+The settings are `voice_hear`, `voice_mic`, `voice_activation`,
+`voice_threshold`, `voice_volume`, `voice_device` and `key_voice` in
+`settings.txt`.
 
 ## Settings
 
@@ -679,6 +802,7 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   mod is on, its two rows: PLACE NOTICES (off, countries, regions or towns)
   and MAP DATA RELAY (host:port, for old machines; see
   [EARTH.md](EARTH.md)).
+- **VOICE**: proximity voice chat on servers, see [Voice chat](#voice-chat).
 - **SKIN**: pick one of the built-in looks or choose your own 64 x 64 picture with the built-in file browser. See
   [MODDING.md](MODDING.md#player-skins).
 - **MODS**: a switch for every mod, and UPDATE THE GAME AUTOMATICALLY. See
@@ -821,8 +945,13 @@ marked "From the Earth mod").
 - `items:<tab>` opens the creative item list at that tab, named as in the
   list (`items:Eggs`); capitals do not matter.
 - `settings:TAB` opens SETTINGS at that tab: `VIDEO`, `AUDIO`, `CONTROLS`,
-  `GAME`, `SKIN` or `MODS`.
+  `GAME`, `SKIN`, `MODS` or `VOICE`.
 - `walking`, with `creatures`, shows the line-up mid-stride.
+- `craft:<item>` opens the crafting table with the first grid recipe for
+  that item (`craft:iron_pick`) laid out in the grid.
+- `looks:<name>`, with `creatures`, lines up every look (biome variant) of
+  the creatures whose id contains the name (`creatures,looks:boomer`)
+  instead of one of each. Hostile creatures show only in survival worlds.
 
 `--version` prints, for example, `voxelrust 0.1.0 (linux-x86_64, commit
 5f38cb02e2e3)`. The first word in brackets is the build name (see

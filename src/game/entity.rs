@@ -24,6 +24,8 @@ pub struct Mob {
     pub stride: f32,
     /// Seconds alive, for idle movement (tails, ears, wings).
     pub clock: f32,
+    /// Poison, burning and the like (see game/effects).
+    pub fx: crate::game::effects::Effects,
     /// Which look it has: 0 is the entity's own, n is its n-th variant.
     pub variant: u8,
     /// Seconds left before a young one is grown (0 = adult).
@@ -40,6 +42,8 @@ pub struct Mob {
     pub goal: Option<[f64; 3]>,
     give_timer: f32,
     job_timer: f32,
+    /// Seconds a lit fuse has burnt (creatures that `explodes`; 0 = not lit).
+    pub fuse: f32,
     /// How far along its building work a builder is.
     job_step: u32,
     path: Vec<Cell>,
@@ -69,7 +73,15 @@ impl Mob {
             Some(v) => (v.model, v.tint, v.size),
             None => (d.model, d.tint, 1.0),
         };
-        (model, tint, d.height * size * self.growth())
+        (model, tint, d.height * size * self.growth() * self.swell())
+    }
+
+    /// How much bigger a lit fuse has made it (1 = not at all).
+    pub fn swell(&self) -> f32 {
+        match reg().entities[self.kind].x.explodes {
+            Some((_, fuse_len, _)) => crate::entity_explode::swell(self.fuse, fuse_len),
+            None => 1.0,
+        }
     }
 
     /// The picture it is painted with (see `pack_entities`): its variant's or its kind's
@@ -114,6 +126,10 @@ pub enum Action {
     Bite(u32, i32, [f64; 3]),
     /// A creature shot at the player: from where, which way, how hard.
     Shoot([f64; 3], [f32; 3], i32, usize),
+    /// A fuse was lit here: time for the hiss.
+    Fuse([f64; 3]),
+    /// A creature blew up: where, how strongly, and its kind.
+    Explode([f64; 3], f32, usize),
 }
 
 /// What right-clicking a creature comes to.
@@ -142,6 +158,11 @@ pub struct Mobs {
     /// mod code that wants to know who hurt the player (see `Native::hurt`).
     /// The session clears it before each step.
     pub last_biter: Option<usize>,
+    /// Creatures that appeared since the session last looked: id, kind and
+    /// where (for the `entityspawn` event). Kept short.
+    pub born: Vec<(u32, usize, [f64; 3])>,
+    /// Creatures that died the same way (health ran out).
+    pub died: Vec<(u32, usize, [f64; 3])>,
     spawn_timer: f32,
     rng: u32,
     next_id: u32,
@@ -169,7 +190,7 @@ fn crop_start(b: Block) -> Block {
 
 impl Mobs {
     pub fn new(seed: u32) -> Mobs {
-        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, last_biter: None, spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
+        Mobs { list: Vec::new(), actions: Vec::new(), rider: None, last_biter: None, born: Vec::new(), died: Vec::new(), spawn_timer: 2.0, rng: seed | 1, next_id: 1 }
     }
 
     fn rand(&mut self) -> u32 {
@@ -185,9 +206,19 @@ impl Mobs {
     }
 
     pub fn spawn(&mut self, kind: usize, pos: [f64; 3]) -> usize {
+        self.spawn_in(kind, pos, None)
+    }
+
+    /// As [`Mobs::spawn`], for a creature appearing in `biome`: it is given a look
+    /// made for that biome if there is one (see `entity_variant`).
+    pub fn spawn_in(&mut self, kind: usize, pos: [f64; 3], biome: Option<&str>) -> usize {
         let d = &reg().entities[kind];
         // One of its looks, the plain one included.
-        let variant = (self.rand() % (d.x.variants.len() as u32 + 1)) as u8;
+        let roll = self.rand();
+        let variant = match biome {
+            Some(b) => crate::entity_variant::pick(&d.x.variants, b, roll),
+            None => crate::entity_variant::any(&d.x.variants, roll),
+        };
         let size = (variant as usize).checked_sub(1).and_then(|i| d.x.variants.get(i)).map_or(1.0, |v| v.size);
         let mut body = Player::with_size(pos, (d.width * size) as f64, (d.height * size) as f64);
         body.speed_scale = d.speed / 4.4;
@@ -197,6 +228,9 @@ impl Mobs {
         let think = (self.rand() % 100) as f32 / 100.0;
         let give_timer = (self.rand() % 60) as f32;
         let health = spawn_health(d.health, self.rand());
+        if self.born.len() < 64 {
+            self.born.push((id, kind, pos));
+        }
         self.list.push(Mob {
             kind,
             body,
@@ -205,6 +239,7 @@ impl Mobs {
             phase: 0.0,
             stride: 0.0,
             clock: think * 10.0,
+            fx: Default::default(),
             variant,
             young: 0.0,
             home: [floord(pos[0]), floord(pos[1]), floord(pos[2])],
@@ -214,6 +249,7 @@ impl Mobs {
             goal: None,
             give_timer,
             job_timer: 3.0,
+            fuse: 0.0,
             job_step: 0,
             path: Vec::new(),
             step: 0,
@@ -313,11 +349,11 @@ impl Mobs {
             if roll < d.weight {
                 let lift = if d.behavior == Behavior::Fly { 2.0 } else { 0.01 };
                 let at = [x as f64 + 0.5, y as f64 + lift, z as f64 + 0.5];
-                self.spawn(i, at);
+                self.spawn_in(i, at, Some(&biome));
                 // Herds come in twos and threes, sometimes with young.
                 if d.x.traits & traits::HERD != 0 {
                     for k in 0..self.range(1, 2) {
-                        self.spawn(i, [at[0] + 1.2 * (k + 1) as f64, at[1], at[2] + 0.8]);
+                        self.spawn_in(i, [at[0] + 1.2 * (k + 1) as f64, at[1], at[2] + 0.8], Some(&biome));
                     }
                 }
                 if d.x.baby.is_some() && self.rand() % 100 < 40 {
@@ -510,6 +546,9 @@ impl Mobs {
                     m.path.clear();
                 }
             } else if m.health <= 0 || dist > 96.0 || m.body.pos[1] < -8.0 || burned || (d.behavior == Behavior::Hostile && !hostile_ok) {
+                if m.health <= 0 && self.died.len() < 64 {
+                    self.died.push((m.id, m.kind, m.body.pos));
+                }
                 self.list.swap_remove(i);
                 continue;
             }
@@ -518,6 +557,15 @@ impl Mobs {
             m.give_timer -= dt;
             m.anger = (m.anger - dt).max(0.0);
             m.clock += dt;
+            if !m.fx.is_empty() || m.fx.changed {
+                let delta = crate::game::effects::apply::tick_mob(&mut m.fx, dt, m.body.in_water, d.speed / 4.4, &mut m.body.speed_scale);
+                if delta < 0 {
+                    m.health += delta;
+                    m.hurt = 0.35;
+                } else if delta > 0 {
+                    m.health = (m.health + delta).min(d.health.max(m.health));
+                }
+            }
             if m.young > 0.0 {
                 m.young -= dt;
                 if m.young <= 0.0 {
@@ -776,6 +824,13 @@ impl Mobs {
             if t & traits::JUMPS != 0 && input.forward > 0.0 && m.body.on_ground {
                 input.jump = true;
             }
+            // A lit fuse holds it still: it hisses, swells and waits.
+            if m.fuse > 0.0 {
+                input.forward = 0.0;
+                input.strafe = 0.0;
+                input.jump = false;
+                input.sprint = false;
+            }
             // Getting nowhere? Hop, and think again soon.
             if input.forward > 0.0 {
                 m.stuck += dt;
@@ -807,6 +862,29 @@ impl Mobs {
                 damage += d.damage;
                 self.last_biter = Some(m.kind);
             }
+            // Creatures that explode: light the fuse near a player, put it out
+            // when they get away, and blow up when it has burnt down.
+            if let Some((power, fuse_len, range)) = d.x.explodes {
+                let level = dy > -3.0 && dy < 3.0;
+                let armed = hostile_ok && !m.tamed && m.young <= 0.0 && m.health > 0;
+                let (fuse, event) = crate::entity_explode::step(m.fuse, dt, if level { dist } else { 1e9 }, range, fuse_len, armed);
+                m.fuse = fuse;
+                // Flashing is the red flash of a creature that was hit.
+                if crate::entity_explode::flashing(fuse, fuse_len) {
+                    m.hurt = m.hurt.max(0.06);
+                }
+                let centre = [m.body.pos[0], m.body.pos[1] + d.height as f64 * 0.5, m.body.pos[2]];
+                match event {
+                    crate::entity_explode::Event::Lit => self.actions.push(Action::Fuse(centre)),
+                    crate::entity_explode::Event::Boom => {
+                        self.actions.push(Action::Explode(centre, power, m.kind));
+                        self.list.swap_remove(i);
+                        continue;
+                    }
+                    crate::entity_explode::Event::Nothing => {}
+                }
+            }
+            let m = &mut self.list[i];
             // Archers and spell-throwers loose at the player from a distance.
             if attacks && d.x.shoots > 0 && dist > 3.0 && dist < 20.0 && m.attack_cooldown <= 0.0 {
                 m.attack_cooldown = 2.2;
@@ -898,6 +976,8 @@ impl Mobs {
             seen.push(id);
         }
         self.list.retain(|m| seen.contains(&m.id));
+        // What a snapshot brings is not a birth (the host raises those).
+        self.born.clear();
     }
 
     /// Move creatures run by another player toward where they were last
@@ -1057,6 +1137,16 @@ mod tests {
         w
     }
 
+    /// The boomer lives in the wildlife mod, which is not part of this repository:
+    /// a test that needs it says so and passes when the mod is not there.
+    fn no_boomer() -> bool {
+        let none = !reg().entities.iter().any(|e| e.id == "boomer");
+        if none {
+            std::eprintln!("skipped: the wildlife mod (the boomer) is not built in");
+        }
+        none
+    }
+
     fn kind(id: &str) -> usize {
         reg().entities.iter().position(|e| e.id == id).unwrap()
     }
@@ -1199,5 +1289,75 @@ mod tests {
             mobs.try_spawn(&w, player, 0.75, true);
         }
         assert!(mobs.list.iter().any(|m| reg().entities[m.kind].behavior == Behavior::Hostile));
+    }
+
+    #[test]
+    fn a_boomer_hisses_then_blows_up_beside_a_player() {
+        if no_boomer() {
+            return;
+        }
+        let w = arena();
+        let mut mobs = Mobs::new(21);
+        mobs.spawn_timer = 1e9;
+        let boomer = kind("boomer");
+        mobs.spawn(boomer, [8.5, 121.01, 8.5]);
+        let player = [8.5, 121.0, 10.5];
+        let (mut hissed, mut boom, mut at_seconds) = (false, None, 0.0);
+        for n in 0..150 {
+            mobs.update(1.0 / 30.0, &w, player, 0.25, true, None);
+            for a in mobs.actions.drain(..) {
+                match a {
+                    Action::Fuse(_) => hissed = true,
+                    Action::Explode(_, power, k) => {
+                        boom = Some((power, k));
+                        at_seconds = n as f32 / 30.0;
+                    }
+                    _ => {}
+                }
+            }
+            if boom.is_some() {
+                break;
+            }
+        }
+        assert!(hissed, "no hiss");
+        assert_eq!(boom, Some((2.0, boomer)));
+        assert!(at_seconds > 1.2 && at_seconds < 2.0, "blew up after {at_seconds}");
+        assert!(mobs.list.is_empty(), "it is still there");
+    }
+
+    #[test]
+    fn a_boomer_that_is_left_behind_puts_its_fuse_out() {
+        if no_boomer() {
+            return;
+        }
+        let w = arena();
+        let mut mobs = Mobs::new(22);
+        mobs.spawn_timer = 1e9;
+        mobs.spawn(kind("boomer"), [8.5, 121.01, 8.5]);
+        mobs.list[0].fuse = 1.0;
+        // The player is far away now.
+        mobs.update(1.0 / 30.0, &w, [8.5, 121.0, 30.5], 0.25, true, None);
+        assert_eq!(mobs.list[0].fuse, 0.0);
+        assert!(mobs.actions.iter().all(|a| !matches!(a, Action::Explode(..))));
+        // Nothing happens in creative mode either: such creatures are simply gone.
+        mobs.update(1.0 / 30.0, &w, [8.5, 121.0, 9.5], 0.25, false, None);
+        assert!(mobs.actions.iter().all(|a| !matches!(a, Action::Explode(..))));
+    }
+
+    #[test]
+    fn a_creature_appears_in_the_colours_of_its_biome() {
+        if no_boomer() {
+            return;
+        }
+        let mut mobs = Mobs::new(23);
+        mobs.spawn_timer = 1e9;
+        let boomer = kind("boomer");
+        let d = &reg().entities[boomer];
+        let desert = d.x.variants.iter().position(|v| v.name == "Desert").expect("a desert look") + 1;
+        for _ in 0..12 {
+            let i = mobs.spawn_in(boomer, [8.5, 121.01, 8.5], Some("desert"));
+            assert_eq!(mobs.list[i].variant as usize, desert);
+            assert!(mobs.list[i].title().starts_with("Desert "), "{}", mobs.list[i].title());
+        }
     }
 }

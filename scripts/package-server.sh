@@ -15,6 +15,8 @@
 # system's copy. The server never opens a window, so SDL2 only has to load.
 set -eu
 cd "$(dirname "$0")/.."
+. scripts/mods-dir.sh
+need_mods
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
 COMMIT="${VOXELRUST_COMMIT:-$(git rev-parse --short=12 HEAD)}"
@@ -33,8 +35,8 @@ rm -rf "$stage"
 mkdir -p "$stage/lib" "$stage/mods"
 cp target/release/voxelrust "$stage/voxelrust"
 cp -L "$sdl" "$stage/lib/libSDL2-2.0.so.0"
-for m in $(grep -v '^#' mods/SHIPPED); do
-  cp -R "mods/$m" "$stage/mods/"
+for m in $(grep -v '^#' "$MODS/SHIPPED"); do
+  cp -R "$MODS/$m" "$stage/mods/"
 done
 
 cat > "$stage/run.sh" <<'RUN'

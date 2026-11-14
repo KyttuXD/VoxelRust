@@ -7,6 +7,7 @@ stairs and slabs of each). Edit the tables here and run it again, or edit
 base.txt by hand: both are fine.
 """
 import os
+import sys
 
 out = []
 w = out.append
@@ -87,7 +88,10 @@ for t in ["grass_top", "grass_side", "dirt", "stone", "sand", "gravel", "water",
     tex(t, f"builtin {t}")
 
 tex("white", "flat 255 255 255")
-tex("ruby_ore", "builtin ruby_ore")
+# Palettes (docs/TEXTURING.md): base, dark, light. The ore's blobs are the base, with the light
+# colour on top and the dark one at the bottom right.
+w("palette ruby #e2406e #a82454 #ff9cb8")
+tex("ruby_ore", "paint ore palette ruby")
 tex("workbench_top", "paint workbench 176 136 84")
 tex("stick", "paint stick 122 88 52")
 tex("ruby", "paint gem 226 60 110")
@@ -273,8 +277,14 @@ for iid, name, food in [("apple", "Apple", 3), ("berries", "Berries", 2), ("raw_
 
 w("""
 # ---- Recipes (survival mode) ----
-#   recipe <item> <count> <ingredient> <count> [<ingredient> <count> ...]""")
-w("#   recipe ...   can be made by hand;   craft ...   needs a crafting table")
+# Recipes are laid out in the crafting grid (2 x 2 in the inventory screen,
+# 3 x 3 at a crafting table):
+#   craft  <item> <count> <ingredient> <count> [<ingredient> <count> ...]    shapeless
+#   shaped <item> <count> <row> [<row> ...] with <letter> <ingredient> [<letter> <ingredient> ...]
+#   group  <name> <item> [<item> ...]       @name in a recipe means any of them
+# This file writes plain `craft` lines; tools/craft_convert.py turns the ones
+# with a well-known shape (tools, stairs, doors, beds ...) into `shaped` ones.
+group planks planks pine_planks birch_planks maple_planks palm_planks blossom_planks acacia_planks dark_oak_planks""")
 w("recipe planks 4 log 1")
 for id, name, *_ in WOODS:
     if id != "oak":
@@ -418,7 +428,8 @@ for line in ["step steps 0.09 0.95 90 60 0.10 0.55 Footsteps", "break effects 0.
              "buzz effects 0.40 0.20 210 230 0.70 0.20 Buzzing", "groan effects 0.90 0.30 120 80 0.20 0.60 Groaning",
              "rattle effects 0.30 0.85 900 700 0.85 0.45 Bones rattle", "roar effects 1.20 0.70 140 60 0.12 1.00 A roar",
              "chime effects 0.60 0.02 1200 1180 0.90 0.40 Chime", "rail effects 0.12 0.80 300 260 0.35 0.35 Cart on rails",
-             "whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh", "sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling"]:
+             "whoosh effects 0.35 1.00 100 100 0.30 0.50 Whoosh", "sizzle effects 0.50 1.00 100 100 0.90 0.25 Sizzling",
+             "explosion effects 1.10 1.00 90 30 0.06 1.00 Explosion"]:
     w("sound " + line)
 
 w("""
@@ -596,7 +607,7 @@ block("blast_furnace", "Blast Furnace", "stone_bricks blast_front stone_bricks",
 block("kiln", "Kiln", "brick furnace_front brick", cat="Farming", hardness=2.0, tool="pick", use="furnace", light=6)
 block("smoker", "Smoker", "planks oven_front planks", cat="Farming", hardness=1.6, tool="axe", use="oven", light=5)
 block("campfire", "Campfire", "log_side", cat="Farming", hardness=0.6, tool="axe", use="oven", light=13, hurts=1,
-      box=["1 0 6 15 3 10", "6 0 1 10 3 15", "5 3 5 11 7 11"], sound="sizzle")
+      box=["1 0 6 15 3 10", "6 0 1 10 3 15", "5 3 5 11 7 11"], sound="sizzle", tag="fire")
 for mid, mname, (r, g, b) in (("iron", "Iron", (214, 214, 220)), ("copper", "Copper", (206, 124, 80))):
     tex(f"{mid}_ingot", f"paint ingot {r} {g} {b}")
     w(f"item {mid}_ingot\n  name {mname} Ingot\n  icon {mid}_ingot\n  category Materials")
@@ -717,6 +728,93 @@ for side, stub in [("px", "11 6 6 16 10 10"), ("nx", "0 6 6 5 10 10"), ("pz", "6
     block(f"cactus_joint_{side}", "Cactus", "cactus_top cactus_side cactus_top", hardness=0.5, hurts=1,
           hidden=True, drops="cactus", box=list(JOINT_TRUNK) + [stub])
 
+# ---- Explosives ----
+# TNT is any block with `tag tnt <power>` (see src/game/primed.rs and
+# src/game/explosion.rs): it catches fire from lava and from blocks tagged
+# `tag fire` (the campfire), from another explosion, and from the flint and
+# steel, then burns a four second fuse and explodes. `tag blastproof` marks a
+# block that explosions leave standing.
+w("""
+# ---- Explosives ----
+#   block ... tag tnt <power>     explodes when lit (power 2.5 clears a ball about 5 blocks wide)
+#   block ... tag fire            sets TNT beside it alight
+#   block ... tag blastproof      explosions leave it standing""")
+tex("tnt_side", "paint tnt_side 200 52 40")
+tex("tnt_top", "paint tnt_top 200 52 40")
+tex("tnt_bottom", "paint tnt_bottom 200 52 40")
+tex("gunpowder", "paint powder 96 96 106")
+tex("flint_and_steel", "paint flint_steel 176 180 190")
+block("tnt", "TNT", "tnt_top tnt_side tnt_bottom", cat="Tools", hardness=0, tag="tnt 2.5")
+w("item gunpowder\n  name Gunpowder\n  icon gunpowder\n  category Materials")
+w("item flint_and_steel\n  name Flint and Steel\n  icon flint_and_steel\n  category Tools\n  stack 1\n  damage 2")
+w("craft gunpowder 2 coal 2 sand 1")
+w("craft tnt 1 gunpowder 5 sand 4")
+w("craft flint_and_steel 1 iron_ingot 1 gravel 1")
+# ---- Status effects ----
+# The pictures of the HUD's hearts and the effects' icons are painted by
+# src/content/art/hud.rs; the effects themselves go in data/effects.txt
+# (included below), written by this script too. See docs/DATA.md, "Effects".
+w("""
+# ---- Status effects ----
+#   hearts and icons for the HUD, painted by code (the colours are ignored)
+#   effect <id> ... lives in effects.txt""")
+for t in ["heart_empty", "heart_full", "heart_half", "heart_hardcore_full", "heart_hardcore_half"]:
+    tex(t, f"paint {t} 0 0 0")
+for look in ["poison", "wither", "frozen", "absorb"]:
+    for part in ["full", "half"]:
+        tex(f"heart_{look}_{part}", f"paint heart_{look}_{part} 0 0 0")
+EFFECT_IDS = ["poison", "burning", "regeneration", "slowness", "speed", "hunger", "weakness", "strength",
+              "wither", "absorption", "frozen", "saturation", "night_vision", "jump_boost"]
+for t in EFFECT_IDS + ["flame"]:
+    tex(f"effect_{t}", f"paint effect_{t} 0 0 0")
+# Foods that start effects (see the `from eat` lines of the effects).
+tex("golden_apple", "paint fruit 240 196 52")
+tex("rotten_flesh", "paint meat 120 140 72")
+w("item golden_apple\n  name Golden Apple\n  icon golden_apple\n  category Food\n  food 4")
+w("item rotten_flesh\n  name Rotten Flesh\n  icon rotten_flesh\n  category Food\n  food 2")
+w("craft golden_apple 1 apple 1 copper_ingot 4")
+
+fx = []
+def effect(id, name, kind, lines, colour, secs):
+    fx.append(f"effect {id}\n  name {name}\n  kind {kind}\n  colour {colour}\n  secs {secs}")
+    for l in lines:
+        fx.append("  " + l)
+
+fx.append("""# Status effects (written by tools/gen_base.py; see docs/DATA.md, "Effects").
+#   effect <id>
+#     name <text>        kind good|bad|neutral     colour <r> <g> <b>     secs <default seconds>
+#     damage <points a second>   lethal yes|no     heal <points a second>   ticks <lumps a second>
+#     speed <percent>    jump <percent>     melee <percent>     (per level; negative slows/weakens)
+#     hunger <points a second, negative feeds>     absorb <health points>   vision   flame   extinguish
+#     heart normal|poison|wither|frozen            icon <texture>
+#     from block|entity|hit|eat|event <id> [seconds] [level] [chance]
+""")
+effect("poison", "Poison", "bad", [
+    "damage 1", "lethal no", "heart poison",
+    "from entity spider 8 1", "from entity cave_spider 6 1", "from entity snake 10 1", "from entity viper 12 1",
+    "from eat raw_fish 8 1 15", "from eat raw_meat 8 1 15"], "120 200 60", 12)
+effect("burning", "Burning", "bad", [
+    "damage 2", "flame", "extinguish",
+    "from block lava 6 1", *[f"from block lava_{n} 6 1" for n in range(1, 9)],
+    "from block campfire 4 1", "from block fire 6 1"], "240 120 30", 6)
+effect("regeneration", "Regeneration", "good", [
+    "heal 0.4", "from eat golden_apple 8 2", "from event wake 10 1"], "230 90 130", 20)
+effect("slowness", "Slowness", "bad", [
+    "speed -15", "from block cobweb 3 1", "from block snow_layer 2 1"], "130 150 190", 15)
+effect("speed", "Speed", "good", ["speed 20"], "120 220 240", 30)
+effect("hunger", "Hunger", "bad", [
+    "hunger 0.2", "from eat rotten_flesh 30 1 80", "from eat raw_meat 20 1 25"], "150 130 60", 30)
+effect("weakness", "Weakness", "bad", ["melee -25"], "130 130 140", 30)
+effect("strength", "Strength", "good", ["melee 30"], "170 40 40", 30)
+effect("wither", "Wither", "bad", ["damage 1", "heart wither"], "60 60 70", 10)
+effect("absorption", "Absorption", "good", ["absorb 4", "from eat golden_apple 120 1"], "240 190 40", 120)
+effect("frozen", "Frozen", "bad", [
+    "damage 0.5", "lethal no", "speed -20", "heart frozen", "from block icicle 4 1"], "110 200 240", 8)
+effect("saturation", "Saturation", "good", ["hunger -1"], "220 130 60", 5)
+effect("night_vision", "Night Vision", "good", ["vision"], "60 60 200", 180)
+effect("jump_boost", "Jump Boost", "good", ["jump 40"], "100 220 110", 30)
+w("\ninclude effects.txt")
+
 if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "creatures.txt")):
     w("\n# Models, then every creature, live in their own files.\ninclude creatures.txt")
     if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "wildlife.txt")):
@@ -734,6 +832,10 @@ else:
   biomes plains forest
   weight 30""")
 
+fx_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "effects.txt")
+open(fx_path, "w").write("\n".join(fx) + "\n")
 path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "base.txt")
-open(path, "w").write("\n".join(out) + "\n")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import craft_convert
+open(path, "w").write(craft_convert.convert_text("\n".join(out) + "\n"))
 print("wrote", os.path.normpath(path), len(out), "lines")

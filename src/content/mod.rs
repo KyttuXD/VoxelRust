@@ -2,8 +2,10 @@
 
 pub mod block;
 pub mod textures;
+pub mod effects;
 pub mod art;
 pub mod painters;
+pub mod palette;
 pub mod font;
 pub mod icon;
 pub mod bbmodel;

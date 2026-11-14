@@ -56,15 +56,16 @@ pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
     })
 }
 
-pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
+pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
+    let rgb = pal.at(x, y);
     Some(match style {
-        "concrete" => framed(x, y, rgb, 92),
-        "wool" => framed(x, y, rgb, 85),
-        "terracotta" => framed(x, y, rgb, DARK),
+        "concrete" => framed_pal(x, y, pal, rgb, 92),
+        "wool" => framed_pal(x, y, pal, rgb, 85),
+        "terracotta" => framed_pal(x, y, pal, rgb, DARK),
         "farmland" => {
             // Furrows running one way, darker than plain dirt.
             if edge(x, y) || y % 4 == 3 {
-                px(scale(rgb, 70))
+                px(pal.shade(rgb, 70))
             } else {
                 px(rgb)
             }
@@ -74,16 +75,16 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
             let crust = [62, 42, 44];
             for (bx, by) in [(3, 3), (10, 4), (5, 9), (11, 11)] {
                 if rect(x, y, bx, by, 2, 2) {
-                    return Some(px(if x == bx && y == by { lift(rgb) } else { rgb }));
+                    return Some(px(if x == bx && y == by { pal.light_of(rgb) } else { rgb }));
                 }
             }
             px(if edge(x, y) { scale(crust, 70) } else { crust })
         }
         "chest" => {
             if edge(x, y) || y == 5 {
-                px(scale(rgb, 60))
+                px(pal.shade(rgb, 60))
             } else if rect(x, y, 7, 4, 2, 4) {
-                px([214, 196, 120]) // the latch
+                px(pal.accent().unwrap_or([214, 196, 120])) // the latch
             } else if y < 5 {
                 px(rgb)
             } else {
@@ -92,7 +93,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
         }
         "workbench" => {
             if x % 5 == 0 || y % 5 == 0 {
-                px(scale(rgb, 60))
+                px(pal.shade(rgb, 60))
             } else {
                 px(rgb)
             }

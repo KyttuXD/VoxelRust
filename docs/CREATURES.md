@@ -214,8 +214,8 @@ elephant can then be ridden; see [Taming and pets](#taming-and-pets).
 | Polar Bear | tundra | territorial, hunter (7 damage); drops 3 Raw Meat |
 | Tiger | jungle | **hostile** by day and night (7 damage); drops 2 Raw Meat |
 | Alligator | swamp | territorial (6 damage); drops 2 Raw Meat |
-| Snake | swamp, jungle, desert, badlands | territorial (3 damage) |
-| Spider | forest, jungle, swamp | territorial (2 damage); drops 1 String |
+| Snake | swamp, jungle, desert, badlands | territorial (3 damage); its bite poisons for 10 seconds |
+| Spider | forest, jungle, swamp | territorial (2 damage), its bite poisons for 8 seconds; drops 1 String |
 | Worm | plains, forest, swamp, jungle | prey |
 | Ant | desert, savanna, jungle, badlands, forest | herd |
 | Beetle | forest, jungle, swamp, plains | |
@@ -240,7 +240,7 @@ In the water:
 
 ## The Wildlife mod
 
-`mods/wildlife` comes with the game and adds 32 more kinds of creature, most
+`mods/wildlife` comes with the game and adds 34 more kinds of creature, most
 in two to four looks (a blue tree frog, a black cottontail, a ginger bat).
 Each look has its own model and texture, drawn in the OCD style
 ([TEXTURING.md](TEXTURING.md)); limbs, tails, ears and wings are separate
@@ -252,11 +252,12 @@ animals stay the most common.
 | --- | --- | --- |
 | Frogs and toads | Tree Frog (green, blue, red-eyed, grey), Dart Frog (blue, strawberry, golden, green and black), Pond Frog (green, brown, olive), Toad (brown, green, red, natterjack), Tadpole (in water) | swamp, jungle, forest, plains, taiga; they hop and croak |
 | Newts, turtles | Newt (olive, fire, crested, alpine), Pond Turtle (green, painted, snapping, box), Sea Turtle (open water; green, hawksbill, loggerhead, leatherback) | swamp, forest, taiga, jungle |
-| Lizards, snakes | Gecko, Lizard, Garter Snake (harmless, flees), Viper (territorial, 2 damage) | desert, badlands, savanna, plains, forest, taiga, mountain |
+| Lizards, snakes | Gecko, Lizard, Garter Snake (harmless, flees), Viper (territorial, 2 damage; poisons for 12 seconds) | desert, badlands, savanna, plains, forest, taiga, mountain |
 | Birds | Barn Owl (night), Mallard (drake, hen, white, mandarin), Canada Goose, Seagull | forest, plains, swamp, tundra, taiga |
 | Flyers | Horseshoe Bat (caves), Dragonfly, Meadow Butterfly (monarch, swallowtail, morpho, cabbage white, emperor), Bumblebee (does not sting), Ladybird | caves, swamp, jungle, forest, plains |
 | Mammals | Roe Deer, Arctic Fox, Fennec Fox, Cottontail (brown, grey, black, white, spotted), Hedgehog, Otter (open water), Beaver, Warthog, Squirrel, Badger | forest, taiga, tundra, desert, savanna, plains, swamp, mountain |
 | Shore | Fiddler Crab | desert, swamp |
+| Exploding | [Boomer](#boomers) (forest green, desert, snow, swamp, badlands, mountain, jungle), Cave Boomer (dark with glowing spots, ember, crystal) | everywhere on the surface; every kind of cave. Hostile |
 
 Young animals arrive with adults for the kinds that have them (deer, foxes,
 cottontails, hedgehogs, turtles, ducks, geese, otters, beavers, warthogs,
@@ -270,6 +271,35 @@ of named colours per species, with the colours each variant changes, drives
 every model, every PNG in `mods/wildlife/textures/` and `pack.txt`; change a
 colour, run it again and everything follows. `--sheet out.png` writes a
 contact sheet to look at.
+
+### Boomers
+
+A **Boomer** is a small walking gourd with a stem for a fuse and a grim
+face. It appears by day or night, in survival mode only, comes for you like
+any hostile creature, and does not hit: it **explodes**.
+
+- Once you are within 3 blocks of it, its fuse is lit: it stops, hisses (the
+  subtitle says `A FUSE HISSES`), swells and flashes red, faster and faster.
+- Stay within reach for 1.5 seconds and it blows up (power 2: a crater a few
+  blocks across, hurting you and other creatures nearby, and knocking you
+  back; see [PLAYING.md](PLAYING.md)). It is gone afterwards.
+- **Get away** (more than about 5 blocks) and the fuse goes out; it starts
+  again from the beginning the next time you are close. Killing it puts it
+  out for good. It has 20 health and drops 2 Gunpowder.
+- Pets and young ones do not explode.
+
+**Camouflage.** A Boomer is coloured like the ground it appears on, so look
+before you step: forest green with bark patches (also in plains and taiga),
+sandy with cactus spines (desert, savanna), white with frost (tundra),
+murky with moss (swamp), red clay in bands (badlands), stone grey with ore
+specks (mountain) and bright green with flowers (jungle). The **Cave
+Boomer**, found in every kind of cave, is dark with glowing spots and gives
+off a little light; in magma caves it is black with embers, in crystal and
+frozen caves pale blue with crystals. The looks come from the `biomes` list
+of each `variant` (see [DATA.md](DATA.md#creatures)); the creature
+itself is `explodes 2.0 1.5 3.0` in `mods/wildlife/pack.txt`. In the
+[creature line-up](#seeing-them-all) and the [spawn eggs](#spawn-eggs) they
+are there like any other.
 
 ## Night monsters
 
@@ -308,7 +338,7 @@ monsters are there by day as well as by night, in survival mode.
 | Slime | every kind | hostile, hops, 2 damage; small and big ones |
 | Crawler | every kind | hostile, 4 damage; drops 2 String |
 | Rock Golem | every kind | hostile, 9 damage, 60 health; drops 2 Crystal; uncommon |
-| Cave Spider | webbed caves | hostile, 3 damage; drops 2 String |
+| Cave Spider | webbed caves | hostile, 3 damage, its bite poisons for 6 seconds; drops 2 String |
 | Frost Crawler | frozen caves | hostile, 4 damage |
 | Magma Slime | magma caves | hostile, hops, 4 damage; glows |
 | Glow Beetle | mushroom and lush caves | harmless; glows brightly |

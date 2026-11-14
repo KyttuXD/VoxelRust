@@ -132,8 +132,28 @@ item glowberry_seeds
   place glowberry_1
   category Farming
 
-# A tool that changes blocks it is used on, and a weapon.
-texture amethyst_wand paint sword 190 120 240
+# Palettes (docs/TEXTURING.md#palettes-and-gradients): a palette gives base, dark and
+# light colours (#rrggbb or r g b) and may spread them over the picture as flat
+# bands. Declare it first, then use it by name in `paint` lines.
+palette amethyst_gem #b46ae8 #7a3ec0 #e8c8ff
+palette moss_green #5a8a3a #3e6428 #9ac870
+palette dusk gradient vertical #f0b848 #d8602c #6a2c5c
+
+# An ore whose blobs are two gems in turn, in a deep stone; and a vein ore.
+texture amethyst_ore paint ore palette amethyst_gem+moss_green host deepstone
+texture amethyst_vein paint ore_vein palette amethyst_gem host stone
+
+block amethyst_ore
+  name Amethyst Ore
+  tex amethyst_ore
+  hardness 3
+  tool pick
+
+# A tool that changes blocks it is used on, and a weapon. The old `r g b` colour
+# still works (`paint sword 190 120 240`); here the blade has its own dark and
+# light colours and a white fuller line down the middle.
+texture amethyst_wand paint sword colors #be78f0 #8a4cc8 #e8c8ff accent=#ffffff
+texture dusk_pick paint pick palette dusk
 item amethyst_wand
   name Amethyst Wand
   icon amethyst_wand
@@ -142,9 +162,11 @@ item amethyst_wand
   turns stone amethyst
   turns cobble stone
 
-# Recipes: by hand, at a crafting table, and in an oven.
-recipe glowberry_seeds 2 glowberry 1
-craft amethyst_hatch 2 amethyst 3
+# Recipes: in the crafting grid (a shapeless one fits the 2 x 2 grid of the
+# inventory screen; a shaped one is a pattern, here in a table's 3 x 3 grid),
+# and in an oven.
+craft glowberry_seeds 2 glowberry 1
+shaped amethyst_hatch 2 "A.A" ".A." with A amethyst
 bake hot_coals 1 coal 4
 
 # The terrain: amethyst in deep stone (about one block in 400 between

@@ -36,7 +36,7 @@ time the program needs only:
 - an **OpenGL 1.5** driver;
 - `curl` on the `PATH`, for Earth worlds and for the game updating itself.
 
-The eight mods that come with the game, listed in `mods/SHIPPED`, are folders
+The eight mods that come with the game, listed in `SHIPPED` in the separate `VoxelRust-Mods` folder (see [BUILDING.md](BUILDING.md#mod-code)), are folders
 read at start-up, from `mods/` beside the program or, in a Mac app, from
 `Contents/Resources/mods` (see [MODDING.md](MODDING.md#where-packs-are-read-from)).
 

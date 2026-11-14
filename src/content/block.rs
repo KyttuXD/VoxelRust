@@ -345,6 +345,10 @@ pub struct Variant {
     /// Its picture (`data/textures/entity/<tex>.png`, see `pack_entities`);
     /// empty = the model's own.
     pub tex: String,
+    /// Surface or cave biomes this look is for (camouflage). With any, it is
+    /// only given to creatures that appear in one of them, and always to
+    /// those; empty = a look for anywhere. See `entity_variant`.
+    pub biomes: Vec<String>,
 }
 
 /// The parts of a creature that only some have.
@@ -381,6 +385,10 @@ pub struct EntityExtra {
     /// The creatures it hunts, by id: its place in the food chain. (With
     /// none named, a `hunter` goes after anything marked `prey`.)
     pub hunts: Vec<String>,
+    /// `explodes <power> <fuse seconds> <trigger range>`: it closes in on a
+    /// player, and when within range for the whole fuse it blows up (see
+    /// `entity_explode`).
+    pub explodes: Option<(f32, f32, f32)>,
 }
 
 /// A part of a pack kept as written, for a mod's own code to read: a
@@ -449,7 +457,7 @@ pub struct EntityDef {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Usable {
     Nothing,
-    /// Opens the full recipe list.
+    /// Opens the 3 x 3 crafting grid.
     Craft,
     /// Opens its own storage.
     Chest,
@@ -480,14 +488,15 @@ pub mod embedded {
     }
 }
 
-/// Something that can be made by hand from other items.
+/// A `bake` or `smelt` recipe: a list entry at an oven or a furnace. (The
+/// crafting grid's recipes are `crafting::GridRecipe`.)
 #[derive(Clone, Debug, PartialEq)]
 pub struct Recipe {
     /// Item made, and how many.
     pub out: (usize, u16),
     /// Items used up.
     pub inputs: Vec<(usize, u16)>,
-    /// Needs a crafting table (otherwise it can be made by hand).
+    /// Unused: grid recipes are told apart by their size (see `GridRecipe::needs_table`).
     pub table: bool,
     /// Needs an oven instead (`bake` recipes).
     pub oven: bool,
@@ -501,6 +510,9 @@ pub enum TileSrc {
     Flat { rgb: [u8; 3], noise: u8 },
     /// A built-in pattern (concrete, wool, planks, bark...) in a given colour.
     Paint { style: String, rgb: [u8; 3] },
+    /// The same patterns drawn with a palette: several colours, roles, a
+    /// gradient (see `content/palette.rs`).
+    Palette { style: String, pal: crate::palette::Palette },
     /// 16 x 16 RGBA.
     Pixels(Vec<u8>),
 }
@@ -591,11 +603,16 @@ pub struct Registry {
     pub blocks: Vec<BlockDef>,
     pub items: Vec<ItemDef>,
     pub tiles: Vec<TileDef>,
+    /// `bake` and `smelt` recipes (the station lists).
     pub recipes: Vec<Recipe>,
+    /// `craft`, `recipe`, `shapeless` and `shaped` recipes, for the crafting grid.
+    pub grid_recipes: Vec<crate::crafting::GridRecipe>,
     pub models: Vec<ModelSpec>,
     pub entities: Vec<EntityDef>,
     /// Sections and lines of the packs kept for the mods' own code.
     pub sections: Vec<Section>,
+    /// Status effects: poison, burning... (see content/effects.rs).
+    pub fx: crate::content::effects::EffectTable,
     pub lines: Vec<(String, String, Vec<String>)>,
     /// Item tabs, in the order they first appear.
     pub categories: Vec<String>,
@@ -824,6 +841,8 @@ enum Cur {
     Item(usize),
     Entity(usize),
     Section(usize),
+    /// An `effect <id>` block (see content/effects.rs).
+    Effect(usize),
 }
 
 struct Parser<'a> {
@@ -833,14 +852,20 @@ struct Parser<'a> {
     models: Vec<ModelSpec>,
     entities: Vec<RawEntity>,
     sections: Vec<Section>,
+    /// The `effect <id>` blocks, read by content/effects.rs.
+    effects: Vec<Section>,
     lines: Vec<(String, String, Vec<String>)>,
     /// `(file:line, words)` for each `recipe` line, resolved once items exist.
     recipes: Vec<(String, Vec<String>)>,
+    /// `group <name> <item> ...` lines: `(file:line, words)`.
+    groups: Vec<(String, Vec<String>)>,
     /// `ore` and `plant` lines, kept the same way.
     rules: Vec<(String, Vec<String>)>,
     /// Sound files read while parsing: the sound's id and its samples.
     clips: Vec<(String, Vec<i16>)>,
     warnings: Vec<String>,
+    /// Palettes declared so far (`palette` lines), for `texture ... paint`.
+    palettes: crate::palette::Palettes,
     load: &'a mut dyn FnMut(&str) -> Option<Vec<u8>>,
     depth: u32,
 }
@@ -861,7 +886,7 @@ impl Parser<'_> {
         let mut cur = Cur::None;
         for (n, raw) in text.lines().enumerate() {
             let line_no = n + 1;
-            let line = match raw.find('#') {
+            let line = match crate::palette::comment_start(raw) {
                 Some(i) => &raw[..i],
                 None => raw,
             };
@@ -877,6 +902,12 @@ impl Parser<'_> {
                 "texture" => {
                     cur = Cur::None;
                     self.texture(file, line_no, &args);
+                }
+                "palette" => {
+                    cur = Cur::None;
+                    if let Err(m) = crate::palette::declare(&mut self.palettes, &args) {
+                        self.warn(file, line_no, &m);
+                    }
                 }
                 "block" | "item" => {
                     let id = match args.first() {
@@ -1014,6 +1045,14 @@ impl Parser<'_> {
                     };
                     cur = Cur::Entity(i);
                 }
+                // A status effect: its lines are read by content/effects.rs.
+                "effect" if indent == 0 => match args.first() {
+                    Some(id) => cur = Cur::Effect(crate::content::effects::begin(&mut self.effects, id, alloc::format!("{}:{}", file, line_no))),
+                    None => {
+                        self.warn(file, line_no, "missing id");
+                        cur = Cur::None;
+                    }
+                },
                 // A section some mod's code has claimed: kept as written.
                 k if indent == 0 && crate::native::reads_section(k) => {
                     let id = match args.first() {
@@ -1065,13 +1104,28 @@ impl Parser<'_> {
                     }
                     self.rules.push((alloc::format!("{}:{}", file, line_no), words));
                 }
-                "recipe" | "craft" | "bake" | "smelt" => {
+                "recipe" | "craft" | "shapeless" | "bake" | "smelt" => {
                     cur = Cur::None;
-                    // `craft` recipes need a crafting table; the marker is
-                    // carried as a first word and removed when resolving.
+                    // The keyword is carried as a first word and read when
+                    // resolving.
                     let mut words: Vec<String> = args.iter().map(|a| a.to_string()).collect();
                     words.insert(0, key.to_string());
                     self.recipes.push((alloc::format!("{}:{}", file, line_no), words));
+                }
+                // Rows may be quoted and hold spaces, so this line is split
+                // again with that in mind (`crafting::parse`).
+                "shaped" => {
+                    cur = Cur::None;
+                    self.recipes.push((alloc::format!("{}:{}", file, line_no), crate::crafting::parse::split_words(line)));
+                }
+                "group" => {
+                    cur = Cur::None;
+                    let words: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+                    if words.len() < 2 {
+                        self.warn(file, line_no, "group needs a name and items");
+                    } else {
+                        self.groups.push((alloc::format!("{}:{}", file, line_no), words));
+                    }
                 }
                 "include" => {
                     cur = Cur::None;
@@ -1095,6 +1149,7 @@ impl Parser<'_> {
                     Cur::Item(i) => self.item_prop(file, line_no, i, key, &args, &rest),
                     Cur::Entity(i) => self.entity_prop(file, line_no, i, key, &args, &rest),
                     Cur::Section(i) => self.sections[i].props.push((String::from(key), args.iter().map(|a| a.to_string()).collect())),
+                    Cur::Effect(i) => self.effects[i].props.push((String::from(key), args.iter().map(|a| a.to_string()).collect())),
                     Cur::None => self.warn(file, line_no, &alloc::format!("unexpected `{}`", key)),
                 },
             }
@@ -1121,18 +1176,13 @@ impl Parser<'_> {
                     }
                 }
             }
-            "paint" => {
-                let num = |i: usize| a.get(i).and_then(|s| s.parse::<u8>().ok());
-                match (num(3), num(4), num(5)) {
-                    (Some(r), Some(g), Some(b)) if crate::textures::painted(a[2], [r, g, b], 0, 0).is_some() => {
-                        TileSrc::Paint { style: a[2].to_string(), rgb: [r, g, b] }
-                    }
-                    _ => {
-                        self.warn(file, line, "paint needs a known style and three numbers 0..255");
-                        return;
-                    }
+            "paint" => match crate::palette::paint_source(&a[2..], &self.palettes) {
+                Ok(src) => src,
+                Err(m) => {
+                    self.warn(file, line, &alloc::format!("paint: {}", m));
+                    return;
                 }
-            }
+            },
             "file" => {
                 let path = alloc::format!("{}{}", dir_of(file), a[2..].join(" "));
                 let read = (self.load)(&path).and_then(|b| crate::image::decode(&b)).map(|img| if img.w == 16 && img.h == 16 { img.rgba } else { crate::image::fit(&img, 16) });
@@ -1294,7 +1344,7 @@ impl Parser<'_> {
                     Some(&"villager") => e.behavior = Behavior::Villager,
                     _ => bad = Some("behavior must be wander, npc, hostile, swim, fly or villager"),
                 },
-                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" => {
+                "trait" | "anim" | "variant" | "tex" | "baby" | "gives" | "trade" | "job" | "likes" | "glow" | "sound" | "tamable" | "shoots" | "rideable" | "hunts" | "explodes" => {
                     e.extra.push((key.to_string(), a.iter().map(|s| s.to_string()).collect()));
                 }
                 "tint" => {
@@ -1375,18 +1425,21 @@ impl Registry {
             models: Vec::new(),
             entities: Vec::new(),
             sections: Vec::new(),
+            effects: Vec::new(),
             lines: Vec::new(),
             recipes: Vec::new(),
+            groups: Vec::new(),
             rules: Vec::new(),
             clips: Vec::new(),
             warnings: Vec::new(),
+            palettes: Vec::new(),
             load,
             depth: 0,
         };
         for (path, text) in sources {
             p.parse(path, text);
         }
-        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, rules: raw_rules, clips, models, entities: raw_entities, sections, lines, mut warnings, .. } = p;
+        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, groups: raw_groups, rules: raw_rules, clips, models, entities: raw_entities, sections, effects: raw_effects, lines, mut warnings, .. } = p;
 
         let tile_of = |id: &str, warnings: &mut Vec<String>, what: &str| -> u16 {
             match tiles.iter().position(|t| t.id == id) {
@@ -1746,10 +1799,44 @@ impl Registry {
             }
         }
 
-        // Recipes: `recipe <item> <n> <ingredient> <n> [<ingredient> <n> ...]`.
+        // Groups: `group <name> <item> [<item> ...]`. Naming one again adds to it.
+        let mut groups: Vec<(String, Vec<u16>)> = Vec::new();
+        for (at, words) in &raw_groups {
+            let mut found = Vec::new();
+            for id in &words[1..] {
+                match items.iter().position(|it| it.id == *id && it.brush == 0) {
+                    Some(i) => found.push(i as u16),
+                    None => warnings.push(alloc::format!("{}: group {} names an unknown item {}", at, words[0], id)),
+                }
+            }
+            match groups.iter_mut().find(|g| g.0 == words[0]) {
+                Some(g) => g.1.extend(found),
+                None => groups.push((words[0].clone(), found)),
+            }
+        }
+        // Recipes: `bake` and `smelt` go to the stations' lists; `recipe`,
+        // `craft`, `shapeless` and `shaped` to the crafting grid.
         let mut recipes = Vec::new();
+        let mut grid_recipes = Vec::new();
+        let find_item = |id: &str| items.iter().position(|it| it.id == id && it.brush == 0).map(|i| i as u16);
+        let find_group = |name: &str| groups.iter().find(|g| g.0 == name).map(|g| g.1.clone());
+        let lookup = crate::crafting::parse::Lookup { item: &find_item, group: &find_group };
         for (at, words) in &raw_recipes {
-            let table = words[0] == "craft";
+            if words[0] != "bake" && words[0] != "smelt" {
+                match crate::crafting::parse::resolve(words, &lookup) {
+                    Ok(rc) => {
+                        // An ingredient that more is wanted of than a stack holds can never be made.
+                        let too_much = rc.ingredients().iter().any(|ing| ing.items.iter().all(|&i| items[i as usize].stack.max(1) < ing.need));
+                        if too_much {
+                            warnings.push(alloc::format!("{}: an ingredient needs more than fits in one stack", at));
+                        } else {
+                            grid_recipes.push(rc);
+                        }
+                    }
+                    Err(why) => warnings.push(alloc::format!("{}: recipe: {}", at, why)),
+                }
+                continue;
+            }
             let oven = words[0] == "bake";
             let furnace = words[0] == "smelt";
             let words = &words[1..];
@@ -1766,7 +1853,7 @@ impl Registry {
                 }
             }
             if ok {
-                recipes.push(Recipe { out: parts[0], inputs: parts[1..].to_vec(), table, oven, furnace });
+                recipes.push(Recipe { out: parts[0], inputs: parts[1..].to_vec(), table: false, oven, furnace });
             } else {
                 warnings.push(alloc::format!("{}: recipe needs `<item> <count>` pairs of known items", at));
             }
@@ -1788,7 +1875,14 @@ impl Registry {
                     biomes: e.biomes.clone(),
                     night: e.night,
                     weight: e.weight,
-                    drop: e.drop.as_ref().and_then(|(id, n)| items.iter().position(|it| it.id == *id).map(|i| (i, *n))),
+                    drop: e.drop.as_ref().and_then(|(id, n)| {
+                        let found = items.iter().position(|it| it.id == *id);
+                        if found.is_none() {
+                            // A creature that drops something a pack lacks still works.
+                            warnings.push(alloc::format!("entity {}: drops unknown item `{}`", e.id, id));
+                        }
+                        found.map(|i| (i, *n))
+                    }),
                     x: {
                         let mut x = EntityExtra::default();
                         let item = |id: &str| items.iter().position(|it| it.id == id && it.brush == 0);
@@ -1809,16 +1903,16 @@ impl Registry {
                                     Some(t) => x.anim = t.1,
                                     None => ok = false,
                                 },
-                                // variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>]
+                                // variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>] [biomes <names...>]
                                 "variant" => {
                                     let num = |k: usize| word(k).parse::<u8>().ok();
-                                    let mut v = Variant { name: word(0).replace('_', " "), model, tint: e.tint, size: 1.0, tex: String::new() };
+                                    let mut v = Variant { name: word(0).replace('_', " "), model, tint: e.tint, size: 1.0, tex: String::new(), biomes: Vec::new() };
                                     let mut k = 1;
                                     if let (Some(r), Some(g), Some(b)) = (num(1), num(2), num(3)) {
                                         v.tint = [r, g, b];
                                         k = 4;
                                     }
-                                    while k + 1 < a.len() {
+                                    while k < a.len() {
                                         match word(k) {
                                             "model" => match models.iter().position(|m| m.id == word(k + 1)) {
                                                 Some(m) => v.model = m,
@@ -1826,6 +1920,15 @@ impl Registry {
                                             },
                                             "size" => v.size = word(k + 1).parse::<f32>().unwrap_or(1.0).clamp(0.2, 3.0),
                                             "tex" => v.tex = crate::pack_entities::clean_name(word(k + 1)),
+                                            "biomes" => {
+                                                // Every word up to the next keyword is a biome.
+                                                k += 1;
+                                                while k < a.len() && !matches!(word(k), "model" | "size" | "tex" | "biomes") {
+                                                    v.biomes.push(word(k).to_ascii_lowercase());
+                                                    k += 1;
+                                                }
+                                                continue;
+                                            }
                                             _ => ok = false,
                                         }
                                         k += 2;
@@ -1858,6 +1961,14 @@ impl Registry {
                                 "hunts" => {
                                     x.hunts.extend(a.iter().cloned());
                                     x.traits |= traits::HUNTER;
+                                }
+                                // explodes <power> <fuse seconds> <trigger range>
+                                "explodes" => {
+                                    let f = |k: usize| word(k).parse::<f32>().ok().filter(|v| v.is_finite());
+                                    match (f(0), f(1), f(2)) {
+                                        (Some(power), Some(fuse), Some(range)) => x.explodes = Some((power.clamp(0.1, 16.0), fuse.clamp(0.2, 30.0), range.clamp(0.5, 16.0))),
+                                        _ => ok = false,
+                                    }
                                 }
                                 _ => {}
                             }
@@ -1947,7 +2058,7 @@ impl Registry {
                 // when <event> [<what>] do <chat commands separated by ;>
                 "when" => match w.iter().position(|x| x == "do") {
                     Some(d) if d >= 2 && d + 1 < w.len() => scripts.push(Script {
-                        event: w[1].to_ascii_lowercase(),
+                        event: crate::game::events::canonical(&w[1].to_ascii_lowercase()).into(),
                         what: w[2..d].join(" ").to_ascii_lowercase(),
                         actions: split_actions(&w[d + 1..].join(" ")),
                     }),
@@ -2198,6 +2309,7 @@ impl Registry {
                 flow[*lava as usize][*level as usize] = state as Block;
             }
         }
+        let fx = crate::content::effects::build(&raw_effects, &tiles, &mut warnings);
         let mut registry = Registry {
             fluid,
             flow,
@@ -2213,9 +2325,11 @@ impl Registry {
             items,
             tiles,
             recipes,
+            grid_recipes,
             models,
             entities,
             sections,
+            fx,
             lines,
             categories,
             ores,
@@ -2437,8 +2551,9 @@ mod tests {
         // Every state of a block shares its drop.
         let stairs = r.block("stone_stairs").unwrap();
         assert_eq!(def(stairs + 7).drop, Some(item("stone_stairs")));
-        let planks = r.recipes.iter().find(|x| x.out.0 == item("planks")).expect("no planks recipe");
-        assert_eq!((planks.out.1, &planks.inputs[..]), (4, &[(item("log"), 1)][..]));
+        let planks = r.grid_recipes.iter().find(|x| x.out.0 as usize == item("planks")).expect("no planks recipe");
+        assert_eq!(planks.out.1, 4);
+        assert_eq!(planks.ingredients().iter().map(|i| i.items.clone()).collect::<Vec<_>>(), [alloc::vec![item("log") as u16]]);
         assert!(r.categories.iter().any(|c| c == "Colours"));
         assert!(r.kind[r.block("red_glass").unwrap() as usize] == Kind::Translucent);
         let bad = Registry::from_sources(&[("base.txt", BASE_DATA), ("p", "recipe planks 4 nothing_real 1\n")], &mut |_| None);
@@ -2454,5 +2569,20 @@ mod tests {
         });
         assert_eq!(asked, ["mods/extra.txt"]);
         assert!(r.block("extra").is_some());
+    }
+
+    #[test]
+    fn variants_name_their_biomes_and_creatures_can_explode() {
+        let pack = "model m builtin pig\nentity bang\n  name Bang\n  model m\n  explodes 2.5 1.5 3\n  variant Dry biomes desert savanna\n  variant Wet biomes swamp model m size 1.2 tex x\n  variant Odd\nentity dud\n  name Dud\n  model m\n  explodes 2\n  variant Bad model nothing_real\n";
+        let r = Registry::from_sources(&[("base.txt", BASE_DATA), ("p", pack)], &mut |_| None);
+        let e = r.entities.iter().find(|e| e.id == "bang").expect("bang");
+        assert_eq!(e.x.explodes, Some((2.5, 1.5, 3.0)));
+        assert_eq!(e.x.variants.len(), 3);
+        assert_eq!(e.x.variants[0].biomes, ["desert", "savanna"]);
+        assert_eq!((e.x.variants[1].biomes.as_slice(), e.x.variants[1].size), (&["swamp".to_string()][..], 1.2));
+        assert!(e.x.variants[2].biomes.is_empty());
+        let dud = r.entities.iter().find(|e| e.id == "dud").expect("dud");
+        assert_eq!(dud.x.explodes, None);
+        assert!(r.warnings.iter().any(|w| w.contains("explodes 2")), "{:?}", r.warnings);
     }
 }

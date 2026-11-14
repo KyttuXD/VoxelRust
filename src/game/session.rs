@@ -133,10 +133,14 @@ pub struct Session {
     pub sleeping: bool,
     /// Damage asked for by commands, dealt likewise.
     pending_hurt: i32,
+    /// Bookkeeping for script events and native hooks (game/events.rs).
+    pub ev: crate::game::events::Tracker,
     /// Things in flight: arrows, bolts, spells.
     pub shots: Vec<Shot>,
     /// Items on the ground.
     pub drops: Vec<Dropped>,
+    /// Lit TNT and the sparks of explosions (see `game::primed`).
+    pub primed: crate::primed::Primed,
     /// Seconds each `when every N` script has left.
     script_timers: Vec<f32>,
     started: bool,
@@ -180,6 +184,8 @@ pub struct Session {
     /// 0 (starving) ..= 20 (full); survival only.
     pub hunger: i32,
     hunger_clock: f32,
+    /// Poison, burning and the like in force (see game/effects).
+    pub fx: crate::game::effects::Effects,
     /// What is stored in each chest, by the chest's position.
     pub chests: BTreeMap<[i32; 3], Inventory>,
     /// A block the player just used: the screen to open, and where it is.
@@ -501,8 +507,10 @@ impl Session {
             fire_depth: 0,
             sleeping: false,
             pending_hurt: 0,
+            ev: Default::default(),
             shots: Vec::new(),
             drops: Vec::new(),
+            primed: Default::default(),
             script_timers: Vec::new(),
             started: false,
             call_timer: 3.0,
@@ -534,6 +542,7 @@ impl Session {
             health: kv(&meta, "health").and_then(|v| v.parse::<i32>().ok()).unwrap_or(MAX_HEALTH).clamp(1, MAX_HEALTH),
             hunger: kv(&meta, "hunger").and_then(|v| v.parse::<i32>().ok()).unwrap_or(MAX_HUNGER).clamp(0, MAX_HUNGER),
             hunger_clock: 0.0,
+            fx: crate::game::effects::Effects::from_text(kv(&meta, "effects").unwrap_or(""), kv(&meta, "absorb").and_then(|v| v.parse::<i32>().ok()).unwrap_or(0), &crate::game::effects::apply::lookup),
             chests,
             opened_ext: None,
             chests_path,
@@ -564,6 +573,7 @@ impl Session {
                 open(g)
             }
         });
+        crate::game::hooks::world_loaded(&mut session);
         session
     }
 
@@ -615,6 +625,7 @@ impl Session {
     /// mods' code (`Native::killed`).
     /// The player hit a creature: tell the mods' code (`Native::hit`).
     fn mob_hit(&mut self, id: u32, kind: usize, at: [f64; 3]) {
+        crate::game::events::entity_hurt(self, kind);
         for (_, n) in crate::native::active() {
             if let Some(hit) = n.hit {
                 hit(self, id, kind, at);
@@ -672,6 +683,10 @@ impl Session {
     /// Something happened that packs may have a `when` line for: carry out
     /// what they ask. `what` is the id of the thing it happened to.
     pub fn fire(&mut self, event: &str, what: &str) {
+        let event = crate::game::events::canonical(event);
+        crate::game::hooks::event(self, event, what);
+        // Effects that start from an event (`from eat ...`).
+        crate::game::effects::apply::on_event(self, event, what);
         let r = reg();
         if r.scripts.is_empty() {
             return;
@@ -686,7 +701,7 @@ impl Session {
     /// Whether a condition of `/if` is true. Conditions: `chance N`,
     /// `holding ITEM`, `has ITEM [N]`, `dim NAME`, `night`, `day`,
     /// `creative`, `survival`, `riding`, `hurt` (health below full),
-    /// `hungry`, `NAME OP NUMBER` for a variable (= != < > <= >=); and
+    /// `hungry`, `effect ID [LEVEL]`, `NAME OP NUMBER` for a variable (= != < > <= >=); and
     /// `not` in front of any of them.
     fn holds(&mut self, cond: &[&str]) -> bool {
         let w = |k: usize| cond.get(k).copied().unwrap_or("");
@@ -707,6 +722,8 @@ impl Session {
             "riding" => self.riding_mob.is_some() || self.carried,
             "hurt" => self.health < MAX_HEALTH,
             "hungry" => self.hunger < MAX_HUNGER,
+            // `effect ID [LEVEL]`: that status effect is active (at that level or more).
+            "effect" => self.fx.level(w(1)) >= w(2).parse::<i32>().unwrap_or(1).max(1),
             // A switch a pack put in the settings (`setting <id> ...`).
             "setting" => self.flags.iter().find(|f| f.0 == w(1)).map_or_else(|| r.toggles.iter().any(|t| t.0 == w(1) && t.1), |f| f.1),
             "storm" => self.sky.storm,
@@ -756,6 +773,7 @@ impl Session {
         // Cheating commands need the server's say-so.
         if online && !self.may(crate::proto::PERM_COMMANDS) {
             let cheat = ["/give", "/take", "/tp", "/heal", "/feed", "/hurt", "/launch", "/spawn", "/pull"].contains(&arg(0))
+                || (arg(0) == "/effect" && arg(1) != "list")
                 || r.commands.iter().any(|c| c.0 == arg(0));
             if cheat {
                 return Some(String::from("YOU MAY NOT USE THAT COMMAND ON THIS SERVER"));
@@ -875,22 +893,13 @@ impl Session {
                 self.say(&text);
                 String::new()
             }
-            // /blast R: clear a ball of blocks where the player is pointing.
+            // /blast R: an explosion of radius R where the player is pointing
+            // (see game::explosion).
             "/blast" if !online => {
                 if let Some(c) = self.target.as_ref().map(|h| h.cell) {
                     let rad = arg(1).parse::<i32>().unwrap_or(2).clamp(1, 5);
-                    for dx in -rad..=rad {
-                        for dy in -rad..=rad {
-                            for dz in -rad..=rad {
-                                let cell = [c[0] + dx, c[1] + dy, c[2] + dz];
-                                let b = self.world.get(cell[0], cell[1], cell[2]);
-                                if dx * dx + dy * dy + dz * dz <= rad * rad && b != AIR && !block::def(b).unbreakable && cell[1] > 0 {
-                                    self.world.set_block(cell[0], cell[1], cell[2], AIR);
-                                }
-                            }
-                        }
-                    }
-                    self.sound_queue.push(String::from("thunder"));
+                    let at = [c[0] as f64 + 0.5, c[1] as f64 + 0.5, c[2] as f64 + 0.5];
+                    crate::explosion::explode(self, at, rad as f32 / crate::explosion::RADIUS_PER_POWER, crate::explosion::ExplosionSource::Command);
                 }
                 String::new()
             }
@@ -1025,8 +1034,11 @@ impl Session {
                 }
                 String::new()
             }
+            // /effect give|clear|list|mob: poison, burning and the like.
+            "/effect" => crate::game::effects::apply::command(self, &words),
             "/hurt" => {
                 self.pending_hurt += arg(1).parse::<i32>().unwrap_or(1).clamp(0, 100);
+                self.ev.pending_cause = String::from("command");
                 String::new()
             }
             // /launch UP [FORWARD]: throw the player (a jump pad, a gust).
@@ -1269,7 +1281,7 @@ impl Session {
 
     /// Hit creature `i`. In a shared game run by someone else, they are
     /// told, and decide what becomes of it. Returns whether it died.
-    fn strike(&mut self, i: usize, amount: i32, from: [f64; 3]) -> bool {
+    pub(crate) fn strike(&mut self, i: usize, amount: i32, from: [f64; 3]) -> bool {
         if self.runs_the_world() {
             return self.mobs.hurt(i, amount, from);
         }
@@ -1284,6 +1296,21 @@ impl Session {
             n.send_state(crate::proto::channel::HIT, false, "", alloc::format!("{} {}", id, amount).as_bytes());
         }
         health - amount <= 0
+    }
+
+    /// Set an item down in the world at `pos`, thrown with `vel` (at most 128
+    /// lie about; the oldest goes).
+    pub fn drop_item(&mut self, pos: [f64; 3], vel: [f32; 3], item: u16, count: u16) {
+        if self.drops.len() >= 128 {
+            self.drops.remove(0);
+        }
+        self.drops.push(Dropped { pos, vel, item, count, age: 0.0 });
+    }
+
+    /// Hurt the player by `amount` at the end of this frame (survival only;
+    /// armour and the mods' `hurt` hook apply).
+    pub fn hurt_later(&mut self, amount: i32) {
+        self.pending_hurt += amount.clamp(0, 100);
     }
 
     /// Send something flying from the player's eye the way they look.
@@ -1336,6 +1363,7 @@ impl Session {
                 let (lo, hi) = self.player.aabb();
                 if (0..3).all(|a| pos[a] > lo[a] - 0.2 && pos[a] < hi[a] + 0.2) {
                     self.pending_hurt += damage;
+                    self.ev.pending_cause = String::from("arrow");
                     // Who loosed it, for the mods' `hurt` hook.
                     self.mobs.last_biter = self.shots[i].shooter;
                     self.shots.swap_remove(i);
@@ -1434,6 +1462,8 @@ impl Session {
         // Water and lava move on from whatever just changed (see game::fluid).
         crate::game::fluid::tick(&mut self.world, &pending);
         for c in pending {
+            // TNT next to lava or fire catches.
+            crate::primed::react(self, c);
             // Blocks that react to a neighbour: the changed cell and what touches it.
             for [dx, dy, dz] in [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] {
                 interact::react(&mut self.world, [c[0] + dx, c[1] + dy, c[2] + dz]);
@@ -1689,6 +1719,8 @@ impl Session {
                     }
                 }
                 crate::netplay::Event::Lost => self.lost = true,
+                crate::netplay::Event::Joined(who) => self.fire(crate::game::events::JOIN, &who.to_ascii_lowercase()),
+                crate::netplay::Event::Left(who) => self.fire(crate::game::events::LEAVE, &who.to_ascii_lowercase()),
                 crate::netplay::Event::Skin(id, png, slim) => self.skin_events.push((id, png, slim)),
                 crate::netplay::Event::State(_, channel, key, data) => {
                     use crate::proto::channel as ch;
@@ -1758,7 +1790,15 @@ impl Session {
         self.note = (String::from(text), 2.0);
     }
 
+    /// As [`Session::damage`], saying where the harm came from (`fall`,
+    /// `drown`, `hunger`, `block`...) for `playerhurt` scripts and hooks.
+    pub fn damage_from(&mut self, cause: &str, amount: i32, audio: &mut Audio) {
+        self.ev.cause = String::from(cause);
+        self.damage(amount, audio);
+    }
+
     pub fn damage(&mut self, amount: i32, audio: &mut Audio) {
+        let cause = core::mem::take(&mut self.ev.cause);
         if amount > 0 {
             self.sleeping = false;
         }
@@ -1776,6 +1816,24 @@ impl Session {
         if amount <= 0 {
             return;
         }
+        // The newer hooks may change the amount or call it off.
+        let cause = match attacker.and_then(|k| reg().entities.get(k)) {
+            Some(d) => d.id.clone(),
+            None if cause.is_empty() => String::from("other"),
+            None => cause,
+        };
+        if !crate::game::hooks::player_hurt(self, &mut amount, &cause) {
+            return;
+        }
+        // A bite may poison; absorption takes what it can of the blow.
+        if let Some(kind) = attacker {
+            crate::game::effects::apply::on_bitten(self, kind);
+        }
+        let amount = self.fx.absorb_hit(amount);
+        if amount <= 0 {
+            self.hurt_flash = 0.2;
+            return;
+        }
         self.health -= amount;
         self.hurt_flash = 0.4;
         self.since_damage = 0.0;
@@ -1784,6 +1842,7 @@ impl Session {
             self.health = 0;
             self.dead = true;
         }
+        self.fire(crate::game::events::PLAYER_HURT, &cause);
     }
 
     /// Go to block column (x, z), arriving above the ground.
@@ -1804,6 +1863,8 @@ impl Session {
         self.hunger = MAX_HUNGER;
         self.air = MAX_AIR;
         self.dead = false;
+        self.fire(crate::game::events::RESPAWN, "");
+        crate::game::effects::apply::clear_all(self);
     }
 
     /// Whether the server lets this player do what `perm` (a `proto::PERM_*`
@@ -1864,6 +1925,7 @@ impl Session {
         let (time, still_asleep) = tick_clock(self.time, dt, self.sleeping);
         if self.sleeping && !still_asleep {
             self.say("GOOD MORNING");
+            self.fire("wake", "");
         }
         self.time = time;
         self.sleeping = still_asleep;
@@ -1888,6 +1950,7 @@ impl Session {
                     self.drops.remove(0);
                 }
                 self.drops.push(Dropped { pos: [eye[0], eye[1] - 0.3, eye[2]], vel: [dir.x * 5.0, dir.y * 5.0 + 2.0, dir.z * 5.0], item, count: 1, age: 0.0 });
+                crate::game::events::item_dropped(self, item as usize);
             }
         }
         let (px, py, pz) = (self.player.pos[0], self.player.pos[1], self.player.pos[2]);
@@ -1906,12 +1969,18 @@ impl Session {
             if d.age > 300.0 || d.pos[1] < -8.0 {
                 self.drops.swap_remove(k);
             } else if near && d.age > 1.2 && !self.dead && self.inv.add(d.item, d.count) == 0 {
+                let item = d.item as usize;
                 self.drops.swap_remove(k);
                 audio.play(Sound::Pop, 0.6);
+                crate::game::events::item_picked(self, item);
             } else {
                 k += 1;
             }
         }
+        // Lit TNT burns down, sparks fly.
+        crate::primed::tick(self, dt);
+        // Creatures, sleep and weather for scripts, and the mods' tick hook.
+        crate::game::events::poll(self, dt);
         // Scripts: once at the start, and those that run on a clock.
         if !self.started {
             self.started = true;
@@ -1962,7 +2031,8 @@ impl Session {
         }
         if self.pending_hurt > 0 {
             let n = core::mem::take(&mut self.pending_hurt);
-            self.damage(n, audio);
+            let cause = core::mem::take(&mut self.ev.pending_cause);
+            self.damage_from(&cause, n, audio);
         }
         // Remember what has been seen, for the minimap.
         self.explore_timer -= dt;
@@ -1982,6 +2052,13 @@ impl Session {
         let (fx, fy, fz) = (floord(self.player.pos[0]), floord(self.player.pos[1] + 0.1), floord(self.player.pos[2]));
         let slow = block::def(self.world.get(fx, fy, fz)).x.slow.max(block::def(self.world.get(fx, fy + 1, fz)).x.slow);
         self.player.speed_scale = if slow > 0 { slow as f32 / 100.0 } else { 1.0 };
+        // Effects: slowness, speed, jump boost; then the effects themselves run.
+        {
+            use crate::game::effects::apply as fxa;
+            self.player.speed_scale *= fxa::speed_scale(&self.fx, &fxa::lookup);
+            self.player.jump_scale = fxa::jump_scale(&self.fx, &fxa::lookup);
+            fxa::step(self, dt, audio);
+        }
         // Movement. Until the ground under the player exists, hold still:
         // unloaded space counts as solid and must never be "stood on".
         let (px, pz) = (floord(self.player.pos[0]), floord(self.player.pos[2]));
@@ -2139,11 +2216,21 @@ impl Session {
                     }
                     audio.play_named("bow", 0.6);
                 }
+                // Creatures that explode (see `entity_explode`): the hiss of a lit
+                // fuse, and the blast itself, which the explosion code carries out.
+                crate::entity::Action::Fuse(at) => {
+                    let (dx, dz) = ((at[0] - self.player.pos[0]) as f32, (at[2] - self.player.pos[2]) as f32);
+                    audio.play_named("fuse_hiss", (1.0 - crate::math::sqrtf(dx * dx + dz * dz) / 32.0).clamp(0.1, 1.0));
+                }
+                crate::entity::Action::Explode(at, power, kind) => {
+                    audio.play_named("boomer_boom", 0.5);
+                    crate::explosion::explode(self, at, power, crate::explosion::ExplosionSource::Creature(kind));
+                }
                 _ => {}
             }
         }
         if bitten > 0 {
-            self.damage(bitten, audio);
+            self.damage_from("mob", bitten, audio);
         }
 
         let (cx, cz) = chunk_at(self.player.pos[0], self.player.pos[2]);
@@ -2181,7 +2268,7 @@ impl Session {
             self.touch_timer += dt;
             if self.touch_timer >= 1.0 {
                 self.touch_timer = 0.0;
-                self.damage(touch as i32, audio);
+                self.damage_from("block", touch as i32, audio);
             }
         } else {
             self.touch_timer = 0.6;
@@ -2195,7 +2282,7 @@ impl Session {
             if self.was_airborne && on_ground {
                 let fell = (self.peak_y - y) as f32;
                 if fell > 3.5 {
-                    self.damage((fell - 3.0) as i32, audio);
+                    self.damage_from("fall", (fell - 3.0) as i32, audio);
                 } else if fell > 1.2 {
                     audio.play(Sound::Step, 1.0);
                 }
@@ -2216,7 +2303,7 @@ impl Session {
                 self.drown += dt;
                 if self.drown >= 1.0 {
                     self.drown = 0.0;
-                    self.damage(2, audio);
+                    self.damage_from("drown", 2, audio);
                 }
             }
         } else {
@@ -2231,7 +2318,7 @@ impl Session {
             if self.hunger > 0 {
                 self.hunger -= 1;
             } else {
-                self.damage(1, audio);
+                self.damage_from("hunger", 1, audio);
             }
         }
         // Slow healing once things have been quiet for a while, if fed.
@@ -2329,6 +2416,15 @@ impl Session {
             self.eating.reset();
             return;
         }
+        // A mod's `on_item_use` may call off a press of the use button.
+        let gated;
+        let c = match crate::game::events::gate_use(self, c, held.map(|h| h.0)) {
+            Some(without_use) => {
+                gated = without_use;
+                &gated
+            }
+            None => c,
+        };
         if !c.place_held {
             self.bow.lockout = false;
         }
@@ -2407,7 +2503,9 @@ impl Session {
                     let at = self.mobs.list[i].body.pos;
                     let mid = self.mobs.list[i].id;
                     self.mob_hit(mid, kind, at);
-                    let killed = self.strike(i, if creative { 1000 } else { item.x.damage.max(3) }, eye);
+                    let blow = crate::game::effects::apply::melee_damage(&self.fx, &crate::game::effects::apply::lookup, item.x.damage.max(3));
+                    crate::game::effects::apply::on_strike(self, i, &item.id);
+                    let killed = self.strike(i, if creative { 1000 } else { blow }, eye);
                     if let (true, false, Some((drop, n))) = (killed, creative, reg().entities[kind].drop) {
                         self.inv.add(drop as u16, n);
                     }
@@ -2428,16 +2526,20 @@ impl Session {
             self.cooldown[0] = 1.0;
             self.say("YOU MAY NOT BUILD ON THIS SERVER");
         }
-        if let (true, false, Some(hit), true) = (c.break_held, struck, &self.target, may_build) {
+        if let (true, false, Some(hit), true) = (c.break_held, struck, self.target, may_build) {
             let b = self.world.get(hit.cell[0], hit.cell[1], hit.cell[2]);
             let d = block::def(b);
             if !d.unbreakable && b != AIR {
                 if creative {
                     if self.cooldown[0] <= 0.0 {
                         self.cooldown[0] = 0.2;
+                        // A mod may refuse (`on_block_break`).
+                        if !crate::game::hooks::block_break(self, hit.cell, b) {
+                            return;
+                        }
                         // What was inside goes with it.
                         self.chests.remove(&hit.cell);
-                        interact::break_at(&mut self.world, item, hit);
+                        interact::break_at(&mut self.world, item, &hit);
                         audio.play_named(if d.x.sound.is_empty() { "break" } else { &d.x.sound }, 1.0);
                         self.fire("break", &d.id);
                     }
@@ -2453,6 +2555,11 @@ impl Session {
                         if self.cooldown[0] <= 0.0 {
                             self.cooldown[0] = 0.12;
                             let cell = hit.cell;
+                            // A mod may refuse (`on_block_break`): digging starts over.
+                            if !crate::game::hooks::block_break(self, cell, b) {
+                                self.mining = None;
+                                return;
+                            }
                             interact::remove(&mut self.world, cell);
                             audio.play_named(if d.x.sound.is_empty() { "break" } else { &d.x.sound }, 1.0);
                             self.fire("break", &d.id);
@@ -2484,6 +2591,16 @@ impl Session {
             }
         }
         self.mining = mining;
+
+        // The flint and steel lights the TNT it is pointed at.
+        if c.place_held && self.cooldown[1] <= 0.0 && !c.input.descend && crate::primed::is_igniter(&item.id) {
+            if let Some(cell) = self.target.as_ref().map(|h| h.cell) {
+                if crate::primed::ignite_cell(self, cell) {
+                    self.cooldown[1] = 0.5;
+                    return;
+                }
+            }
+        }
 
         // Using: a crafting table or chest in front of you opens; food is eaten.
         if c.place_held && self.cooldown[1] <= 0.0 && !c.input.descend {
@@ -2600,11 +2717,17 @@ impl Session {
             self.cooldown[1] = 1.0;
             self.say("YOU MAY NOT BUILD ON THIS SERVER");
         } else if c.place_held && self.cooldown[1] <= 0.0 {
-            if let (Some(hit), Some((index, it))) = (&self.target, held) {
+            if let (Some(hit), Some((index, it))) = (self.target, held) {
                 // Area tools are a creative-mode convenience.
                 if creative || it.brush == 0 {
                     self.cooldown[1] = 0.2;
-                    if interact::place_at(&mut self.world, &self.player, it, hit) {
+                    // A mod may refuse (`on_block_place`).
+                    if let Some(b) = it.place {
+                        if !crate::game::hooks::block_place(self, hit.prev, b) {
+                            return;
+                        }
+                    }
+                    if interact::place_at(&mut self.world, &self.player, it, &hit) {
                         let placed = it.place.map(|b| block::def(b).x.sound.as_str()).filter(|n| !n.is_empty()).unwrap_or("place");
                         audio.play_named(placed, 1.0);
                         if let Some(b) = it.place {
@@ -2686,7 +2809,7 @@ impl Session {
             sys::write_file(&self.vars_path, vars.as_bytes());
         }
         let text = alloc::format!(
-            "seed={}\ndim={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\ninventory={}\n",
+            "seed={}\ndim={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\neffects={}\nabsorb={}\ninventory={}\n",
             self.base_seed,
             self.dim,
             self.kind.to_text(),
@@ -2704,9 +2827,13 @@ impl Session {
             self.selected,
             self.health.max(1),
             self.hunger,
+            self.fx.to_text(),
+            self.fx.absorb,
             self.inv.save(),
         );
-        sys::write_file(&self.meta_path, text.as_bytes()) && !self.store.write_failed
+        let ok = sys::write_file(&self.meta_path, text.as_bytes()) && !self.store.write_failed;
+        crate::game::hooks::world_saved(self);
+        ok
     }
 }
 

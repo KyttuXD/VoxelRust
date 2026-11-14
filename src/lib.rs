@@ -20,7 +20,8 @@ pub mod game;
 pub mod net;
 pub mod client;
 pub mod native;
-/// The code of the mods found in `mods/` when the game was built (see
+/// The code of the mods found in the mods folder (VOXELRUST_MODS_DIR, default
+/// `../VoxelRust-Mods`) when the game was built (see
 /// [`native`]).
 pub mod mods {
     include!(concat!(env!("OUT_DIR"), "/native_mods.rs"));
@@ -31,8 +32,8 @@ pub use util::hash::sha256;
 pub use util::image::png;
 pub use util::math::noise;
 pub use util::archive::zip;
-pub use content::{block, textures, painters, font, icon, bbmodel, model, pack_entities};
+pub use content::{block, textures, painters, palette, font, icon, bbmodel, model, pack_entities};
 pub use terrain::{chunk, world, worldgen, mesh, lod, save, jobs, weather};
-pub use game::{player, inventory, interact, entity, path, session};
-pub use net::{proto, server, netplay};
+pub use game::{player, inventory, interact, entity, entity_explode, entity_variant, path, session, explosion, primed, crafting};
+pub use net::{proto, server, netplay, voice as net_voice};
 pub use client::{app, render, ui, audio, update, picker, skinfile};

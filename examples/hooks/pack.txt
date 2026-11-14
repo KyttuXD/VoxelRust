@@ -1,0 +1,24 @@
+# An example of the event hooks: the pack half. The Rust half is in
+# code/mod.rs next to this file. To try both:
+#
+#   1. copy this folder to mods/hooksdemo/ in the source tree
+#      (keep pack.txt and code/mod.rs inside it),
+#   2. build the game (the build finds mods/<name>/code/mod.rs by itself),
+#   3. switch the mod on in Settings > MODS.
+#
+# Reference: docs/MODDING.md, "Hooks reference".
+
+# Switches the native code on (and ties it to this mod being on).
+feature hooksdemo
+
+texture vault_stone flat 70 60 110
+block vault_block
+  name Vault Block
+  tex vault_stone
+
+# Script events (no Rust needed): a few of the new ones.
+when playerhurt fall do /say &6OUCH, THAT WAS A FALL
+when entitydeath do /var deaths + 1
+when chat hello do /say &aHELLO TO YOU TOO
+when weather storm do /title STORM COMING
+when sleep do /say &7SWEET DREAMS

@@ -2,7 +2,7 @@
 
 | Document | What it covers |
 | --- | --- |
-| [PLAYING.md](PLAYING.md) | Controls, screens, world types, the minimap, survival and creative, crafting, farming, baking, furnaces, furniture, bows, doors and beds, caves, vehicles and railways, dimensions, weather, chat colours and commands, settings, command-line options, moving worlds between machines |
+| [PLAYING.md](PLAYING.md) | Controls, screens, world types, the minimap, survival and creative, status effects, crafting, farming, baking, furnaces, furniture, bows, doors and beds, caves, vehicles and railways, dimensions, weather, chat colours and commands, settings, command-line options, moving worlds between machines |
 | [CREATURES.md](CREATURES.md) | Wildlife, monsters and villagers: what lives where, temperaments, milk, wool and eggs, taming, pets and riding, spawn eggs, young, trading, cave dwellers |
 | [MULTIPLAYER.md](MULTIPLAYER.md) | Hosting from inside the game or with a server, joining, what is and is not shared, server-hosted packs, the map-data relay |
 | [EARTH.md](EARTH.md) | Real-world terrain: data sources and attribution, scales, roads, buildings and fields, the map screen |
@@ -14,10 +14,10 @@
 
 ## Mods that come with the game
 
-`mods/SHIPPED` lists them, one folder name a line: disasters, earth,
+`SHIPPED` in the `VoxelRust-Mods` folder (outside this repository; `VOXELRUST_MODS_DIR` names it, see [BUILDING.md](BUILDING.md#mod-code)) lists them, one folder name a line: disasters, earth,
 vehicles, boats, trains, planes, landvehicles and holidays. The release
 scripts copy these beside the program (inside the app on macOS), and the
-shipped-mod tests are in `mods/tests.rs`. [MODDING.md](MODDING.md) explains how mods are read and
+shipped-mod tests are in `tests.rs` there. [MODDING.md](MODDING.md) explains how mods are read and
 switched on and off.
 
 ## Where the code is
@@ -26,10 +26,10 @@ switched on and off.
 | --- | --- |
 | `src/` | The game. It has no Earth, vehicle or disaster code. |
 | `src/native.rs` | `struct Native`: the hooks that mod code fills, from start-up to content, options and screens. |
-| `mods/<name>/code/` | A mod's Rust: `mod.rs` and any files beside it. Today there is `mods/earth/code` and `mods/vehicles/code`. |
+| `<mods>/<name>/code/` | (in `VoxelRust-Mods`) A mod's Rust: `mod.rs` and any files beside it. Today there is `mods/earth/code` and `mods/vehicles/code`. |
 | `mods/<name>/pack.txt` | The pack for that mod. Its `feature <name>` line switches the code on. |
 
-`build.rs` finds every `mods/<name>/code/mod.rs` and compiles it into the
+`build.rs` finds every `<mods>/<name>/code/mod.rs` and compiles it into the
 program at build time. Most of that code runs only while a loaded pack
 says `feature <name>`. Its command-line options and its reading of a saved
 world's kind are asked whether or not it is switched on. It cannot be

@@ -13,6 +13,8 @@
 # (use the official SDL2 2.0.4 one for Mac OS X 10.6).
 set -eu
 cd "$(dirname "$0")/.."
+. scripts/mods-dir.sh
+need_mods
 [ -f dist/macos-legacy/voxelrust ] || scripts/build-macos-legacy.sh
 if [ "${VARIANT:-legacy}" = "modern" ]; then
   BIN=dist/macos/voxelrust; APP=dist/macos/VoxelRust.app; MIN=10.12
@@ -50,8 +52,8 @@ PLIST
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 # The mods that come with the game ride inside the app.
 mkdir -p "$APP/Contents/Resources/mods"
-for m in $(grep -v '^#' mods/SHIPPED); do
-  [ -d "mods/$m" ] && cp -R "mods/$m" "$APP/Contents/Resources/mods/"
+for m in $(grep -v '^#' "$MODS/SHIPPED"); do
+  [ -d "$MODS/$m" ] && cp -R "$MODS/$m" "$APP/Contents/Resources/mods/"
 done
 # SDL2 rides inside the app, so nothing else need be installed: the
 # framework named on the command line, or the one in vendor/sdl2.

@@ -19,10 +19,11 @@ fn when(on: bool, c: [u8; 3]) -> Option<[u8; 3]> {
     }
 }
 
-pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
-    let (l, m, d) = (lift(rgb), rgb, dark(rgb));
+pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
+    let rgb = pal.at(x, y);
+    let (l, m, d) = (pal.light_of(rgb), rgb, pal.dark_of(rgb));
     Some(match style {
-        "gem" => outlined(x, y, &|x, y| {
+        "gem" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A cut stone: lit upper left, shaded lower right.
             if (2 * x - 15).abs() + (2 * y - 15).abs() <= 11 {
                 Some(if x + y <= 13 {
@@ -36,7 +37,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 None
             }
         }),
-        "ingot" => outlined(x, y, &|x, y| {
+        "ingot" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A bar seen from a corner: lit top, front, shaded end.
             if (5..9).contains(&y) && (2 + (8 - y)..12 + (8 - y)).contains(&x) {
                 Some(l)
@@ -62,7 +63,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 CLEAR
             }
         }
-        "machine" => outlined(x, y, &|x, y| {
+        "machine" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A generic "thing with wheels": body, cabin with a window, two wheels.
             for cx in [4, 11] {
                 if (x == cx && (y == 11 || y == 13)) || ((x - cx).abs() <= 1 && y == 12) {
@@ -85,7 +86,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 None
             }
         }),
-        "hull" => outlined(x, y, &|x, y| {
+        "hull" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A boat: a hull narrowing downwards, a mast and a sail.
             if (7..12).contains(&y) && (2 * x - 15).abs() <= 13 - (y - 7) * 2 {
                 Some(if y == 7 {
@@ -101,7 +102,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 when((8..13).contains(&x) && (1..6).contains(&y) && x - 8 <= 5 - y, SAIL)
             }
         }),
-        "wings" => outlined(x, y, &|x, y| {
+        "wings" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A plane from above: fuselage, wings and tail.
             let fuselage = rect(x, y, 1, 6, 14, 4);
             let wing = rect(x, y, 6, 1, 4, 14);

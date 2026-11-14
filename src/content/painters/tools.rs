@@ -2,23 +2,46 @@
 //! the middle, the head or blade at the top, a dark outline all round.
 //! `paint <style> r g b` gives the colour of the metal (or wood) of the head:
 //! its lit and shaded tones come from it by fixed ratios, so every material
-//! is the same drawing recoloured.
+//! is the same drawing recoloured. With a palette the head can have a dark
+//! and a light colour of its own, or a gradient over the head (fire is red to
+//! yellow); the second palette of `palette a+b` is the handle (wood types);
+//! a sword's `accent` is a fuller line down the blade; `outline` replaces the
+//! near-black outline.
 
 use super::*;
 
 const WOOD: [u8; 3] = [160, 122, 74];
 const WOOD_DARK: [u8; 3] = [116, 86, 52];
 
-/// A two-pixel handle in columns 7 and 8 from row `y0` to row `y1`.
-fn handle(x: i32, y: i32, y0: i32, y1: i32) -> Option<[u8; 3]> {
+/// A two-pixel handle in columns 7 and 8 from row `y0` to row `y1`, in the
+/// colours `wood` (lit column, shaded column).
+fn handle_in(x: i32, y: i32, y0: i32, y1: i32, wood: ([u8; 3], [u8; 3])) -> Option<[u8; 3]> {
     if y < y0 || y > y1 {
         None
     } else if x == 7 {
-        Some(WOOD)
+        Some(wood.0)
     } else if x == 8 {
-        Some(WOOD_DARK)
+        Some(wood.1)
     } else {
         None
+    }
+}
+
+/// The usual wooden handle.
+fn handle(x: i32, y: i32, y0: i32, y1: i32) -> Option<[u8; 3]> {
+    handle_in(x, y, y0, y1, (WOOD, WOOD_DARK))
+}
+
+/// The box a gradient is spread over: the head of each tool, as
+/// `(x0, y0, width, height)`.
+fn head_box(style: &str) -> (i32, i32, i32, i32) {
+    match style {
+        "pick" => (2, 2, 12, 3),
+        "axe" => (3, 2, 6, 5),
+        "shovel" => (5, 1, 6, 6),
+        "hoe" => (3, 2, 7, 4),
+        "sword" => (6, 1, 4, 9),
+        _ => (0, 0, 16, 16),
     }
 }
 
@@ -38,8 +61,13 @@ pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
     })
 }
 
-pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
-    let (l, m, d) = (lift(rgb), rgb, dark(rgb));
+pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
+    let (hx, hy, hw, hh) = head_box(style);
+    let rgb = pal.at_in(x, y, hx, hy, hw, hh);
+    let (l, m, d) = (pal.light_of(rgb), rgb, pal.dark_of(rgb));
+    let wood = pal.handle_or((WOOD, WOOD_DARK));
+    let handle = |x: i32, y: i32, y0: i32, y1: i32| handle_in(x, y, y0, y1, wood);
+    let outlined = |x: i32, y: i32, f: &dyn Fn(i32, i32) -> Option<[u8; 3]>| outlined_with(x, y, pal.outline(), f);
     Some(match style {
         "stick" => outlined(x, y, &|x, y| handle(x, y, 2, 14)),
         "pick" => outlined(x, y, &|x, y| {
@@ -87,7 +115,22 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
             // A broad blade, a cross guard, a short grip and a pommel.
             match y {
                 1 => when(x == 7 || x == 8, if x == 7 { l } else { m }),
-                2..=9 => when((6..=9).contains(&x), if x == 6 { l } else if x == 9 { d } else { m }),
+                2..=9 => when(
+                    (6..=9).contains(&x),
+                    match pal.accent() {
+                        // A fuller: a line of the second colour down the middle of the blade.
+                        Some(f) if x == 7 && (3..=8).contains(&y) => f,
+                        _ => {
+                            if x == 6 {
+                                l
+                            } else if x == 9 {
+                                d
+                            } else {
+                                m
+                            }
+                        }
+                    },
+                ),
                 10 => when((4..=11).contains(&x), d),
                 11..=14 => handle(x, y, 11, 14),
                 _ => None,

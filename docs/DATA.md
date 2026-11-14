@@ -2,16 +2,17 @@
 
 Textures, blocks, items, recipes, models, creatures, vehicles, sounds,
 dimensions, chat commands and scripts are declared in plain text. The game's own content is [data/base.txt](../data/base.txt),
-which includes [data/creatures.txt](../data/creatures.txt) (models) and
-[data/wildlife.txt](../data/wildlife.txt) (every creature); all three are
-built into the program. Packs are read after it:
+which includes [data/creatures.txt](../data/creatures.txt) (models),
+[data/wildlife.txt](../data/wildlife.txt) (every creature) and
+[data/effects.txt](../data/effects.txt) (status effects, written by
+`tools/gen_base.py`); all of them are built into the program. Packs are read after it:
 
 1. `pack.txt` in the game's data folder, if it exists (the folder is printed
    at start-up; `--data DIR` chooses another).
 2. Every mod, unless switched off, in a `mods` folder beside the program,
    in `../Resources/mods` (inside a Mac app), in the data folder's `mods`
    folder, and in a `mods` folder where the game was started. The mods that
-   come with the game (the folders named in [mods/SHIPPED](../mods/SHIPPED))
+   come with the game (the folders named in `SHIPPED` in the `VoxelRust-Mods` folder, which is outside this repository: see [BUILDING.md](BUILDING.md#mod-code))
    are found this way; they are folders, not part of the program. A mod
    found twice is loaded once.
 3. Every file given with `--pack FILE`.
@@ -28,11 +29,11 @@ such as ``pack.txt:19: unknown block property (`bogus`)`` is printed.
 
 ## Syntax
 
-One declaration per line; `#` starts a comment. Words are separated by spaces
+One declaration per line; `#` starts a comment (but not a `#rrggbb` colour in a `texture` or `palette` line). Words are separated by spaces
 or tabs; indentation is optional.
 
 These keywords start something new: `texture`, `block`, `item`, `recipe`,
-`craft`, `bake`, `smelt`, `ore`, `plant`, `model`, `entity`, `sound`,
+`craft`, `shapeless`, `shaped`, `group`, `bake`, `smelt`, `ore`, `plant`, `model`, `entity`, `sound`,
 `command`, `when`, `dimension`, `feature`, `episode`, `setting`, `include`.
 Any other line sets a property of the block, item or entity most recently
 started, or of the mod section described below. (`sound` with a single word,
@@ -69,11 +70,32 @@ Textures are 16 x 16 pixels. Up to 1024 can be defined (they share one 512 x
 ```
 texture <id> builtin <painter>            one of the built-in painted textures
 texture <id> paint <style> <r> <g> <b>    a built-in pattern in any colour
+texture <id> paint <style> palette <name>[+<name>...] [gradient <dir>] [host <stone>]
+                                          the same with a palette: several colours, roles, a gradient
+texture <id> paint <style> colors <#rrggbb|r g b|role=#rrggbb>... [gradient <dir>]
+                                          a palette written in place
+palette <name> <colours...> [gradient vertical|horizontal|diagonal|radial]
+                                          declare a palette (before the textures that use it)
 texture <id> flat <r> <g> <b> [noise <n>] a flat colour; with `noise` (any number) a block face with a darker frame
 texture <id> file <image>                 a PNG, JPEG, GIF, BMP or TGA file (any size, fitted to 16 x 16), path relative to this file
 ```
 
-Colours are three numbers 0..255.
+Colours are three numbers 0..255, or (in `texture` and `palette` lines) `#rrggbb`.
+
+**Palettes.** A palette is up to six colours; in order they are the *base*,
+*dark*, *light*, *accent*, *highlight* and *outline* colours (or written
+`accent=#ffffff` by name). With `gradient` the colours are instead spread over
+the picture in flat bands (first colour at the top, left, top left or middle).
+`palette fire+oak` uses the second palette as the tool's handle, or as the next
+gem of an ore. `host` is the stone of an ore (`stone deepstone sandstone dirt
+gravel netherrack`, a palette, or `#rrggbb`). A `paint ... r g b` line is a
+palette of one colour and draws exactly what it always did. Every role,
+style and example is in [TEXTURING.md](TEXTURING.md#palettes-and-gradients).
+```
+palette ruby #e2406e #a82454 #ff9cb8
+texture ruby_ore paint ore palette ruby
+texture fire_axe paint axe palette fire+oak
+```
 
 **`builtin` painters:** `stone dirt grass_top grass_side sand gravel water
 log_side log_top pine_side leaves pine_leaves planks cobble brick
@@ -98,6 +120,10 @@ stages of a crop).
 background): `stick pick axe shovel hoe sword gem meat fruit fishfood rail
 machine hull wings chest workbench seeds sheaf loaf pizza wedge root tuber jar
 egg sack cookie pie bowl bow crossbow arrow ingot`.
+
+**`paint` styles for ores** (stone with the ore's colour; they take palettes):
+`ore` (four blobs; several palettes make a multi-gem ore) and `ore_vein` (two
+diagonal bands).
 
 **`file`:** TGA files must be 16 x 16, uncompressed true colour, 24 or 32
 bits per pixel. An alpha of zero is a hole (use with `shape cutout` or
@@ -161,7 +187,7 @@ category is `Blocks`; `solid` is yes for everything except `cross` and
   always gives two.
 - `tool`: only matters together with items that have a `tool` property (see
   Items). Without the right tool the block still breaks, at hand speed.
-- `use craft`: right click opens the crafting-table recipe list.
+- `use craft`: right click opens the crafting table's 3 x 3 grid.
 - `use chest`: right click opens 27 slots of storage belonging to that block.
 - `use oven`: right click opens the `bake` recipes.
 - `use furnace`: right click opens the `smelt` recipes. In the base data the
@@ -177,8 +203,17 @@ category is `Blocks`; `solid` is yes for everything except `cross` and
   hunger and half as much health, and removes the block.
 - `tag <name> [number]`: a mark on the block, the number being 1 if left out.
   A block can carry up to 16 tags, and saying a name again replaces its
-  number. The game reads no tag itself; what a mark means is up to the mod
-  code that looks for it.
+  number. The game itself reads only `tnt`, `fire` and `blastproof` (below);
+  what any other mark means is up to the mod code that looks for it.
+- `tag tnt [power]`: the block is TNT (default power 2.5, at most 8). It is
+  lit by lava or a `tag fire` block beside it, by an explosion, or by the
+  `flint_and_steel` item, burns four seconds and explodes with that power
+  (radius twice the power). The base game's `tnt` has `tag tnt 2.5`. See
+  [Explosions](MODDING.md#explosions).
+- `tag fire`: the block sets TNT beside it alight (the base campfire has it;
+  lava does without, it is known by being lava).
+- `tag blastproof`: explosions leave the block standing. (Water, lava and
+  `unbreakable` blocks already do.)
 - `tag track <percent>`: the block is track. Rail vehicles on it move at
   that percentage of their speed (10..400; 100 if no number is given). The
   Trains mod's `speed_rail` has 220 and `slow_rail` 40.
@@ -411,6 +446,16 @@ Left click breaks, right click places.
     shoots 13 54 1.8 arrow
   ```
 
+- **Explosives.** The base data has the block `tnt` (`tag tnt 2.5`, in the
+  Tools tab; made at a crafting table from `gunpowder 5 sand 4`), the
+  item `gunpowder` (`gunpowder 2` from `coal 2 sand 1`) and the item
+  `flint_and_steel` (from `iron_ingot 1 gravel 1`). The flint and steel is
+  recognised by its id: right click a TNT block with it to light it. Their
+  textures are `tnt_top`, `tnt_side`, `tnt_bottom`, `gunpowder` and
+  `flint_and_steel` (a texture pack's pictures of those names are used). The
+  explosion plays the sound `explosion` and the fuse `hiss`. See
+  [Explosions](MODDING.md#explosions).
+
 ```
 item copper_pick
   name Copper Pickaxe
@@ -433,34 +478,115 @@ drawn as the first item of its category; its name appears when pointed at.
 
 ## Recipes
 
-```
-recipe <item> <count> <ingredient> <count> [<ingredient> <count> ...]
-craft  <item> <count> <ingredient> <count> [<ingredient> <count> ...]
-bake   <item> <count> <ingredient> <count> [<ingredient> <count> ...]
-smelt  <item> <count> <ingredient> <count> [<ingredient> <count> ...]
-```
-
-- `recipe`: can be made **by hand**, in the inventory screen (and also at a
-  crafting table).
-- `craft`: needs a **crafting table** (a block with `use craft`).
-- `bake`: needs an **oven** (a block with `use oven`), and is offered only
-  there.
-- `smelt`: needs a **furnace** (a block with `use furnace`), and is offered
-  only there. Fuel is not special: list coal as an ingredient if the recipe
-  should need it.
+Things are made in a **crafting grid**: 2 x 2 in the inventory screen, 3 x 3
+at a crafting table. A recipe says what items must be in the grid, and
+what comes out.
 
 ```
-recipe planks 4 log 1
+craft     <item> <count> <ingredient> <count> [<ingredient> <count> ...]
+shaped    <item> <count> <row> [<row> ...] with <letter> <ingredient> [<letter> <ingredient> ...]
+group     <name> <item> [<item> ...]
+bake      <item> <count> <ingredient> <count> [<ingredient> <count> ...]
+smelt     <item> <count> <ingredient> <count> [<ingredient> <count> ...]
+```
+
+- `craft` (also spelt `shapeless`, or `recipe`, which older packs use): a
+  **shapeless** recipe. The ingredients can be put in the grid anywhere, one
+  to a cell. `craft stick 4 planks 2` is two planks anywhere in the grid.
+- `shaped`: a **shaped** recipe. The rows are the pattern, top to bottom; the
+  letters after `with` say what each letter is. See below.
+- `group`: a name for a set of items, so that a recipe can take any of them
+  (see Groups).
+- `bake`: needs an **oven** (a block with `use oven`) and is offered only
+  there, as a list to click. The oven and `smelt` have no grid.
+- `smelt`: needs a **furnace** (a block with `use furnace`), offered only
+  there as a list. Fuel is not special: list coal as an ingredient if the
+  recipe should need it.
+
+Whether a recipe can be made by hand or needs a table is not written down:
+it follows from its size. What fits the 2 x 2 grid (a shaped pattern no
+bigger than 2 x 2, or a shapeless list of at most 4 items) can be made by
+hand, and everything can be made at a table.
+
+### Shaped recipes
+
+```
+shaped iron_pick 1 "III" ".S." ".S." with I iron_ingot S stick
+shaped stone_stairs 4 "M.." "MM." "MMM" with M stone
+shaped bookshelf 1 "PPP" "..." "PPP" with P @planks
+shaped glass_lamp 2 III .L. with I glass L lamp
+```
+
+- After the item and the count made come one to three **rows**, each one to
+  three cells wide, all the same width. A row is written in double quotes (it
+  may then hold spaces) or, when it has no spaces, bare. A cell is a letter
+  for an ingredient, or `.` or a space for **nothing**.
+- After the word `with` come pairs: a single letter and the ingredient it
+  stands for. Every letter used in the rows must be given.
+- Letters are any character except `.`, quotes, `#` and blanks. The word
+  `with` cannot be used as a row.
+- Empty rows and columns around the pattern do not matter: `"I.."` and `"I"`
+  are the same recipe.
+- The pattern may be put **anywhere** in the grid, and **mirrored** left to
+  right (so an axe `II`/`IS`/`.S` also works the other way round). It may not
+  be turned upside down, and no other items may be in the grid.
+- The recipe is as big as its pattern: a pattern of 3 x 3 or 3 x 2 needs a
+  table.
+
+### Ingredients, counts and groups
+
+An ingredient is an item id (blocks count, through their automatic items),
+or `@name`, any item of the group `name`, and may end in `*N` to ask for N
+of it in its one cell: `shaped heavy_door 1 DD DD with D iron_ingot*5`.
+Counts are 1..999, but nothing can ask for more than one stack holds.
+
+`craft` lines count units: `craft rail 16 iron_ore 3 stick 2` is five
+cells, three with ore and two with sticks.
+
+**Too big for the grid.** When the units add up to more than nine, there is
+no way to give each its own cell. The rule is then: **each kind of
+ingredient takes one cell and that cell must hold the whole amount.**
+`craft plane 1 iron_ore 10 planks 8 white_wool 4` is three cells, holding at
+least 10 ore, 8 planks and 4 wool; taking the result uses exactly those
+amounts. (Stack sizes limit this: a non-stacking item cannot be asked for
+more than one.) The recipe still needs the table, being three cells wide
+in no particular pattern, and it costs what it always cost. If the units
+come to nine or fewer, each unit gets its own cell as usual.
+
+**Groups.** `group planks planks pine_planks birch_planks` names a set;
+`@planks` in a recipe then means any of them. Naming a group again adds to
+it, so a pack can add its own planks to the ones the base data has. The
+base data defines `@planks` (all eight woods' planks).
+
+### Making things
+
+- The result appears when the grid holds a recipe; if two recipes could both
+  match, the one that was defined first is made, so give recipes that make
+  different things different shapes. (The tests check that none in the base
+  data and the shipped mods clash.)
+- Taking the result uses up one of each ingredient, or the amount asked for
+  with `*N` or by a recipe that was too big for the grid. Shift-click makes
+  as many as the grid and the inventory allow.
+- The recipe book lists the recipes that fit the grid and can be made with
+  the items you carry; a click fills the grid from the inventory.
+
+```
+group gems ruby crystal
+shaped glow_ring 1 ".G." "G.G" ".G." with G @gems
 craft lamp 1 glass 1 crystal 1
-craft rail 16 iron_ore 3 stick 2
+craft lantern 2 lamp 1 iron_ore 1
 bake bread 1 dough 1
 smelt iron_ingot 1 iron_ore 1 coal 1
 ```
 
-Counts are 1..999. Every name must be an existing item (blocks count, through
-their automatic items). Any number of ingredients is allowed; the recipe list
-draws the first three and names them all when pointed at. Recipes are added,
-never replaced: a pack cannot remove a base recipe.
+Every name must be an existing item. Recipes are added, never replaced: a pack
+cannot remove a base recipe. A recipe that does not read is left out, with a
+warning that names its file and line.
+
+`tools/craft_convert.py` rewrites `craft` lines into `shaped` ones where the
+shape is well known (tools, stairs, slabs, doors, beds, chests, furnaces
+...), and `tools/craft_convert.py --check FILE...` looks for recipes that
+could clash. `tools/gen_base.py` runs the converter on `data/base.txt`.
 
 ## Models
 
@@ -525,7 +651,7 @@ entity <id>
   drops <item> [<count>]    left behind when killed in survival (count 1..64, default 1)
   trait <names...>          flees herd jumps territorial hunter prey lazy pack follows
   anim walk | hop | slither | flap | scuttle | waddle | float
-  variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>]   another look
+  variant <name> [<r> <g> <b>] [model <id>] [size <factor>] [tex <picture>] [biomes <names...>]   another look
   baby <size> <seconds>     it has young: how small, and how long they take to grow
   gives <item> <seconds>    right click collects one, then again after that long
   likes <item>              the food it follows a player for (with trait follows)
@@ -536,6 +662,7 @@ entity <id>
   trade <item> <n> <item> <n>   takes the first from a player, hands over the second
   job <word>                what a villager does
   glow <0..15>              not dimmed by the dark
+  explodes <power> <seconds> <range>   it blows up when a player stays within range for that long
 ```
 
 Behaviours:
@@ -575,6 +702,21 @@ entity sheep
   variant Ram model sheep_ram size 1.1
 ```
 
+`biomes <names...>` (last on the line; it takes every word up to the next
+keyword) makes the look a camouflage. A creature appearing in one of those
+biomes (surface or cave names, as for the entity's own `biomes`) is given one
+of the looks that name its biome, and always one of them; in any other biome
+it gets the entity's own look or a variant that names no biome. So the
+entity's own look is the fallback, and a spawn egg or `/spawn`, which have
+no biome, give any look at random.
+
+```
+entity bush
+  ...
+  variant Sandy model bush_sand biomes desert savanna
+  variant Snowy model bush_snow biomes tundra
+```
+
 **Pictures.** A creature is painted with the picture called `tex` (on the
 entity or on a variant), or else with the picture named after its model.
 A picture name is looked for in a texture pack's `textures/entity` folder,
@@ -590,6 +732,21 @@ tint. How the pictures are made, and how a pack replaces them, is in
 time at least 5 seconds. Young have half the health, grow steadily, and are
 shown as `Young <name>`. Young ones sometimes arrive with adults; they do
 not `give`, hunt or defend territory until grown.
+
+`explodes <power> <seconds> <range>`: for a `hostile` creature. When a
+player in survival mode stays within `range` blocks (0.5..16, also within 3
+blocks up or down) its fuse is lit: it stops, hisses, swells by a third and
+flashes. After `seconds` (0.2..30) it explodes with `power` (0.1..16: the
+blast reaches about twice that many blocks) and is gone; the explosion is the
+game's own (`crate::explosion::explode` with the source `Creature(<its
+kind>)`), so blocks, drops, damage and the script events `explode` and
+`blockexploded` are as for TNT. If the player gets further than 1.6 times the
+range, the fuse goes out and starts over. Tamed and young ones never explode.
+The wildlife mod's Boomer is `explodes 2.0 1.5 3.0` (see
+[CREATURES.md](CREATURES.md#boomers)).
+
+A creature whose `drops` names an item no pack defines still works: it
+just drops nothing, and the load says `drops unknown item` in its warnings.
 
 `gives <item> <seconds>`: at least 1 second (120 if left out).
 
@@ -830,6 +987,80 @@ Both mods come with the game, so they are on unless switched off. Any other
 name is accepted and does nothing: a `feature` line can only switch on code
 that is already built in.
 
+## Effects
+
+A status effect (poison, burning, regeneration, slowness...) is declared
+with an `effect <id>` line and the indented lines under it. The game's own
+are in [data/effects.txt](../data/effects.txt); a pack may add effects or
+redefine one by reusing its id (the new block replaces the old, it does not
+add to it). Ids are lower case letters, digits and `_`, 32 at most.
+
+```
+effect poison
+  name Poison
+  kind bad
+  damage 1
+  lethal no
+  heart poison
+  colour 120 200 60
+  secs 12
+  from entity spider 8 1
+  from eat raw_fish 8 1 15
+```
+
+| Line | Meaning |
+| --- | --- |
+| `name <text>` | the name shown in the effect list (the id if left out) |
+| `kind good\|bad\|neutral` | how the list colours the time left |
+| `damage <n>` | health points lost a second at level 1, times the level (0 to 1000; decimals are kept until they add up to a whole point) |
+| `lethal yes\|no` | whether that damage may take the last health point (`no`: it stops at half a heart; yes if left out) |
+| `heal <n>` | health points gained a second, likewise |
+| `ticks <n>` | how many lumps a second damage and healing are dealt in (0.5 to 20; 1 if left out). `damage 2` with `ticks 4` takes a point every quarter second and a half |
+| `speed <percent>` | change of walking speed per level; `-15` slows, `20` quickens. Added over all active effects; never below 5% or above 400% |
+| `jump <percent>` | the same for the speed of a jump |
+| `melee <percent>` | the same for the damage you deal with a left click (never below 1 point) |
+| `hunger <n>` | hunger points lost a second at level 1; negative feeds |
+| `absorb <n>` | health points of padding per level, taken before health when hurt; it fills when the effect starts and goes when it ends |
+| `vision` | night vision: the night and dark places are drawn lighter |
+| `flame` | a flame is drawn beside the hearts while it lasts |
+| `extinguish` | being in water ends it (burning) |
+| `heart normal\|poison\|wither\|frozen` | the style of the hearts while it lasts; with several, wither beats poison beats frozen |
+| `colour <r> <g> <b>` | its colour, for icons that have no picture |
+| `secs <n>` | how long it lasts when a command or a source does not say (30 if left out) |
+| `icon <texture>` | the icon's picture (`effect_<id>` if left out; the base game paints `effect_poison` and the others itself) |
+| `from <what> <id> [seconds] [level] [chance]` | something that starts it (below) |
+
+Several effects at once add up. Giving an effect that is already active keeps
+the stronger: a higher level replaces it (and its time), the same level takes
+the longer time, a lower level changes nothing. Level 1 is the base
+strength; at level 3 the damage, healing, speed change and the rest are three
+times as much.
+
+**Sources**, the `from` lines. Seconds default to the effect's `secs`, level
+to 1, chance (a percent) to 100.
+
+| Line | Starts it when |
+| --- | --- |
+| `from block <block> [secs] [level]` | a survival player is in, on or against that block (`lava` and also `lava_1` to `lava_8`, the flowing states). It is kept going while they are, and runs on for `secs` after |
+| `from entity <creature> [secs] [level] [chance]` | that creature bites the player or its shot hits them |
+| `from hit <item> [secs] [level] [chance]` | the player strikes a creature with that item in hand: the creature gets the effect |
+| `from eat <item> [secs] [level] [chance]` | the player eats or drinks that item (the `eat` event) |
+| `from event <name>[:<what>] [secs] [level] [chance]` | the script event is raised (`wake`, `kill:spider`, or anything raised with `/fire`) |
+
+An id that names no block, creature or item just never matches. Creatures
+carry effects too, given by `from hit` or `/effect mob`: poison, burning and
+wither take their health (they never drop or count as kills), regeneration
+heals them, slowness slows them, and water puts a fire out. Effects on the
+player are saved with the world (`effects=` and `absorb=` in its meta file);
+an effect a pack no longer defines is dropped when the world is opened.
+
+The pictures for the hearts and icons are textures: `heart_empty`,
+`heart_full`, `heart_half`, `heart_<poison|wither|frozen|absorb|hardcore>_<full|half>`,
+and `effect_<id>`, `effect_flame` (see
+[TEXTURING.md](TEXTURING.md#hearts-and-effect-icons)). Events and conditions:
+`when effectstart poison do ...`, `/if effect poison [level] then ...`
+(see [MODDING.md](MODDING.md)).
+
 ## Commands and scripts
 
 ```
@@ -841,8 +1072,11 @@ when <event> [what] do <commands separated by ;>
 after it). `when` runs commands when something happens: `start`, `every
 <seconds>`, `break <block>`, `place <block>`, `use <block>`, `useitem
 <item>`, `eat <item>`, `hit <entity>`, `kill <entity>`, `tame <entity>`,
-`ride <entity>`, `dimension <name>`, `night`, `day`, `death`, `episode <id>`,
-`episode_end <id>`. `when` lines
+`ride <entity>`, `dimension <name>`, `night`, `day`, `death`, `wake`,
+`effectstart <effect>`, `effectend <effect>`, `episode <id>`,
+`episode_end <id>`, and the newer events listed in
+[MODDING.md](MODDING.md#hooks-reference) (`entitydeath`, `playerhurt`, `chat`,
+`craft`, `weather`...). `when` lines
 are added, never replaced; a `command` with a name already used replaces the
 earlier one.
 

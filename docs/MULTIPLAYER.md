@@ -84,7 +84,7 @@ empty name becomes `Player`. If someone on the server already has it, a
 number is added (`Bob` becomes `Bob2`).
 
 The server refuses a player whose game speaks a different version of the
-network protocol (currently version 4), and anyone beyond the player limit.
+network protocol (currently version 8), and anyone beyond the player limit.
 Everyone should run the same version of the game.
 
 ## What is shared, and what is not
@@ -162,6 +162,52 @@ come back to but does not skip the night. The commands `/time`, `/mode`,
 work, and `/spawn` only for one player (see
 [PLAYING.md](PLAYING.md#chat-and-commands)). Pack scripts run in each
 player's own game.
+
+## Voice chat
+
+Proximity voice chat: players near each other hear each other, louder the
+closer they are, like in real life. Everybody starts **muted** (the
+microphone is off) but **can hear**; see
+[PLAYING.md](PLAYING.md#voice-chat) for the player's side.
+
+The server does the thinking so that the clients do almost nothing:
+
+- A talker's game packs speech into 20 ms frames of IMA ADPCM (4 bits a
+  sample, 16 kHz, mono; 163 bytes a frame, about 8 kB a second while
+  talking) and sends them over the same connection as everything else.
+  Nothing is sent while nobody is talking.
+- The server knows where every player is (from their position messages). For
+  each frame it picks the players who are within the voice range (24 blocks by
+  default, `/voicerange`), have **hear other players** on and are not the
+  talker, works out the loudness from the distance (full volume within a fifth of the range, then falling smoothly
+  to nothing at the range) and forwards the frame, untouched, with that
+  loudness as one byte. A client only decodes, multiplies by that byte and its
+  own voice volume, and plays.
+- It drops frames from players who may not talk: `voice` is a permission
+  (`/perm NAME -voice`; allowed by default, so `/default -voice` makes a
+  server where operators choose who may talk), muted players
+  (`/mute`), players whose microphone switch is off, and anyone sending more
+  than about 56 frames a second (a burst of 12 is allowed). Frames of the
+  wrong shape are dropped too.
+- Messages: `Voice` (id, sequence number, loudness, frame) in both
+  directions and `VoiceState` (client to server: two flags, "I want to hear"
+  and "my microphone is on", sent at joining and whenever they change). A
+  client that never sends `VoiceState` is neither sent nor heard.
+- Voice does not know about dimensions (`/dim` does not work on a server
+  anyway), and walls do not muffle it.
+- **Privacy.** The server forwards each frame and forgets it at once. Nothing
+  is recorded, logged or stored, by the server or by the game, and the log
+  shows no voice traffic. The microphone is not opened by a client unless its
+  player has turned it on, the server allows it, and push to talk is held (or
+  voice activation is on).
+
+Every server of this version relays voice, but with everyone at their
+default (microphone off) it costs nothing beyond a three-byte message per
+player when they join.
+
+The permissions and mutes are kept with the operators in the server's
+permissions file (`voicerange N` and `mute NAME` lines beside the `perm`
+lines). Files written before voice chat existed still allow it.
 
 ## Server-hosted packs
 
@@ -259,6 +305,9 @@ what the game itself does not know is passed to the server.
 | `/ban NAME`, `/pardon NAME` | operators | keep a name out, or let it back |
 | `/say TEXT` | operators | a message from the server to everyone |
 | `/time 0..1` | operators | set the time of day (0.25 is noon) |
+| `/perm NAME [+build -build +gamemode -gamemode +commands -commands +voice -voice]` | operators | show or change what one player may do; `/default [...]` sets it for everyone without an entry of their own |
+| `/mute NAME`, `/unmute NAME` | operators | take away or give back a player's voice chat (kept in the permissions file) |
+| `/voicerange BLOCKS` | operators | how far a voice carries (2 to 128, 24 by default); with no number, shows it |
 
 Operators and bans are kept in `<world>.server-ops.txt` beside the world.
 Names are not protected by passwords: anyone can join under any free name,

@@ -22,8 +22,8 @@ own procedurally painted textures and its own terrain generator.
   The world is 256 blocks high.
 - **Survival and creative modes.** Survival has health, hunger, falling,
   drowning, mining times with cracks spreading over the block, tools, hoes
-  and swords in six materials, drops, crafting by hand and at a crafting
-  table, furnaces, bows, chests, and monsters at night and in caves. Creative
+  and swords in six materials, drops, crafting in a 2 x 2 and a 3 x 3 grid with a recipe book
+  at a crafting table, furnaces, bows, chests, and monsters at night and in caves. Creative
   has flying (press jump twice), instant building, area tools, and an item
   list with picture tabs and block icons drawn as isometric cubes, including
   a spawn egg for every creature.
@@ -82,7 +82,7 @@ own procedurally painted textures and its own terrain generator.
 
 ## The mods that come with the game
 
-Each is a folder in `mods/`, and each is named in `mods/SHIPPED`. SETTINGS >
+Each is a folder in the separate `VoxelRust-Mods` folder (not in this repository), and each is named in its `SHIPPED` file. SETTINGS >
 MODS switches it off.
 
 | Folder | What it adds |
@@ -152,16 +152,20 @@ Details: [docs/BUILDING.md](docs/BUILDING.md). `voxelrust --help` lists the
 command-line options.
 
 The game reads the mods that come with it from a `mods` folder beside
-the program (inside the app on a Mac) or from `./mods`, so start a program
-built by hand from the top of the source tree, as `cargo run` does.
+the program (inside the app on a Mac) or from `./mods`. The mods are not in
+this repository: they are in `VoxelRust-Mods`, a folder beside it (or the one
+named by the environment variable `VOXELRUST_MODS_DIR`), which the build
+compiles the mods' Rust code from and the release scripts copy the shipped mods
+from. To run from the source tree, link it as `mods`:
+`ln -s ../VoxelRust-Mods mods` (git ignores `/mods/`), then `cargo run`.
 
 ## Repository layout
 
 | Path | What is in it |
 | --- | --- |
 | `src/` | The game. `src/native.rs` holds the table of hooks (`struct Native`) that mod code fills in. |
-| `mods/<name>/` | A mod: a `pack.txt`, and a `code/` folder if it has Rust. `build.rs` compiles each `code/mod.rs` into the program, so changing mod code needs a rebuild. The code runs only while a loaded pack says `feature <name>`. |
-| `mods/SHIPPED` | The mods that come with the game, one folder name a line. The release scripts and `mods/tests.rs` use it. |
+| `../VoxelRust-Mods/<name>/` (or `$VOXELRUST_MODS_DIR/<name>/`) | A mod: a `pack.txt`, and a `code/` folder if it has Rust. `build.rs` compiles each `code/mod.rs` into the program, so changing mod code needs a rebuild. The code runs only while a loaded pack says `feature <name>`. |
+| `../VoxelRust-Mods/SHIPPED` | The mods that come with the game, one folder name a line. The release scripts and the mods' `tests.rs` use it. |
 | `data/` | The base content (`base.txt`, `creatures.txt`, `wildlife.txt`) and its models. |
 | `scripts/` | Build, cross-build and release scripts. |
 | `tools/` | Python generators for the data, icons and models. |
@@ -220,8 +224,9 @@ Worlds and settings live in the data folder and are not touched. Details:
   each chunk is one column of that height, so there is no building above
   256 or digging below 0. Invented terrain tops out at height 114; the rest
   is room to build, and for mountains in Earth worlds.
-- There is no crafting grid. Recipes are lists you click to make; the lists
-  are the recipe book.
+- The crafting grid is 2 x 2 in the inventory and 3 x 3 at a table, with
+  shaped and shapeless recipes, but there is no recipe-book unlocking and no
+  tags beyond the `group` lines of the data.
 - Doors do not animate: a door switches at once between its shut shape and
   its open shape.
 - Rivers do not flow. Water is animated but stays where it is.

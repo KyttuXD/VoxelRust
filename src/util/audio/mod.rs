@@ -74,7 +74,7 @@ impl Pcm {
 }
 
 
-mod adpcm;
+pub(crate) mod adpcm;
 mod aiff;
 mod flac;
 mod ogg;

@@ -36,13 +36,31 @@ fn embed_data() {
     std::fs::write(dest, out).unwrap();
 }
 
-/// Find the code mods bring with them (`mods/<name>/code/mod.rs`) and
+/// Where the mods are built from: the folder named by VOXELRUST_MODS_DIR
+/// (relative paths are taken from the repository), else `../VoxelRust-Mods`
+/// beside the repository. The folder may be absent: the game then builds
+/// with no mod code and the tests of the shipped mods are skipped.
+fn mods_dir() -> std::path::PathBuf {
+    println!("cargo:rerun-if-env-changed=VOXELRUST_MODS_DIR");
+    let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    match std::env::var_os("VOXELRUST_MODS_DIR").filter(|v| !v.is_empty()) {
+        Some(v) => manifest.join(v),
+        None => manifest.join("..").join("VoxelRust-Mods"),
+    }
+}
+
+/// Find the code mods bring with them (`<mods dir>/<name>/code/mod.rs`) and
 /// write the list the game compiles in. Also, for the tests, the files of
-/// the mods that come with the game (those named in `mods/SHIPPED`).
+/// the mods that come with the game (those named in `<mods dir>/SHIPPED`).
 fn embed_mods() {
     use std::fmt::Write as _;
-    let root = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("mods");
+    let root = mods_dir();
     println!("cargo:rerun-if-changed={}", root.display());
+    // For the tests of the mods, which also read mods that do not ship.
+    println!("cargo:rustc-env=VOXELRUST_MODS_DIR_RESOLVED={}", root.display());
+    if !root.is_dir() {
+        println!("cargo:warning=no mods folder at {} (set VOXELRUST_MODS_DIR): building with no native mods and no shipped mods", root.display());
+    }
     let mut names: Vec<String> = std::fs::read_dir(&root).map(|r| r.flatten().filter(|e| e.path().join("code").join("mod.rs").is_file()).map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
     names.retain(|n| n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && n.chars().next().map_or(false, |c| c.is_ascii_alphabetic()));
     names.sort();
@@ -75,7 +93,8 @@ fn embed_mods() {
         }
         files.sort();
         for f in files {
-            let rel = f.strip_prefix(root.parent().unwrap()).unwrap().to_string_lossy().replace('\\', "/");
+            // The game's tests know these files as "mods/<name>/...".
+            let rel = format!("mods/{}", f.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/"));
             writeln!(out, "    ({:?}, include_bytes!({:?})),", rel, f.display().to_string()).unwrap();
             println!("cargo:rerun-if-changed={}", f.display());
         }

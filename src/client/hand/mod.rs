@@ -23,10 +23,12 @@ mod bow;
 mod item;
 mod model;
 mod pose;
+mod primed;
 mod swing;
 mod tool;
 
 pub use body::{dropped, on_body};
+pub use primed::primed_blocks;
 pub use model::Quad;
 pub use pose::{bow_pose, hand_view, pose_of, Pose};
 pub use swing::{draw_motion, eat_motion, motion_of, swing_of, use_twist, walk_bob, Motion};

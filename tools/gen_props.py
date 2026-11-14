@@ -18,7 +18,8 @@ import uuid
 from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "mods", "holidays", "models")
+MODS_DIR = os.path.abspath(os.environ.get("VOXELRUST_MODS_DIR") or os.path.join(ROOT, "..", "VoxelRust-Mods"))  # the mods live outside the repository
+OUT = os.path.join(MODS_DIR, "holidays", "models")
 FACES = ("north", "south", "east", "west", "up", "down")
 
 

@@ -2,7 +2,7 @@
 //!
 //! A pack's text can only say so much. A mod that needs more (a new kind
 //! of terrain, a machine with its own physics) carries Rust of its own in
-//! `mods/<name>/code/mod.rs`. The build finds every such folder and
+//! `<mods folder>/<name>/code/mod.rs` (see `build.rs`). The build finds every such folder and
 //! compiles it in as a module of the game; the game itself names none of
 //! them. Each one offers a [`Native`]: a table of hooks the game calls at
 //! fixed points. A hook that is `None` is simply not called.
@@ -11,12 +11,28 @@
 //! switching the mod off in Settings > MODS switches its code off too.
 
 use crate::audio::Audio;
+use crate::explosion::ExplosionInfo;
+use crate::block::Block;
+use crate::game::hooks::HudSink;
 use crate::render::Renderer;
 use crate::session::{Controls, Session};
 use crate::settings::Settings;
 use crate::ui::Ui;
 use alloc::string::String;
 use alloc::vec::Vec;
+
+/// The version of the hook interface in this file. It goes up whenever a hook
+/// is removed or its signature changes, never for a new hook; a [`Native`]
+/// says in `api` which version it was written for. See "Stability" in
+/// docs/MODDING.md.
+pub const API_VERSION: u32 = 1;
+
+/// Whether code written for interface version `api` can run in this build
+/// (0 means "not said": any). Code written for a newer interface is left off,
+/// since its hooks may mean something else here.
+pub fn api_ok(api: u32) -> bool {
+    api <= API_VERSION
+}
 
 /// What the game hands the drawing hooks.
 pub struct View<'a> {
@@ -50,6 +66,8 @@ pub fn mod_tmp_dir(base: &str, name: &str) -> String {
 pub struct Native {
     /// The `feature` name that switches this code on.
     pub name: &'static str,
+    /// The [`API_VERSION`] this code was written for (0: not said).
+    pub api: u32,
     /// Top-level pack lines kept word for word for this code to read
     /// (`Registry::lines`).
     pub lines: &'static [&'static str],
@@ -127,6 +145,20 @@ pub struct Native {
     /// apply (armour makes it smaller; 0 cancels it). Called in survival
     /// only, and only for damage above zero.
     pub hurt: Option<fn(g: &mut Session, amount: i32, attacker: Option<usize>) -> i32>,
+    /// An explosion is about to happen (TNT, an exploding creature, `/blast`,
+    /// another mod): change it (`at`, `power`) or return false to cancel it.
+    pub before_explode: Option<fn(g: &mut Session, info: &mut ExplosionInfo) -> bool>,
+    /// An explosion has happened; `destroyed` is how many blocks it took.
+    pub after_explode: Option<fn(g: &mut Session, info: &ExplosionInfo, destroyed: usize)>,
+    /// A block of TNT at that cell is about to be lit: return false to stop it.
+    pub on_prime: Option<fn(g: &mut Session, cell: [i32; 3]) -> bool>,
+    /// An effect (poison, burning...) is about to be given to the player:
+    /// its id, seconds and level (both may be changed). Return false to
+    /// refuse it. Not asked when it would change nothing.
+    pub effect_apply: Option<fn(g: &mut Session, id: &str, secs: &mut f32, level: &mut i32) -> bool>,
+    /// Every frame an effect of the player's is running: its id, seconds
+    /// left, level, and the time that passed.
+    pub effect_tick: Option<fn(g: &mut Session, id: &str, secs_left: f32, level: i32, dt: f32)>,
     /// A message another player's copy of this code sent with
     /// `Session::send_ext`.
     pub message: Option<fn(g: &mut Session, key: &str, text: &str)>,
@@ -135,6 +167,42 @@ pub struct Native {
     /// The chest screen is opening for `Session::opened_ext`: the storage it
     /// should show (it stays this code's; the pointer is used at once).
     pub storage: Option<fn(g: &mut Session, which: usize) -> Option<*mut crate::inventory::Inventory>>,
+
+    // ---- events (see game/hooks.rs and "Hooks reference" in docs/MODDING.md)
+    /// A block is about to be broken by the player. `false` keeps it.
+    pub on_block_break: Option<fn(g: &mut Session, cell: [i32; 3], block: Block) -> bool>,
+    /// A block is about to be placed by the player (`cell` is where it goes).
+    /// `false` stops it.
+    pub on_block_place: Option<fn(g: &mut Session, cell: [i32; 3], block: Block) -> bool>,
+    /// A creature appeared (`kind` indexes the registry's entities).
+    /// `false` takes it away again.
+    pub on_entity_spawn: Option<fn(g: &mut Session, kind: usize) -> bool>,
+    /// A creature died, from any cause.
+    pub on_entity_death: Option<fn(g: &mut Session, kind: usize, at: [f64; 3])>,
+    /// The player is about to take damage in survival. The hook may change
+    /// `amount`; `cause` is `fall`, `drown`, `hunger`, `block`, `arrow`,
+    /// `command`, `other` or the id of the creature that bit. `false` (or an
+    /// amount of 0) cancels it. Runs after `hurt`.
+    pub on_player_hurt: Option<fn(g: &mut Session, amount: &mut i32, cause: &str) -> bool>,
+    /// The player typed a line (commands too). `false` swallows it.
+    pub on_chat: Option<fn(g: &mut Session, line: &str) -> bool>,
+    /// The player pressed the use button holding item `item` (once per
+    /// press). `false` stops the use.
+    pub on_item_use: Option<fn(g: &mut Session, item: usize) -> bool>,
+    /// The player crafted item `out`.
+    pub on_craft: Option<fn(g: &mut Session, out: usize)>,
+    /// Once a frame, after the game's own timers (cheaper to leave `None`
+    /// than to return early).
+    pub on_tick: Option<fn(g: &mut Session, dt: f32)>,
+    /// Draw on the heads-up display while playing.
+    pub on_draw_hud: Option<fn(g: &Session, hud: &mut dyn HudSink)>,
+    /// Every script event, as `when` lines hear it (`name` is the canonical
+    /// one). Events raised from inside this hook are not passed back.
+    pub on_event: Option<fn(g: &mut Session, name: &str, what: &str)>,
+    /// A world was opened (once; `open` is also called for dimensions).
+    pub on_world_load: Option<fn(g: &mut Session)>,
+    /// The world was saved.
+    pub on_world_save: Option<fn(g: &mut Session)>,
 
     /// A few words on what this code is keeping, for the log.
     pub status: Option<fn(g: &Session) -> String>,
@@ -160,6 +228,7 @@ impl Native {
     /// Nothing at all: write `..Native::NONE` after the hooks you fill in.
     pub const NONE: Native = Native {
         name: "",
+        api: 0,
         lines: &[],
         sections: &[],
         help: "",
@@ -185,9 +254,27 @@ impl Native {
         killed: None,
         hit: None,
         hurt: None,
+        before_explode: None,
+        after_explode: None,
+        on_prime: None,
+        effect_apply: None,
+        effect_tick: None,
         message: None,
         share: None,
         storage: None,
+        on_block_break: None,
+        on_block_place: None,
+        on_entity_spawn: None,
+        on_entity_death: None,
+        on_player_hurt: None,
+        on_chat: None,
+        on_item_use: None,
+        on_craft: None,
+        on_tick: None,
+        on_draw_hud: None,
+        on_event: None,
+        on_world_load: None,
+        on_world_save: None,
         status: None,
         draw: None,
         map_open: None,
@@ -224,7 +311,7 @@ pub fn in_mods_folder(path: &str) -> bool {
 /// (its channel number in a shared game).
 pub fn active() -> impl Iterator<Item = (usize, &'static Native)> {
     let r = crate::block::reg();
-    all().iter().copied().enumerate().filter(move |(_, n)| r.has(n.name))
+    all().iter().copied().enumerate().filter(move |(_, n)| api_ok(n.api) && r.has(n.name))
 }
 
 /// Whether a top-level pack line belongs to some mod's code.
@@ -235,4 +322,16 @@ pub fn reads_line(key: &str) -> bool {
 /// Whether an indented pack section belongs to some mod's code.
 pub fn reads_section(key: &str) -> bool {
     all().iter().any(|n| n.sections.contains(&key))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn code_for_a_newer_interface_is_left_off() {
+        assert!(api_ok(0));
+        assert!(api_ok(API_VERSION));
+        assert!(!api_ok(API_VERSION + 1));
+    }
 }

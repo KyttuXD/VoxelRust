@@ -74,7 +74,10 @@ Run it with no options for the title screen. Options:
                       title, worlds, newworld, multiplayer, dead, map,
                       settings:TAB, items:TAB (the creative list at that
                       tab), third (camera behind the player), creatures
-                      (one of each) or walking (the same, mid-stride)
+                      (one of each) or walking (the same, mid-stride);
+                      craft:ITEM (the crafting table with that item's recipe
+                      laid out), looks:NAME (with creatures: every look of
+                      the creatures with NAME in their id)
 
 Controls (all can be changed in Settings): WASD move, mouse look, Space jump,
 Ctrl sprint, Space twice to fly (creative), left click break, right click place, middle click pick,
@@ -314,7 +317,7 @@ pub const BUILD: &str = match option_env!("VOXELRUST_BUILD") {
 /// The project's public server (port 25590, the default).
 const PUBLIC_SERVER: &str = "195.62.47.178";
 
-const TABS: [&str; 6] = ["VIDEO", "AUDIO", "CONTROLS", "GAME", "SKIN", "MODS"];
+const TABS: [&str; 7] = ["VIDEO", "AUDIO", "CONTROLS", "GAME", "SKIN", "MODS", "VOICE"];
 
 /// A small arrow on the minimap at (cx, cy), its tip pointing the way `yaw`
 /// faces: a shaft of pixels and a head that widens back from the tip.
@@ -411,6 +414,8 @@ fn skin_pixels(base: &str, name: &str, player: &str) -> Option<Vec<u8>> {
 struct App {
     window: *mut c_void,
     audio: Audio,
+    /// Proximity voice chat (client::voice): off unless on a server and switched on.
+    voice: crate::client::voice::Voice,
     settings: Settings,
     settings_path: String,
     base: String,
@@ -489,9 +494,13 @@ struct App {
     /// The crafting screen was opened at an oven, not a table.
     at_oven: bool,
     show_walking: bool,
+    /// `--show creatures,looks:NAME`: line up every look of the creatures whose id contains NAME instead.
+    show_looks: Option<String>,
     mods_scroll: i32,
     form_mod_path: String,
     at_furnace: bool,
+    /// The crafting grid and recipe book of the inventory and table screens.
+    craft: crate::client::screens::crafting::CraftScreen,
     /// Seconds and frames counted while timing full screen.
     tune: (f32, u32),
     worlds_scroll: i32,
@@ -547,6 +556,13 @@ impl App {
                         s.inv.add(c.item, c.count);
                     }
                 }
+            }
+        }
+        // Whatever lies in the crafting grid goes back in too.
+        if self.screen != screen {
+            match self.session.as_mut() {
+                Some(s) => self.craft.put_away(&mut s.inv),
+                None => self.craft = Default::default(),
             }
         }
         self.screen = screen;
@@ -666,6 +682,8 @@ impl App {
         // The map's selection, name box and view belong to the world it was in.
         self.full = None;
         if let Some(mut s) = self.session.take() {
+            // Items lying in the crafting grid are saved with the inventory.
+            self.craft.put_away(&mut s.inv);
             if !self.scripted && !s.save() {
                 logf!("voxelrust: some files of world `{}` could not be written", s.name);
             }
@@ -1017,6 +1035,19 @@ impl App {
 
     // -------------------------------------------------------------- update
 
+    /// Voice chat, once a frame: the microphone out, other players in.
+    fn update_voice(&mut self, dt: f32) {
+        let key = (self.settings.key(Action::Voice) as usize).min(511);
+        let ptt = self.focus == 0 && self.keys[key] && matches!(self.screen, Screen::Game | Screen::Inventory | Screen::Craft | Screen::Chest | Screen::Map | Screen::FullMap);
+        let meter = self.screen == Screen::Settings && self.tab == 6;
+        let wire = self.session.as_mut().and_then(|g| {
+            let allowed = g.perms.map_or(true, |f| f & crate::proto::PERM_VOICE != 0);
+            let (pos, yaw) = (g.player.pos, g.player.yaw);
+            g.net.as_mut().map(|client| crate::client::voice::Wire { client, pos, yaw, allowed })
+        });
+        self.voice.update(dt, &self.settings, ptt, wire, &mut self.audio, meter);
+    }
+
     fn update(&mut self, r: &mut Renderer, dt: f32, real_dt: f32) {
         self.help_timer -= dt;
         self.ui_clock += real_dt;
@@ -1112,6 +1143,7 @@ impl App {
             }
         }
         self.audio.tick(real_dt);
+        self.update_voice(real_dt);
         self.paint_minimap(r);
         if self.screen == Screen::FullMap {
             self.work_full_map(r);
@@ -1207,6 +1239,7 @@ impl App {
                 far_distance: if self.settings.far_distance > self.distance { self.settings.far_distance } else { 0 },
                 rain: g.sky.rain,
                 flash: g.flash,
+                vision: crate::game::effects::apply::night_vision(&g.fx, &crate::game::effects::apply::lookup),
             };
             r.draw_world(&g.world, &cam, &env);
             let mut tags = Vec::new();
@@ -1400,7 +1433,9 @@ impl App {
                 }
             }
         }
-        let sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
+        let mut sparks: Vec<([f32; 3], [u8; 3])> = g.shots.iter().map(|s| (rel(s.pos), s.colour)).collect();
+        // The sparks of fuses and explosions.
+        sparks.extend(g.primed.sparks.iter().map(|s| (rel(s.pos), s.colour)));
         r.draw_sparks(&sparks);
         // Things lying on the ground are the things themselves, turning slowly.
         let white = crate::client::hand::white_tile();
@@ -1411,6 +1446,8 @@ impl App {
             let bob = (sinf(g.clock * 2.5 + d.pos[2] as f32) * 0.04) as f32;
             crate::client::hand::dropped(held, white, rel([d.pos[0], d.pos[1] + 0.3, d.pos[2]]), spin + bob, &mut lying);
         }
+        // Lit TNT, flashing white.
+        crate::client::hand::primed_blocks(&g.primed.list, white, &rel, &mut lying);
         r.draw_quads(&lying, None);
         // Whatever the mods' own code has to show.
         {
@@ -1490,6 +1527,7 @@ impl App {
                 r.rect(w * 0.5 - bw * 0.5 - s, h * 0.5 + 11.0 * s, bw + 2.0 * s, 5.0 * s, [0, 0, 0, 150]);
                 r.rect(w * 0.5 - bw * 0.5, h * 0.5 + 12.0 * s, bw * p.clamp(0.0, 1.0), 3.0 * s, [250, 250, 250, 230]);
             }
+            crate::game::hooks::draw_hud(g, r, w, h, s);
         }
         // A bow being drawn shows its drawn picture in the hotbar and the inventory too.
         {
@@ -1516,8 +1554,11 @@ impl App {
         }
         if survival {
             let hy = y0 - 12.0 * s;
-            for i in 0..MAX_HEALTH / 2 {
-                heart(r, x0 + i as f32 * 9.0 * s, hy, s, (g.health - i * 2).clamp(0, 2));
+            // Hearts, drawn from the heart pictures (green, dark, blue by effect).
+            if !crate::client::effects_hud::hearts(r, g, x0, hy, s) {
+                for i in 0..MAX_HEALTH / 2 {
+                    heart(r, x0 + i as f32 * 9.0 * s, hy, s, (g.health - i * 2).clamp(0, 2));
+                }
             }
             // Hunger, as ten drumstick-coloured pips on the right.
             for i in 0..crate::session::MAX_HUNGER / 2 {
@@ -1538,10 +1579,24 @@ impl App {
                 }
             }
         }
+        // Active effects, with their icons and the time left, top right (under the minimap).
+        if matches!(self.screen, Screen::Game | Screen::Chat) && !g.fx.list.is_empty() {
+            let under_map = if self.settings.minimap && self.minimap.tex != 0 { 70.0 * s } else { 0.0 };
+            crate::client::effects_hud::list(r, g, w, 4.0 * s + under_map, s);
+        }
         for (x, y, name) in &self.tags {
             let tw = Renderer::text_width(name, s);
             r.rect(x - tw * 0.5 - 2.0 * s, y - 2.0 * s, tw + 4.0 * s, 11.0 * s, [0, 0, 0, 110]);
             r.label(x - tw * 0.5, *y, s, name, WHITE);
+        }
+        // Voice chat: your microphone, and who is talking.
+        {
+            let names: Vec<String> = match g.net.as_ref() {
+                Some(n) => self.voice.talking().filter_map(|id| n.players.get(&id)).map(|p| p.name.to_ascii_uppercase()).collect(),
+                None => Vec::new(),
+            };
+            let shown: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
+            crate::client::voice::hud::draw(r, s, h, self.voice.mic(), &shown, &self.tags);
         }
         // Chat and notices, newest at the bottom, fading out.
         let lines: Vec<&(String, f32)> = g.chat.iter().filter(|c| c.1 > 0.0 || self.screen == Screen::Chat).collect();
@@ -1955,7 +2010,7 @@ impl App {
         ui.r.rect(0.0, 0.0, ui.w(), ui.h(), [8, 10, 18, 190]);
         let (_, y, _, bh, step) = Self::column(ui, 13);
         // Wider than the other menus: key names need the room.
-        let bw = (300.0 * s).min(ui.w() - 8.0 * s);
+        let bw = (360.0 * s).min(ui.w() - 8.0 * s);
         let x = (ui.w() - bw) * 0.5;
         let top = (y - 10.0 * s).max(24.0 * s);
         ui.centered(ui.w() * 0.5, top - 20.0 * s, 2.0, "SETTINGS", WHITE);
@@ -2099,6 +2154,17 @@ impl App {
                     let note = self.status.clone();
                     ui.text(x, row(8) + 2.0 * s, &note, ui::ACCENT);
                     changed |= ui.toggle(x, row(9), bw, bh, "UPDATE THE GAME AUTOMATICALLY", &mut st.auto_update);
+                }
+                6 => {
+                    let at = ACTIONS.iter().position(|a| a.0 == Action::Voice).unwrap_or(0);
+                    let label = if self.rebinding == Some(at) { String::from("PRESS A KEY") } else { key_name(st.keys[at]) };
+                    let online = self.session.as_ref().map_or(false, |g| g.net.is_some());
+                    let allowed = self.session.as_ref().map_or(false, |g| g.perms.map_or(true, |f| f & crate::proto::PERM_VOICE != 0));
+                    let asks = crate::client::voice::menu::draw(ui, st, &mut self.voice, (x, row(0), bw, bh, step), &label, online, allowed);
+                    changed |= asks.changed;
+                    if asks.rebind {
+                        self.rebinding = Some(at);
+                    }
                 }
                 _ => {
                     ui.text(x, row(0) + 4.0 * s, "PLAYER NAME", ui::DIM);
@@ -2412,11 +2478,16 @@ impl App {
                     g.push_chat(String::from("/SPAWN CREATURE [N] [YOUNG]   /MODE CREATIVE|SURVIVAL   /WEATHER CLEAR|RAIN|STORM   /SEED"));
                     g.push_chat(String::from("/SET X Y Z BLOCK [TURNS]   /DIM NAME|HOME   /SAY   /SOUND   /HEAL   /FEED   /HURT"));
                     g.push_chat(String::from("/LAUNCH UP [AHEAD]   /SHOOT DAMAGE [SPEED] [BLOCK]   /AIM BLOCK   /STRIKE   (~ = WHERE YOU STAND)"));
+                    g.push_chat(String::from("/EFFECT GIVE ID [SECS] [LEVEL]   /EFFECT CLEAR [ID]   /EFFECT LIST   /EFFECT MOB ID"));
                     g.push_chat(String::from("/VAR NAME = N   /IF COND THEN CMD [ELSE CMD]   /AFTER SECS CMD   /REPEAT N CMD   /TAKE ITEM [N]   /TITLE TEXT   /BLAST R"));
                 }
             } else if let Some(g) = self.session.as_mut() {
+                // Scripts hear `chat` and `command` first, and a mod's
+                // `on_chat` may swallow the line (game/events.rs).
+                let go_on = crate::game::events::chat_line(g, &text);
                 // Commands are typed in lower case ids; anything else is talk.
-                match if command.starts_with('/') { g.command(&command) } else { None } {
+                match if go_on && command.starts_with('/') { g.command(&command) } else { None } {
+                    _ if !go_on => {}
                     Some(reply) if reply.is_empty() => {}
                     Some(reply) => g.push_chat(reply),
                     // On a server, what the game does not know the server may
@@ -2634,10 +2705,26 @@ impl App {
             // The wheel scrolls a row at a time; the bar at the side shows
             // where in the list this is, and can be dragged.
             ui.scrollbar(px + pw - 4.5 * s, uy, 3.0 * s, upper_rows as f32 * cell, &mut self.inv_scroll, upper_rows, total_rows);
+        } else if !(at_table && (self.at_oven || self.at_furnace)) {
+            // The crafting grid, and the recipe book (client/screens/crafting.rs).
+            ui.text(gx, py + 6.0 * s, if at_table { "CRAFTING TABLE" } else { "CRAFTING - A TABLE HAS A BIGGER GRID" }, ui::DIM);
+            let frame = super::screens::crafting::Frame {
+                gx,
+                uy,
+                width: cols as f32 * cell,
+                cell,
+                rows: upper_rows,
+                at_table,
+                shift: self.keys[225] || self.keys[229],
+            };
+            if let Some(t) = super::screens::crafting::draw(ui, g, &mut self.craft, &frame) {
+                tip = Some(t);
+            }
         } else {
+            // An oven's or a furnace's list: click a recipe to make it.
             let at_oven = at_table && self.at_oven;
             let at_furnace = at_table && self.at_furnace;
-            ui.text(gx, py + 6.0 * s, if at_furnace { "FURNACE (CLICK SOMETHING TO SMELT IT)" } else if at_oven { "OVEN (CLICK SOMETHING TO BAKE IT)" } else if at_table { "CRAFTING TABLE (CLICK A RECIPE)" } else { "MAKE BY HAND - A CRAFTING TABLE MAKES MORE" }, ui::DIM);
+            ui.text(gx, py + 6.0 * s, if at_furnace { "FURNACE (CLICK SOMETHING TO SMELT IT)" } else { "OVEN (CLICK SOMETHING TO BAKE IT)" }, ui::DIM);
             // Recipes you can make now come first.
             let can = |rc: &block::Recipe| rc.inputs.iter().all(|&(i, n)| g.inv.count(i as u16) >= n as u32);
             // By hand only the simplest things; a table offers everything.
@@ -2700,6 +2787,7 @@ impl App {
                 if g.inv.add(rc.out.0 as u16, rc.out.1) > 0 {
                     g.say("INVENTORY FULL");
                 }
+                crate::game::events::crafted(g, rc.out.0);
                 ui.clicked_any = true;
             }
         }
@@ -2763,17 +2851,26 @@ impl App {
         let p = g.player.pos;
         let fwd = crate::math::forward(g.player.yaw, 0.0);
         let right = [-fwd.z, fwd.x];
-        // One of each model is enough: skip colour variants.
+        // One of each model is enough: skip colour variants. With "looks:NAME", every look of
+        // the creatures with NAME in their id, the plain one first.
         let mut seen = Vec::new();
-        let kinds: Vec<usize> = (0..reg().entities.len()).filter(|&i| {
-            let m = reg().entities[i].model;
-            if seen.contains(&m) {
-                false
-            } else {
-                seen.push(m);
-                true
+        let mut kinds: Vec<(usize, u8)> = Vec::new();
+        for i in 0..reg().entities.len() {
+            if let Some(name) = &self.show_looks {
+                if reg().entities[i].id.contains(name.as_str()) {
+                    for v in 0..=reg().entities[i].x.variants.len() {
+                        kinds.push((i, v as u8));
+                    }
+                }
+                continue;
             }
-        }).collect();
+            let m = reg().entities[i].model;
+            if !seen.contains(&m) {
+                seen.push(m);
+                kinds.push((i, 0));
+            }
+        }
+        logf!("voxelrust: line-up of {} creatures", kinds.len());
         let per_row = 8;
         let total = kinds.len();
         for n in 0..total {
@@ -2789,7 +2886,8 @@ impl App {
             };
             let at = [c[0] as f64 + 0.5, c[1] as f64 + 0.01, c[2] as f64 + 0.5];
             if n < kinds.len() {
-                let i = g.mobs.spawn(kinds[n], at);
+                let i = g.mobs.spawn(kinds[n].0, at);
+                g.mobs.list[i].variant = kinds[n].1;
                 // "walking" shows them mid-stride, each at its own point.
                 if self.show_walking {
                     g.mobs.list[i].stride = 1.0;
@@ -2925,7 +3023,7 @@ fn hand_view_of(g: &session::Session, held: crate::client::hand::Held, speed: f3
     }
 }
 
-fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Color) {
+pub(crate) fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Color) {
     let it = &reg().items[index];
     // A spawn egg shows the creature itself, standing in half an eggshell.
     if let Some(e) = it.x.egg.and_then(|k| reg().entities.get(k)) {
@@ -2967,7 +3065,7 @@ fn draw_item(r: &mut Renderer, x: f32, y: f32, size: f32, index: usize, tint: Co
     }
 }
 
-fn draw_slot(r: &mut Renderer, x: f32, y: f32, size: f32, s: f32, stack: Option<Stack>, hot: bool) {
+pub(crate) fn draw_slot(r: &mut Renderer, x: f32, y: f32, size: f32, s: f32, stack: Option<Stack>, hot: bool) {
     // A slot is a shallow well: dark top and left, light bottom and right.
     let (ix, iy, iw) = (x + s, y + s, size - 2.0 * s);
     r.rect(ix, iy, iw, iw, if hot { [92, 126, 204, 240] } else { [44, 47, 58, 225] });
@@ -3320,6 +3418,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mut app = App {
         window,
         audio: if scripted { Audio::silent() } else { Audio::new() },
+        voice: crate::client::voice::Voice::new(),
         distance: settings.distance,
         settings,
         settings_path,
@@ -3375,9 +3474,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
         want_reload: false,
         at_oven: false,
         show_walking: opts.show.contains("walking"),
+        show_looks: opts.show.split(',').find_map(|w| w.strip_prefix("looks:")).map(String::from),
         mods_scroll: 0,
         form_mod_path: String::new(),
         at_furnace: false,
+        craft: Default::default(),
         tune: (0.0, 0),
         worlds_scroll: 0,
         edit_world: String::new(),
@@ -3457,6 +3558,30 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 Some(i) => app.inv_tab = i,
                 // Not a tab: what to search for ("items:bed").
                 None => app.inv_search = String::from(tab),
+            }
+        }
+        // "craft:<item>" opens the crafting table with the first recipe for that item laid out.
+        if let Some(want) = opts.show.split(',').find_map(|w| w.strip_prefix("craft:")) {
+            app.screen = Screen::Craft;
+            let r = reg();
+            let one = |it: u16| Some(crate::inventory::Stack { item: it, count: 1 });
+            if let Some(rc) = r.grid_recipes.iter().find(|rc| r.items[rc.out.0 as usize].id == want) {
+                match &rc.pattern {
+                    crate::crafting::Pattern::Shaped { w, h, cells } => {
+                        for y in 0..*h {
+                            for x in 0..*w {
+                                if let Some(ing) = &cells[y * w + x] {
+                                    app.craft.grid.cells[y * 3 + x] = ing.items.first().and_then(|&it| one(it));
+                                }
+                            }
+                        }
+                    }
+                    crate::crafting::Pattern::Shapeless(list) => {
+                        for (i, ing) in list.iter().enumerate() {
+                            app.craft.grid.cells[i] = ing.items.first().and_then(|&it| one(it));
+                        }
+                    }
+                }
             }
         }
         for (word, screen) in [

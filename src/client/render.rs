@@ -50,6 +50,8 @@ pub struct Env {
     pub rain: f32,
     /// Lightning: brightens everything for an instant.
     pub flash: f32,
+    /// 0..1: how much a night vision effect lifts the dark.
+    pub vision: f32,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -288,8 +290,8 @@ impl Renderer {
         }
     }
 
-    fn update_light_map(&mut self, day: f32) {
-        let key = (day * 96.0) as i32;
+    fn update_light_map(&mut self, day: f32, vision: f32) {
+        let key = (day * 96.0) as i32 + (vision * 8.0) as i32 * 1000;
         if key == self.light_key {
             return;
         }
@@ -302,7 +304,9 @@ impl Renderer {
             curve[l] = v;
             v *= 0.82;
         }
-        let sky_scale = 0.13 + 0.87 * day;
+        // Night vision: the sky counts as brighter and nothing is darker than a dim glow.
+        let sky_scale = 0.13 + 0.87 * day.max(0.7 * vision);
+        let glow = 0.4 * vision;
         let sky_tint = [lerp(0.55, 1.0, day), lerp(0.65, 1.0, day), 1.0];
         for sky in 0..16 {
             for blk in 0..16 {
@@ -311,7 +315,7 @@ impl Renderer {
                 let b = curve[blk];
                 let warm = [1.0, 0.86, 0.66];
                 for c in 0..3 {
-                    let val = (s * sky_tint[c]).max(b * warm[c]) * 0.965 + 0.035;
+                    let val = (s * sky_tint[c]).max(b * warm[c]).max(glow) * 0.965 + 0.035;
                     px[o + c] = (clampf(val, 0.0, 1.0) * 255.0) as u8;
                 }
                 px[o + 3] = 255;
@@ -421,7 +425,7 @@ impl Renderer {
         if env.underwater {
             fog = [0.04 + 0.06 * day, 0.16 + 0.14 * day, 0.30 + 0.25 * day];
         }
-        self.update_light_map(day);
+        self.update_light_map(day, env.vision);
         let aspect = self.w as f32 / self.h.max(1) as f32;
         let view = math::view_rotation(cam.yaw, cam.pitch);
         let fogc = [fog[0], fog[1], fog[2], 1.0];
