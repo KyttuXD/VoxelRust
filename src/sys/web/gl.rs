@@ -42,6 +42,7 @@ imports! {
     fn glLoadMatrixf(m: *const f32);
     fn glLoadIdentity();
     fn glGenTextures(n: i32, ids: *mut u32);
+    fn glDeleteTextures(n: i32, ids: *const u32);
     fn glBindTexture(target: u32, id: u32);
     fn glTexImage2D(target: u32, level: i32, internal: i32, w: i32, h: i32, border: i32, format: u32, kind: u32, px: *const c_void);
     fn glTexParameteri(target: u32, name: u32, value: i32);

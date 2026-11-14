@@ -301,6 +301,46 @@ SDL2, graphics card or network. (The game itself is `no_std`; the tests build
 against `std` so that plain `cargo test` works.) They include the mods folder's `tests.rs`,
 the tests of the shipped mods (see [Mod code](#mod-code)).
 
+## Performance notes
+
+Where the time and the memory go, and what has been done about it. Run with
+`--log FILE` to see the start-up timings: one line for each phase before the first
+frame, `voxelrust: startup  <ms since start>  <phase> (+<ms for this phase>)`:
+content parsed (base data and mods), texture packs indexed, window and OpenGL, the
+renderer (the atlas is painted and uploaded here), audio and mods started, and the
+first frame. A slow start can be pinned on one of them.
+
+- **Models are parsed when first drawn**, not at start-up. A mod with hundreds of
+  creature models (`orespawn`, `witherstorm`) used to parse every model file and
+  upload every picture before the first frame. `Renderer::load_models` now only
+  forgets the old ones (and gives their textures back to the card); `ensure_model`
+  parses each on its first use. A model that will not parse is logged then, and is
+  drawn as a copy of the first one that does.
+- **The bundle of packs for joining players is made on demand** (`client/pack_text.rs`).
+  At start-up only the names of the files the packs pulled in are kept; the files are
+  read and copied when the player hosts a game or a server's pack is compared.
+  Before, every model and picture of every mod was cloned twice at start.
+- **Things that were leaked on every pack reload are freed.** The old content registry
+  (`block::replace`), the texture pack index, the list of files in `textures/`, the
+  alpha masks of the atlas and the creature picture index are each kept for one more
+  change, so that a reader still holding a reference is safe, and freed at the one
+  after. Model and creature pictures are deleted from the graphics card when models
+  are forgotten, and a player's skin picture is written over, not made anew.
+- **Lookups made every frame are indexed**: `Registry::tile(id)` and `Registry::model(id)`
+  instead of searching hundreds of names (the hand, the arms, distant terrain).
+  The texture pack index is a map, not a list searched (and filtered) file by file.
+- **Saves are atomic**: world regions, the world's own files and the settings are
+  written to `<file>.tmp` and moved over the old file (`sys::write_file_atomic`), so a
+  crash in the middle of a save cannot leave half a file.
+- Things sent by other players are bounded: creature snapshots (64), chests (65536),
+  content packs (16 MB, and a pack that is too big is dropped whole), positions (a
+  world coordinate, finite and below 2.2e9).
+
+What is still heavy, if the start is slow: the content registry keeps the text of
+every model file (`Registry::models`) for the whole run; the atlas is painted on the
+main thread (a texture pack with big pictures is decoded and shrunk there); the window
+opens only after the content is read, so nothing shows while that runs.
+
 ## GitHub workflows
 
 The repository is on GitHub as `KyttuXD/VoxelRust`, and it is public. Two

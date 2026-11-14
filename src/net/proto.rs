@@ -156,6 +156,16 @@ impl R<'_> {
             None
         }
     }
+    /// A world coordinate: finite and within what a block position can be (a
+    /// huge one would turn into infinity in the maths that follows).
+    fn coord(&mut self) -> Option<f64> {
+        let v = self.f64()?;
+        if v > -2.2e9 && v < 2.2e9 {
+            Some(v)
+        } else {
+            None
+        }
+    }
     fn str(&mut self) -> Option<String> {
         let n = self.u8()? as usize;
         let b = self.take(n)?;
@@ -284,7 +294,7 @@ impl Msg {
         let mut r = R(body);
         let m = match kind {
             1 => Msg::Hello { version: r.u16()?, content: r.u32()?, name: r.str()? },
-            2 => Msg::Move { id: r.u16()?, pos: [r.f64()?, r.f64()?, r.f64()?], yaw: r.f32()?, pitch: r.f32()?, held: r.u16()? },
+            2 => Msg::Move { id: r.u16()?, pos: [r.coord()?, r.coord()?, r.coord()?], yaw: r.f32()?, pitch: r.f32()?, held: r.u16()? },
             3 => Msg::SetBlock { x: r.i32()?, y: r.i32()?, z: r.i32()?, block: r.u16()? },
             4 => Msg::Chat { id: r.u16()?, text: r.str()? },
             5 => {
@@ -448,6 +458,12 @@ mod tests {
             i.push(bad);
             assert_eq!(i.next(), Next::Bad, "{bad:?}");
         }
+        // A position no block could be at is not this protocol either.
+        let mut far = Msg::Move { id: 1, pos: [0.0; 3], yaw: 0.0, pitch: 0.0, held: 0 }.encode();
+        far[5..13].copy_from_slice(&1.0e300f64.to_le_bytes());
+        let mut i = Inbox::default();
+        i.push(&far);
+        assert_eq!(i.next(), Next::Bad);
         let mut nan = Msg::Time { time: 0.0 }.encode();
         nan[3..7].copy_from_slice(&f32::NAN.to_le_bytes());
         let mut i = Inbox::default();

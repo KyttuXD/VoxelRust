@@ -121,6 +121,8 @@ pub struct Session {
     /// Content sent by the server, complete and waiting to be applied.
     pub server_pack: Option<Vec<u8>>,
     pack_buffer: Vec<u8>,
+    /// The pack being sent was too big: its remaining pieces are dropped.
+    pack_overflow: bool,
     /// Messages that arrived behind a pack, kept until it is applied.
     held_events: Vec<crate::netplay::Event>,
     tick_timer: f32,
@@ -500,6 +502,7 @@ impl Session {
             flood: Vec::new(),
             server_pack: None,
             pack_buffer: Vec::new(),
+            pack_overflow: false,
             held_events: Vec::new(),
             tick_timer: 0.0,
             touch_timer: 0.0,
@@ -1742,7 +1745,7 @@ impl Session {
                             if let [x, y, z] = c[..] {
                                 if text.is_empty() {
                                     self.chests.remove(&[x, y, z]);
-                                } else {
+                                } else if self.chests.len() < 65_536 || self.chests.contains_key(&[x, y, z]) {
                                     self.chests.insert([x, y, z], Inventory::load(&text));
                                 }
                                 self.chest_sent = Some(([x, y, z], text));
@@ -1761,10 +1764,16 @@ impl Session {
                     }
                 }
                 crate::netplay::Event::Pack(last, data) => {
-                    if self.pack_buffer.len() + data.len() <= 16 << 20 {
+                    if self.pack_overflow || self.pack_buffer.len() + data.len() > 16 << 20 {
+                        // Too big to hold: nothing of it is kept (half a pack is no pack), and
+                        // the built-in content is used, as for a pack that cannot be read.
+                        self.pack_overflow = true;
+                        self.pack_buffer = Vec::new();
+                    } else {
                         self.pack_buffer.extend_from_slice(&data);
                     }
                     if last {
+                        self.pack_overflow = false;
                         self.server_pack = Some(core::mem::take(&mut self.pack_buffer));
                         self.held_events = events.collect();
                         break;
@@ -2790,7 +2799,7 @@ impl Session {
                 chest_text.push_str(&alloc::format!("{} {} {} {}\n", pos[0], pos[1], pos[2], inv.save()));
             }
         }
-        sys::write_file(&self.chests_path, chest_text.as_bytes());
+        sys::write_file_atomic(&self.chests_path, chest_text.as_bytes());
         self.natives(|n, g| {
             if let Some(save) = n.save {
                 save(g)
@@ -2802,11 +2811,11 @@ impl Session {
             for (x, z) in &self.explored {
                 text.push_str(&alloc::format!("{} {}\n", x, z));
             }
-            sys::write_file(&self.explored_path, text.as_bytes());
-            sys::write_file(&self.waypoints_path, crate::game::waypoints::format(&self.waypoints).as_bytes());
-            sys::write_file(&self.pets_path, self.mobs.save_pets().as_bytes());
+            sys::write_file_atomic(&self.explored_path, text.as_bytes());
+            sys::write_file_atomic(&self.waypoints_path, crate::game::waypoints::format(&self.waypoints).as_bytes());
+            sys::write_file_atomic(&self.pets_path, self.mobs.save_pets().as_bytes());
             let vars: String = self.vars.iter().map(|(k, v)| alloc::format!("{}={}\n", k, v)).collect();
-            sys::write_file(&self.vars_path, vars.as_bytes());
+            sys::write_file_atomic(&self.vars_path, vars.as_bytes());
         }
         let text = alloc::format!(
             "seed={}\ndim={}\nkind={}\ngamemode={}\npos={} {} {}\nspawn={} {} {}\nyaw={}\npitch={}\nflying={}\ntime={}\nselected={}\nhealth={}\nhunger={}\neffects={}\nabsorb={}\ninventory={}\n",
@@ -2831,7 +2840,7 @@ impl Session {
             self.fx.absorb,
             self.inv.save(),
         );
-        let ok = sys::write_file(&self.meta_path, text.as_bytes()) && !self.store.write_failed;
+        let ok = sys::write_file_atomic(&self.meta_path, text.as_bytes()) && !self.store.write_failed;
         crate::game::hooks::world_saved(self);
         ok
     }

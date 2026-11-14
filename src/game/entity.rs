@@ -944,7 +944,8 @@ impl Mobs {
     pub fn apply_snapshot(&mut self, text: &str) {
         let r = reg();
         let mut seen: Vec<u32> = Vec::new();
-        for line in text.lines() {
+        // (A host sends at most 64; more is not believed, so a hostile one cannot fill the world.)
+        for line in text.lines().take(64) {
             let w: Vec<&str> = line.split(' ').collect();
             let num = |k: usize| w.get(k).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
             let (id, kind) = match (w.first().and_then(|v| v.parse::<u32>().ok()), w.get(1).and_then(|id| r.entities.iter().position(|e| e.id == *id))) {
@@ -1258,6 +1259,20 @@ mod tests {
         assert!(mobs.list[0].body.vel[2] < -3.0, "no knock-back");
         assert!(mobs.hurt(i, 1000, eye));
         run(&mut mobs, &w, eye, 0.25, 0.2);
+        assert!(mobs.list.is_empty());
+    }
+
+    #[test]
+    fn a_snapshot_cannot_fill_the_world_with_creatures() {
+        let mut text = String::new();
+        for id in 1..=300 {
+            text.push_str(&alloc::format!("{} cow 0 {} 100 5 0 0 5 0\n", id, id));
+        }
+        let mut mobs = Mobs::new(5);
+        mobs.apply_snapshot(&text);
+        assert_eq!(mobs.list.len(), 64);
+        // Lines that are not creatures are skipped, not trusted.
+        mobs.apply_snapshot("x cow 0 1 2 3 4 0 5 0\n7 nosuchthing 0 1 2 3 4 0 5 0\n8 cow 0 nan 2 3 4 0 5 0\n");
         assert!(mobs.list.is_empty());
     }
 

@@ -101,6 +101,7 @@ gl_api! {
     fn LoadMatrixf(*const f32);
     fn LoadIdentity();
     fn GenTextures(i32, *mut u32);
+    fn DeleteTextures(i32, *const u32);
     fn BindTexture(u32, u32);
     fn TexImage2D(u32, i32, i32, i32, i32, i32, u32, u32, *const c_void);
     fn TexParameteri(u32, u32, i32);
