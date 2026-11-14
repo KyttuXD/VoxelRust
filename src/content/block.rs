@@ -236,6 +236,9 @@ pub struct BlockExtra {
     /// `rest <block>`: when a saved world is loaded this state is read as
     /// that block, facing the same way (an open chest is shut again).
     pub rest: Option<Block>,
+    /// Flowing water and lava sweep it away (a plant, a torch, a carpet),
+    /// giving what breaking it would. See `game::fluid_rules::default_washable`.
+    pub washable: bool,
 }
 
 impl BlockExtra {
@@ -1385,7 +1388,7 @@ impl Parser<'_> {
                     Some(t) => b.tool = t as u8,
                     None => bad = Some("tool must be none, pick, axe, shovel or hoe"),
                 },
-                "long" | "react" | "rest" | "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "fluid" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
+                "long" | "react" | "rest" | "falls" | "tall" | "toggle" | "grows" | "on" | "also" | "hurts" | "fluid" | "washable" | "slow" | "sound" | "seat" | "eat" | "tag" | "prop" | "fills" | "part" => {
                     // Said twice, the later line wins; except marks, of
                     // which a block may carry several.
                     b.extra.retain(|e| e.0 != key || key == "react" || (key == "tag" && e.1.first().map(|x| x.as_str()) != a.first().copied()));
@@ -1872,12 +1875,14 @@ impl Registry {
                 None => continue,
             };
             let mut x = BlockExtra::default();
+            let mut washable: Option<bool> = None;
             for (key, a) in &rb.extra {
                 let word = |i: usize| a.get(i).map(|s| s.as_str()).unwrap_or("");
                 let other = |i: usize| by_id.get(word(i)).copied();
                 let mut ok = true;
                 match key.as_str() {
                     "falls" => x.falls = word(0) != "no",
+                    "washable" => washable = Some(word(0) != "no"),
                     "tall" => x.tall = word(0) != "no",
                     "long" => match (word(0), other(1)) {
                         ("ahead", Some(b)) => x.long = Some((true, b)),
@@ -1937,6 +1942,9 @@ impl Registry {
                 }
             }
             let d = &blocks[first];
+            x.washable = washable.unwrap_or_else(|| {
+                crate::game::fluid_rules::default_washable(d.kind, d.solid, &d.id, x.tag("track").is_some() || x.tag("slope").is_some(), x.tall || x.long.is_some() || x.fills.0 != 0 || x.toggle.is_some() || x.seat != 0 || x.eat != 0 || x.part || d.usable != Usable::Nothing)
+            });
             let states = d.rotations as usize * if d.flips { 2 } else { 1 };
             for b in blocks[first..first + states].iter_mut() {
                 b.x = x.clone();

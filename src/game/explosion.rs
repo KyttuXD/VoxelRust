@@ -207,7 +207,10 @@ pub fn explode(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSourc
     let mut chain: Vec<[i32; 3]> = Vec::new();
     let mut drops_left = MAX_DROPS;
     let mut destroyed = 0usize;
-    for c in blast_cells(at, radius(power), seed_of(at)) {
+    // Under water the blast breaks no blocks and hurts less (game/fluid_rules.rs).
+    let wet = block::is_water(g.world.get(floord(at[0]), floord(at[1]), floord(at[2])));
+    let breaks = if wet { crate::game::fluid_rules::underwater_block_power(power) } else { power };
+    for c in blast_cells(at, radius(breaks), seed_of(at)) {
         let b = g.world.get(c[0], c[1], c[2]);
         if b == AIR || resists(b) {
             continue;
@@ -249,7 +252,12 @@ pub fn explode(g: &mut Session, at: [f64; 3], power: f32, source: ExplosionSourc
         crate::primed::prime_at(g, c, fuse);
     }
 
-    hurt_things(g, &info);
+    if wet {
+        let softened = ExplosionInfo { power: power * crate::game::fluid_rules::UNDERWATER_HURT, ..info };
+        hurt_things(g, &softened);
+    } else {
+        hurt_things(g, &info);
+    }
     show(g, &info);
 
     // Scripts: once for each kind of block that went.

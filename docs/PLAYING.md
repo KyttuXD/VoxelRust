@@ -562,6 +562,24 @@ Each kind of cave has its own creatures; see
 Water is animated, and the whole surface rises and falls slightly in a slow
 swell.
 
+Water and lava flow: water a step every quarter of a second, lava every
+second and a half. A flow slopes down toward where it is thinner, and a
+source beside a lower flow slopes with it. Anything with a solid shape stops
+a liquid (slabs, stairs, doors, fences, glass, chests); plants, torches,
+carpets, signs, crops and other things with no collision are washed away and
+give what breaking them gives, set down where they stood, and float off with
+the current (ladders, vines and rails stay). Two water sources with a gap
+between them over a floor fill the gap with a third. Lava next to water
+sets: a lava source to obsidian (stone if no pack has any), a flow to
+cobblestone, and lava that runs onto water to stone.
+
+In water you float with your head out; jump swims up and the descend key
+dives. Running water carries you, and a fall into two blocks of water or
+more does not hurt (one block halves it). Lava is thick, slows you to half,
+sets you and creatures alight, and burns up items dropped in it; items
+dropped in water float and drift. Inside lava the view is orange and only a
+few blocks deep. TNT lit under water breaks no blocks.
+
 ## Vehicles
 
 Vehicles are items (the Travel tab in creative; crafting table recipes in
