@@ -19,7 +19,7 @@ fn everything() -> Registry {
 }
 
 /// How many different opaque-or-not colours (ignoring alpha) a picture has.
-fn colours(px: &[u8]) -> usize {
+pub(super) fn colours(px: &[u8]) -> usize {
     let mut seen: Vec<[u8; 3]> = Vec::new();
     for p in px.chunks(4) {
         if p[3] > 0 && !seen.contains(&[p[0], p[1], p[2]]) {
@@ -29,7 +29,7 @@ fn colours(px: &[u8]) -> usize {
     seen.len()
 }
 
-fn picture(f: impl Fn(i32, i32) -> Option<Px>) -> Vec<u8> {
+pub(super) fn picture(f: impl Fn(i32, i32) -> Option<Px>) -> Vec<u8> {
     let mut out = Vec::new();
     for y in 0..16 {
         for x in 0..16 {
@@ -40,7 +40,7 @@ fn picture(f: impl Fn(i32, i32) -> Option<Px>) -> Vec<u8> {
 }
 
 /// A one-pixel frame: every border pixel is the same solid colour, darker than the pixel inside the corner.
-fn has_frame(px: &[u8]) -> bool {
+pub(super) fn has_frame(px: &[u8]) -> bool {
     let at = |x: usize, y: usize| &px[(y * 16 + x) * 4..(y * 16 + x) * 4 + 4];
     let f = at(0, 0);
     let sum = |p: &[u8]| p[0] as u32 + p[1] as u32 + p[2] as u32;
@@ -234,74 +234,65 @@ fn water_frames_wrap_and_move() {
 }
 
 /// The pixel at `(x, y)` of a 16 x 16 picture as RGBA.
-fn pixel(px: &[u8], x: usize, y: usize) -> [u8; 4] {
+pub(super) fn pixel(px: &[u8], x: usize, y: usize) -> [u8; 4] {
     let o = (y * 16 + x) * 4;
     [px[o], px[o + 1], px[o + 2], px[o + 3]]
 }
 
 #[test]
-fn the_palm_and_maple_wood_follow_the_packs_shapes() {
+fn the_palm_and_maple_wood_are_the_core_woods_drawing_with_their_own_marks() {
     let lit = [150, 120, 80];
-    // Bark: the pack's bars (columns 1, 2, 5, 6...) on a dark ground, in the frame.
-    for style in ["ocd_bark", "palm_bark"] {
-        let px = picture(|x, y| paint(style, lit, x, y));
-        assert_eq!(pixel(&px, 1, 3), pixel(&px, 13, 3), "{style}: bars repeat");
-        assert_ne!(pixel(&px, 1, 3), pixel(&px, 3, 3), "{style}: a bar is not the ground");
-        assert_eq!(pixel(&px, 3, 3), pixel(&px, 0, 3), "{style}: the ground is the frame's tone");
-        assert!(colours(&px) <= 3, "{style}: {} colours", colours(&px));
+    let maple_leaf = [204, 96, 40];
+    // The maple is the core oak's drawing, pixel for pixel, in its own colour.
+    for (maple, core) in [("ocd_bark", "bark"), ("ocd_rings", "rings"), ("ocd_planks", "planks"), ("palm_planks", "planks")] {
+        let a = picture(|x, y| paint(maple, lit, x, y));
+        let b = picture(|x, y| paint(core, lit, x, y));
+        assert_eq!(a, b, "{maple} is {core}");
     }
-    // A palm's ring scars cut the bars at rows 5 and 11, and not the ground; the maple's knots are in another place.
+    // The palm's ring scars cut the bars at rows 5 and 11 and not the ground between them.
+    let core = picture(|x, y| paint("bark", lit, x, y));
     let palm = picture(|x, y| paint("palm_bark", lit, x, y));
-    assert_ne!(pixel(&palm, 1, 5), pixel(&palm, 1, 4));
-    assert_eq!(pixel(&palm, 1, 5), pixel(&palm, 5, 11));
-    assert_eq!(pixel(&palm, 3, 5), pixel(&palm, 3, 4));
-    let maple = picture(|x, y| paint("ocd_bark", lit, x, y));
-    assert_eq!(pixel(&maple, 1, 6), pixel(&maple, 0, 6), "a knot is as dark as the frame");
-    assert_ne!(pixel(&maple, 5, 6), pixel(&maple, 0, 6));
-    // The cut end is round: the corners are the frame's tone, the middle is lit.
-    for style in ["ocd_rings", "palm_rings"] {
-        let px = picture(|x, y| paint(style, lit, x, y));
-        assert_eq!(pixel(&px, 1, 1), pixel(&px, 0, 0), "{style}: round corners");
-        assert_eq!(pixel(&px, 7, 7), pixel(&px, 8, 8), "{style}: pith");
-        assert_ne!(pixel(&px, 7, 7), pixel(&px, 0, 0), "{style}: pith is not the frame");
-        assert_eq!(pixel(&px, 2, 7), pixel(&px, 13, 8), "{style}: outer ring all round");
-        assert!(colours(&px) <= 3, "{style}: {} colours", colours(&px));
-    }
-    // Planks: four slats of two rows with seams of two rows between, and a joint in each slat.
-    for (style, joints) in [("ocd_planks", [9, 4, 11, 6]), ("palm_planks", [3, 10, 6, 12])] {
-        let px = picture(|x, y| paint(style, lit, x, y));
-        let seam = pixel(&px, 0, 0);
-        for (k, jx) in joints.iter().enumerate() {
-            let y = 1 + 4 * k;
-            assert_eq!(pixel(&px, *jx as usize, y), seam, "{style}: joint in slat {k}");
-            assert_eq!(pixel(&px, *jx as usize, y + 1), seam, "{style}: joint in slat {k}");
-            assert_ne!(pixel(&px, (*jx as usize + 3) % 14 + 1, y), seam, "{style}: slat {k}");
-            assert_eq!(pixel(&px, 5, y + 2), seam, "{style}: a seam under slat {k}");
+    for y in [5, 11] {
+        for x in [1, 2, 5, 6, 9, 10, 13, 14] {
+            assert_ne!(pixel(&palm, x, y), pixel(&core, x, y), "scar at {x},{y}");
         }
-        assert_eq!(colours(&px), 2, "{style}");
+        assert_eq!(pixel(&palm, 3, y), pixel(&core, 3, y));
     }
+    assert_eq!(pixel(&palm, 1, 4), pixel(&core, 1, 4));
+    assert_eq!(pixel(&palm, 1, 5), pixel(&palm, 5, 11));
+    // Its cut end differs from the core's only by the four fibre dots on the outer ring.
+    let core = picture(|x, y| paint("rings", lit, x, y));
+    let palm = picture(|x, y| paint("palm_rings", lit, x, y));
+    let differing = (0..256).filter(|i| palm[i * 4..i * 4 + 4] != core[i * 4..i * 4 + 4]).count();
+    assert_eq!(differing, 4);
+    assert_eq!(pixel(&palm, 3, 3), pixel(&palm, 12, 12));
+    // The cut end is round: corners in the rim tone, the pith in the middle.
+    assert_eq!(pixel(&palm, 1, 1), pixel(&palm, 0, 0));
+    assert_ne!(pixel(&palm, 7, 7), pixel(&palm, 0, 0));
+    // The maple's leaves are the core leaf clumps with a lit pixel at the corner of each light clump.
+    let core = picture(|x, y| paint("leaves", maple_leaf, x, y));
+    let maple = picture(|x, y| paint("ocd_leaves", maple_leaf, x, y));
+    let differing = (0..256).filter(|i| maple[i * 4..i * 4 + 4] != core[i * 4..i * 4 + 4]).count();
+    assert!(differing >= 3 && differing <= 12, "{differing} lit pixels");
+    for i in 0..256 {
+        assert_eq!(maple[i * 4 + 3], core[i * 4 + 3], "the same cut-outs");
+    }
+    assert!(colours(&maple) <= 4, "{}", colours(&maple));
 }
 
 #[test]
-fn the_palm_fronds_and_maple_leaves_are_cut_out_and_never_half_see_through() {
-    for style in ["palm_fronds", "ocd_leaves"] {
-        let px = picture(|x, y| paint(style, [70, 150, 60], x, y));
-        let alpha: Vec<u8> = px.chunks(4).map(|p| p[3]).collect();
-        assert!(alpha.iter().all(|a| *a == 0 || *a == 255), "{style}");
-        assert!(alpha.iter().any(|a| *a == 0) && alpha.iter().filter(|a| **a == 255).count() > 100, "{style}: cut-outs and body");
-        assert!(colours(&px) <= 3, "{style}: {} colours", colours(&px));
-    }
+fn the_palm_fronds_are_cut_out_and_never_half_see_through() {
+    let px = picture(|x, y| paint("palm_fronds", [70, 150, 60], x, y));
+    let alpha: Vec<u8> = px.chunks(4).map(|p| p[3]).collect();
+    assert!(alpha.iter().all(|a| *a == 0 || *a == 255));
+    assert!(alpha.iter().any(|a| *a == 0) && alpha.iter().filter(|a| **a == 255).count() > 100, "cut-outs and body");
+    assert!(colours(&px) <= 3, "{} colours", colours(&px));
     // A frond's rib is the middle two columns, solid all the way down; the leaflets are the same either side of it.
-    let f = picture(|x, y| paint("palm_fronds", [70, 150, 60], x, y));
     for y in 0..16 {
-        assert_eq!(pixel(&f, 7, y)[3], 255);
-        assert_eq!(pixel(&f, 7, y), pixel(&f, 8, y));
-        assert_eq!(pixel(&f, 3, y), pixel(&f, 12, y));
+        assert_eq!(pixel(&px, 7, y)[3], 255);
+        assert_eq!(pixel(&px, 7, y), pixel(&px, 8, y));
+        assert_eq!(pixel(&px, 3, y), pixel(&px, 12, y));
     }
-    // The maple's leaves have the pack's clear cross between four squares.
-    let m = picture(|x, y| paint("ocd_leaves", [204, 96, 40], x, y));
-    assert!((0..16).all(|i| pixel(&m, 7, i)[3] == 0 && pixel(&m, 8, i)[3] == 0 && pixel(&m, i, 7)[3] == 0 && pixel(&m, i, 8)[3] == 0));
-    assert_eq!(pixel(&m, 0, 0)[3], 255);
 }
 
 #[test]
@@ -313,5 +304,7 @@ fn cardboard_and_screens_are_pictures_and_not_a_flat_fill() {
     let s = picture(|x, y| paint("screen", [24, 28, 40], x, y));
     assert!(colours(&s) >= 4 && colours(&s) <= 6, "{}", colours(&s));
     assert_ne!(pixel(&s, 3, 3), pixel(&s, 8, 8), "a glare on the glass");
+    assert!(bright(&s, 1, 1) > bright(&s, 2, 1), "the glint at (1, 1)");
+    assert_eq!(pixel(&s, 14, 14), pixel(&s, 0, 0), "the shadow at (14, 14)");
     assert_eq!(pixel(&s, 13, 14), [120, 224, 150, 255], "the power light");
 }

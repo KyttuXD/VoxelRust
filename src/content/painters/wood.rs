@@ -9,7 +9,7 @@ use crate::palette::Role;
 /// Planks: three upright boards (five, four and four wide, a seam of the
 /// darker tone after each), a joint across each board at its own height, a
 /// short grain dash and a light nail head at the top and the foot.
-fn planks(x: i32, y: i32, slat: [u8; 3], gap: Option<[u8; 3]>) -> Px {
+pub fn planks(x: i32, y: i32, slat: [u8; 3], gap: Option<[u8; 3]>) -> Px {
     let gap = gap.unwrap_or_else(|| scale(slat, 77));
     let seam = x == 5 || x == 10 || x == 15;
     let joint = (y == 11 && x < 5) || (y == 8 && (6..10).contains(&x)) || (y == 4 && (11..15).contains(&x));
@@ -25,7 +25,7 @@ fn planks(x: i32, y: i32, slat: [u8; 3], gap: Option<[u8; 3]>) -> Px {
 }
 
 /// Bark: dark with lighter vertical bars, broken into dashes. Pale barks get a few dark flecks.
-fn bark(x: i32, y: i32, bar: [u8; 3], base: Option<[u8; 3]>) -> Px {
+pub fn bark(x: i32, y: i32, bar: [u8; 3], base: Option<[u8; 3]>) -> Px {
     let base = base.unwrap_or_else(|| scale(bar, 66));
     if bar[0] > 180 && (rect(x, y, 3, 3, 2, 1) || rect(x, y, 10, 6, 2, 1) || rect(x, y, 5, 11, 2, 1) || rect(x, y, 12, 13, 2, 1)) {
         return px(scale(bar, 25));
@@ -35,7 +35,7 @@ fn bark(x: i32, y: i32, bar: [u8; 3], base: Option<[u8; 3]>) -> Px {
 
 /// The cut end of a log: round, a dark rim in the corners and along the
 /// sides, rings in two tones and a darker pith in the middle.
-fn rings(x: i32, y: i32, rgb: [u8; 3], rim: Option<[u8; 3]>) -> Px {
+pub fn rings(x: i32, y: i32, rgb: [u8; 3], rim: Option<[u8; 3]>) -> Px {
     let (dx, dy) = (2 * x - 15, 2 * y - 15);
     let d2 = dx * dx + dy * dy;
     px(if d2 > 196 {

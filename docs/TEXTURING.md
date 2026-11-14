@@ -125,7 +125,7 @@ metal, wood or stone recolours consistently.
 | `tools.rs` | `wand` | `stick pick axe shovel hoe sword bow crossbow arrow` |
 | `food.rs` | | `meat fruit fishfood loaf pizza wedge root tuber jar egg sack cookie pie bowl seeds sheaf` |
 | `gear.rs` | | `gem ingot rail machine hull wings` |
-| `ocd_wood.rs` | | `ocd_bark ocd_rings ocd_planks ocd_leaves` |
+| `maple_wood.rs` | | `ocd_bark ocd_rings ocd_planks ocd_leaves` |
 | `palm_wood.rs` | | `palm_bark palm_rings palm_planks palm_fronds` |
 | `cardboard_and_screens.rs` | | `cardboard screen` |
 
@@ -169,25 +169,27 @@ What each one looks like:
   nail head at the top and foot. **Bark** is a dark base with lighter
   vertical bars broken into dashes; **rings** the round cut end: a dark rim
   in the corners and sides, two tones in turn, a darker pith.
-- **Wood the OCD pack has no picture of** (`ocd_wood.rs`, `palm_wood.rs`) is
-  drawn in the pack's own shapes, so it stands beside the pack's oak, spruce
-  and birch. The pack's trees are one picture of two or three flat colours: a
-  bark of four lighter bars two pixels wide on a dark ground and frame, a cut
-  end of rings in two tones, planks of four horizontal slats, leaves as four
-  squares with a clear cross. `ocd_bark` is the bars with a dark knot in each
-  bar (high on one pair, low on the next); `ocd_rings` the cut end, **round**
-  (frame, outer ring, inner ring, a two pixel pith); `ocd_planks` the four
-  slats with a joint in each, at a different place in each; `ocd_leaves` the
-  four squares with a rim, a lit pixel in the corner and the clear cross (cut
-  out, never half see-through). The maple uses these four. The palm adds to
-  them: `palm_bark` has the ring scars of a palm trunk (two rows of a darker
-  tone across the bars, rows 5 and 11), `palm_rings` a fibre dot on the outer
-  ring, `palm_planks` joints in other places, and `palm_fronds` is a frond
-  instead of squares: a two pixel rib down the middle, leaflets drooping from
-  it in bands, each with a lit top row, a fill row and a shaded foot, clear
-  between. All use the palette's `dark` for the frame, else 63% of the colour.
-  `cardboard` (a box face: flutes, a strip of tape) and `screen` (dark glass in
-  a bezel with a glare and a power light) replace two flat fills.
+- **Wood the OCD pack has no picture of** (`maple_wood.rs`, `palm_wood.rs`) is
+  drawn with the same pieces as the core oak, pine and birch (`wood.rs`,
+  `plants.rs`), so every tree of the game is one family: the maple's `ocd_bark`,
+  `ocd_rings` and `ocd_planks` are the core `bark` (bars in dashes on a dark
+  ground), `rings` (a round cut end with a pith) and `planks` (three upright
+  boards, joints at different heights, a nail head at each end), pixel for
+  pixel, in the maple's colours (a light grey-brown bark, pale heartwood);
+  `ocd_leaves` is the core leaf clumps (two tones, slits two pixels wide, cut
+  out and never half see-through) with one lit pixel, the house glint, at the
+  corner of every second light clump, in the red-orange of a maple. (The style
+  names are older than the redraw: they once drew the OCD pack's shapes, and the
+  woods mod's `pack.txt` names them, so they stay.) The palm adds what makes it
+  a palm: `palm_bark` has the ring scars of a palm trunk (the bars darker across
+  rows 5 and 11), `palm_rings` a fibre dot of the ring tone at each corner of the
+  outer ring, `palm_planks` is the core planks, and `palm_fronds` is a frond
+  instead of clumps: a two pixel rib down the middle, leaflets drooping from it
+  in bands, each with a lit top row, a fill row and a shaded foot, clear
+  between. The frame tone is the palette's `dark`, else the core's ratios.
+  `cardboard` (a box face: the house corners, flutes, a strip of tape) and
+  `screen` (dark glass in a bezel with a glare, a glint at (1, 1), a shadow at
+  (14, 14) and a power light) replace two flat fills.
 - **Glass** is a white frame (alpha 235 for stained, solid for plain) round a
   see-through fill (stained: your colour at alpha 105), both with two short
   glints. **Leaves** are two greens in clumps three wide and two tall with
@@ -376,6 +378,41 @@ Drawing a picture by hand: start from the frame, put the glint at (1, 1) and
 the shadow at (14, 14), add one grain from the table, shade with a bluer dark
 and a warmer light. `--texture-pack` is unaffected: a pack's pictures replace
 the painted ones exactly as before.
+
+## Mod blocks
+
+An audit of every block and item picture the game and its mods paint or ship
+(round 10; the OreSpawn and Witherstorm mods keep their own pictures and are
+not touched). **Painter styles** draw in the house style by construction (they
+are `painters/` code, tested: at most eight colours, the frame, the corners);
+**picture files** are only as good as their maker. The tests in
+`painters/mod_block_tests.rs` read the woods mod's `pack.txt` and check every
+style it uses: at most eight colours, pure transparency (glass excepted), the
+one-pixel frame on the block faces that have one, the glint at (1, 1) and the
+shadow at (14, 14) on the faces whose rule says so (`concrete wool terracotta
+cardboard screen`), and `painters/tests.rs` checks that the maple's and palm's
+wood is the core wood's drawing plus their own marks.
+
+| Mod | Textures | Drawn by | Result |
+| --- | --- | --- | --- |
+| core (`data/base.txt`) | blocks, food, gems, plants | painters and `builtin` | house style (round 5); the maple and palm redrawn in round 10 |
+| woods | 60 | painters (`bark rings planks leaves blossom door glassdoor chest_*`, `ocd_*`, `palm_*`) | the maple and palm now share the core wood's drawing; the maple's bark is a lighter grey-brown (`152 116 88`) |
+| colours | 128 | painters (`concrete wool terracotta glass chest_*`) | already house style |
+| stonework, caves, explosives, cooking, furniture, holidays, boats, planes, landvehicles | 6, 9, 8, 28, 5, 36, 4, 2, 7 | painters (two are `flat ... noise` fills: the ceramic and the steel, which get the frame and corners from the game) | already house style |
+| farming, tools-extra | 31, 20 | painters, and the tool pictures `copper_*`, `ruby_*`, `wood_hoe`, `iron_hoe` by file | the files are the game's own tool pictures (`data/textures/tools/`, see [The tools' shapes are ours](#the-tools-shapes-are-ours)), left as they are: they are upright drawings with an outline and the same tool family is painted for crystal; repainting them with the `pick` styles would change every tool icon of the base game, and the decision belongs to its owner |
+| trains | 25 | the 19 rail pictures are written by `tools/gen_trains.py`; six by painters | rails redrawn in the house style: the core rail's sleepers, shadows that lean cool (`scale`), chips of ballast in pairs and a pale sparkle on the lit rail |
+| hd-test | 4 | picture files | a test of HD sizes, deliberately not in the house style |
+| manfromthefog | 1 | picture file (`tearoftheman`) | a flat red drop with an outline, an item; left |
+| wildlife, monsters, villagers, wanderer, manfromthefog | creature skins | pictures | creature textures and model skins are not touched by this audit |
+| orespawn, witherstorm | 500+ | their own pictures | not touched |
+
+What was **left** and why: the tool pictures above (the game's standard art,
+owner's choice); the creature skins (a different style, see
+[Creatures and players](#creatures-and-players)); the HD test pictures (they
+are test pictures); `tearoftheman` (one item, already outlined and flat). The
+painted tiles (every painter style above) could not be shown as a before and
+after contact sheet without running the game: `voxelrust --export-textures DIR`
+writes them all as PNGs for that.
 
 ## The OCD pack, measured
 
@@ -774,7 +811,7 @@ the base game and every shipped mod, the pack matches 248. The 742 it does not:
 
 | Group | Ids | How the game fills them in |
 | --- | --- | --- |
-| Palm and maple wood | `palm_side palm_top palm_planks palm_leaves`, `maple_side maple_top maple_planks maple_leaves` | The OCD-shaped painters (see [The painters](#the-painters)): `palm_*` and `ocd_*` styles. Palm stairs, slabs and fences use `palm_planks`. |
+| Palm and maple wood | `palm_side palm_top palm_planks palm_leaves`, `maple_side maple_top maple_planks maple_leaves` | The painters of `palm_wood.rs` and `maple_wood.rs` (see [The painters](#the-painters)): the core wood's drawing with the palm's and the maple's marks: `palm_*` and `ocd_*` styles. Palm stairs, slabs and fences use `palm_planks`. |
 | Chests and doors | `<wood or colour>_chest`, `_chest_side`, `_chest_top`; `oak_glass_door` and the other glass doors; `maple_door`, `palm_door`, `blossom_door` | `chest_front`, `chest_side`, `chest_top`, `door`, `glassdoor` in the wood's colour (the pack has no chests, and doors for only some woods). |
 | HUD | `heart_*`, `effect_*`, `hud_bubble*`, `moon`, `sun`, `wand` | `art/hud.rs`, `art/status.rs`, `sky.rs`, `tools.rs`. |
 | Rails, crafting and cooking blocks | `*_rail*`, `bench5_*`, `bench7_*`, `oven_*`, `blast_front`, `heavy_tnt_*`, `counter_top`, `cupboard`, `marble_tiles`, `slate_bricks`, `cardboard`, `screen`, `white` | the matching painters in `blocks.rs`, `benches.rs`, `explosives.rs`, `stone.rs`, `cardboard_and_screens.rs`; the rails are the trains mod's own pictures. |
@@ -784,8 +821,7 @@ the base game and every shipped mod, the pack matches 248. The 742 it does not:
 
 The painted pictures are in the house style, so beside the pack's blocks they
 are a little more detailed (a glint and a shadow pixel in the corners, a grain of
-the material); the wood, `cardboard` and `screen` above are drawn closer to the
-pack's flat look because they stand right beside its trees.
+the material).
 
 **Your own pictures win.** A file in the data folder's `textures/` folder
 (`<id>.png`, also `.jpg`, `.gif`, `.bmp` or `.tga`, any size, fitted to 16 x

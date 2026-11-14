@@ -6,7 +6,8 @@
 //!   darker line) on every third row, and a strip of lighter packing tape
 //!   down the middle two columns.
 //! - **`screen`**: a dark glass in a lighter bezel with a pale glare across
-//!   the upper left, and one lit pixel in the lower right corner of the bezel.
+//!   the upper left, the house corners (glint at (1, 1), shadow at (14, 14)) and
+//!   one lit pixel in the lower right corner of the bezel.
 //!
 //! Three to five flat colours each, no noise.
 
@@ -26,16 +27,22 @@ fn cardboard(x: i32, y: i32, rgb: [u8; 3], pal: &Palette) -> Px {
 }
 
 fn screen(x: i32, y: i32, rgb: [u8; 3], pal: &Palette) -> Px {
-    if edge(x, y) {
-        return px(pal.shade(rgb, 60));
+    // The bezel is the colour lifted a step, framed in the dark and sealed with
+    // the house corners: a glint at (1, 1), the frame's tone again at (14, 14).
+    let bezel = lift(rgb);
+    let frame = pal.shade(rgb, 60);
+    if edge(x, y) || (x, y) == (14, 14) {
+        return px(frame);
+    }
+    if (x, y) == (1, 1) {
+        return px(glint(bezel));
     }
     // The lit pixel: a power light in the bezel's lower right corner.
     if (x, y) == (13, 14) {
         return px([120, 224, 150]);
     }
-    let glass = rect(x, y, 2, 2, 12, 11);
-    if !glass {
-        px(lift(rgb))
+    if !rect(x, y, 2, 2, 12, 11) {
+        px(bezel)
     } else if x + y == 6 || x + y == 7 {
         px(pale(rgb))
     } else {

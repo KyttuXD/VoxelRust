@@ -23,9 +23,11 @@ MODS_DIR = os.path.abspath(os.environ.get("VOXELRUST_MODS_DIR") or os.path.join(
 MOD = os.path.join(MODS_DIR, "trains")
 
 CLEAR = (0, 0, 0, 0)
-SLEEPER = (140, 104, 62, 255)
-SLEEPER_DARK = (112, 82, 48, 255)
-BALLAST = (98, 94, 90, 255)
+# The sleepers are the core rail's (painters/gear.rs); the ballast is a cool slate-brown with chips in pairs
+# (the house grain of stone, docs/TEXTURING.md "VoxelRust house style").
+SLEEPER = (158, 108, 64, 255)
+SLEEPER_DARK = (116, 78, 52, 255)
+BALLAST = (98, 94, 92, 255)
 
 # kind id, name, rail colour, `tag track` percent, `tag station` seconds (0: none), shapes it may take
 KINDS = [
@@ -56,7 +58,18 @@ def block_id(kind_id, shape, first):
 
 
 def shade(c, pct):
-    return tuple(v * pct // 100 for v in c[:3]) + (255,)
+    """A darker tone the house way (painters/mod.rs `scale`): red falls a little further, blue a little less, so shadows lean cool."""
+    return (c[0] * pct * 95 // 10000, c[1] * pct // 100, min(255, c[2] * pct * 105 // 10000), 255)
+
+
+def pale(c):
+    """The sparkle: about half way to warm white (painters/mod.rs `pale`)."""
+    return (c[0] + (255 - c[0]) * 55 // 100, c[1] + (255 - c[1]) * 50 // 100, c[2] + (255 - c[2]) * 44 // 100, 255)
+
+
+BALLAST_CHIP = shade(BALLAST, 86)
+# Chips of ballast between the sleepers, in pairs (x, y) of the north-south piece.
+CHIPS = [(6, 3), (7, 3), (8, 7), (9, 7), (6, 11), (7, 11)]
 
 
 def arm_ns(x, y, light):
@@ -64,10 +77,13 @@ def arm_ns(x, y, light):
     if not 3 <= x <= 12:
         return CLEAR
     if x in (4, 11):
-        return light
+        # One sparkle on the lit rail, at the upper end of the piece.
+        return pale(light) if (x, y) == (4, 2) else light
     if x in (5, 10):
         return shade(light, 70)
     if 6 <= x <= 9:
+        if (x, y) in CHIPS:
+            return BALLAST_CHIP
         return SLEEPER if y % 4 == 1 else SLEEPER_DARK if y % 4 == 2 else BALLAST
     return BALLAST
 

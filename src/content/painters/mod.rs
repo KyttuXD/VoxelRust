@@ -25,7 +25,7 @@ pub mod gear;
 pub mod glass;
 pub mod house;
 pub mod liquids;
-pub mod ocd_wood;
+pub mod maple_wood;
 pub mod ores;
 pub mod palm_wood;
 pub mod plants;
@@ -35,6 +35,8 @@ pub mod tool_shapes;
 pub mod tools;
 pub mod wood;
 
+#[cfg(test)]
+mod mod_block_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -76,7 +78,7 @@ pub const STYLES: &[&str] = &[
 
 /// Styles whose picture is a block face: they have the one-pixel frame
 /// (checked by a test). The rest are items, plants and glass.
-pub const FRAMED_STYLES: &[&str] = &["concrete", "wool", "terracotta", "rock", "polished", "chest", "workbench", "magma", "farmland", "door", "ore", "ore_vein", "tnt_side", "tnt_top", "tnt_bottom", "bench5", "bench7", "bench_side", "ocd_bark", "ocd_planks", "palm_bark", "palm_planks", "cardboard", "screen"];
+pub const FRAMED_STYLES: &[&str] = &["concrete", "wool", "terracotta", "rock", "polished", "chest", "workbench", "magma", "farmland", "door", "ore", "ore_vein", "tnt_side", "tnt_top", "tnt_bottom", "bench5", "bench7", "bench_side", "cardboard", "screen"];
 
 /// Fixed pictures with the frame, likewise.
 pub const FRAMED_BUILTINS: &[&str] = &[
@@ -106,7 +108,7 @@ pub fn paint_pal(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
     blocks::paint(style, pal, x, y)
         .or_else(|| stone::paint(style, pal, x, y))
         .or_else(|| wood::paint(style, pal, x, y))
-        .or_else(|| ocd_wood::paint(style, pal, x, y))
+        .or_else(|| maple_wood::paint(style, pal, x, y))
         .or_else(|| palm_wood::paint(style, pal, x, y))
         .or_else(|| ores::paint(style, pal, x, y))
         .or_else(|| plants::paint(style, pal, x, y))
