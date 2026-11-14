@@ -1,30 +1,14 @@
-# Models for creatures and vehicles (tools/gen_models.py makes the files).
-# The creatures themselves are in wildlife.txt (tools/gen_creatures.py).
+# The models the game itself draws: the player's hand.
 #
-# model <id> file <path relative to this file>
-# entity <id> ... see base.txt for the properties.
+# The game has no creatures of its own. The animals, the monsters, the villagers
+# and the Wanderer are mods (wildlife, monsters, villagers, wanderer, in the
+# VoxelRust-Mods folder), written by tools/gen_creatures.py and
+# tools/export_mods.py; without them the world has no creatures.
+#
+# model <id> builtin <name>      a model that comes with the game (data/models/<name>.bbmodel)
+# model <id> file <path>         a Blockbench model next to the pack file (see docs/DATA.md)
 
-# --- animal models
 # The first-person hand: the player's own right arm, drawn with their skin.
 # hand_slim is the same arm for slim (Alex-style) skins.
 model hand builtin hand
 model hand_slim builtin hand_slim
-model cow file models/cow.bbmodel
-model pig file models/pig.bbmodel
-model chicken file models/chicken.bbmodel
-model cat file models/cat.bbmodel
-model dog file models/dog.bbmodel
-model tiger file models/tiger.bbmodel
-model elephant file models/elephant.bbmodel
-model bear file models/bear.bbmodel
-model gator file models/gator.bbmodel
-model snake file models/snake.bbmodel
-model fish file models/fish.bbmodel
-model squid file models/squid.bbmodel
-model worm file models/worm.bbmodel
-model ant file models/ant.bbmodel
-model sheep file models/sheep.bbmodel
-model horse file models/horse.bbmodel
-model frog file models/frog.bbmodel
-model duck file models/duck.bbmodel
-

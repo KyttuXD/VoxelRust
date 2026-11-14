@@ -1453,6 +1453,8 @@ def write_pack(models):
         for k, (vname, look) in enumerate(PALETTE[sid]["variants"]):
             where_ = (" biomes " + look["biomes"]) if look.get("biomes") else ""
             out.append("  variant %s model %s%s" % (vname, model_id(sid, k + 1), where_))
+    # The animals of the old base game are in animals.txt (tools/export_mods.py writes it).
+    out.append("\n# The animals that used to be the game's own: cows, pigs, wolves...\ninclude animals.txt")
     with open(os.path.join(MOD, "pack.txt"), "w") as f:
         f.write("\n".join(out) + "\n")
 

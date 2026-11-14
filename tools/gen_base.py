@@ -414,28 +414,9 @@ w("""
 model player builtin player
 model player_slim builtin player_slim
 model grazer builtin grazer
-
-entity wanderer
-  name Wanderer
-  model player
-  height 1.8
-  width 0.6
-  speed 2.6
-  health 20
-  behavior npc
-  weight 6
-entity lurker
-  name Lurker
-  model player
-  tint 70 110 90
-  height 1.9
-  width 0.6
-  speed 3.1
-  health 14
-  damage 3
-  behavior hostile
-  night
-  weight 30""")
+#
+# The base game has no creatures of its own: the animals, monsters, villagers and the
+# Wanderer are the mods wildlife, monsters, villagers and wanderer (tools/export_mods.py).""")
 w("""
 # ---- Vehicles ----
 # The base game has none of its own: boats, trains, planes and cars are
@@ -906,28 +887,34 @@ emote wave Wave 2.4
   key 1.95 Head 0 0 6
   key 2.4 Head 0 0 0""")
 w("\ninclude effects.txt")
+w("include creatures.txt")
 
-if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "creatures.txt")):
-    w("\n# Models, then every creature, live in their own files.\ninclude creatures.txt")
-    if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "wildlife.txt")):
-        w("include wildlife.txt")
-else:
-    w("""entity grazer
-  name Grazer
-  model grazer
-  height 1.2
-  width 0.8
-  speed 1.8
-  health 8
-  behavior wander
-  drops raw_meat 2
-  biomes plains forest
-  weight 30""")
 
-fx_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "effects.txt")
-open(fx_path, "w").write("\n".join(fx) + "\n")
-path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "base.txt")
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 import craft_convert
-open(path, "w").write(craft_convert.convert_text("\n".join(out) + "\n"))
-print("wrote", os.path.normpath(path), len(out), "lines")
+import modsplit
+
+# Everything the game used to carry, converted to the crafting grid's syntax. tools/export_mods.py
+# cuts it with modsplit.py: the core goes to data/base.txt, the rest to the mods.
+FULL_TEXT = craft_convert.convert_text("\n".join(out) + "\n")
+FX_TEXT = "\n".join(fx) + "\n"
+
+
+def core_text():
+    """The text of data/base.txt: only what modsplit.py leaves to the core."""
+    parts, tail, owner, problems = modsplit.split(FULL_TEXT)
+    lines = []
+    for r in parts["core"]:
+        lines.extend(r.comments)
+        lines.extend(r.lines)
+    lines.extend(tail)
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+if __name__ == "__main__":
+    data = os.path.join(HERE, "..", "data")
+    open(os.path.join(data, "effects.txt"), "w").write(FX_TEXT)
+    text = core_text()
+    open(os.path.join(data, "base.txt"), "w").write(text)
+    print("wrote", os.path.normpath(os.path.join(data, "base.txt")), text.count("\n"), "lines (the core; tools/export_mods.py writes the mods)")

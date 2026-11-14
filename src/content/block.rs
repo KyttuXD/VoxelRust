@@ -349,7 +349,7 @@ pub struct Variant {
     pub tint: [u8; 3],
     /// Scale relative to the entity's height (a pony next to a horse).
     pub size: f32,
-    /// Its picture (`data/textures/entity/<tex>.png`, see `pack_entities`);
+    /// Its picture (a mod's `picture` line, or `data/textures/entity/<tex>.png`; see `pack_entities`);
     /// empty = the model's own.
     pub tex: String,
     /// Surface or cave biomes this look is for (camouflage). With any, it is
@@ -670,6 +670,9 @@ pub struct Registry {
     /// The state of each liquid at each level: `flow[lava][level]`.
     pub flow: [[Block; 9]; 2],
     pub wk: WellKnown,
+    /// Creature pictures that packs bring (`picture <name> file <png>`): name and PNG bytes.
+    /// See `pack_entities::image`.
+    pub pictures: Vec<(String, Vec<u8>)>,
     /// The hidden filler that big props put in the cells they take up.
     pub part: Block,
     pub sun_tile: u16,
@@ -923,6 +926,8 @@ struct Parser<'a> {
     rules: Vec<(String, Vec<String>)>,
     /// Sound files read while parsing: the sound's id and its samples.
     clips: Vec<(String, Vec<i16>)>,
+    /// `picture` lines: a creature picture's name and its PNG file.
+    pictures: Vec<(String, Vec<u8>)>,
     warnings: Vec<String>,
     /// Palettes declared so far (`palette` lines), for `texture ... paint`.
     palettes: crate::palette::Palettes,
@@ -962,6 +967,26 @@ impl Parser<'_> {
                 "texture" => {
                     cur = Cur::None;
                     self.texture(file, line_no, &args);
+                }
+                // picture <name> file <picture.png>: the picture a creature is painted with.
+                "picture" => {
+                    cur = Cur::None;
+                    match (args.first(), args.get(1), args.get(2)) {
+                        (Some(name), Some(&"file"), Some(_)) => {
+                            let path = alloc::format!("{}{}", dir_of(file), args[2..].join(" "));
+                            match (self.load)(&path) {
+                                Some(bytes) => {
+                                    let name = crate::pack_entities::clean_name(name);
+                                    match self.pictures.iter().position(|p| p.0 == name) {
+                                        Some(i) => self.pictures[i].1 = bytes,
+                                        None => self.pictures.push((name, bytes)),
+                                    }
+                                }
+                                None => self.warn(file, line_no, &alloc::format!("cannot read the picture {}", path)),
+                            }
+                        }
+                        _ => self.warn(file, line_no, "picture needs: <name> file <picture.png>"),
+                    }
                 }
                 "palette" => {
                     cur = Cur::None;
@@ -1519,6 +1544,7 @@ impl Registry {
             groups: Vec::new(),
             rules: Vec::new(),
             clips: Vec::new(),
+            pictures: Vec::new(),
             warnings: Vec::new(),
             palettes: Vec::new(),
             load,
@@ -1527,7 +1553,7 @@ impl Registry {
         for (path, text) in sources {
             p.parse(path, text);
         }
-        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, groups: raw_groups, rules: raw_rules, clips, models, entities: raw_entities, sections, effects: raw_effects, emotes: raw_emotes, lines, mut warnings, .. } = p;
+        let Parser { tiles, blocks: raw_blocks, items: raw_items, recipes: raw_recipes, groups: raw_groups, rules: raw_rules, clips, pictures, models, entities: raw_entities, sections, effects: raw_effects, emotes: raw_emotes, lines, mut warnings, .. } = p;
 
         let tile_of = |id: &str, warnings: &mut Vec<String>, what: &str| -> u16 {
             match tiles.iter().position(|t| t.id == id) {
@@ -2427,6 +2453,7 @@ impl Registry {
             sun_tile: find_tile("sun"),
             moon_tile: find_tile("moon"),
             wk,
+            pictures,
             part: blocks.iter().position(|b| b.x.part).map_or(AIR, |i| i as Block),
             blocks,
             items,

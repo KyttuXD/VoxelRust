@@ -638,7 +638,7 @@ face, eyes, variants, babies.
 2. Run
 
    ```
-   python3 tools/entity_textures.py                  # writes data/textures/entity/*.png
+   python3 tools/entity_textures.py                  # writes the wildlife mod's textures/*.png (and the skins to data/textures/entity/)
    python3 tools/entity_textures.py --only cow,pig   # just these
    python3 tools/entity_textures.py --sheet all.png  # a contact sheet to look at
    python3 tools/entity_textures.py --template cow   # cow_layout.png: where each part goes
@@ -647,13 +647,13 @@ face, eyes, variants, babies.
    It needs Python 3 and Pillow. The output is the same every time, so a
    change shows in `git diff` as the pictures that changed.
 3. Run `python3 tools/gen_creatures.py` if you added a look or a creature. It
-   writes `data/wildlife.txt`, where each look is one line,
+   writes the creature mods (`wildlife/animals.txt`...), where each look is one line,
    `variant Brown tex cow_brown` (the `L(...)` helper in the script), and
    checks that every picture it names exists.
 4. Look at it in the game (creatures show on the inventory's spawn eggs, and
    in the world; the skin tab of SETTINGS shows the player).
 
-How the script paints. It reads each model (`data/models/<model>.bbmodel`), which
+How the script paints. It reads each model (`models/<model>.bbmodel` of the wildlife mod, or `data/models/` for the player), which
 says where on the picture every face of every box is, and for each face: finds
 the part from the box's name (`head`, `ear-l`, `shin-f-r`, `sleeve-l`...),
 fills it with the part's colour, lets the patterns recolour pixels (a pattern

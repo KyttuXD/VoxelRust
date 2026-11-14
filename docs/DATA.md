@@ -1,11 +1,31 @@
 # Content files
 
 Textures, blocks, items, recipes, models, creatures, vehicles, sounds,
-dimensions, chat commands and scripts are declared in plain text. The game's own content is [data/base.txt](../data/base.txt),
-which includes [data/creatures.txt](../data/creatures.txt) (models),
-[data/wildlife.txt](../data/wildlife.txt) (every creature) and
-[data/effects.txt](../data/effects.txt) (status effects, written by
-`tools/gen_base.py`); all of them are built into the program. Packs are read after it:
+dimensions, chat commands and scripts are declared in plain text. The game's own content is a small **core**,
+[data/base.txt](../data/base.txt), which includes [data/creatures.txt](../data/creatures.txt) (the hand models) and
+[data/effects.txt](../data/effects.txt) (status effects); all of them are built into the program and written by
+`tools/gen_base.py`. The core is what the game needs to start and be played with no mod installed:
+terrain and natural blocks, the oak and pine, ores, glass, a lamp, the crafting table, the furnace, a chest, a door,
+stairs and slabs of stone, cobble and planks, wooden, stone and iron tools and swords, a bow and arrows, basic food,
+the player model and the sounds. **Everything else is a mod**, in the `VoxelRust-Mods` folder:
+
+| Mod | What it holds |
+| --- | --- |
+| `colours` | sixteen colours of concrete, wool, terracotta, glass, boards, chests, beds, couches |
+| `woods` | birch, maple, palm, blossom, acacia, dark oak, and the oak's and pine's extras: doors, gates, trapdoors, stairs, fences... |
+| `stonework` | marble, slate, granite, basalt, tiles, bricks; stairs, slabs and walls of them |
+| `furniture` | chairs, shelves, kitchen and bathroom, tables, lanterns, glass panes |
+| `farming` | farmland, crops, seeds, hoes |
+| `cooking` | ovens, kilns, smokers, campfires, flour to cake, dishes |
+| `caves` | moss, glowcaps, crystal clusters, icicles, magma, vines, cobwebs |
+| `explosives` | TNT, gunpowder, flint and steel |
+| `tools-extra` | copper, crystal and ruby tools and swords, longbow, crossbow |
+| `wildlife`, `monsters`, `villagers`, `wanderer` | every creature (the game has none of its own) |
+
+With none of them the game still runs: a bare world of core blocks and no creatures. The world generator asks for
+what it needs by name and falls back to a core block for what is missing (the extra woods grow oak, caves are
+undressed, there are no fields). `tools/export_mods.py` writes the mods from `tools/gen_base.py` and
+`tools/gen_creatures.py` (see [BUILDING.md](BUILDING.md#regenerating-data)). Packs are read after the core:
 
 1. `pack.txt` in the game's data folder, if it exists (the folder is printed
    at start-up; `--data DIR` chooses another).
@@ -35,7 +55,7 @@ One declaration per line; `#` starts a comment (but not a `#rrggbb` colour in a 
 or tabs; indentation is optional.
 
 These keywords start something new: `texture`, `block`, `item`, `recipe`,
-`craft`, `shapeless`, `shaped`, `group`, `bake`, `smelt`, `ore`, `plant`, `model`, `entity`, `sound`,
+`craft`, `shapeless`, `shaped`, `group`, `bake`, `smelt`, `ore`, `plant`, `model`, `picture`, `entity`, `sound`,
 `command`, `when`, `dimension`, `feature`, `episode`, `setting`, `include`.
 Any other line sets a property of the block, item or entity most recently
 started, or of the mod section described below. (`sound` with a single word,
@@ -48,6 +68,10 @@ Claimed lines and sections are kept as written for that code to read; the
 indented lines under a section are its properties. Every section also becomes
 an item, with the section's `name`, `icon` and `category` (`Things` if none),
 and a stack size of 1.
+
+`picture <name> file <picture.png>` names a creature's picture (see [Creatures](#creatures));
+the path is relative to the file the line is in. `group <name> <items...>` adds to a group
+that an earlier file started, so a mod can put its own planks among `@planks`.
 
 Ids are single words. Declaring an id a second time replaces the first
 declaration completely (it keeps its place in the order).
@@ -666,14 +690,10 @@ model <id> builtin <name>            a model shipped with the game
 model <id> file <model.bbmodel>      a file, path relative to this file
 ```
 
-Built-in names (every file in `data/models/`): `player grazer ant bat bear
-bee beetle bird bison bull butterfly camel cat cat_fluffy cat_lynx chicken
-chicken_rooster cow cow_highland cow_longhorn crab crawler deer dog dog_hound
-dog_shepherd dog_terrier donkey duck elephant fish fox frog gator ghoul goat
-golem goose horse horse_pony llama monkey mouse ogre owl penguin pig pig_boar
-rabbit rabbit_lop scarecrow sheep sheep_merino sheep_ram skeleton
-skeleton_hound slime snake spider squid tiger turkey turtle werewolf wolf worm
-wraith yak zombie`.
+Built-in names (every file in `data/models/`): `player player_slim grazer hand
+hand_slim`. The creature models (`cow`, `wolf`, `zombie`...) are files of the
+wildlife, monsters, villagers and wanderer mods, declared with `model <id> file
+models/<id>.bbmodel`.
 
 Bones are animated by name (capitals do not matter):
 
@@ -693,7 +713,7 @@ Bones are animated by name (capitals do not matter):
 Other bones keep still. Shins and forearms are optional: a leg or an arm
 without one is a single stiff piece, as before. The name has to start with
 `Shin` or `Forearm` (a bone called `L-Forearm` keeps still). The base dog
-model (`data/models/dog.bbmodel`) is one with shins.
+model (`models/dog.bbmodel` of the wildlife mod) is one with shins.
 
 Redefining the model `player` replaces the player's own body (and the
 Lurker's and Wanderer's, which use it).
@@ -787,8 +807,11 @@ entity bush
 **Pictures.** A creature is painted with the picture called `tex` (on the
 entity or on a variant), or else with the picture named after its model.
 A picture name is looked for in a texture pack's `textures/entity` folder,
-then among the game's own (`data/textures/entity/<picture>.png`, written by
-`tools/entity_textures.py`). The picture must be laid out like the model's own
+then among the pictures that mods brought, then among the game's own
+(`data/textures/entity/<picture>.png`: the player and the skins).
+A mod brings a picture with a line `picture <name> file <picture.png>` (the path
+is relative to the pack file; the file goes to players of a server with the rest
+of the pack). The pictures are written by `tools/entity_textures.py`. The picture must be laid out like the model's own
 texture (the same shape, with each part where the model's faces say); a
 picture of another shape is ignored for a model's own picture. The tint still
 multiplies the picture, so a creature with a picture of its own usually has no

@@ -173,7 +173,7 @@ files, link the folder as `mods` (`ln -s ../VoxelRust-Mods mods`; git ignores
 | `src/` | The game. `src/native.rs` holds the table of hooks (`struct Native`) that mod code fills in. |
 | `../VoxelRust-Mods/<name>/` (or `$VOXELRUST_MODS_DIR/<name>/`) | A mod: a `pack.txt`, and a `code/` folder if it has Rust. With `--features native-mods`, `build.rs` compiles each `code/mod.rs` into the program, so changing mod code needs a rebuild. The code runs only while a loaded pack says `feature <name>`. |
 | `../VoxelRust-Mods/SHIPPED` | Only for `--features native-mods` builds: the mods whose files the tests read. Nothing is shipped with the game. |
-| `data/` | The base content (`base.txt`, `creatures.txt`, `wildlife.txt`) and its models. |
+| `data/` | The core content (`base.txt`, `effects.txt`, `creatures.txt`: the hand models) and the player models. Everything else is a mod of `VoxelRust-Mods`. |
 | `scripts/` | Build, cross-build and release scripts. |
 | `tools/` | Python generators for the data, icons and models. |
 | `web/` | The browser build. |

@@ -4,8 +4,8 @@ Everything in the game world is declared in text files: textures, blocks
 and what they do (doors, crops, seats, falling blocks), shapes, items, tools,
 weapons, food, recipes, ores and wild plants, models, creatures, vehicles,
 sounds, dimensions, chat commands and small scripts. The game's own
-content is [data/base.txt](../data/base.txt) with
-[data/wildlife.txt](../data/wildlife.txt) (built into the program). A **pack** is a file in the same format that is read after it and
+content is the small core, [data/base.txt](../data/base.txt) (built into the program: see
+[DATA.md](DATA.md) for what is in it and what is a mod). A **pack** is a file in the same format that is read after it and
 may add new things or redefine anything by reusing its id. A mod can also bring
 a little Rust of its own, built into the program when it is compiled (see
 [Code that mods bring](#code-that-mods-bring)).
@@ -42,12 +42,14 @@ For each file it reads from disk, the game prints `voxelrust: content from
 
 ### The author's mods
 
-The game ships no mods. The author keeps the mods below in a separate
-repository (`VoxelRust-Mods`); each is an ordinary folder with a `pack.txt`
-that is installed like any other mod (see above), and can be read, changed,
-switched off or deleted. Earth and Vehicles also have Rust code of their
-own, which works only in a program built with the `native-mods` feature (see
-[Code that mods bring](#code-that-mods-bring)).
+The game ships no mods. The author keeps the mods below (twenty-one: the eight below, the
+creature mods and the mods that hold the content the game used to carry itself;
+see [DATA.md](DATA.md): the game's core is small) in a separate repository
+(`VoxelRust-Mods`); each is an ordinary folder with a `pack.txt` (and a
+`README.txt` saying what it adds and what it needs) that is installed like any
+other mod (see above), and can be read, changed, switched off or deleted. Earth and
+Vehicles also have Rust code of their own, which works only in a program built
+with the `native-mods` feature (see [Code that mods bring](#code-that-mods-bring)).
 
 | Mod | Folder | What it holds |
 | --- | --- | --- |
@@ -59,13 +61,31 @@ own, which works only in a program built with the `native-mods` feature (see
 | Planes | `mods/planes` | the plane |
 | Land Vehicles | `mods/landvehicles` | the buggy, the truck and the kart, their icons and their recipes, and their model, `models/car.bbmodel` |
 | Holidays | `mods/holidays` | trees, presents, lights and treats for the year's feasts, four of them big props |
+| Colours | `mods/colours` | sixteen colours of concrete, wool, terracotta, glass, boards, chests, beds and couches |
+| Woods | `mods/woods` | birch, maple, palm, blossom, acacia and dark oak, and every door, gate, trapdoor, stair, slab and fence of the woods |
+| Stonework | `mods/stonework` | marble, slate, granite, basalt, tiles, and stairs, slabs and walls of them and of brick and sandstone |
+| Furniture | `mods/furniture` | chairs, shelves, kitchen and bathroom fittings, tables, lanterns and glass panes |
+| Farming | `mods/farming` | farmland, crops, seeds and hoes |
+| Cooking | `mods/cooking` | ovens, kilns, smokers, campfires, food from flour to cake, and dishes to set out |
+| Caves | `mods/caves` | what grows and glows underground: moss, glowcaps, crystals, icicles, magma, vines, cobwebs |
+| Explosives | `mods/explosives` | TNT, gunpowder and flint and steel |
+| More Tools | `mods/tools-extra` | copper, crystal and ruby tools and swords, the longbow and the crossbow |
+| Wildlife | `mods/wildlife` | every animal (`animals.txt`) and 32 newer species (`pack.txt`) |
+| Monsters | `mods/monsters` | what hunts at night and in the caves |
+| Villagers | `mods/villagers` | the eight trades |
+| The Wanderer | `mods/wanderer` | the Wanderer |
 
 Where they are: in the separate folder `VoxelRust-Mods`, beside the game's
 repository (with `SHIPPED` and `tests.rs`, which only the `native-mods` build
 uses; see [BUILDING.md](BUILDING.md#mod-code)). Copy the folders you want into
-`<data folder>/mods/`. Without them the game still runs, with no Earth
-terrain, disasters, vehicles, boats, trains, planes, land vehicles or
-holidays. The browser version has no folders and so has no mods.
+`<data folder>/mods/`. Without them the game still runs, as a bare world of the
+core's blocks: no Earth terrain, disasters, vehicles, boats, trains, planes, land
+vehicles or holidays, and no creatures, colours, furniture, crops or cooking. The
+browser version has no folders and so has none of them.
+
+A mod may use what another mod brings (the villagers trade bread of the cooking mod; the colours
+mod's boards need the woods'). Anything it names that is missing is left out with a warning in the
+log, and the rest still works. Each README says what its mod needs.
 
 Vehicles are not in the base game (`data/base.txt` has no vehicles and no
 rails). Boats, trains, planes and land vehicles are mods that write `vehicle`
@@ -121,7 +141,8 @@ option, no list to edit. A mod is either of:
 - a single file: `mods/<name>.txt`.
 
 Mods in one folder are read in name order, so a later name can override an
-earlier one. (A file called `mods.txt` is skipped.) The folders are looked
+earlier one. (A mod may redefine a block of the core: the farming mod redefines dirt,
+the flowers and tall grass, to drop seeds.) (A file called `mods.txt` is skipped.) The folders are looked
 at again on every reload, so a mod dropped in while the game is running
 appears after `/reload`, and one taken out disappears. A mod can be switched
 off without removing it: see
