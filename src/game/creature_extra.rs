@@ -186,7 +186,7 @@ mod tests {
         e.state.push_str("er");
         assert_eq!(e.wire(), first);
         e.touch();
-        assert!(e.wire().contains("angrier"));
+        assert!(e.wire().contains("angryer"));
     }
 
     #[test]

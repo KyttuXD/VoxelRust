@@ -101,7 +101,8 @@ mod tests {
         assert_eq!(f.value(), 0.0);
         assert!(!f.done());
         let mut last = 0.0;
-        for _ in 0..200 {
+        // 0.01 added 200 times in f32 falls just short of 2.0: one step more.
+        for _ in 0..201 {
             let v = f.tick(0.01);
             assert!(v >= last - 1e-6 && v <= 1.0, "{v}");
             last = v;
@@ -137,7 +138,7 @@ mod tests {
     fn a_pair_of_equal_power_fades_keeps_the_power_constant() {
         let mut up = Fade::new(0.0, 1.0, 3.0, Curve::Equal);
         let mut down = Fade::new(1.0, 0.0, 3.0, Curve::Equal);
-        for _ in 0..300 {
+        for _ in 0..301 {
             let (a, b) = (up.tick(0.01), down.tick(0.01));
             let power = a * a + b * b;
             assert!((power - 1.0).abs() < 0.01, "{a} {b} {power}");
