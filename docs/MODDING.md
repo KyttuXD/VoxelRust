@@ -129,6 +129,14 @@ under development there is not committed by accident.
 A pack can pull in more files with `include`, and refers to textures (`.tga`)
 and models (`.bbmodel`) by paths relative to the pack file itself.
 
+A pack can also declare **palettes**, `palette <name> <colours...> [gradient
+<dir>]`, and paint textures from them: `texture ruby_ore paint ore palette
+ruby`. Colours are `#rrggbb` or `r g b`; a palette has up to six colours with
+roles (base, dark, light, accent, highlight, outline) and may spread them over
+the picture in flat bands. Palettes of the base game and of mods loaded
+earlier can be used by later packs; see
+[TEXTURING.md](TEXTURING.md#palettes-and-gradients).
+
 Mistakes never stop the game: the bad line is skipped and a message such as
 `pack.txt:19: unknown block property (`bogus`)` is printed (use `--log FILE`
 to keep them). A `--pack` file that cannot be read at all is an error at

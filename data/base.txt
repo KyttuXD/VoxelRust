@@ -61,7 +61,8 @@ texture sun builtin sun
 texture moon builtin moon
 texture wand builtin wand
 texture white flat 255 255 255
-texture ruby_ore builtin ruby_ore
+palette ruby #e2406e #a82454 #ff9cb8
+texture ruby_ore paint ore palette ruby
 texture workbench_top paint workbench 176 136 84
 texture stick paint stick 122 88 52
 texture ruby paint gem 226 60 110

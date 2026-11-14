@@ -28,7 +28,7 @@ such as ``pack.txt:19: unknown block property (`bogus`)`` is printed.
 
 ## Syntax
 
-One declaration per line; `#` starts a comment. Words are separated by spaces
+One declaration per line; `#` starts a comment (but not a `#rrggbb` colour in a `texture` or `palette` line). Words are separated by spaces
 or tabs; indentation is optional.
 
 These keywords start something new: `texture`, `block`, `item`, `recipe`,
@@ -69,11 +69,32 @@ Textures are 16 x 16 pixels. Up to 1024 can be defined (they share one 512 x
 ```
 texture <id> builtin <painter>            one of the built-in painted textures
 texture <id> paint <style> <r> <g> <b>    a built-in pattern in any colour
+texture <id> paint <style> palette <name>[+<name>...] [gradient <dir>] [host <stone>]
+                                          the same with a palette: several colours, roles, a gradient
+texture <id> paint <style> colors <#rrggbb|r g b|role=#rrggbb>... [gradient <dir>]
+                                          a palette written in place
+palette <name> <colours...> [gradient vertical|horizontal|diagonal|radial]
+                                          declare a palette (before the textures that use it)
 texture <id> flat <r> <g> <b> [noise <n>] a flat colour; with `noise` (any number) a block face with a darker frame
 texture <id> file <image>                 a PNG, JPEG, GIF, BMP or TGA file (any size, fitted to 16 x 16), path relative to this file
 ```
 
-Colours are three numbers 0..255.
+Colours are three numbers 0..255, or (in `texture` and `palette` lines) `#rrggbb`.
+
+**Palettes.** A palette is up to six colours; in order they are the *base*,
+*dark*, *light*, *accent*, *highlight* and *outline* colours (or written
+`accent=#ffffff` by name). With `gradient` the colours are instead spread over
+the picture in flat bands (first colour at the top, left, top left or middle).
+`palette fire+oak` uses the second palette as the tool's handle, or as the next
+gem of an ore. `host` is the stone of an ore (`stone deepstone sandstone dirt
+gravel netherrack`, a palette, or `#rrggbb`). A `paint ... r g b` line is a
+palette of one colour and draws exactly what it always did. Every role,
+style and example is in [TEXTURING.md](TEXTURING.md#palettes-and-gradients).
+```
+palette ruby #e2406e #a82454 #ff9cb8
+texture ruby_ore paint ore palette ruby
+texture fire_axe paint axe palette fire+oak
+```
 
 **`builtin` painters:** `stone dirt grass_top grass_side sand gravel water
 log_side log_top pine_side leaves pine_leaves planks cobble brick
@@ -98,6 +119,10 @@ stages of a crop).
 background): `stick pick axe shovel hoe sword gem meat fruit fishfood rail
 machine hull wings chest workbench seeds sheaf loaf pizza wedge root tuber jar
 egg sack cookie pie bowl bow crossbow arrow ingot`.
+
+**`paint` styles for ores** (stone with the ore's colour; they take palettes):
+`ore` (four blobs; several palettes make a multi-gem ore) and `ore_vein` (two
+diagonal bands).
 
 **`file`:** TGA files must be 16 x 16, uncompressed true colour, 24 or 32
 bits per pixel. An alpha of zero is a hole (use with `shape cutout` or

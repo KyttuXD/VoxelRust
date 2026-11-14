@@ -87,7 +87,10 @@ for t in ["grass_top", "grass_side", "dirt", "stone", "sand", "gravel", "water",
     tex(t, f"builtin {t}")
 
 tex("white", "flat 255 255 255")
-tex("ruby_ore", "builtin ruby_ore")
+# Palettes (docs/TEXTURING.md): base, dark, light. The ore's blobs are the base, with the light
+# colour on top and the dark one at the bottom right.
+w("palette ruby #e2406e #a82454 #ff9cb8")
+tex("ruby_ore", "paint ore palette ruby")
 tex("workbench_top", "paint workbench 176 136 84")
 tex("stick", "paint stick 122 88 52")
 tex("ruby", "paint gem 226 60 110")

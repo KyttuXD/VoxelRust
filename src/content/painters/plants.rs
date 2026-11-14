@@ -91,9 +91,10 @@ pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
     })
 }
 
-pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
+pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
+    let rgb = pal.at(x, y);
     Some(match style {
-        "leaves" => leaves(x, y, rgb, dark(rgb)),
+        "leaves" => leaves(x, y, rgb, pal.dark_of(rgb)),
         "blossom" => leaves(x, y, rgb, [255, 240, 246]),
         "crop1" | "crop2" | "crop3" | "crop4" => {
             // Three plants that get taller; the last stage carries the crop's own colour on top.

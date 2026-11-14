@@ -16,10 +16,11 @@ fn when(on: bool, c: [u8; 3]) -> Option<[u8; 3]> {
     }
 }
 
-pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
-    let (l, m, d) = (lift(rgb), rgb, dark(rgb));
+pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
+    let rgb = pal.at(x, y);
+    let (l, m, d) = (pal.light_of(rgb), rgb, pal.dark_of(rgb));
     Some(match style {
-        "meat" => outlined(x, y, &|x, y| {
+        "meat" => outlined_with(x, y, pal.outline(), &|x, y| {
             let (dx, dy) = (2 * x - 13, 2 * y - 17);
             if dx * dx * 2 + dy * dy * 3 <= 150 {
                 Some(if dx < -2 && dy < 0 {
@@ -33,7 +34,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 when(rect(x, y, 11, 2, 4, 4) && (x - y - 9).abs() <= 1, BONE)
             }
         }),
-        "fruit" => outlined(x, y, &|x, y| {
+        "fruit" => outlined_with(x, y, pal.outline(), &|x, y| {
             let (dx, dy) = (2 * x - 15, 2 * y - 19);
             if dx * dx + dy * dy <= 90 {
                 Some(if dx < -2 && dy < 0 {
@@ -49,7 +50,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 when(rect(x, y, 9, 2, 3, 2), LEAF)
             }
         }),
-        "fishfood" => outlined(x, y, &|x, y| {
+        "fishfood" => outlined_with(x, y, pal.outline(), &|x, y| {
             let (dx, dy) = (2 * x - 13, 2 * y - 15);
             if dx * dx + dy * dy * 4 <= 110 {
                 Some(if x == 4 && y == 7 {
@@ -65,7 +66,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 when((12..15).contains(&x) && (y - 7).abs() <= x - 11, d)
             }
         }),
-        "loaf" => outlined(x, y, &|x, y| {
+        "loaf" => outlined_with(x, y, pal.outline(), &|x, y| {
             let (dx, dy) = (2 * x - 15, 2 * y - 17);
             if dx * dx + dy * dy * 3 <= 190 {
                 Some(if y <= 6 && (x == 7 || x == 11) {
@@ -79,7 +80,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 None
             }
         }),
-        "pizza" => outlined(x, y, &|x, y| {
+        "pizza" => outlined_with(x, y, pal.outline(), &|x, y| {
             // Crust, cheese, and four toppings in the sauce colour.
             let (dx, dy) = (2 * x - 15, 2 * y - 15);
             let d2 = dx * dx + dy * dy;
@@ -95,7 +96,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 Some([246, 216, 120])
             }
         }),
-        "wedge" => outlined(x, y, &|x, y| {
+        "wedge" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A slice with holes (cheese), the top face lighter.
             if (4..14).contains(&y) && (1..=14).contains(&x) && (x - 1) * 10 >= (13 - y) * 13 {
                 Some(if rect(x, y, 9, 8, 2, 2) || rect(x, y, 5, 11, 2, 1) || rect(x, y, 11, 11, 2, 1) {
@@ -109,7 +110,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 None
             }
         }),
-        "root" => outlined(x, y, &|x, y| {
+        "root" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A tapering root with a tuft of leaves (carrot, beet).
             let w = ((y - 3) / 3).min(3);
             let cx = 12 - y * 2 / 3;
@@ -129,7 +130,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 None
             }
         }),
-        "tuber" => outlined(x, y, &|x, y| {
+        "tuber" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A lumpy oval (potato) with two eyes.
             let (dx, dy) = (2 * x - 15, 2 * y - 16);
             if dx * dx * 2 + dy * dy * 3 <= 330 {
@@ -163,7 +164,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 None
             }
         }),
-        "egg" => outlined(x, y, &|x, y| {
+        "egg" => outlined_with(x, y, pal.outline(), &|x, y| {
             let (dx, dy) = (2 * x - 15, 2 * y - 17);
             let wide = if dy < 0 { 4 } else { 3 };
             if dx * dx * wide + dy * dy * 2 <= 260 {
@@ -178,7 +179,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 None
             }
         }),
-        "sack" => outlined(x, y, &|x, y| {
+        "sack" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A tied sack (flour, sugar) with a band of the given colour.
             let (dx, dy) = (2 * x - 15, 2 * y - 19);
             if dx * dx + dy * dy <= 120 {
@@ -193,7 +194,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 when(rect(x, y, 6, 1, 4, 3), [200, 186, 156])
             }
         }),
-        "cookie" => outlined(x, y, &|x, y| {
+        "cookie" => outlined_with(x, y, pal.outline(), &|x, y| {
             let (dx, dy) = (2 * x - 15, 2 * y - 15);
             let d2 = dx * dx + dy * dy;
             if d2 <= 150 {
@@ -208,7 +209,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 None
             }
         }),
-        "pie" => outlined(x, y, &|x, y| {
+        "pie" => outlined_with(x, y, pal.outline(), &|x, y| {
             // Seen from the side: a filled crust in a tin.
             let (tin, crust) = ([206, 160, 100], [222, 178, 112]);
             if (9..13).contains(&y) && (x - 8).abs() <= 7 - (y - 9) {
@@ -219,7 +220,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 None
             }
         }),
-        "bowl" => outlined(x, y, &|x, y| {
+        "bowl" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A bowl of stew or soup.
             if (7..9).contains(&y) && (x - 8).abs() <= 6 {
                 Some(if y == 7 { l } else { m })
@@ -229,7 +230,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
                 None
             }
         }),
-        "seeds" => outlined(x, y, &|x, y| {
+        "seeds" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A scatter of small grains.
             for (gx, gy) in [(4, 6), (8, 5), (11, 7), (6, 9), (10, 10), (5, 12)] {
                 if y == gy && (x == gx || x == gx + 1) {
@@ -238,7 +239,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
             }
             None
         }),
-        "sheaf" => outlined(x, y, &|x, y| {
+        "sheaf" => outlined_with(x, y, pal.outline(), &|x, y| {
             // A tied bundle: stalks fanning out above and below the band.
             let spread = (y - 8).abs() / 3 + 2;
             if (x - 8).abs() <= spread && (1..15).contains(&y) {

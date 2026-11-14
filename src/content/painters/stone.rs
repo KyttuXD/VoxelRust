@@ -44,12 +44,13 @@ pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
     })
 }
 
-pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
+pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
+    let rgb = pal.at(x, y);
     Some(match style {
         "rock" => {
             // Stone in any colour: frame, fill and two flatter patches.
             if edge(x, y) {
-                px(scale(rgb, DARK))
+                px(pal.shade(rgb, DARK))
             } else if rect(x, y, 3, 10, 2, 2) || rect(x, y, 10, 3, 2, 2) {
                 px(scale(rgb, 88))
             } else {
@@ -59,9 +60,9 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
         "polished" => {
             // Smooth stone: a frame and a little shine in the top left.
             if edge(x, y) {
-                px(scale(rgb, 82))
+                px(pal.shade(rgb, 82))
             } else if (x == 2 && y == 2) || (x == 3 && y == 2) || (x == 2 && y == 3) {
-                px(lift(rgb))
+                px(pal.light_of(rgb))
             } else {
                 px(rgb)
             }
@@ -70,9 +71,9 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
             // Light mortar, bricks in the colour and a lighter second tone in turn.
             let (mortar, second) = brick_course(x, y, 8, 4);
             px(if mortar {
-                pale(rgb)
+                pal.accent().unwrap_or_else(|| pale(rgb))
             } else if second {
-                lift(rgb)
+                pal.light_of(rgb)
             } else {
                 rgb
             })
@@ -80,7 +81,7 @@ pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
         "tiles" => {
             // Four square tiles with grout between.
             if x % 8 == 7 || y % 8 == 7 {
-                px(scale(rgb, 72))
+                px(pal.shade(rgb, 72))
             } else {
                 px(rgb)
             }

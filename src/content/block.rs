@@ -501,6 +501,9 @@ pub enum TileSrc {
     Flat { rgb: [u8; 3], noise: u8 },
     /// A built-in pattern (concrete, wool, planks, bark...) in a given colour.
     Paint { style: String, rgb: [u8; 3] },
+    /// The same patterns drawn with a palette: several colours, roles, a
+    /// gradient (see `content/palette.rs`).
+    Palette { style: String, pal: crate::palette::Palette },
     /// 16 x 16 RGBA.
     Pixels(Vec<u8>),
 }
@@ -841,6 +844,8 @@ struct Parser<'a> {
     /// Sound files read while parsing: the sound's id and its samples.
     clips: Vec<(String, Vec<i16>)>,
     warnings: Vec<String>,
+    /// Palettes declared so far (`palette` lines), for `texture ... paint`.
+    palettes: crate::palette::Palettes,
     load: &'a mut dyn FnMut(&str) -> Option<Vec<u8>>,
     depth: u32,
 }
@@ -861,7 +866,7 @@ impl Parser<'_> {
         let mut cur = Cur::None;
         for (n, raw) in text.lines().enumerate() {
             let line_no = n + 1;
-            let line = match raw.find('#') {
+            let line = match crate::palette::comment_start(raw) {
                 Some(i) => &raw[..i],
                 None => raw,
             };
@@ -877,6 +882,12 @@ impl Parser<'_> {
                 "texture" => {
                     cur = Cur::None;
                     self.texture(file, line_no, &args);
+                }
+                "palette" => {
+                    cur = Cur::None;
+                    if let Err(m) = crate::palette::declare(&mut self.palettes, &args) {
+                        self.warn(file, line_no, &m);
+                    }
                 }
                 "block" | "item" => {
                     let id = match args.first() {
@@ -1121,18 +1132,13 @@ impl Parser<'_> {
                     }
                 }
             }
-            "paint" => {
-                let num = |i: usize| a.get(i).and_then(|s| s.parse::<u8>().ok());
-                match (num(3), num(4), num(5)) {
-                    (Some(r), Some(g), Some(b)) if crate::textures::painted(a[2], [r, g, b], 0, 0).is_some() => {
-                        TileSrc::Paint { style: a[2].to_string(), rgb: [r, g, b] }
-                    }
-                    _ => {
-                        self.warn(file, line, "paint needs a known style and three numbers 0..255");
-                        return;
-                    }
+            "paint" => match crate::palette::paint_source(&a[2..], &self.palettes) {
+                Ok(src) => src,
+                Err(m) => {
+                    self.warn(file, line, &alloc::format!("paint: {}", m));
+                    return;
                 }
-            }
+            },
             "file" => {
                 let path = alloc::format!("{}{}", dir_of(file), a[2..].join(" "));
                 let read = (self.load)(&path).and_then(|b| crate::image::decode(&b)).map(|img| if img.w == 16 && img.h == 16 { img.rgba } else { crate::image::fit(&img, 16) });
@@ -1380,6 +1386,7 @@ impl Registry {
             rules: Vec::new(),
             clips: Vec::new(),
             warnings: Vec::new(),
+            palettes: Vec::new(),
             load,
             depth: 0,
         };

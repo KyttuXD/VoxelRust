@@ -5,9 +5,12 @@
 //! outline; plants and see-through things have neither.
 //!
 //! Each subject has its own file. A file offers `builtin(name, x, y)` for the
-//! fixed pictures (`texture <id> builtin <name>`) and `paint(style, rgb, x, y)`
-//! for the patterns that take a colour (`texture <id> paint <style> r g b`);
-//! both return `None` for a name that is not theirs. The lists of names below
+//! fixed pictures (`texture <id> builtin <name>`) and `paint(style, pal, x, y)`
+//! for the patterns that take colours (`texture <id> paint <style> r g b`, or
+//! with a palette: several colours, roles and gradients, see
+//! `content/palette.rs`); both return `None` for a name that is not theirs.
+//! A plain `r g b` is a palette of one colour and makes the old tones by the
+//! old ratios, so old lines draw exactly what they always drew. The lists of names below
 //! are the registry: a test checks that each name is painted by some file.
 
 pub mod blocks;
@@ -24,6 +27,10 @@ pub mod wood;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod palette_tests;
+
+pub use crate::content::palette::Palette;
 
 /// One RGBA pixel.
 pub type Px = [u8; 4];
@@ -48,12 +55,12 @@ pub const BUILTINS: &[&str] = &[
 pub const STYLES: &[&str] = &[
     "concrete", "wool", "terracotta", "glass", "rock", "polished", "bricks", "tiles", "planks", "bark", "rings", "leaves", "blossom", "stick", "pick", "axe", "shovel", "hoe", "sword", "gem", "meat", "fruit", "fishfood",
     "rail", "machine", "hull", "wings", "chest", "workbench", "mushroom", "cluster", "icicle", "magma", "vine", "web", "glassdoor", "bow", "crossbow", "arrow", "ingot", "door", "farmland", "crop1", "crop2", "crop3",
-    "crop4", "seeds", "sheaf", "loaf", "pizza", "wedge", "root", "tuber", "jar", "egg", "sack", "cookie", "pie", "bowl",
+    "crop4", "seeds", "sheaf", "loaf", "pizza", "wedge", "root", "tuber", "jar", "egg", "sack", "cookie", "pie", "bowl", "ore", "ore_vein",
 ];
 
 /// Styles whose picture is a block face: they have the one-pixel frame
 /// (checked by a test). The rest are items, plants and glass.
-pub const FRAMED_STYLES: &[&str] = &["concrete", "wool", "terracotta", "rock", "polished", "chest", "workbench", "magma", "farmland", "door"];
+pub const FRAMED_STYLES: &[&str] = &["concrete", "wool", "terracotta", "rock", "polished", "chest", "workbench", "magma", "farmland", "door", "ore", "ore_vein"];
 
 /// Fixed pictures with the frame, likewise.
 pub const FRAMED_BUILTINS: &[&str] = &[
@@ -75,15 +82,20 @@ pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
 
 /// One pixel of a pattern in the colour `rgb`; `None` if no painter has that style.
 pub fn paint(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
-    blocks::paint(style, rgb, x, y)
-        .or_else(|| stone::paint(style, rgb, x, y))
-        .or_else(|| wood::paint(style, rgb, x, y))
-        .or_else(|| ores::paint(style, rgb, x, y))
-        .or_else(|| plants::paint(style, rgb, x, y))
-        .or_else(|| glass::paint(style, rgb, x, y))
-        .or_else(|| tools::paint(style, rgb, x, y))
-        .or_else(|| food::paint(style, rgb, x, y))
-        .or_else(|| gear::paint(style, rgb, x, y))
+    paint_pal(style, &Palette::from_rgb(rgb), x, y)
+}
+
+/// One pixel of a pattern in the colours of a palette; `None` if no painter has that style.
+pub fn paint_pal(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
+    blocks::paint(style, pal, x, y)
+        .or_else(|| stone::paint(style, pal, x, y))
+        .or_else(|| wood::paint(style, pal, x, y))
+        .or_else(|| ores::paint(style, pal, x, y))
+        .or_else(|| plants::paint(style, pal, x, y))
+        .or_else(|| glass::paint(style, pal, x, y))
+        .or_else(|| tools::paint(style, pal, x, y))
+        .or_else(|| food::paint(style, pal, x, y))
+        .or_else(|| gear::paint(style, pal, x, y))
 }
 
 // ---- Colour helpers.
@@ -158,18 +170,35 @@ pub fn ellipse(x: i32, y: i32, cx: i32, cy: i32, a2: i32, b2: i32) -> bool {
 /// the outline if a neighbour of it is in the shape, or nothing. `f` is
 /// asked about places outside the tile too and must answer by geometry alone.
 pub fn outlined(x: i32, y: i32, f: &dyn Fn(i32, i32) -> Option<[u8; 3]>) -> Px {
-    outlined_px(x, y, &|x, y| f(x, y).map(px))
+    outlined_with(x, y, OUTLINE, f)
+}
+
+/// [`outlined`] with an outline of another colour (a palette's `outline` role).
+pub fn outlined_with(x: i32, y: i32, outline: [u8; 3], f: &dyn Fn(i32, i32) -> Option<[u8; 3]>) -> Px {
+    outlined_px_with(x, y, outline, &|x, y| f(x, y).map(px))
 }
 
 /// [`outlined`] for shapes that bring their own alpha.
 pub fn outlined_px(x: i32, y: i32, f: &dyn Fn(i32, i32) -> Option<Px>) -> Px {
+    outlined_px_with(x, y, OUTLINE, f)
+}
+
+/// [`outlined_px`] with an outline of another colour.
+pub fn outlined_px_with(x: i32, y: i32, outline: [u8; 3], f: &dyn Fn(i32, i32) -> Option<Px>) -> Px {
     if let Some(p) = f(x, y) {
         return p;
     }
     for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
         if f(x + dx, y + dy).is_some() {
-            return px(OUTLINE);
+            return px(outline);
         }
     }
     CLEAR
+}
+
+/// A flat fill with a one-pixel frame: the palette's dark colour if it has
+/// one, else `pct` percent of the fill.
+#[inline]
+pub fn framed_pal(x: i32, y: i32, pal: &Palette, fill: [u8; 3], pct: i32) -> Px {
+    px(if edge(x, y) { pal.shade(fill, pct) } else { fill })
 }
