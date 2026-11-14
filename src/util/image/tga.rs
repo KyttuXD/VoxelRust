@@ -15,6 +15,17 @@ pub(super) fn tga(d: &[u8]) -> Option<Image> {
     if w == 0 || h == 0 || w > MAX_SIDE || h > MAX_SIDE || !matches!(bpp, 8 | 16 | 24 | 32) {
         return None;
     }
+    // Each image type reads its pixels a fixed way: a mapped picture is indices
+    // (8 bits here), grey is 8 or 16 bits, true colour is 16, 24 or 32. Any
+    // other pairing would read past the end of a pixel.
+    let depth_fits = match kind & 7 {
+        1 => bpp == 8,
+        3 => bpp == 8 || bpp == 16,
+        _ => bpp != 8,
+    };
+    if !depth_fits || (map_type == 1 && !matches!(map_bits, 15 | 16 | 24 | 32)) {
+        return None;
+    }
     let map_bytes = if map_type == 1 { map_len * ((map_bits + 7) / 8) } else { 0 };
     let pal = d.get(18 + id_len..18 + id_len + map_bytes)?;
     let mut at = 18 + id_len + map_bytes;

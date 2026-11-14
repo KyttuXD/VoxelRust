@@ -68,7 +68,7 @@ The keys marked * can be changed in SETTINGS > CONTROLS.
 | T * | chat |
 | V * | push to talk (voice chat on a server, with the microphone turned on in SETTINGS > VOICE) |
 | B * | the emote wheel: hold it, push the mouse toward an emote and let go (or click) to play it; Esc closes it. A quick tap leaves it open until you click. The mouse wheel turns the pages when there are more than eight |
-| Esc | menu / close a screen |
+| Esc | menu / close a screen (also from a screen with a text box in use: the multiplayer list, a world's options, SETTINGS and a mod's own screens) |
 | F1 | hide or show the HUD |
 | F2 | save a screenshot (`screenshot-<number>.bmp` in the data folder) |
 | F3 | details: version and build name, frame rate, position, facing, biome, seed, number of creatures, what you are looking at, chunk counts, memory use against its limit (see [MEMORY.md](MEMORY.md)) |
@@ -562,6 +562,24 @@ Each kind of cave has its own creatures; see
 Water is animated, and the whole surface rises and falls slightly in a slow
 swell.
 
+Water and lava flow: water a step every quarter of a second, lava every
+second and a half. A flow slopes down toward where it is thinner, and a
+source beside a lower flow slopes with it. Anything with a solid shape stops
+a liquid (slabs, stairs, doors, fences, glass, chests); plants, torches,
+carpets, signs, crops and other things with no collision are washed away and
+give what breaking them gives, set down where they stood, and float off with
+the current (ladders, vines and rails stay). Two water sources with a gap
+between them over a floor fill the gap with a third. Lava next to water
+sets: a lava source to obsidian (stone if no pack has any), a flow to
+cobblestone, and lava that runs onto water to stone.
+
+In water you float with your head out; jump swims up and the descend key
+dives. Running water carries you, and a fall into two blocks of water or
+more does not hurt (one block halves it). Lava is thick, slows you to half,
+sets you and creatures alight, and burns up items dropped in it; items
+dropped in water float and drift. Inside lava the view is orange and only a
+few blocks deep. TNT lit under water breaks no blocks.
+
 ## Vehicles
 
 Vehicles are items (the Travel tab in creative; crafting table recipes in
@@ -785,7 +803,7 @@ blocks from it.
 | `/var NAME = N`, `+ N`, `- N`, `random N` | set, add to or subtract from a numbered variable, or set it to a random whole number from 0 to N-1 | works |
 | `/if CONDITION then COMMAND [else COMMAND]` | carry out a command only if the condition holds | works |
 | `/after SECONDS COMMAND` | carry out a command later (up to 3600 seconds) | works |
-| `/repeat N COMMAND` | carry out a command N times (64 at most) | works |
+| `/repeat N COMMAND` | carry out a command N times (64 at most; 8 when inside another `/if` or `/repeat`, 2 deeper still) | works |
 
 The commands marked "no" answer `NOT ON A SERVER` there. `/give` and `/tp`
 work in survival too; there are no permissions. `/say` and everything after
@@ -836,7 +854,10 @@ The settings are `voice_hear`, `voice_mic`, `voice_activation`,
 
 ## Settings
 
-Settings are kept in `settings.txt` in the data folder. A switch a pack adds
+Settings are kept in `settings.txt` in the data folder. A damaged or hand-edited
+file never stops the game: every number is brought back into its range, a line
+the game does not understand is ignored, and the first of two lines with one
+name counts. (A byte order mark that some editors put at the start is skipped.) A switch a pack adds
 is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
 (such as the Earth mod's) sit beside them.
 
@@ -862,10 +883,16 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   coarser farther off). Fine detail and many tiles cost time on a slow
   computer. The settings are `lod_real`, `lod_trees` and `lod_detail` in
   `settings.txt`.
-- **AUDIO**: master, effects, footsteps and interface volume, and SUBTITLES
+- **AUDIO**: master, effects, footsteps and interface volume, AMBIENCE
+  VOLUME (0 to 10, 6 to start with: rain, wind, running water and waves,
+  lava, fire and the air of a cave; saved as `ambience_volume` in
+  `settings.txt`), and SUBTITLES
   FOR SOUNDS, which names what you hear (`THUNDER`, `DOOR`, `WOLF HOWLS`) at
   the right of the screen for a couple of seconds. All sound stops when you
-  leave a world.
+  leave a world. Rain and wind are quieter and duller under a roof, a wash
+  under water, and fade in and out over a couple of seconds as the weather
+  changes; the ambience stops while a menu is open. How it is made is in
+  [SOUND.md](SOUND.md).
 - **CONTROLS**: mouse speed, invert mouse, and a KEY BINDINGS... page with
   every key marked * above and RESET KEYS. Click a binding, then press the new key (Esc cancels).
   Mods can add keys of their own: they come after the game's, each mod under a

@@ -359,7 +359,7 @@ impl<'a> Interp<'a> {
                 // Anything else: walk it out into a Vec first.
                 let (Some(lo), Some(hi)) = (r.lo, r.hi) else { return Some(self.fail("an open range cannot be used like a list")) };
                 let hi = if r.incl { hi.saturating_add(1) } else { hi };
-                let n = if hi > lo { (hi - lo) as u64 } else { 0 };
+                let n = if hi > lo { hi.wrapping_sub(lo) as u64 } else { 0 }; // (exact as a u64; `hi - lo` could overflow an i64)
                 if n > self.limits.max_vec as u64 {
                     return Some(self.fail(format!("a Vec may not hold more than {} elements", self.limits.max_vec)));
                 }
@@ -594,7 +594,8 @@ fn range_len(r: &RangeVal) -> i64 {
     match (r.lo, r.hi) {
         (Some(lo), Some(hi)) => {
             let hi = if r.incl { hi.saturating_add(1) } else { hi };
-            (hi - lo).max(0)
+            // (Saturating: `i64::MIN..i64::MAX` is longer than an i64 can say.)
+            hi.saturating_sub(lo).max(0)
         }
         _ => 0,
     }

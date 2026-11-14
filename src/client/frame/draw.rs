@@ -8,6 +8,7 @@ impl App {
         r.render_scale = self.settings.render_scale;
         crate::client::shaders::hook::sync(r, &self.settings.shader, self.session.as_ref().map(|g| &g.shader_uniforms));
         let mut underwater = false;
+        let mut in_lava = false;
         let mut new_tags = Vec::new();
         if let Some(g) = &self.session {
             let mut eye = g.player.eye();
@@ -43,12 +44,14 @@ impl App {
             };
             let cam = Camera { pos: eye, yaw: cam_yaw, pitch: cam_pitch, fov: self.settings.fov as f32 };
             let head = g.world.get(floord(eye[0]), floord(eye[1]), floord(eye[2]));
-            underwater = crate::block::is_water(head);
+            in_lava = matches!(crate::block::fluid_of(head), Some((true, _)));
+            underwater = crate::block::is_water(head) || in_lava;
             let env = Env {
                 time: g.time,
                 distance: self.eff.distance,
                 clouds: self.settings.clouds,
                 underwater,
+                lava: in_lava,
                 clock: g.clock,
                 far_distance: if self.eff.far > self.eff.distance { self.eff.far } else { 0 },
                 rain: g.sky.rain,
@@ -141,7 +144,9 @@ impl App {
             r.rect(0.0, 0.0, w, h, [8, 10, 24, 60]);
         }
         let s = self.ui_scale(r);
-        if underwater {
+        if in_lava {
+            r.rect(0.0, 0.0, w, h, [220, 90, 10, 170]);
+        } else if underwater {
             r.rect(0.0, 0.0, w, h, [20, 70, 150, 90]);
         }
         if self.session.is_some() && (!self.scripted || self.show_hud) && !(self.hud_hidden && self.screen == Screen::Game) {

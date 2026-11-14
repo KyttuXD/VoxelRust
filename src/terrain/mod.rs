@@ -4,6 +4,7 @@ pub mod chunk;
 pub mod world;
 pub mod worldgen;
 pub mod mesh;
+pub mod liquid_mesh;
 pub mod lod;
 pub mod save;
 pub mod migrate;

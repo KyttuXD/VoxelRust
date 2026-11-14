@@ -14,6 +14,11 @@ pub type Cell = [i32; 3];
 /// What the path finder needs to know about the world: is this block solid?
 pub trait Ground {
     fn solid(&self, x: i32, y: i32, z: i32) -> bool;
+    /// A cell a walker will not stand in although it is free (deep water,
+    /// lava; see `game/path_fluid.rs`). Nothing is avoided unless said.
+    fn avoid(&self, _x: i32, _y: i32, _z: i32) -> bool {
+        false
+    }
 }
 
 impl<F: Fn(i32, i32, i32) -> bool> Ground for F {
@@ -24,7 +29,7 @@ impl<F: Fn(i32, i32, i32) -> bool> Ground for F {
 
 /// Whether a two-block-tall walker can stand with its feet in `c`.
 pub fn standable(g: &dyn Ground, c: Cell) -> bool {
-    !g.solid(c[0], c[1], c[2]) && !g.solid(c[0], c[1] + 1, c[2]) && g.solid(c[0], c[1] - 1, c[2])
+    !g.solid(c[0], c[1], c[2]) && !g.solid(c[0], c[1] + 1, c[2]) && g.solid(c[0], c[1] - 1, c[2]) && !g.avoid(c[0], c[1], c[2])
 }
 
 /// The standable cell in column (x, z) nearest to height `y`, searching a

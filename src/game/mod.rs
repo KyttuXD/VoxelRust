@@ -2,6 +2,8 @@
 
 pub mod player;
 pub mod inventory;
+pub mod give;
+pub mod cmd_limits;
 pub mod interact;
 pub mod loot;
 pub mod entity;
@@ -11,6 +13,14 @@ pub mod path;
 pub mod session;
 pub mod waypoints;
 pub mod fluid;
+pub mod fluid_rules;
+pub mod fluid_queue;
+pub mod fluid_wash;
+pub mod current;
+pub mod buoyancy;
+pub mod drop_fluid;
+pub mod mob_fluid;
+pub mod path_fluid;
 pub mod bow;
 pub mod eating;
 pub mod chest_anim;
@@ -21,3 +31,4 @@ pub mod hooks;
 pub mod effects;
 pub mod crafting;
 pub mod posing;
+pub mod ambience_probe;

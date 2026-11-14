@@ -100,7 +100,9 @@ impl Region {
             return None;
         }
         let pal_len = u32::from_le_bytes([d[4], d[5], d[6], d[7]]) as usize;
-        let table = 8 + pal_len;
+        // (Checked sums: the length is a number from the file, and on a 32-bit
+        // machine 8 + it can wrap round to something small.)
+        let table = 8usize.checked_add(pal_len)?;
         let mut at = table.checked_add(SLOTS * 4)?;
         if d.len() < at {
             return None;
@@ -326,7 +328,18 @@ impl<F: FileIo> RegionStore<F> {
         if !self.regions.contains_key(&(rx, rz)) {
             self.make_room();
             let path = self.path(rx, rz);
-            let region = self.io.read(&path).and_then(|d| Region::from_bytes(&d)).unwrap_or_else(Region::empty);
+            let region = match self.io.read(&path) {
+                None => Region::empty(),
+                Some(d) => match Region::from_bytes(&d) {
+                    Some(r) => r,
+                    None => {
+                        // A file that is there but cannot be read: it is about to be
+                        // written over by the next save, so keep what it holds aside.
+                        self.io.write(&alloc::format!("{}.damaged", path), &d);
+                        Region::empty()
+                    }
+                },
+            };
             self.regions.insert((rx, rz), region);
         }
         let clock = self.clock;
@@ -452,6 +465,25 @@ mod tests {
         assert!(decode(&e[..e.len() - 4], &identity()).is_none());
         assert!(decode(&e[..e.len() - 1], &identity()).is_none());
         assert!(decode(&[], &identity()).is_none());
+    }
+
+    #[test]
+    fn a_damaged_region_is_kept_aside_before_it_is_written_over() {
+        // A palette length that cannot be right never panics, on any word size.
+        for len in [u32::MAX, u32::MAX - 7, 1 << 31, 1 << 20] {
+            let mut d = b"VXR2".to_vec();
+            d.extend_from_slice(&len.to_le_bytes());
+            d.extend_from_slice(&[0u8; 64]);
+            assert!(Region::from_bytes(&d).is_none());
+        }
+        let mut io = MemIo::default();
+        io.0.insert(String::from("w.r.0.0.vxr"), b"VXR2 this is not a region".to_vec());
+        let mut s = RegionStore::new(io, String::from("w."));
+        assert!(s.load(1, 1).is_none());
+        s.save(1, 1, &worldgen::generate(5, 1, 1));
+        s.flush();
+        assert_eq!(s.io.0.get("w.r.0.0.vxr.damaged").map(|d| d.as_slice()), Some(&b"VXR2 this is not a region"[..]), "the old bytes are kept");
+        assert!(s.io.0.get("w.r.0.0.vxr").unwrap().len() > 26);
     }
 
     #[test]

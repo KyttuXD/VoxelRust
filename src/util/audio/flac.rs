@@ -56,7 +56,7 @@ pub(super) fn flac(bytes: &[u8]) -> Option<Pcm> {
         let head = *bytes.get(at)?;
         let size = ((*bytes.get(at + 1)? as usize) << 16) | ((*bytes.get(at + 2)? as usize) << 8) | *bytes.get(at + 3)? as usize;
         if head & 0x7F == 0 && size >= 34 {
-            let b = &bytes[at + 4..at + 4 + 34];
+            let b = bytes.get(at + 4..at + 4 + 34)?;
             rate = ((b[10] as u32) << 12) | ((b[11] as u32) << 4) | (b[12] as u32 >> 4);
             channels = ((b[12] >> 1) & 7) as usize + 1;
             bps = ((((b[12] & 1) as u32) << 4) | (b[13] as u32 >> 4)) + 1;
@@ -66,7 +66,8 @@ pub(super) fn flac(bytes: &[u8]) -> Option<Pcm> {
             break;
         }
     }
-    if rate == 0 || bps == 0 || bps > 24 {
+    // 20 bits of rate are 1 MHz: past what the mixer takes, and the limit below scales with it.
+    if rate == 0 || rate > 192_000 || bps == 0 || bps > 24 {
         return None;
     }
     let mut r = Bits { d: bytes, pos: at * 8 };

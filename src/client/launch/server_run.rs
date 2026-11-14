@@ -32,7 +32,7 @@ pub(super) fn open_server(name: &str, seed: Option<u32>, new_kind: Option<String
     let meta = sys::read_file(&meta_path).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
     let seed = crate::settings::kv(&meta, "seed").and_then(|v| v.parse().ok()).unwrap_or_else(|| seed.unwrap_or(sys::now().to_bits() as u32 ^ 0x5EED_1234));
     let kind = crate::settings::kv(&meta, "kind").map(String::from).unwrap_or_else(|| new_kind.unwrap_or_else(|| WorldKind::Normal.to_text()));
-    sys::write_file(&meta_path, alloc::format!("seed={}\nkind={}\n", seed, kind).as_bytes());
+    sys::write_file_atomic(&meta_path, alloc::format!("seed={}\nkind={}\n", seed, kind).as_bytes());
     let cfg = Config {
         port,
         seed,
@@ -78,6 +78,7 @@ pub(super) fn server_loop(mut server: crate::server::Server, edits_path: String,
     use core::sync::atomic::Ordering;
     let mut last = sys::now();
     let mut save_timer = 0.0f32;
+    let mut ops_wait = 0.0f32;
     // A dedicated server warns its players and restarts into an installed
     // update after 30 seconds (see `server_update::restart`); a game hosted
     // from the menu only does so once nobody is connected.
@@ -109,8 +110,8 @@ pub(super) fn server_loop(mut server: crate::server::Server, edits_path: String,
                 logf!("voxelrust: {}", l);
             }
         }
-        if server.ops_dirty {
-            server.ops_dirty = false;
+        ops_wait -= dt;
+        if server.ops_dirty && ops_wait <= 0.0 {
             let mut text = String::new();
             for o in &server.ops {
                 text.push_str(&alloc::format!("op {}\n", o));
@@ -119,13 +120,21 @@ pub(super) fn server_loop(mut server: crate::server::Server, edits_path: String,
                 text.push_str(&alloc::format!("ban {}\n", b));
             }
             text.push_str(&server.perm_text());
-            sys::write_file(&edits_path.replace(".server-edits.txt", ".server-ops.txt"), text.as_bytes());
+            // Written whole or not at all (a cut-off file would lose the operators, and
+            // the first player to join would become one), and tried again if it fails.
+            if sys::write_file_atomic(&edits_path.replace(".server-edits.txt", ".server-ops.txt"), text.as_bytes()) {
+                server.ops_dirty = false;
+            } else {
+                logf!("voxelrust: could not write the operators and permissions file; trying again in 10 seconds");
+                ops_wait = 10.0;
+            }
         }
         save_timer += dt;
         if save_timer > 20.0 && server.dirty {
             save_timer = 0.0;
-            server.dirty = false;
-            if !sys::write_file_atomic(&edits_path, server.save_text().as_bytes()) {
+            // Still unsaved if it could not be written: it is tried again.
+            server.dirty = !sys::write_file_atomic(&edits_path, server.save_text().as_bytes());
+            if server.dirty {
                 logf!("voxelrust: could not write {}", edits_path);
             }
         }

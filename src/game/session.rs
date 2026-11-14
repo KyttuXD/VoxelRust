@@ -303,7 +303,7 @@ pub fn migrate_worlds(base: &str) {
             }
         }
     }
-    sys::write_file(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
+    sys::write_file_atomic(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
     sys::remove_file(&alloc::format!("{}worlds.txt", base));
 }
 
@@ -327,7 +327,7 @@ pub fn remember_world(base: &str, name: &str) {
         names.push(String::from(name));
         sys::make_dir(&world_dir(base));
         sys::make_dir(&world_dir(base));
-        sys::write_file(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
+        sys::write_file_atomic(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
     }
 }
 
@@ -343,7 +343,7 @@ pub fn world_files(base: &str, name: &str) -> Vec<String> {
 pub fn forget_world(base: &str, name: &str) {
     let names: Vec<String> = list_worlds(base).into_iter().filter(|n| n != name).collect();
     sys::make_dir(&world_dir(base));
-    sys::write_file(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
+    sys::write_file_atomic(&alloc::format!("{}index.txt", world_dir(base)), names.join("\n").as_bytes());
 }
 
 /// Delete a world: every file it is made of, and its place in the index.
@@ -372,7 +372,11 @@ pub fn copy_world(base: &str, name: &str, to: &str) -> bool {
             None => return false,
         };
         let new_name = alloc::format!("{}.{}", to, &f[from_prefix.len()..]);
-        if !sys::write_file(&alloc::format!("{}{}", world_dir(base), new_name), &data) {
+        if !sys::write_file_atomic(&alloc::format!("{}{}", world_dir(base), new_name), &data) {
+            // Half a copy is no world: take away what was copied (a full disk).
+            for g in world_files(base, to) {
+                sys::remove_file(&alloc::format!("{}{}", world_dir(base), g));
+            }
             return false;
         }
     }
@@ -402,10 +406,18 @@ pub fn world_exists(base: &str, name: &str) -> bool {
 /// the sleeper is still asleep.
 pub fn tick_clock(time: f32, dt: f32, sleeping: bool) -> (f32, bool) {
     // (No `%` on floats: that would need the C math library.)
-    let mut t = time + dt * if sleeping { 40.0 } else { 1.0 } / 1200.0;
+    // A time that is not a time (a hostile server's, a damaged file's) must not
+    // poison the sky for good: start the day over.
+    let time = if time.is_finite() && time >= 0.0 { time } else { 0.0 };
+    let step = dt * if sleeping { 40.0 } else { 1.0 } / 1200.0;
+    let mut t = time + if step.is_finite() && step > 0.0 { step } else { 0.0 };
     let wrapped = t >= 1.0;
     if wrapped {
         t -= 1.0;
+        // (Still not a day of 0..1: a time of 5.0 would never come back.)
+        if !(t < 1.0) {
+            t = 0.0;
+        }
     }
     (t, sleeping && !wrapped)
 }
@@ -611,7 +623,7 @@ impl Session {
         // A name no saved world can have, so nothing on disk is touched.
         let mut s = Session::open(base, "~multiplayer", &new, threads);
         s.world.log_edits = true;
-        s.time = welcome.time;
+        s.time = if welcome.time.is_finite() { welcome.time.clamp(0.0, 0.999) } else { 0.0 };
         s.net = Some(client);
         s.mod_sync = Some(crate::net::modsync::client::ClientSync::new(base, &host, port));
         s.push_chat(alloc::format!("CONNECTED TO {}", address.to_ascii_uppercase()));
@@ -901,7 +913,7 @@ impl Session {
             }
             // /repeat N COMMAND
             "/repeat" if depth < 6 => {
-                let n = arg(1).parse::<u32>().unwrap_or(1).min(64);
+                let n = arg(1).parse::<u32>().unwrap_or(1).min(crate::game::cmd_limits::repeat_cap(depth as u32));
                 let what = words[2.min(words.len())..].join(" ");
                 for _ in 0..n {
                     self.run(&what, depth + 1);
@@ -1214,6 +1226,7 @@ impl Session {
                 }
             }
             "/seed" => alloc::format!("SEED {}", self.base_seed),
+            "/version" => crate::net::version::report(self.net.as_ref().and_then(|n| n.server_info.as_ref())),
             "/mode" if online => String::from("USE  /GAMEMODE CREATIVE  OR  /GAMEMODE SURVIVAL  (IF THE SERVER ALLOWS IT)"),
             "/time" | "/spawn" | "/mode" | "/weather" | "/set" | "/dim" | "/shoot" | "/aim" | "/strike" | "/blast" | "/episode" | "/strip" | "/flood" => String::from("NOT ON A SERVER"),
             // A command of some mod's own code, perhaps.
@@ -1486,7 +1499,10 @@ impl Session {
             self.world.changed = pending.split_off(600);
         }
         // Water and lava move on from whatever just changed (see game::fluid).
+        self.fluid.fast_lava = crate::game::fluid_queue::fast_lava_in(&self.dim);
         self.fluid.run(&mut self.world, &pending, step);
+        // What the flow swept away gives its drops (game/fluid_wash.rs).
+        crate::game::fluid_wash::collect(self);
         for c in pending {
             // TNT next to lava or fire catches.
             crate::primed::react(self, c);
@@ -1507,7 +1523,7 @@ impl Session {
                 } else if !d.x.on.is_empty() && !d.x.on.contains(&block::def(under).first) {
                     interact::remove(&mut self.world, cell);
                     if let (GameMode::Survival, Some(drop)) = (self.mode, d.drop) {
-                        self.inv.add(drop as u16, 1);
+                        self.give_or_drop(drop as u16, 1);
                     }
                 }
             }
@@ -1568,23 +1584,13 @@ impl Session {
         let tick = self.weather_tick >= 0.4;
         if tick {
             self.weather_tick = 0.0;
-            if self.sky.rain > 0.2 && !self.sky.snow {
-                audio.play(Sound::Rain, self.sky.rain);
-            }
-            // Near open water at sea level, waves wash in now and then;
-            // louder the more water there is around.
-            if roll() % 5 == 0 && (self.player.pos[1] as i32 - crate::worldgen::SEA).abs() < 14 {
-                let near = [(-9, 0), (9, 0), (0, -9), (0, 9), (-6, -6), (6, 6), (-6, 6), (6, -6)]
-                    .iter()
-                    .filter(|d| crate::block::is_water(self.world.get(px + d.0, crate::worldgen::SEA, pz + d.1)))
-                    .count();
-                if near >= 2 {
-                    audio.play(Sound::Wave, 0.25 + near as f32 * 0.09);
-                }
-            }
+            // Rain, wind, waves, lava, fire and cave air are beds the sound
+            // system layers itself from what is around the player.
+            audio.set_environment(crate::game::ambience_probe::sample(&self.world, self.player.pos, self.sky));
             if self.sky.storm && roll() % 24 == 0 {
                 self.flash = 0.22;
-                audio.play(Sound::Thunder, 1.0);
+                // The strike is somewhere 25 to 265 blocks off; its thunder is late by that.
+                audio.thunder(25.0 + (roll() % 2400) as f32 / 10.0);
             }
             // Snow settles on open ground while it falls.
             let layer = reg().wk.snow_layer;
@@ -1749,7 +1755,13 @@ impl Session {
                 crate::netplay::Event::Left(who) => self.fire(crate::game::events::LEAVE, &who.to_ascii_lowercase()),
                 // (Remote players keep their emote on their own record in `net.players`.)
                 crate::netplay::Event::Emote(..) => {}
-                crate::netplay::Event::Skin(id, png, slim) => self.skin_events.push((id, png, slim)),
+                crate::netplay::Event::Skin(id, png, slim) => {
+                    // (Skins pile up only if the screen is not drawing: keep the newest.)
+                    if self.skin_events.len() >= 64 {
+                        self.skin_events.remove(0);
+                    }
+                    self.skin_events.push((id, png, slim));
+                }
                 crate::netplay::Event::State(_, channel, key, data) => {
                     use crate::proto::channel as ch;
                     let text = String::from_utf8_lossy(&data).into_owned();
@@ -1917,6 +1929,15 @@ impl Session {
         self.hunger = MAX_HUNGER;
         self.air = MAX_AIR;
         self.dead = false;
+        // Nothing of the old life carries on: not the bed, the chair, the
+        // saddle, the food half eaten or the bow half drawn.
+        self.sleeping = false;
+        self.sitting = None;
+        self.riding_mob = None;
+        self.mobs.rider = None;
+        self.eating.reset();
+        self.bow.reset();
+        self.pending_hurt = 0;
         self.fire(crate::game::events::RESPAWN, "");
         crate::game::effects::apply::clear_all(self);
     }
@@ -2015,21 +2036,32 @@ impl Session {
         while k < self.drops.len() {
             let d = &mut self.drops[k];
             d.age += dt;
-            d.vel[1] -= 18.0 * dt;
-            let next = [d.pos[0] + (d.vel[0] * dt) as f64, d.pos[1] + (d.vel[1] * dt) as f64, d.pos[2] + (d.vel[2] * dt) as f64];
-            if block::is_solid(self.world.get(floord(next[0]), floord(next[1]), floord(next[2]))) {
-                d.vel = [0.0; 3];
-            } else {
-                d.pos = next;
+            // Falls in the air, floats and drifts in water, burns up in lava (game/drop_fluid.rs).
+            if crate::game::drop_fluid::step(&|x, y, z| self.world.get(x, y, z), &mut d.pos, &mut d.vel, dt) == crate::game::drop_fluid::Fate::Burnt {
+                self.drops.swap_remove(k);
+                self.sound_queue.push(String::from("hiss"));
+                continue;
             }
             let near = (d.pos[0] - px) * (d.pos[0] - px) + (d.pos[2] - pz) * (d.pos[2] - pz) < 1.6 && d.pos[1] > py - 1.0 && d.pos[1] < py + 2.2;
             if d.age > 300.0 || d.pos[1] < -8.0 {
                 self.drops.swap_remove(k);
-            } else if near && d.age > 1.2 && !self.dead && self.inv.add(d.item, d.count) == 0 {
-                let item = d.item as usize;
+            } else if near && d.age > 1.2 && !self.dead && d.count > 0 {
+                // A partly fitting stack gives what fits and keeps lying
+                // there with the rest (it must not be taken whole as well).
+                let (item, before) = (d.item, d.count);
+                let left = self.inv.add(item, before);
+                if left < before {
+                    audio.play(Sound::Pop, 0.6);
+                    crate::game::events::item_picked(self, item as usize);
+                }
+                if left == 0 {
+                    self.drops.swap_remove(k);
+                } else {
+                    self.drops[k].count = left;
+                    k += 1;
+                }
+            } else if d.count == 0 {
                 self.drops.swap_remove(k);
-                audio.play(Sound::Pop, 0.6);
-                crate::game::events::item_picked(self, item);
             } else {
                 k += 1;
             }
@@ -2345,8 +2377,17 @@ impl Session {
         if airborne {
             self.peak_y = if self.was_airborne { y.max(self.peak_y) } else { y };
         } else {
-            if self.was_airborne && on_ground {
+            let in_liquid = self.player.in_water;
+            if self.was_airborne && (on_ground || in_liquid) {
                 let fell = (self.peak_y - y) as f32;
+                // Landing in water softens the fall: halved in one block of it, none in two (game/fluid_rules.rs).
+                let fell = if in_liquid {
+                    let world = &self.world;
+                    let depth = crate::game::fluid_rules::depth_at(&|x, y, z| world.get(x, y, z), floord(self.player.pos[0]), floord(y + 0.4), floord(self.player.pos[2]));
+                    crate::game::fluid_rules::fall_after_water(fell, depth)
+                } else {
+                    fell
+                };
                 if fell > 3.5 {
                     self.damage_from("fall", (fell - 3.0) as i32, audio);
                 } else if fell > 1.2 {
@@ -2513,7 +2554,7 @@ impl Session {
                     let inv = &self.inv;
                     match self.mobs.interact(i, held.map(|h| h.0), &|item| inv.count(item as u16)) {
                         Interaction::Give(item, n) => {
-                            self.inv.add(item as u16, n);
+                            self.give_or_drop(item as u16, n);
                             audio.play(Sound::Pop, 0.8);
                             let name = reg().items[item].name.to_ascii_uppercase();
                             self.say(&alloc::format!("GOT {}", name));
@@ -2521,7 +2562,7 @@ impl Session {
                         }
                         Interaction::Trade((want, n), (give, count)) => {
                             if self.inv.remove(want as u16, n) {
-                                self.inv.add(give as u16, count);
+                                self.give_or_drop(give as u16, count);
                                 audio.play(Sound::Pop, 0.8);
                                 let name = reg().items[give].name.to_ascii_uppercase();
                                 self.say(&alloc::format!("TRADED FOR {} {}", count, name));
@@ -2577,7 +2618,7 @@ impl Session {
                     self.fire("hit", &reg().entities[kind].id);
                     // A guest of someone else's world is handed the drop at once.
                     if let (true, false, false, Some((drop, n))) = (killed, creative, self.runs_the_world(), reg().entities[kind].drop) {
-                        self.inv.add(drop as u16, n);
+                        self.give_or_drop(drop as u16, n);
                     }
                     if killed {
                         self.fire("kill", &reg().entities[kind].id);
@@ -2636,13 +2677,13 @@ impl Session {
                             // A broken chest hands over what was inside.
                             if let Some(inside) = self.chests.remove(&cell) {
                                 for s in inside.slots.iter().flatten() {
-                                    self.inv.add(s.item, s.count);
+                                    self.give_or_drop(s.item, s.count);
                                 }
                             }
                             self.rng = self.rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
                             if let Some((extra, chance, n)) = d.x.also {
                                 if (self.rng >> 8) % 100 < chance as u32 {
-                                    self.inv.add(extra as u16, n);
+                                    self.give_or_drop(extra as u16, n);
                                 }
                             }
                             let lucky = (self.rng >> 16) % 100 < d.drop_chance as u32;
@@ -2936,6 +2977,16 @@ mod clock_tests {
         assert!(!asleep, "the sleeper never woke");
         assert!((7.0..8.2).contains(&seconds), "{seconds}");
         assert!(time < 0.1, "it is morning: {time}");
+    }
+
+    #[test]
+    fn a_time_that_is_not_a_time_is_put_right() {
+        for bad in [f32::NAN, f32::INFINITY, -3.0, 7.5] {
+            let (t, _) = tick_clock(bad, 0.1, false);
+            assert!((0.0..1.0).contains(&t), "{bad} gave {t}");
+        }
+        let (t, _) = tick_clock(0.5, f32::NAN, false);
+        assert_eq!(t, 0.5);
     }
 
     #[test]

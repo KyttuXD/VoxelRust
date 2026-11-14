@@ -156,7 +156,7 @@ impl App {
             let at_furnace = at_table && self.at_furnace;
             ui.text(gx, py + 6.0 * s, if at_furnace { "FURNACE (CLICK SOMETHING TO SMELT IT)" } else { "OVEN (CLICK SOMETHING TO BAKE IT)" }, ui::DIM);
             // Recipes you can make now come first.
-            let can = |rc: &block::Recipe| rc.inputs.iter().all(|&(i, n)| g.inv.count(i as u16) >= n as u32);
+            let can = |rc: &block::Recipe| crate::crafting::legacy::affordable(&g.inv, &rc.inputs);
             // By hand only the simplest things; a table offers everything.
             let mut list: Vec<usize> = (0..r.recipes.len())
                 .filter(|&i| {
@@ -214,7 +214,8 @@ impl App {
                 for &(i, n) in &rc.inputs {
                     g.inv.remove(i as u16, n);
                 }
-                if g.inv.add(rc.out.0 as u16, rc.out.1) > 0 {
+                // What does not fit is set down at the feet, not lost after the ingredients went.
+                if g.give_or_drop(rc.out.0 as u16, rc.out.1) > 0 {
                     g.say("INVENTORY FULL");
                 }
                 crate::game::events::crafted(g, rc.out.0);

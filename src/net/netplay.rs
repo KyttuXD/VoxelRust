@@ -78,6 +78,9 @@ pub struct Client {
     /// number, loudness (0..=255), the ADPCM frame. Taken by `client::voice`;
     /// kept short so a client that ignores them costs nothing.
     pub voice_in: Vec<(u16, u16, u8, Vec<u8>)>,
+    /// Which program the server is (from [`Msg::Info`]; None until it says,
+    /// and for a server from before it was sent).
+    pub server_info: Option<crate::net::version::Info>,
 }
 
 /// Most voice frames held waiting (about a second of one talker).
@@ -89,11 +92,30 @@ pub fn parse_address(addr: &str) -> Option<(String, u16)> {
     if addr.is_empty() {
         return None;
     }
+    // An IPv6 address is written in brackets, `[::1]` or `[::1]:25590`.
+    if let Some(rest) = addr.strip_prefix('[') {
+        let (host, after) = rest.split_once(']')?;
+        if host.is_empty() || !host.contains(':') || host.contains(|c: char| c.is_whitespace() || c == '[') {
+            return None;
+        }
+        return match after {
+            "" => Some((String::from(host), crate::proto::DEFAULT_PORT)),
+            _ => Some((String::from(host), port_of(after.strip_prefix(':')?)?)),
+        };
+    }
     match addr.rsplit_once(':') {
-        Some((h, p)) if !h.is_empty() && !h.contains(':') => Some((String::from(h), p.parse().ok()?)),
+        Some((h, p)) if !h.is_empty() && !h.contains(':') => Some((String::from(h), port_of(p)?)),
         Some(_) => None,
         None => Some((String::from(addr), crate::proto::DEFAULT_PORT)),
     }
+}
+
+/// A port number, 1 to 65535, digits only (no sign, no 0).
+fn port_of(text: &str) -> Option<u16> {
+    if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    text.parse::<u16>().ok().filter(|&p| p != 0)
 }
 
 impl Client {
@@ -108,10 +130,10 @@ impl Client {
         for _ in 0..80 {
             match inbox.next() {
                 Next::Msg(Msg::Welcome { id, seed, time, kind }) => {
-                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new() };
-                    return Ok((c, Welcome { seed, time, kind }));
+                    let c = Client { stream, inbox, id, players: BTreeMap::new(), send_timer: 0.0, refresh_timer: 0.0, last_sent: ([0.0; 3], 0.0, 0.0, 0, 0), pose: 0, alive: true, voice_in: Vec::new(), server_info: None };
+                    return Ok((c, Welcome { seed, time: crate::net::limits::clean_time(time), kind }));
                 }
-                Next::Msg(Msg::Refuse { reason }) => return Err(reason.to_ascii_uppercase()),
+                Next::Msg(Msg::Refuse { reason }) => return Err(crate::net::version::explain_refusal(&reason)),
                 Next::Msg(_) | Next::Bad => return Err(String::from("THAT IS NOT A VOXELRUST SERVER")),
                 Next::Wait => {}
             }
@@ -207,9 +229,18 @@ impl Client {
                             events.push(Event::Chat(alloc::format!("<{}> {}", who, text).to_ascii_uppercase()));
                         }
                     }
-                    Msg::Time { time } => events.push(Event::Time(time)),
+                    Msg::Time { time } => events.push(Event::Time(crate::net::limits::clean_time(time))),
+                    Msg::Info { build, release, commit } => {
+                        let info = crate::net::version::Info { build, release, commit };
+                        events.push(Event::Chat(alloc::format!("SERVER: {}", crate::net::version::describe(&info).to_ascii_uppercase())));
+                        if let Some(line) = crate::net::version::compare(&crate::net::version::local(), &info) {
+                            events.push(Event::Chat(line));
+                        }
+                        self.server_info = Some(info);
+                    }
                     Msg::Perms { flags } => events.push(Event::Perms(flags)),
-                    Msg::Skin { id, png, slim } => events.push(Event::Skin(id, png, slim)),
+                    // (A skin is 64 x 64: anything else is not decoded at all.)
+                    Msg::Skin { id, png, slim } if crate::net::limits::skin_header_ok(&png) => events.push(Event::Skin(id, png, slim)),
                     Msg::State { id, channel, key, data, .. } => events.push(Event::State(id, channel, key, data)),
                     Msg::Pack { last, data } => events.push(Event::Pack(last, data)),
                     Msg::ModList { mods } => events.push(Event::ModList(mods)),
@@ -330,6 +361,18 @@ mod tests {
         assert_eq!(parse_address("host:notaport"), None);
         assert_eq!(parse_address(""), None);
         assert_eq!(parse_address(":5"), None);
+        // IPv6 in brackets, with and without a port; a bare one is ambiguous.
+        assert_eq!(parse_address("[::1]:7000"), Some((String::from("::1"), 7000)));
+        assert_eq!(parse_address("[2001:db8::5]"), Some((String::from("2001:db8::5"), crate::proto::DEFAULT_PORT)));
+        assert_eq!(parse_address("::1"), None);
+        assert_eq!(parse_address("[::1"), None);
+        assert_eq!(parse_address("[]:5"), None);
+        assert_eq!(parse_address("[::1]x"), None);
+        // Port 0, a sign, and one too big are no ports.
+        assert_eq!(parse_address("host:0"), None);
+        assert_eq!(parse_address("host:+80"), None);
+        assert_eq!(parse_address("host:65536"), None);
+        assert_eq!(parse_address("host:65535"), Some((String::from("host"), 65535)));
     }
 
     /// A mod of one big file (so that it comes in several pieces) and a pack.
@@ -644,6 +687,75 @@ mod tests {
         pump(&mut ann, 40);
         pump(&mut bob, 80);
         assert_eq!(bob.voice_in.len(), 2);
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_client_of_another_protocol_is_told_both_versions_and_who_must_update() {
+        let (port, stop, handle) = start_server(4);
+        let mut s = TcpStream::connect("127.0.0.1", port, 2000).unwrap();
+        s.send_all(&Msg::Hello { version: 3, content: 0, name: String::from("Old") }.encode(), 2000).unwrap();
+        let mut inbox = Inbox::default();
+        let mut buf = [0u8; 512];
+        let mut reason = None;
+        for _ in 0..40 {
+            if let Ok(n) = s.recv(&mut buf, 100) {
+                inbox.push(&buf[..n]);
+            }
+            if let Next::Msg(Msg::Refuse { reason: r }) = inbox.next() {
+                reason = Some(r);
+                break;
+            }
+        }
+        let reason = reason.expect("no refusal");
+        assert!(reason.contains("your game is too old") && reason.contains("protocol 3") && reason.contains(&alloc::format!("speaks {}", VERSION)), "{reason}");
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn the_server_says_which_program_it_is_and_answers_version() {
+        let (port, stop, handle) = start_server(4);
+        let (mut a, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
+        let events = pump(&mut a, 120);
+        let info = a.server_info.clone().expect("no server info");
+        assert_eq!(info, crate::net::version::local());
+        assert!(events.iter().any(|e| matches!(e, Event::Chat(l) if l.starts_with("SERVER: "))));
+        a.send_chat("/version");
+        let events = pump(&mut a, 120);
+        assert!(events.iter().any(|e| matches!(e, Event::Chat(l) if l.contains("PROTOCOL"))), "no answer");
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_flood_of_chat_is_cut_short_and_only_the_runner_may_send_creatures() {
+        use crate::proto::channel;
+        let (port, stop, handle) = start_server(4);
+        let (mut a, _) = Client::connect("127.0.0.1", port, "Ann").unwrap();
+        let (mut b, _) = Client::connect("127.0.0.1", port, "Bob").unwrap();
+        pump(&mut a, 60);
+        pump(&mut b, 100);
+        for i in 0..60 {
+            a.send_chat(&alloc::format!("spam {i}"));
+        }
+        let heard = pump(&mut b, 200).iter().filter(|e| matches!(e, Event::Chat(l) if l.contains("SPAM"))).count();
+        assert!((1..=12).contains(&heard), "{heard} lines got through");
+        // Bob is not the one who runs the creatures: his snapshot goes nowhere.
+        b.send_state(channel::MOBS, false, "all", b"x");
+        pump(&mut b, 40);
+        let ea = pump(&mut a, 120);
+        assert!(!ea.iter().any(|e| matches!(e, Event::State(_, channel::MOBS, ..))));
+        a.send_state(channel::MOBS, false, "all", b"y");
+        pump(&mut a, 40);
+        let eb = pump(&mut b, 120);
+        assert!(eb.iter().any(|e| matches!(e, Event::State(_, channel::MOBS, ..))));
+        // A mod's message key keeps its separator on the way.
+        a.send_state(channel::SCRIPT, false, "mymod\u{1f}score", b"7");
+        pump(&mut a, 40);
+        let eb = pump(&mut b, 120);
+        assert!(eb.iter().any(|e| matches!(e, Event::State(_, channel::SCRIPT, k, _) if k == "mymod\u{1f}score")));
         stop.store(true, Ordering::Relaxed);
         handle.join().unwrap();
     }

@@ -746,7 +746,10 @@ pack's flat look because they stand right beside its trees.
    after the texture id (`ruby_block.png`).
 2. In your pack: `texture ruby_block file textures/ruby_block.png`, then
    `block ruby_block` with `tex ruby_block` (see [DATA.md](DATA.md)). The picture
-   can be a PNG, JPEG, GIF, BMP or TGA.
+   can be a PNG, JPEG, GIF, BMP or TGA. A file over 24 MB, a picture over
+   4096 x 4096 pixels, or one that is damaged (a TGA whose pixel size does not
+   fit its type, a GIF whose screen is bigger than the limit) is skipped, with
+   nothing but a line in the log.
 3. Look at it in the hotbar and held in the hand, and next to the pack's
    stone, planks and dirt: if it is busier than they are, remove detail.
 4. Check the checklist: 16 x 16, one-pixel frame (blocks) or outline (items),

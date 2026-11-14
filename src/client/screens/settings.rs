@@ -78,9 +78,10 @@ impl App {
                     changed |= ui.stepper(x, row(1), bw, bh, "EFFECTS", &mut st.effects_volume, 0, 10, 1);
                     changed |= ui.stepper(x, row(2), bw, bh, "FOOTSTEPS", &mut st.steps_volume, 0, 10, 1);
                     changed |= ui.stepper(x, row(3), bw, bh, "INTERFACE", &mut st.ui_volume, 0, 10, 1);
+                    changed |= ui.stepper(x, row(4), bw, bh, "AMBIENCE VOLUME", &mut st.ambience_volume, 0, 10, 1);
                     changed |= ui.toggle(x, row(5), bw, bh, "SUBTITLES FOR SOUNDS", &mut st.subtitles);
                     if !self.audio.available() {
-                        ui.centered(ui.w() * 0.5, row(4) + 4.0 * s, 1.0, "NO SOUND DEVICE IS IN USE", ui::ACCENT);
+                        ui.centered(ui.w() * 0.5, row(6) + 4.0 * s, 1.0, "NO SOUND DEVICE IS IN USE", ui::ACCENT);
                     }
                 }
                 2 if self.video_detail == 1 => {
@@ -266,7 +267,13 @@ impl App {
     /// Once a frame: what the player did on a mod's screen goes to the mod, and
     /// a screen a mod opened (or closed) is switched to (or away from).
     pub(super) fn mod_screens(&mut self) {
-        let Some(g) = self.session.as_mut() else { return };
+        let Some(g) = self.session.as_mut() else {
+            // The world went (a dropped connection) while a mod's screen was up: there is nothing to show.
+            if self.screen == Screen::ModUi {
+                self.set_screen(Screen::Title);
+            }
+            return;
+        };
         crate::client::modui::dispatch::ui_events(g);
         let open = crate::client::modui::dispatch::is_open();
         if matches!(self.screen, Screen::Game | Screen::ModUi) && crate::client::modui::dispatch::take_opened() && open {

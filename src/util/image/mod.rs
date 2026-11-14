@@ -132,6 +132,49 @@ mod tests {
     }
 
     #[test]
+    fn hostile_pictures_are_refused_and_never_crash() {
+        // TGA: a pixel type that does not match the bit depth (8-bit true colour, 16-bit mapped).
+        for (kind, map_type, bpp) in [(2u8, 0u8, 8u8), (10, 0, 8), (1, 1, 16), (3, 0, 24)] {
+            let mut tga = alloc::vec![0u8; 18 + 64];
+            tga[1] = map_type;
+            tga[2] = kind;
+            tga[12] = 2;
+            tga[14] = 2;
+            tga[16] = bpp;
+            if kind == 10 {
+                tga[18] = 0x83; // a run of four
+            }
+            assert!(decode(&tga).is_none(), "tga kind {kind} bpp {bpp}");
+        }
+        // GIF: a screen of 65535 x 65535 (16 GB of pixels), with a one-pixel picture in it.
+        let mut gif = alloc::vec::Vec::from(&b"GIF89a"[..]);
+        gif.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0]);
+        gif.extend_from_slice(&[0x2C, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 0x01, 0]);
+        assert!(decode(&gif).is_none());
+        // GIF: a graphic control block that ends the file.
+        let mut gif = alloc::vec::Vec::from(&b"GIF89a"[..]);
+        gif.extend_from_slice(&[1, 0, 1, 0, 0, 0, 0, 0x21, 0xFE, 2, b'a', b'b', 0, 0x21, 0xF9, 4]);
+        assert!(decode(&gif).is_none());
+        // JPEG: a frame header and a restart interval with no body.
+        for marker in [0xC0u8, 0xDD, 0xDA] {
+            let mut jpg = alloc::vec![0xFF, 0xD8, 0xFF, marker, 0, 2];
+            jpg.extend_from_slice(&[0u8; 12]);
+            assert!(decode(&jpg).is_none(), "marker {marker:#x}");
+        }
+        // BMP: 4096 x 4096 pixels promised, none in the file.
+        let mut bmp = alloc::vec![0u8; 54];
+        bmp[0] = b'B';
+        bmp[1] = b'M';
+        bmp[10] = 54;
+        bmp[14] = 40;
+        bmp[19] = 0x10; // width 4096
+        bmp[23] = 0x10; // height 4096
+        bmp[26] = 1;
+        bmp[28] = 24;
+        assert!(decode(&bmp).is_none());
+    }
+
+    #[test]
     fn things_that_are_not_pictures_are_refused() {
         assert!(decode(b"this is plainly not a picture at all").is_none());
         assert!(decode(&[0xFF, 0xD8, 0xFF, 0xC2, 0, 8, 8, 0, 8, 0, 8, 1, 0, 0, 0, 0, 0, 0]).is_none(), "progressive jpeg");

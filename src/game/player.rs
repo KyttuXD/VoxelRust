@@ -41,6 +41,8 @@ pub struct Player {
     pub on_ground: bool,
     pub flying: bool,
     pub in_water: bool,
+    /// In lava rather than water (`in_water` is true then too).
+    pub in_lava: bool,
     /// Half the body's width and its full height, in blocks.
     pub half_width: f64,
     pub height: f64,
@@ -73,6 +75,7 @@ impl Player {
             on_ground: false,
             flying: false,
             in_water: false,
+            in_lava: false,
             half_width: width * 0.5,
             height,
             speed_scale: 1.0,
@@ -108,6 +111,7 @@ impl Player {
     /// If the player is inside something solid (spawned in a tree, or the
     /// terrain changed), rise until free.
     pub fn unstick(&mut self, get: &dyn Fn(i32, i32, i32) -> Block) {
+        self.sanitize();
         for _ in 0..(crate::chunk::CH + 2) {
             let (mn, mx) = self.bounds(self.pos);
             match touching(get, mn, mx, 1) {
@@ -117,10 +121,29 @@ impl Player {
         }
     }
 
+    /// Put right a body whose numbers went wrong (NaN or infinity from a bad
+    /// hook, a hostile server or a damaged save): such a position would make
+    /// every cell lookup nonsense and never recover.
+    pub fn sanitize(&mut self) {
+        for v in self.vel.iter_mut() {
+            if !v.is_finite() {
+                *v = 0.0;
+            }
+        }
+        for (a, p) in self.pos.iter_mut().enumerate() {
+            if !p.is_finite() {
+                *p = if a == 1 { 150.0 } else { 0.0 };
+            }
+        }
+    }
+
     pub fn update(&mut self, dt: f32, inp: &Input, get: &dyn Fn(i32, i32, i32) -> Block) {
+        self.sanitize();
+        let dt = if dt.is_finite() && dt > 0.0 { dt } else { 0.0 };
         let feet = get(floord(self.pos[0]), floord(self.pos[1] + 0.4), floord(self.pos[2]));
         // Water and lava both hold you up, and swimming is the same in either.
         self.in_water = crate::block::fluid_of(feet).is_some();
+        self.in_lava = matches!(crate::block::fluid_of(feet), Some((true, _)));
         let crouching = inp.descend && self.on_ground && !self.flying && !self.in_water;
         self.crouch = crate::content::pose::crouch::approach(self.crouch, crouching, dt);
 
@@ -142,19 +165,18 @@ impl Player {
             self.vel[2] += (wz * speed - self.vel[2]) * k;
             self.vel[1] += (wy * speed - self.vel[1]) * k;
         } else if self.in_water {
-            let speed = (if inp.sprint { 3.4 } else { 2.4 }) * self.speed_scale;
+            // Lava is thick: half the pace.
+            let speed = (if inp.sprint { 3.4 } else { 2.4 }) * self.speed_scale * if self.in_lava { 0.5 } else { 1.0 };
             let k = (5.0 * dt).min(1.0);
             // Running water carries you along, toward where it is lower.
-            let (px, pz) = current(get, [floord(self.pos[0]), floord(self.pos[1] + 0.4), floord(self.pos[2])]);
+            let (px, pz) = crate::game::current::push_at(get, self.pos);
             self.vel[0] += px * 6.0 * dt;
             self.vel[2] += pz * 6.0 * dt;
             self.vel[0] += (wx * speed - self.vel[0]) * k;
             self.vel[2] += (wz * speed - self.vel[2]) * k;
-            self.vel[1] -= 7.0 * dt;
-            self.vel[1] *= 1.0 - (2.5 * dt).min(1.0);
-            if inp.jump {
-                self.vel[1] = (self.vel[1] + 22.0 * dt).min(3.6);
-            }
+            // Held up by the liquid, by how much of the body is under (game/buoyancy.rs).
+            let under = crate::game::current::submerged(get, self.pos, self.height);
+            self.vel[1] = crate::game::buoyancy::vertical(self.vel[1], dt, under, self.in_lava, inp.jump, inp.descend);
         } else {
             // A crouch walks slowly, and does not sprint.
             let pace = if self.crouch > 0.0 { WALK * (1.0 - (1.0 - crate::content::pose::crouch::SPEED) * self.crouch) } else if inp.sprint { SPRINT } else { WALK };
@@ -300,34 +322,6 @@ fn touching(get: &dyn Fn(i32, i32, i32) -> Block, mn: [f64; 3], mx: [f64; 3], a:
     found
 }
 
-/// Which way the liquid in cell `c` runs, as a push of at most 1 along x and z:
-/// toward neighbours where it is shallower, or open air over a drop.
-fn current(get: &dyn Fn(i32, i32, i32) -> Block, c: [i32; 3]) -> (f32, f32) {
-    let Some((_, level)) = crate::block::fluid_of(get(c[0], c[1], c[2])) else { return (0.0, 0.0) };
-    if level >= 8 {
-        return (0.0, 0.0);
-    }
-    let (mut x, mut z) = (0.0f32, 0.0f32);
-    for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
-        let n = get(c[0] + dx, c[1], c[2] + dz);
-        let lower = match crate::block::fluid_of(n) {
-            Some((_, l)) => level as f32 - l as f32,
-            None if !crate::block::is_solid(n) => level as f32,
-            None => 0.0,
-        };
-        if lower > 0.0 {
-            x += dx as f32 * lower;
-            z += dz as f32 * lower;
-        }
-    }
-    let len = sqrtf(x * x + z * z);
-    if len > 1.0 {
-        (x / len, z / len)
-    } else {
-        (x, z)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,6 +394,16 @@ mod tests {
     }
 
     #[test]
+    fn a_body_with_nan_numbers_is_put_right() {
+        let w = world(&[]);
+        let mut p = Player::new([f64::NAN, f64::INFINITY, 0.5]);
+        p.vel = [f32::NAN, f32::NEG_INFINITY, 1.0];
+        p.update(f32::NAN, &Input::default(), &w);
+        assert!(p.pos.iter().all(|v| v.is_finite()), "{:?}", p.pos);
+        assert!(p.vel.iter().all(|v| v.is_finite()), "{:?}", p.vel);
+    }
+
+    #[test]
     fn standing_still_inside_solid_space_does_not_teleport() {
         // Everything solid (as unloaded chunks are): a zero-length step must
         // leave the player where they are instead of ejecting them upward.
@@ -465,10 +469,14 @@ mod tests {
         run(&mut p, Input { jump: true, ..Default::default() }, 1.0, &w);
         assert!(p.pos[1] > 25.0);
 
+        // Water holds a swimmer up: it floats with its head out, not on the floor.
         let pool = world(&[([0, 10, 0], "water"), ([0, 11, 0], "water")]);
         let mut p = Player::new([0.5, 12.5, 0.5]);
-        run(&mut p, Input::default(), 3.0, &pool);
-        assert!((p.pos[1] - 10.0).abs() < 1e-2, "sank to {}", p.pos[1]);
-        assert!(p.in_water);
+        run(&mut p, Input::default(), 4.0, &pool);
+        assert!(p.pos[1] > 10.2 && p.pos[1] < 10.8, "floats at {}", p.pos[1]);
+        assert!(p.in_water && !p.in_lava);
+        // Holding the descend key dives to the bottom.
+        run(&mut p, Input { descend: true, ..Default::default() }, 3.0, &pool);
+        assert!((p.pos[1] - 10.0).abs() < 1e-2, "dived to {}", p.pos[1]);
     }
 }

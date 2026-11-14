@@ -42,6 +42,8 @@ pub struct Env {
     pub distance: i32,
     pub clouds: bool,
     pub underwater: bool,
+    /// The camera is in lava (`underwater` is set too): thick, orange, a few blocks of view.
+    pub lava: bool,
     /// Seconds since start, for cloud drift.
     pub clock: f32,
     /// How far distant terrain is drawn, in chunks (0 = off).
@@ -436,7 +438,9 @@ impl Renderer {
                 }
             }
         }
-        if env.underwater {
+        if env.lava {
+            fog = [0.62, 0.20, 0.03];
+        } else if env.underwater {
             fog = [0.04 + 0.06 * day, 0.16 + 0.14 * day, 0.30 + 0.25 * day];
         }
         // Blindness: the fog turns dark.
@@ -580,7 +584,9 @@ impl Renderer {
         // fade out at their own edge: fog is set by the far distance instead.
         let lod_far = env.far_distance as f32 * CW as f32;
         let lod = lod_far > far && !env.underwater && !world.far.is_empty();
-        let (fog_start, fog_end) = if env.underwater {
+        let (fog_start, fog_end) = if env.lava {
+            (0.0, 4.0)
+        } else if env.underwater {
             (0.0, 26.0)
         } else if lod {
             (lod_far * 0.45, lod_far * 0.98)

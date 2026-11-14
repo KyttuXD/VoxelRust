@@ -28,6 +28,10 @@ pub(super) fn bmp(d: &[u8]) -> Option<Image> {
     let palette_at = 14 + head;
     let n_pal = if bits <= 8 { if colours == 0 { 1usize << bits } else { colours } } else { 0 };
     let row = ((w * bits as usize + 31) / 32) * 4;
+    // The rows must be in the file before anything is allocated for them.
+    if !matches!(bits, 1 | 4 | 8 | 24 | 32) || data_at.checked_add(row.checked_mul(h)?)? > d.len() {
+        return None;
+    }
     let mut rgba = alloc::vec![0u8; w * h * 4];
     // Masks for 16- and 32-bit files with BI_BITFIELDS: assume the usual ones.
     for y in 0..h {

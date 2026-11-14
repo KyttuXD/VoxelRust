@@ -246,11 +246,11 @@ nothing) unless the player may run them there.
 | --- | --- |
 | `say(text: &str)` | show a line in the chat |
 | `log(text: &str)` | write a line to the game's log |
-| `give(item_id: &str, n: i64) -> bool` | put items in the player's pack; `false` if there is no such item or no room |
+| `give(item_id: &str, n: i64) -> bool` | put items in the player's pack (what does not fit is set down at the player's feet); `false` if there is no such item |
 | `take_item(item_id: &str, n: i64) -> bool` | remove items from the pack; `false` if the player has fewer |
 | `item_count(item_id: &str) -> i64` | how many of an item the player carries |
 | `held_item() -> String` | the id of the item in the player's hand (empty if none) |
-| `spawn(creature_id: &str, x: f64, y: f64, z: f64) -> bool` | make a creature appear |
+| `spawn(creature_id: &str, x: f64, y: f64, z: f64) -> bool` | make a creature appear; `false` when the world already holds 200 creatures |
 | `set_block(x: i64, y: i64, z: i64, block_id: &str) -> bool` | put a block somewhere (`false` if that is not loaded or not allowed) |
 | `get_block(x: i64, y: i64, z: i64) -> String` | the id of the block at a place (`"air"` where nothing is loaded) |
 | `player_pos() -> (f64, f64, f64)` | where the player is |
@@ -423,7 +423,7 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 
 | Function | What it does |
 | --- | --- |
-| `net_send(key: &str, text: &str) -> bool` | send a message to this mod's scripts on the other players' games (`on_net`); false when the game is not shared or the key is over 64 bytes or the text over 8000 |
+| `net_send(key: &str, text: &str) -> bool` | send a message to this mod's scripts on the other players' games (`on_net`); false when the game is not shared or the key is over 64 bytes (the mod's name and the key together) or the text over 8000 |
 
 ### Shots, sky, pushes
 

@@ -196,7 +196,7 @@ const SKIN_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "tga"];
 /// Read the picture at `path` and keep it as the custom skin (`skin.png` in
 /// the data folder). The error is a message for the player.
 fn import_skin(base: &str, path: &str) -> Result<(), String> {
-    let bytes = sys::read_file(path).ok_or_else(|| String::from("COULD NOT READ THAT FILE"))?;
+    let bytes = sys::read_file_limit(path, crate::image::MAX_BYTES).ok_or_else(|| String::from("COULD NOT READ THAT FILE (OR IT IS TOO BIG)"))?;
     let img = crate::image::decode(&bytes).ok_or_else(|| String::from("THAT IS NOT A PICTURE THE GAME CAN READ"))?;
     let px = crate::client::skinfile::from_image(&img)?;
     if sys::write_file(&alloc::format!("{}skin.png", base), &crate::png::encode(64, 64, &px)) {
@@ -376,7 +376,7 @@ impl App {
             if let Some(s) = self.session.as_mut() {
                 if let Some(c) = s.cursor.take() {
                     if s.mode == GameMode::Survival {
-                        s.inv.add(c.item, c.count);
+                        s.give_or_drop(c.item, c.count);
                     }
                 }
             }
@@ -404,6 +404,7 @@ impl App {
     fn apply_settings(&mut self) {
         let s = &self.settings;
         self.audio.set_volumes(s.master_volume, s.effects_volume, s.steps_volume, s.ui_volume);
+        self.audio.set_ambience_volume(s.ambience_volume);
         self.distance = self.distance.min(s.distance).max(2);
         if s.target_fps == 0 {
             self.distance = s.distance;
@@ -518,7 +519,14 @@ impl App {
 
     fn save_screenshot(&mut self, r: &Renderer) {
         sys::make_dir(&alloc::format!("{}screenshots/", self.base));
-        let path = alloc::format!("{}screenshots/screenshot-{}.bmp", self.base, (sys::now() * 1000.0) as u64);
+        // The clock restarts with the machine, so the name may have been used before: never write over an old picture.
+        let stamp = (sys::now() * 1000.0) as u64;
+        let mut path = alloc::format!("{}screenshots/screenshot-{}.bmp", self.base, stamp);
+        let mut n = 2;
+        while sys::file_exists(&path) && n < 1000 {
+            path = alloc::format!("{}screenshots/screenshot-{}-{}.bmp", self.base, stamp, n);
+            n += 1;
+        }
         let ok = sys::write_file(&path, &r.screenshot());
         if let Some(s) = self.session.as_mut() {
             s.say(if ok { "SCREENSHOT SAVED" } else { "COULD NOT SAVE SCREENSHOT" });
@@ -818,7 +826,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Some(f) => unsafe {
                 let folder = |org: &[u8]| {
                     let p = f(org.as_ptr() as *const c_char, b"VoxelRust\0".as_ptr() as *const c_char);
-                    let s = sys::from_cstr(p);
+                    let s = sys::from_cstr_utf8(p);
                     if !p.is_null() {
                         (api.SDL_free)(p as *mut c_void);
                     }
@@ -1561,7 +1569,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
 pub fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     let mut args = Vec::new();
     for i in 0..argc.max(0) as usize {
-        args.push(unsafe { sys::from_cstr(*argv.add(i)) });
+        args.push(unsafe { sys::from_cstr_utf8(*argv.add(i)) });
     }
     sys::heap::tune();
     match run(args) {

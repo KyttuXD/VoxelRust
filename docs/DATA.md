@@ -197,6 +197,8 @@ block <id>
   on <blocks...>                 may only stand on these blocks
   grows <block> <seconds>        turns into that block after about that long
   hurts <n>                      health lost per second by a player in or on it
+  fluid water|lava <1..8>        a liquid: its kind and level (8 is a source); see Liquids
+  washable yes|no                running liquid sweeps it away (see Liquids)
   slow <percent>                 a player inside it moves at this percent of normal speed
   category <tab name>            its tab in the creative item list
   unbreakable
@@ -325,6 +327,76 @@ Shapes:
 
 `rotate` and `flip` only have an effect on custom shapes; the other shapes
 set them as described.
+
+### Liquids
+
+Water and lava are blocks with `shape liquid` and a `fluid <water|lava>
+<level>` line: the source (level 8, the blocks `water` and `lava`) and one
+flow block for each level 1 to 7 (`water_3`, `lava_5`; hidden, with the same
+texture). Every level of a liquid must carry the same `skyloss`, `light` and
+`hurts` as its source (the base data does, and a test checks it): the flows
+dim sunlight and glow like the source. The rules live in
+[src/game/fluid.rs](../src/game/fluid.rs) (the flow),
+[fluid_rules.rs](../src/game/fluid_rules.rs) (what it may take and what
+sets), [fluid_queue.rs](../src/game/fluid_queue.rs) (when) and
+[current.rs](../src/game/current.rs) (the push on bodies).
+
+- **Pace.** A flow moves one step every 0.25 seconds (water) or 1.5 seconds
+  (lava, 0.5 in a dimension whose id has `nether`, `hell` or `inferno` in
+  it). Water loses one level per block sideways (7 blocks from a source),
+  lava two (3 blocks). A liquid over air falls first and spreads sideways
+  only once it lands. Two water sources with one cell between them over
+  something firm make that cell a source too.
+- **What stops it.** Only air and washable blocks are taken. Every block
+  with a collision shape stops a liquid: full blocks, slabs, stairs, doors,
+  fences and walls, glass and panes, trapdoors, chests, beds, signs on
+  posts. The other liquid stops it too. Cells in chunks that are not loaded
+  are never written, and a flow whose side neighbours are in unloaded chunks
+  is not drained (what feeds it cannot be seen).
+- **`washable yes|no`.** Whether running liquid sweeps the block away,
+  giving what breaking it by hand would give in survival (its `drops` and
+  `also`, by their chances; they are set down where the block stood and
+  float off with the current). Default: yes for everything that has no
+  collision (`solid no`, and every `shape cross`: plants, crops, torches,
+  signs, carpets, pressure plates, a snow layer), except what clings to a wall
+  (ids with `ladder`, `vine`, `rope` or `chain` in them), rail track
+  (`tag track`, `tag slope`), and anything that is used: `toggle` (doors,
+  trapdoors), `tall`, `long` (beds), `fills`, `part`, `seat`, `eat`, or any
+  `use`. Solid blocks and liquids never are, whatever is written. A pack that
+  wants a plant to stand its ground says `washable no`; one that wants a
+  decoration swept away says `washable yes` (only blocks with no collision
+  can be washed).
+- **Lava meeting water** (the lava sets; the water is left alone):
+
+| the lava | water touches it | it becomes |
+|----------|------------------|------------|
+| source | above or beside | `obsidian` if some pack defines it, else stone |
+| flow | above or beside | `cobble` (stone if there is none) |
+| flow | only below it (lava runs onto water) | stone |
+| source | only below it | stays lava |
+
+  Lava touching water sets at once, without waiting its 1.5 seconds.
+- **Falling blocks** (sand, gravel) sink through water and lava, replacing
+  the cell they enter; a block placed in a liquid replaces that cell, and
+  what it fed runs dry. Breaking a block that held water back lets it out.
+- **Bodies.** Water holds a swimmer up (head out when idle; jump swims up,
+  the descend key dives), carries it along a flow, and lava is thicker and
+  halves the pace. Items dropped in water float up and drift with the
+  current; in lava they are gone with a hiss. Creatures in lava catch fire
+  (the `burning` effect), land creatures drown under water, creatures that
+  `swim` are carried by the current and choke out of water, and walkers
+  path round deep water and lava. A fall into two or more blocks of water
+  does no harm and into one block does half. TNT that goes off in water
+  breaks no blocks and hurts a little over half as much.
+- **Drawing.** The surface stands at the level (a source 14/16 of a block,
+  level 7 12/16, level 1 1/16, full where the same liquid is above) and the
+  four top corners are averaged with the cells round them, so a source
+  beside a lower flow slopes. Faces between two cells of the same liquid are
+  not drawn. Inside water the view is blue and 26 blocks deep; inside lava
+  it is orange and 4 blocks deep.
+- Not in the game: buckets and farmland moisture (the Farming mod's
+  farmland does not dry or wet). A pack that adds them can read
+  `block::fluid_of` and set blocks as the flow does.
 
 ### Custom shapes
 
@@ -613,6 +685,8 @@ An ingredient is an item id (blocks count, through their automatic items),
 or `@name`, any item of the group `name`, and may end in `*N` to ask for N
 of it in its one cell: `shaped heavy_door 1 DD DD with D iron_ingot*5`.
 Counts are 1..999, but nothing can ask for more than one stack holds.
+
+A recipe never makes more than a stack of its item holds: a bigger count is cut down to the stack size, with a warning.
 
 `craft` lines count units: `craft rail 16 iron_ore 3 stick 2` is five
 cells, three with ore and two with sticks.
@@ -980,8 +1054,10 @@ sound <id> <effects|steps|ui> <seconds> <noise> <hz from> <hz to> <low-pass> <lo
 | caption | the rest of the line: what SUBTITLES FOR SOUNDS shows. A sound without one has no subtitle | |
 
 All eight parts before the caption are needed. Pitch varies by a tenth
-either way each time, so repeats do not sound identical. Twelve sounds can
-play at once.
+either way each time, so repeats do not sound identical (the game varies
+every play of every sound, and limits how fast one may repeat: see
+[SOUND.md](SOUND.md)). Sixteen sounds can play at once. The low-pass is held
+to 0.6 whatever is written, because brighter noise is a hiss.
 
 ```
 sound thunder effects 1.80 1.00 60 40 0.04 1.00 Thunder
@@ -1013,7 +1089,7 @@ seconds. An MP3 is MPEG-1, 2 or 2.5 layer III at any constant or variable bitrat
 joint stereo); ID3 tags are skipped, and when the encoder's LAME tag says how much silence it added
 at the start and end, that is cut off. Free-format MP3s and the older layers I and II are not read.
 It is turned into one channel at 22050 Hz when the
-pack is read, and its pitch varies a little less than a made sound's.
+pack is read, and its pitch varies by up to 6 percent each play, like a made sound's.
 `loudness` is 0..2 (default 1). A file that cannot be read is a warning in
 the log, and that sound does not exist. Zip packs may hold the files too.
 
@@ -1025,6 +1101,12 @@ Players can also replace any sound, made or recorded, without a pack: put
 `<id>.wav` (or `.flac`, `.aiff`, `.ogg`, `.mp3`) in the `sounds/` folder inside the game's data folder (next to
 `worlds/`), for example `sounds/step.wav` or `sounds/thunder.wav`. They are
 read when the game starts and the log lists them.
+
+A sound may have several takes: files named `<id>_v2.wav`, `<id>_v3.wav`...
+in the `sounds/` folder play with `<id>.wav` in turn, never the same one twice
+in a row (a made sound has four takes of its own). Every play of a sound,
+made or recorded, goes through the same variation of pitch and volume
+(SOUND.md).
 
 A sound is used by naming it:
 

@@ -95,11 +95,12 @@ pub(super) fn ms_adpcm(data: &[u8], ch: usize, align: usize, extra: &[u8], out: 
                 let c = turn % ch;
                 turn += 1;
                 let signed = if nib >= 8 { nib - 16 } else { nib };
-                let p = ((s1[c] * coef[pred[c]].0 + s2[c] * coef[pred[c]].1) >> 8) + signed * delta[c];
-                let p = p.clamp(-32768, 32767);
+                // 64-bit: a damaged file's steps can grow past what 32 bits hold.
+                let p = ((s1[c] as i64 * coef[pred[c]].0 as i64 + s2[c] as i64 * coef[pred[c]].1 as i64) >> 8) + signed as i64 * delta[c] as i64;
+                let p = p.clamp(-32768, 32767) as i32;
                 s2[c] = s1[c];
                 s1[c] = p;
-                delta[c] = ((ADAPT[nib as usize] * delta[c]) >> 8).max(16);
+                delta[c] = ((ADAPT[nib as usize] * delta[c]) >> 8).clamp(16, 1 << 20);
                 chans[c].push(p as f32 / 32768.0);
             }
         }

@@ -172,6 +172,8 @@ pub struct Mobs {
 
 /// Most creatures alive at once near a player.
 pub const CAP: usize = 22;
+/// Most creatures a script may have in the world at once (`spawn` fails beyond it).
+pub const SCRIPT_CAP: usize = 200;
 
 fn is_night(time: f32) -> bool {
     sinf(time * TAU) < -0.05
@@ -529,7 +531,8 @@ impl Mobs {
             }
         }
         let day = !is_night(time);
-        let solid = |x: i32, y: i32, z: i32| block::is_solid(world.get(x, y, z));
+        // Walkers path round deep water and lava (game/path_fluid.rs).
+        let solid = crate::game::path_fluid::Walker(world);
         // Who is where, so creatures can find their own kind and their prey.
         let others: Vec<(u32, usize, [f64; 3])> = self.list.iter().map(|m| (m.id, m.kind, m.body.pos)).collect();
         let mut damage = 0;
@@ -564,7 +567,7 @@ impl Mobs {
             m.anger = (m.anger - dt).max(0.0);
             m.clock += dt;
             if !m.fx.is_empty() || m.fx.changed {
-                let delta = crate::game::effects::apply::tick_mob(&mut m.fx, dt, m.body.in_water, d.speed / 4.4, &mut m.body.speed_scale);
+                let delta = crate::game::effects::apply::tick_mob(&mut m.fx, dt, m.body.in_water && !m.body.in_lava, d.speed / 4.4, &mut m.body.speed_scale);
                 if delta < 0 {
                     m.health += delta;
                     m.hurt = 0.35;
@@ -584,6 +587,8 @@ impl Mobs {
                     }
                 }
             }
+            // Lava burns it; a swimmer is carried by the current and chokes out of water (game/mob_fluid.rs).
+            crate::game::mob_fluid::step(m, d.behavior, &|x, y, z| world.get(x, y, z), dt);
             if m.young > 0.0 {
                 m.young -= dt;
                 if m.young <= 0.0 {
@@ -636,9 +641,8 @@ impl Mobs {
             if d.behavior == Behavior::Swim {
                 // Water creatures need no paths: they cruise, turn away from
                 // anything that is not water, and stay under the surface.
-                let water = r.wk.water;
                 let wet = |dx: f32, dy: f32, dz: f32| {
-                    world.get(floord(m.body.pos[0] + dx as f64), floord(m.body.pos[1] + 0.2 + dy as f64), floord(m.body.pos[2] + dz as f64)) == water
+                    block::is_water(world.get(floord(m.body.pos[0] + dx as f64), floord(m.body.pos[1] + 0.2 + dy as f64), floord(m.body.pos[2] + dz as f64)))
                 };
                 m.body.flying = wet(0.0, 0.0, 0.0);
                 m.think -= dt;
