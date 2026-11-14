@@ -10,6 +10,10 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+/// Land that comes from the server, for worlds this game cannot generate.
+#[path = "world_remote.rs"]
+mod remote;
+
 /// Where changed chunks are kept between sessions.
 pub trait ChunkStore {
     fn load(&mut self, cx: i32, cz: i32) -> Option<ChunkData>;
@@ -118,6 +122,8 @@ pub struct World {
     pub task_results: Vec<(u32, Vec<u8>, Vec<u8>)>,
     /// New chunks and placed blocks, for the mod hooks (see `world_log`).
     pub log: crate::terrain::world_log::WorldLog,
+    /// Set when the land comes from the server instead of the generator (see `world_remote.rs`).
+    pub remote: Option<crate::net::chunks::client_state::Streamer>,
     offsets: Vec<(i32, i32)>,
     offsets_radius: i32,
     urgent: Vec<(i32, i32)>,
@@ -148,6 +154,7 @@ impl World {
             log_edits: false,
             task_results: Vec::new(),
             log: Default::default(),
+            remote: None,
             offsets: Vec::new(),
             offsets_radius: -1,
             urgent: Vec::new(),
@@ -442,6 +449,10 @@ impl World {
                     }
                 }
             }
+            // (Chunks of the server's land that were dropped are not asked for any more.)
+            if let Some(r) = self.remote.as_mut() {
+                r.forget_far((ccx, ccz), i64::from(keep));
+            }
         }
 
         // 4. Queue missing chunks and meshes, nearest first.
@@ -459,6 +470,8 @@ impl World {
         let cap = (pool.thread_count() * 3).max(4);
         let mut loads = 0;
         let mut waiting = false;
+        // Chunks of the server's land that were kept from before (shown after the loop).
+        let mut kept: Vec<((i32, i32), Vec<u8>)> = Vec::new();
         for i in 0..self.offsets.len() {
             if pool.in_flight >= cap {
                 waiting = true;
@@ -490,7 +503,15 @@ impl World {
                         }
                         None => {
                             c.gen_requested = true;
-                            pool.submit(Job::Gen { cx: key.0, cz: key.1 }, false);
+                            // A world whose land the server makes asks the server instead.
+                            match self.remote.as_mut().filter(|r| r.takes_chunks()) {
+                                Some(r) => {
+                                    if let Some(bytes) = r.want(key) {
+                                        kept.push((key, bytes));
+                                    }
+                                }
+                                None => pool.submit(Job::Gen { cx: key.0, cz: key.1 }, false),
+                            }
                         }
                     }
                 }
@@ -502,6 +523,7 @@ impl World {
                 self.try_mesh(key, pool, false);
             }
         }
+        remote::show_kept(self, kept);
         let far_waiting = self.update_far(ccx, ccz, pool, sink, waiting);
         self.settled = !waiting && !far_waiting && pool.in_flight == 0 && self.backlog.is_empty();
     }
@@ -511,6 +533,17 @@ impl World {
     /// any tile is still missing.
     fn update_far(&mut self, ccx: i32, ccz: i32, pool: &mut Pool, sink: &mut dyn MeshSink, busy: bool) -> bool {
         use crate::lod::{step_with, TILE_CHUNKS};
+        // No distant terrain where the land comes from the server: the terrain function it is
+        // made from is not here (the chunks that have arrived are all there is to see).
+        if self.remote.is_some() {
+            for (_, t) in core::mem::take(&mut self.far) {
+                if let Some(m) = t.mesh {
+                    sink.free(m);
+                }
+            }
+            self.far_center = (i32::MIN, 0, 0);
+            return false;
+        }
         let (tcx, tcz) = (ccx.div_euclid(TILE_CHUNKS), ccz.div_euclid(TILE_CHUNKS));
         // A change of how distant terrain is made: start it afresh.
         let lod = (self.far_real, self.far_trees, self.far_detail);

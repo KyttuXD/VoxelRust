@@ -67,7 +67,7 @@ pub fn fit(img: &Image, side: usize) -> Vec<u8> {
 
 
 mod bmp;
-mod deflate;
+pub mod deflate;
 mod gif;
 pub mod header;
 mod jpeg;
