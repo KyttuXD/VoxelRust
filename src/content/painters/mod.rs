@@ -1,8 +1,11 @@
 //! The painters: small procedures that draw the game's own 16 x 16 pictures
-//! in the OCD style (docs/TEXTURING.md). No noise, no dithering, no random
-//! numbers: every picture is flat fills of two to eight colours. A block has
-//! a one-pixel frame in a darker tone of its fill; an item has a near-black
-//! outline; plants and see-through things have neither.
+//! in the OCD style (docs/TEXTURING.md) with VoxelRust's own look, the
+//! "house style" (see `house.rs` and the section of that name in
+//! docs/TEXTURING.md). No noise, no random numbers: every picture is flat
+//! fills of two to eight colours. A block has a one-pixel frame in a darker
+//! tone of its fill, a glint at (1, 1) and a shadow at (14, 14); an item has
+//! a cool near-black outline with a lighter rim on its lit edges; plants and
+//! see-through things have neither.
 //!
 //! Each subject has its own file. A file offers `builtin(name, x, y)` for the
 //! fixed pictures (`texture <id> builtin <name>`) and `paint(style, pal, x, y)`
@@ -19,6 +22,7 @@ pub mod explosives;
 pub mod food;
 pub mod gear;
 pub mod glass;
+pub mod house;
 pub mod liquids;
 pub mod ores;
 pub mod plants;
@@ -34,6 +38,7 @@ mod tests;
 mod palette_tests;
 
 pub use crate::content::palette::Palette;
+pub use house::*;
 
 /// One RGBA pixel.
 pub type Px = [u8; 4];
@@ -41,8 +46,12 @@ pub type Px = [u8; 4];
 /// Nothing: fully see-through.
 pub const CLEAR: Px = [0, 0, 0, 0];
 
-/// The outline of items.
-pub const OUTLINE: [u8; 3] = [26, 26, 26];
+/// The outline of items: an ink with a hint of blue (VoxelRust's house
+/// colour for outlines; the pack's is a neutral near-black).
+pub const OUTLINE: [u8; 3] = [24, 22, 34];
+
+/// The rim light on the lit (upper and left) edges of an item's outline.
+pub const RIM: [u8; 3] = [60, 54, 80];
 
 /// Frame tone of a block as a percentage of its fill (the pack's stone is
 /// `#7e7e7e` inside and `#5c5c5c` round it).
@@ -112,10 +121,13 @@ pub fn px(c: [u8; 3]) -> Px {
     [c[0], c[1], c[2], 255]
 }
 
-/// `c` with every channel scaled to `pct` percent.
+/// `c` with every channel scaled to `pct` percent. Shade is cool in the house
+/// style: when `pct` darkens, red goes down a little more and blue a little
+/// less, so shadows lean to blue-violet and never to grey.
 #[inline]
 pub fn scale(c: [u8; 3], pct: i32) -> [u8; 3] {
-    c.map(|v| (v as i32 * pct / 100).clamp(0, 255) as u8)
+    let (kr, kb) = if pct < 100 { (95, 105) } else { (100, 100) };
+    [(c[0] as i32 * pct * kr / 10000).clamp(0, 255) as u8, (c[1] as i32 * pct / 100).clamp(0, 255) as u8, (c[2] as i32 * pct * kb / 10000).clamp(0, 255) as u8]
 }
 
 /// The frame tone of `c`.
@@ -124,16 +136,23 @@ pub fn dark(c: [u8; 3]) -> [u8; 3] {
     scale(c, DARK)
 }
 
-/// A lighter tone of `c`: a fifth of the way to white.
+/// A lighter tone of `c`: about a fifth of the way to white, warm (red moves
+/// further than green, green further than blue): light is warm in the house style.
 #[inline]
 pub fn lift(c: [u8; 3]) -> [u8; 3] {
-    c.map(|v| (v as i32 + (255 - v as i32) * 22 / 100) as u8)
+    [(c[0] as i32 + (255 - c[0] as i32) * 24 / 100) as u8, (c[1] as i32 + (255 - c[1] as i32) * 22 / 100) as u8, (c[2] as i32 + (255 - c[2] as i32) * 16 / 100) as u8]
 }
 
-/// A pale tone of `c`: half way to white.
+/// A pale tone of `c`: about half way to white, warm.
 #[inline]
 pub fn pale(c: [u8; 3]) -> [u8; 3] {
-    c.map(|v| (v as i32 + (255 - v as i32) / 2) as u8)
+    [(c[0] as i32 + (255 - c[0] as i32) * 55 / 100) as u8, (c[1] as i32 + (255 - c[1] as i32) * 50 / 100) as u8, (c[2] as i32 + (255 - c[2] as i32) * 44 / 100) as u8]
+}
+
+/// The glint of a block: a gentle step towards warm white, the pixel at (1, 1) of every block face.
+#[inline]
+pub fn glint(c: [u8; 3]) -> [u8; 3] {
+    [(c[0] as i32 + (255 - c[0] as i32) * 14 / 100) as u8, (c[1] as i32 + (255 - c[1] as i32) * 13 / 100) as u8, (c[2] as i32 + (255 - c[2] as i32) * 9 / 100) as u8]
 }
 
 // ---- Shape helpers.
@@ -196,7 +215,10 @@ pub fn outlined_px_with(x: i32, y: i32, outline: [u8; 3], f: &dyn Fn(i32, i32) -
     }
     for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
         if f(x + dx, y + dy).is_some() {
-            return px(outline);
+            // The house rim light: the house outline is lighter where the shape
+            // is lit (its upper and left edges). A palette's own outline stays flat.
+            let lit = outline == OUTLINE && (f(x + 1, y).is_some() || f(x, y + 1).is_some()) && f(x - 1, y).is_none() && f(x, y - 1).is_none();
+            return px(if lit { RIM } else { outline });
         }
     }
     CLEAR

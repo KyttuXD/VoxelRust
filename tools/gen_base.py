@@ -91,13 +91,13 @@ for t in ["grass_top", "grass_side", "dirt", "stone", "sand", "gravel", "water",
 tex("white", "flat 255 255 255")
 # Palettes (docs/TEXTURING.md): base, dark, light. The ore's blobs are the base, with the light
 # colour on top and the dark one at the bottom right.
-w("palette ruby #e2406e #a82454 #ff9cb8")
+w("palette ruby #e83668 #a01a4c #ff94b4")
 tex("ruby_ore", "paint ore palette ruby")
 tex("workbench_top", "paint workbench 176 136 84")
 tex("stick", "paint stick 122 88 52")
-tex("ruby", "paint gem 226 60 110")
-tex("crystal", "paint gem 130 226 240")
-tex("coal", "paint gem 44 44 50")
+tex("ruby", "paint gem 232 54 104")
+tex("crystal", "paint gem 124 224 246")
+tex("coal", "paint gem 42 42 58")
 tex("apple", "paint fruit 206 48 44")
 tex("berries", "paint fruit 120 60 170")
 tex("raw_meat", "paint meat 214 96 96")
@@ -105,9 +105,9 @@ tex("cooked_meat", "paint meat 150 92 54")
 tex("raw_fish", "paint fishfood 130 170 196")
 tex("cooked_fish", "paint fishfood 206 160 110")
 # material: (id, name, colour, speed, ingredient item)
-TOOL_MATERIALS = [("wood", "Wooden", (160, 122, 74), 2, "planks"), ("stone", "Stone", (136, 138, 144), 3, "cobble"),
-                  ("copper", "Copper", (206, 124, 80), 4, "copper_ore"), ("iron", "Iron", (214, 214, 220), 6, "iron_ore"),
-                  ("crystal", "Crystal", (130, 226, 240), 8, "crystal"), ("ruby", "Ruby", (226, 60, 110), 11, "ruby")]
+TOOL_MATERIALS = [("wood", "Wooden", (166, 118, 70), 2, "planks"), ("stone", "Stone", (128, 136, 152), 3, "cobble"),
+                  ("copper", "Copper", (216, 116, 70), 4, "copper_ore"), ("iron", "Iron", (204, 212, 230), 6, "iron_ore"),
+                  ("crystal", "Crystal", (124, 224, 246), 8, "crystal"), ("ruby", "Ruby", (232, 54, 104), 11, "ruby")]
 for mid, _, (r, g, b), _, _ in TOOL_MATERIALS:
     for kind in ("pick", "axe", "shovel"):
         tex(f"{mid}_{kind}", f"paint {kind} {r} {g} {b}")
@@ -660,7 +660,7 @@ block("kiln", "Kiln", "brick furnace_front brick", cat="Farming", hardness=2.0, 
 block("smoker", "Smoker", "planks oven_front planks", cat="Farming", hardness=1.6, tool="axe", use="oven", light=5)
 block("campfire", "Campfire", "log_side", cat="Farming", hardness=0.6, tool="axe", use="oven", light=13, hurts=1,
       box=["1 0 6 15 3 10", "6 0 1 10 3 15", "5 3 5 11 7 11"], sound="sizzle", tag="fire")
-for mid, mname, (r, g, b) in (("iron", "Iron", (214, 214, 220)), ("copper", "Copper", (206, 124, 80))):
+for mid, mname, (r, g, b) in (("iron", "Iron", (204, 212, 230)), ("copper", "Copper", (216, 116, 70))):
     tex(f"{mid}_ingot", f"paint ingot {r} {g} {b}")
     w(f"item {mid}_ingot\n  name {mname} Ingot\n  icon {mid}_ingot\n  category Materials")
     w(f"smelt {mid}_ingot 1 {mid}_ore 1 coal 1")

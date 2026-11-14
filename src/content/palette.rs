@@ -335,11 +335,11 @@ fn is_keyword(w: &str) -> bool {
 /// The stones an ore can sit in, by name.
 fn host_named(name: &str) -> Option<[u8; 3]> {
     Some(match name {
-        "stone" => [126, 126, 126],
-        "deepstone" => [58, 56, 66],
-        "sandstone" => [237, 231, 184],
-        "dirt" => [132, 94, 66],
-        "gravel" => [122, 115, 115],
+        "stone" => crate::painters::stone::STONE,
+        "deepstone" => crate::painters::stone::DEEPSTONE,
+        "sandstone" => [232, 214, 160],
+        "dirt" => crate::painters::blocks::DIRT,
+        "gravel" => [110, 108, 118],
         "netherrack" => [110, 54, 52],
         _ => return None,
     })
@@ -590,7 +590,7 @@ mod tests {
         assert_eq!(p.gradient, Gradient::Vertical);
         assert_eq!(p.more.len(), 1);
         assert_eq!(p.handle_or(([0; 3], [0; 3])), ([160, 122, 74], [116, 86, 52]));
-        assert_eq!(p.host, Some([58, 56, 66]));
+        assert_eq!(p.host, Some(crate::painters::stone::DEEPSTONE));
         let q = parse_spec(&["palette", "ruby", "host", "#102030"], &k).unwrap();
         assert_eq!(q.host, Some([16, 32, 48]));
         // A gradient word on the line overrides the palette's.

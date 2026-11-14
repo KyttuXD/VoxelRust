@@ -6,12 +6,14 @@
 //! Paint styles: `bow`, `crossbow` (at rest) and `bow_pull0..2`,
 //! `crossbow_pull0..2` (drawn back a little, half way, fully).
 //!
-//! The pictures stand upright, as the OCD pack draws them.
+//! The pictures stand upright (the OCD style), in VoxelRust's own shapes.
 
 type Px = [u8; 4];
 
 const CLEAR: Px = [0, 0, 0, 0];
-const OUTLINE: Px = [26, 26, 26, 255];
+const OUTLINE: Px = [24, 22, 34, 255];
+/// The lighter outline on the lit (upper and left) edges: the house rim light.
+const RIM: Px = [60, 54, 80, 255];
 const STRING: Px = [236, 236, 230, 255];
 const SHAFT: Px = [150, 112, 70, 255];
 const HEAD: Px = [190, 192, 200, 255];
@@ -36,7 +38,7 @@ fn stage_of(style: &str) -> Option<(Option<i32>, bool)> {
 /// in the colour `rgb` for the wood; `None` if it is not one of ours.
 pub fn painted(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
     stage_of(style)?;
-    // The picture is the OCD pack's own silhouette (tools/ocd_shapes.py): the
+    // The picture is VoxelRust's own silhouette (painters/tool_shapes.rs): the
     // stave and stock in the wood colour, the string and arrow parts pale.
     let rows = crate::painters::tool_shapes::shape(style)?;
     if !(0..16).contains(&x) || !(0..16).contains(&y) {
@@ -45,12 +47,23 @@ pub fn painted(style: &str, rgb: [u8; 3], x: i32, y: i32) -> Option<Px> {
     let wood = [rgb[0], rgb[1], rgb[2], 255];
     let dark = [(rgb[0] as u32 * 62 / 100) as u8, (rgb[1] as u32 * 62 / 100) as u8, (rgb[2] as u32 * 62 / 100) as u8, 255];
     Some(match rows[y as usize].as_bytes()[x as usize] {
-        b'o' => OUTLINE,
+        b'o' => {
+            // Rim light: an outline pixel with the picture on its right or below and none on its left and above.
+            let solid = |dx: i32, dy: i32| {
+                let (cx, cy) = (x + dx, y + dy);
+                (0..16).contains(&cx) && (0..16).contains(&cy) && rows[cy as usize].as_bytes()[cx as usize] != b'.'
+            };
+            if (solid(1, 0) || solid(0, 1)) && !solid(-1, 0) && !solid(0, -1) {
+                RIM
+            } else {
+                OUTLINE
+            }
+        }
         b'h' => wood,
         b'H' => dark,
         b'L' | b'W' => STRING,
         b'M' => HEAD,
-        b'D' => SHAFT,
+        b'D' | b'B' => SHAFT,
         _ => CLEAR,
     })
 }

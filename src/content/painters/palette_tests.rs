@@ -39,32 +39,44 @@ fn tile<'a>(r: &'a Registry, id: &str) -> &'a crate::block::TileDef {
 
 #[test]
 fn old_rgb_pictures_are_what_they_were() {
-    // Tones as the painters have always made them: light a fifth to white, dark 73%.
+    // Tones as the house style makes them: light about a fifth to warm white, dark 73% leaning cool.
     let c = [200, 60, 60];
-    let (l, d) = ([212, 102, 102, 255], [146, 43, 43, 255]);
-    // A pickaxe: lit top row, middle row, shaded ends, wooden handle, near-black outline.
-    // (The tools are painted from the OCD pack's silhouettes: see tool_shapes.)
-    assert_eq!(at("pick", c, 7, 2), [200, 60, 60, 255]);
+    let (l, d) = ([213, 102, 91, 255], [138, 43, 45, 255]);
+    // A pickaxe: lit top row, middle row, shaded ends, a wooden haft (lit column, shaded column),
+    // an ink outline that is lighter on its upper left edge (the rim light).
+    // (The tools are painted from VoxelRust's own silhouettes: see tool_shapes.)
+    assert_eq!(at("pick", c, 7, 2), l);
+    assert_eq!(at("pick", c, 8, 3), [200, 60, 60, 255]);
     assert_eq!(at("pick", c, 3, 3), l);
-    assert_eq!(at("pick", c, 7, 8), [116, 86, 52, 255]);
-    assert_eq!(at("pick", c, 8, 8), [26, 26, 26, 255]);
-    assert_eq!(at("pick", c, 2, 1), [26, 26, 26, 255]);
+    assert_eq!(at("pick", c, 13, 3), d);
+    assert_eq!(at("pick", c, 7, 8), [166, 118, 70, 255]);
+    assert_eq!(at("pick", c, 8, 8), [118, 80, 54, 255]);
+    assert_eq!(at("pick", c, 9, 8), [24, 22, 34, 255]);
+    assert_eq!(at("pick", c, 4, 1), [60, 54, 80, 255]);
+    assert_eq!(at("pick", c, 8, 1), [24, 22, 34, 255]);
     assert_eq!(at("pick", c, 0, 0), CLEAR);
-    // A sword: lit left edge of the blade, shaded right edge, shaded guard.
+    // The haft is bound with the dark tone of the head.
+    assert_eq!(at("pick", c, 7, 7), d);
+    // A sword: lit left edge of the blade, a highlight (the fuller) beside it, mid on the right.
     assert_eq!(at("sword", c, 8, 5), [200, 60, 60, 255]);
-    assert_eq!(at("sword", c, 4, 10), [200, 60, 60, 255]);
-    let _ = d;
-    // A block: frame at 92% of the fill.
-    assert_eq!(at("concrete", [150, 110, 70], 0, 0), [138, 101, 64, 255]);
+    assert_eq!(at("sword", c, 7, 5), [223, 135, 117, 255]);
+    assert_eq!(at("sword", c, 3, 10), d);
+    // A block: frame at 92% of the fill (leaning cool), the glint, the shadow in the corner, four pores.
+    assert_eq!(at("concrete", [150, 110, 70], 0, 0), [131, 101, 67, 255]);
     assert_eq!(at("concrete", [150, 110, 70], 5, 5), [150, 110, 70, 255]);
-    // An ore: stone with a frame, blobs with a lighter pixel on top and no darker one.
-    assert_eq!(at("ore", [40, 40, 46], 0, 0), [91, 91, 91, 255]);
-    assert_eq!(at("ore", [40, 40, 46], 7, 7), [126, 126, 126, 255]);
-    assert_eq!(at("ore", [40, 40, 46], 3, 3), [87, 87, 91, 255]);
-    assert_eq!(at("ore", [40, 40, 46], 4, 4), [40, 40, 46, 255]);
+    assert_eq!(at("concrete", [150, 110, 70], 14, 14), [131, 101, 67, 255]);
+    assert_eq!(at("concrete", [150, 110, 70], 1, 1), [164, 128, 86, 255]);
+    // An ore: stone with a frame, nuggets of three pixels with a lighter pixel first, a crack of darker stone.
+    assert_eq!(at("ore", [40, 40, 46], 0, 0), [80, 87, 101, 255]);
+    assert_eq!(at("ore", [40, 40, 46], 7, 7), [116, 120, 132, 255]);
+    assert_eq!(at("ore", [40, 40, 46], 3, 2), [91, 87, 79, 255]);
+    assert_eq!(at("ore", [40, 40, 46], 4, 2), [40, 40, 46, 255]);
+    assert_eq!(at("ore", [40, 40, 46], 7, 5), [92, 100, 116, 255]);
     // A gem is still lit upper left, shaded lower right.
     assert_eq!(at("gem", c, 6, 6), l);
     assert_eq!(at("gem", c, 9, 9), d);
+    // ... with a pale sparkle on the lit facet.
+    assert_eq!(at("gem", c, 5, 6), px(pale(lift(c))));
 }
 
 #[test]
@@ -80,7 +92,7 @@ fn a_one_colour_palette_equals_the_old_function_everywhere() {
         }
     }
     // The builtin ores are the ore style.
-    for (name, rgb) in [("coal_ore", [40, 40, 46]), ("iron_ore", [210, 160, 125]), ("ruby_ore", [232, 66, 122])] {
+    for (name, rgb) in [("coal_ore", [38, 38, 52]), ("iron_ore", [214, 150, 118]), ("ruby_ore", [236, 62, 116])] {
         for y in 0..16 {
             for x in 0..16 {
                 assert_eq!(builtin(name, x, y), paint("ore", rgb, x, y), "{name}");
@@ -92,15 +104,15 @@ fn a_one_colour_palette_equals_the_old_function_everywhere() {
 #[test]
 fn a_gradient_spreads_over_the_head_of_a_tool() {
     let fire = Palette::from_list(&[[200, 40, 20], [250, 200, 30]], Gradient::Vertical);
-    // The pick's head is rows 2 to 4 (its handle starts at row 4); the top row is the first colour, the bottom the second.
+    // The pick's head is rows 2 to 5; the upper rows are the first colour, the lower ones the second.
     assert_eq!(pal_at("pick", &fire, 7, 2)[..3], [200, 40, 20]);
-    assert_ne!(pal_at("pick", &fire, 3, 4)[..3], [200, 40, 20]);
-    // The handle stays wood and the outline stays dark.
-    assert_eq!(pal_at("pick", &fire, 7, 10), [116, 86, 52, 255]);
-    assert_eq!(pal_at("pick", &fire, 2, 1), [26, 26, 26, 255]);
+    assert_eq!(pal_at("pick", &fire, 13, 4)[..3], [250, 200, 30]);
+    // The haft stays wood and the outline stays dark.
+    assert_eq!(pal_at("pick", &fire, 8, 10), [118, 80, 54, 255]);
+    assert_eq!(pal_at("pick", &fire, 9, 1), [24, 22, 34, 255]);
     // An axe's head has both colours too.
-    let top = pal_at("axe", &fire, 6, 3);
-    let bottom = pal_at("axe", &fire, 6, 5);
+    let top = pal_at("axe", &fire, 10, 3);
+    let bottom = pal_at("axe", &fire, 10, 6);
     assert_ne!(top, bottom);
     // The picture stays in the OCD range of colours.
     for style in ["pick", "axe", "shovel", "hoe", "sword"] {
@@ -117,7 +129,7 @@ fn tool_palettes_give_handle_fuller_and_outline() {
     // A sword with an accent has a fuller down column 7.
     let sword = parse(&["colors", "#78c8f0", "accent=#ffffff", "outline=#101040"]);
     assert_eq!(pal_at("sword", &sword, 7, 5), [255, 255, 255, 255]);
-    assert_eq!(pal_at("sword", &sword, 8, 9)[..3], [120, 200, 240]);
+    assert_eq!(pal_at("sword", &sword, 8, 5)[..3], [120, 200, 240]);
     assert_eq!(pal_at("sword", &sword, 7, 0), [16, 16, 64, 255]);
     assert!(colour_count(|x, y| pal_at("sword", &sword, x, y)) <= 8);
 }
@@ -129,30 +141,31 @@ fn parse(words: &[&str]) -> Palette {
 #[test]
 fn ores_take_host_gems_and_veins() {
     let ruby = parse(&["#e2406e", "#a82454", "#ff9cb8"]);
-    // Blob: highlight (the light colour) top left, dark bottom right, base between.
-    assert_eq!(pal_at("ore", &ruby, 3, 3), [255, 156, 184, 255]);
-    assert_eq!(pal_at("ore", &ruby, 4, 4), [168, 36, 84, 255]);
-    assert_eq!(pal_at("ore", &ruby, 4, 3), [226, 64, 110, 255]);
-    assert_eq!(pal_at("ore", &ruby, 7, 7), [126, 126, 126, 255]);
+    // Nugget: highlight (the light colour) first, dark last, base between.
+    assert_eq!(pal_at("ore", &ruby, 3, 2), [255, 156, 184, 255]);
+    assert_eq!(pal_at("ore", &ruby, 4, 3), [168, 36, 84, 255]);
+    assert_eq!(pal_at("ore", &ruby, 4, 2), [226, 64, 110, 255]);
+    assert_eq!(pal_at("ore", &ruby, 7, 7), [116, 120, 132, 255]);
     // A deep host.
     let mut deep = ruby.clone();
-    deep.host = Some([58, 56, 66]);
-    assert_eq!(pal_at("ore", &deep, 7, 7), [58, 56, 66, 255]);
-    assert_eq!(pal_at("ore", &deep, 0, 0), [42, 40, 48, 255]);
-    // A multi ore: the second blob is the second gem.
+    deep.host = Some(crate::painters::stone::DEEPSTONE);
+    assert_eq!(pal_at("ore", &deep, 7, 7), [52, 54, 72, 255]);
+    assert_eq!(pal_at("ore", &deep, 0, 0), [36, 39, 55, 255]);
+    // A multi ore: the second nugget is the second gem.
     let mut multi = ruby.clone();
     multi.more.push(parse(&["#40c070"]));
-    assert_eq!(pal_at("ore", &multi, 10, 4)[..3], [64, 192, 112]);
-    assert_eq!(pal_at("ore", &multi, 3, 4)[..3], [226, 64, 110]);
+    assert_eq!(pal_at("ore", &multi, 10, 5)[..3], [64, 192, 112]);
+    assert_eq!(pal_at("ore", &multi, 4, 2)[..3], [226, 64, 110]);
     // The frame is complete, the colours few.
     for pal in [&ruby, &deep, &multi] {
         assert!(colour_count(|x, y| pal_at("ore", pal, x, y)) <= 8);
         assert!(colour_count(|x, y| pal_at("ore_vein", pal, x, y)) <= 8);
     }
-    // A vein is a band across the stone that is not on the frame.
-    assert_eq!(pal_at("ore_vein", &ruby, 5, 5), [226, 64, 110, 255]);
+    // A vein is a wavy band across the stone that is not on the frame: a lit row over a base row.
+    assert_eq!(pal_at("ore_vein", &ruby, 5, 6), [226, 64, 110, 255]);
+    assert_eq!(pal_at("ore_vein", &ruby, 5, 5), [255, 156, 184, 255]);
     assert_eq!(pal_at("ore_vein", &ruby, 4, 5), [255, 156, 184, 255]);
-    assert_eq!(pal_at("ore_vein", &ruby, 0, 9), [91, 91, 91, 255]);
+    assert_eq!(pal_at("ore_vein", &ruby, 0, 9), [80, 87, 101, 255]);
 }
 
 #[test]
@@ -174,7 +187,7 @@ fn the_data_lines_make_palette_textures() {
     assert!(matches!(tile(&r, "t_one").src, TileSrc::Paint { rgb: [200, 60, 60], .. }));
     assert!(matches!(tile(&r, "t_jade").src, TileSrc::Palette { .. }));
     match &tile(&r, "t_ore").src {
-        TileSrc::Palette { pal, .. } => assert_eq!(pal.host, Some([58, 56, 66])),
+        TileSrc::Palette { pal, .. } => assert_eq!(pal.host, Some(crate::painters::stone::DEEPSTONE)),
         _ => panic!("palette"),
     }
     match &tile(&r, "t_fire").src {

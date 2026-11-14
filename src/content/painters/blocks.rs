@@ -1,55 +1,67 @@
 //! Plain building blocks: earth, sand, snow, clay, lamps, wool, concrete,
 //! terracotta, farmland, magma, chests and workbenches. Flat fills with a
-//! one-pixel darker frame.
+//! one-pixel darker frame, the glint and the shadow in the corners and the
+//! grain of each material (house.rs).
 
 use super::*;
 
-const DIRT: [u8; 3] = [132, 94, 66];
-const SNOW: [u8; 3] = [255, 255, 255];
+pub const DIRT: [u8; 3] = [138, 96, 62];
+const SNOW: [u8; 3] = [248, 251, 255];
+const SAND: [u8; 3] = [226, 204, 146];
+
+/// Dirt: flecked in short diagonals.
+pub fn dirt_px(x: i32, y: i32) -> Px {
+    sealed_grain(x, y, DIRT, DARK, if at_any(x, y, &FLECKS) { Some(scale(DIRT, 84)) } else { None })
+}
+
+/// How far the snow reaches down the side of a snowy block, column by column: a dripping edge.
+const DRIP: [i32; 16] = [4, 4, 5, 6, 4, 4, 5, 4, 3, 5, 6, 5, 4, 4, 5, 4];
 
 pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
     Some(match name {
-        "dirt" => framed(x, y, DIRT, DARK),
-        "sand" => framed(x, y, [219, 211, 159], 82),
-        "clay" => framed(x, y, [159, 164, 177], 77),
-        "snow" => framed(x, y, SNOW, 90),
+        "dirt" => dirt_px(x, y),
+        "sand" => sealed_grain(x, y, SAND, 82, if at_any(x, y, &RIPPLES) { Some(scale(SAND, 91)) } else { None }),
+        "clay" => sealed_grain(x, y, [150, 166, 188], 77, if layer(x, y) { Some(scale([150, 166, 188], 90)) } else { None }),
+        "snow" => sealed_grain(x, y, SNOW, 90, if at_any(x, y, &[(4, 9), (10, 4), (11, 12), (6, 3)]) { Some([212, 228, 250]) } else { None }),
         "snow_side" => {
-            // Snow on top, a jagged lower edge, dirt below.
-            let snowy = y < 4 || (y == 4 && x % 4 < 2);
-            if snowy {
-                framed(x, y, SNOW, 90)
+            // Snow on top with a dripping lower edge, flecked dirt below.
+            if y < DRIP[x as usize & 15] {
+                sealed(x, y, SNOW, 90)
             } else {
-                framed(x, y, DIRT, DARK)
+                dirt_px(x, y)
             }
         }
         "gravel" => {
-            let base = [122, 115, 115];
-            let pebble = rect(x, y, 2, 3, 3, 2) || rect(x, y, 9, 1, 3, 2) || rect(x, y, 5, 10, 3, 2) || rect(x, y, 11, 8, 3, 2);
-            if edge(x, y) {
-                px(scale(base, DARK))
-            } else if pebble {
-                px(scale(base, 78))
+            // Pebbles: a flat stone with a bump on top, four of them.
+            let base = [110, 108, 118];
+            let pebble = |bx: i32, by: i32| rect(x, y, bx, by, 3, 1) || (x == bx + 1 && y == by - 1);
+            let lit = |bx: i32, by: i32| x == bx + 1 && y == by - 1;
+            let at = [(3, 5), (9, 3), (5, 11), (11, 9)];
+            if at.iter().any(|&(bx, by)| lit(bx, by)) {
+                px(scale(base, 92))
+            } else if at.iter().any(|&(bx, by)| pebble(bx, by)) {
+                px(scale(base, 76))
             } else {
-                px(base)
+                sealed(x, y, base, DARK)
             }
         }
         "sandstone" => {
-            let fill = [237, 231, 184];
-            if edge(x, y) {
-                px(scale(fill, 86))
-            } else if y == 5 || y == 10 {
-                px(scale(fill, 93))
-            } else {
-                px(fill)
-            }
+            // Wavy strata: each band steps down by one halfway across.
+            let fill = [232, 214, 160];
+            let band = (y == 5 && x < 8) || (y == 6 && x >= 8) || (y == 10 && x < 8) || (y == 11 && x >= 8);
+            sealed_grain(x, y, fill, 86, if band { Some(scale(fill, 92)) } else { None })
         }
         "lamp" => {
+            // An amber frame round a glowing diamond with a brighter core.
+            let (dx, dy) = ((2 * x - 15).abs(), (2 * y - 15).abs());
             if edge(x, y) {
-                px([120, 88, 48])
-            } else if disc(x, y, 4) {
-                px([255, 252, 224])
+                px([124, 80, 40])
+            } else if dx + dy <= 5 {
+                px([255, 250, 226])
+            } else if dx + dy <= 17 {
+                px([252, 222, 128])
             } else {
-                px([250, 214, 120])
+                px([234, 178, 84])
             }
         }
         _ => return None,
@@ -59,23 +71,26 @@ pub fn builtin(name: &str, x: i32, y: i32) -> Option<Px> {
 pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
     let rgb = pal.at(x, y);
     Some(match style {
-        "concrete" => framed_pal(x, y, pal, rgb, 92),
-        "wool" => framed_pal(x, y, pal, rgb, 85),
-        "terracotta" => framed_pal(x, y, pal, rgb, DARK),
+        // Concrete: smooth, with four pores.
+        "concrete" => sealed_pal_grain(x, y, pal, rgb, 92, if at_any(x, y, &[(4, 3), (11, 8), (6, 12), (12, 4)]) { Some(scale(rgb, 88)) } else { None }),
+        // Wool: rows of stitches.
+        "wool" => sealed_pal_grain(x, y, pal, rgb, 85, if stitch(x, y) { Some(scale(rgb, 91)) } else { None }),
+        // Terracotta: two short kiln lines.
+        "terracotta" => sealed_pal_grain(x, y, pal, rgb, DARK, if (y == 5 || y == 10) && (3..=12).contains(&x) { Some(scale(rgb, 90)) } else { None }),
         "farmland" => {
-            // Furrows running one way, darker than plain dirt.
-            if edge(x, y) || y % 4 == 3 {
+            // Furrows running slantwise, darker than plain dirt.
+            if edge(x, y) || (x + y) % 5 == 4 {
                 px(pal.shade(rgb, 70))
             } else {
                 px(rgb)
             }
         }
         "magma" => {
-            // A dark crust with four glowing blobs, the middle of each lighter.
-            let crust = [62, 42, 44];
-            for (bx, by) in [(3, 3), (10, 4), (5, 9), (11, 11)] {
-                if rect(x, y, bx, by, 2, 2) {
-                    return Some(px(if x == bx && y == by { pal.light_of(rgb) } else { rgb }));
+            // A dark crust with four glowing blobs of three joined pixels, the first of each lighter.
+            let crust = [60, 40, 48];
+            for blob in [[(3, 3), (4, 3), (4, 4)], [(10, 4), (10, 5), (11, 5)], [(5, 10), (6, 10), (5, 11)], [(10, 11), (11, 11), (11, 12)]] {
+                if let Some(i) = blob.iter().position(|&p| p == (x, y)) {
+                    return Some(px(if i == 0 { pal.light_of(rgb) } else { rgb }));
                 }
             }
             px(if edge(x, y) { scale(crust, 70) } else { crust })
@@ -85,6 +100,8 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
                 px(pal.shade(rgb, 60))
             } else if rect(x, y, 7, 4, 2, 4) {
                 px(pal.accent().unwrap_or([214, 196, 120])) // the latch
+            } else if at_any(x, y, &[(2, 2), (13, 2)]) {
+                px(pal.accent().unwrap_or([214, 196, 120])) // the rivets of the lid
             } else if y < 5 {
                 px(rgb)
             } else {
@@ -104,6 +121,8 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
                 px(pal.shade(rgb, 60))
             } else if style == "chest_front" && rect(x, y, 7, 7, 2, 5) {
                 px(pal.accent().unwrap_or([214, 196, 120])) // the latch, across the lid's seam
+            } else if at_any(x, y, &[(3, 7), (12, 7)]) {
+                px(pal.accent().unwrap_or([214, 196, 120])) // the rivets of the lid
             } else if y < 9 {
                 px(rgb)
             } else {
@@ -124,8 +143,11 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
             }
         }
         "workbench" => {
+            // A grid of nine cells, each with a glint in its top left corner.
             if x % 5 == 0 || y % 5 == 0 {
                 px(pal.shade(rgb, 60))
+            } else if x % 5 == 1 && y % 5 == 1 {
+                px(glint(rgb))
             } else {
                 px(rgb)
             }

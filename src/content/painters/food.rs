@@ -1,5 +1,7 @@
 //! Food and farm goods: a bright main colour, a lighter highlight, a darker
 //! lower edge, a dark outline. `paint <style> r g b` gives the main colour.
+//! The house touch: a sparkle, one pale pixel, on the lit side of the round
+//! foods (`SPARKS`).
 
 use super::*;
 
@@ -7,6 +9,9 @@ const BONE: [u8; 3] = [236, 230, 214];
 const STEM: [u8; 3] = [96, 66, 36];
 const LEAF: [u8; 3] = [72, 150, 60];
 const LEAF_DARK: [u8; 3] = [50, 108, 44];
+
+/// Where the pale pixel of a round food sits (inside its lit part).
+const SPARKS: [(&str, (i32, i32)); 5] = [("meat", (3, 8)), ("fruit", (5, 8)), ("loaf", (5, 7)), ("egg", (5, 5)), ("cookie", (5, 5))];
 
 fn when(on: bool, c: [u8; 3]) -> Option<[u8; 3]> {
     if on {
@@ -17,6 +22,19 @@ fn when(on: bool, c: [u8; 3]) -> Option<[u8; 3]> {
 }
 
 pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
+    let p = paint_base(style, pal, x, y)?;
+    if let Some(&(_, at)) = SPARKS.iter().find(|s| s.0 == style) {
+        // Only a pixel that is in the lit tone is touched, so a shape that
+        // does not reach it (or a gradient) is left alone.
+        let l = pal.light_of(pal.at(x, y));
+        if (x, y) == at && p == px(l) {
+            return Some(px(sparkle(l)));
+        }
+    }
+    Some(p)
+}
+
+fn paint_base(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
     let rgb = pal.at(x, y);
     let (l, m, d) = (pal.light_of(rgb), rgb, pal.dark_of(rgb));
     Some(match style {

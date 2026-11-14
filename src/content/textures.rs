@@ -55,7 +55,7 @@ pub fn painted_pal(style: &str, pal: &crate::palette::Palette, x: i32, y: i32) -
 /// none it is a flat fill all over.
 fn flat_px(rgb: [u8; 3], noise: u8, x: i32, y: i32) -> Px {
     if noise > 0 {
-        crate::painters::framed(x, y, rgb, crate::painters::DARK)
+        crate::painters::sealed(x, y, rgb, crate::painters::DARK)
     } else {
         crate::painters::px(rgb)
     }

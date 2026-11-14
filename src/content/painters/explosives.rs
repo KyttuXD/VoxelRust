@@ -20,8 +20,10 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
         // The side: red, with a white band across the middle (rows 5 to 10)
         // and dark marks on it for lettering. The frame stays unbroken.
         "tnt_side" => {
-            if edge(x, y) {
+            if edge(x, y) || (x, y) == (14, 14) {
                 px(d)
+            } else if (x, y) == (1, 1) {
+                px(glint(m))
             } else if rect(x, y, 1, 5, 14, 6) {
                 let mark = (y == 7 || y == 8) && (3..13).contains(&x) && (x % 4 == 2 || x % 4 == 3);
                 px(if mark { INK } else { LABEL })
@@ -31,8 +33,10 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
         }
         // The top: red, with the stick of the fuse in the middle.
         "tnt_top" => {
-            if edge(x, y) {
+            if edge(x, y) || (x, y) == (14, 14) {
                 px(d)
+            } else if (x, y) == (1, 1) {
+                px(glint(m))
             } else if rect(x, y, 7, 7, 2, 2) {
                 px(INK)
             } else if rect(x, y, 6, 6, 4, 4) {
@@ -43,8 +47,10 @@ pub fn paint(style: &str, pal: &Palette, x: i32, y: i32) -> Option<Px> {
         }
         // The bottom: red, with a darker cross.
         "tnt_bottom" => {
-            if edge(x, y) || (7..=8).contains(&x) || (7..=8).contains(&y) {
+            if edge(x, y) || (7..=8).contains(&x) || (7..=8).contains(&y) || (x, y) == (14, 14) {
                 px(d)
+            } else if (x, y) == (1, 1) {
+                px(glint(m))
             } else {
                 px(m)
             }
