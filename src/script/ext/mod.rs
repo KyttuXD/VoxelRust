@@ -16,6 +16,7 @@
 //! | `files.rs` | small text files in `<data>/tmp/<mod>/` |
 //! | `net.rs` | messages to the same mod on the other players' machines |
 //! | `effects.rs` | shots in flight, a forced sky, pushes |
+//! | `sound.rs` | sounds in the world with handles, loops, and one channel of music |
 //! | `data.rs` | what the session keeps for all of this |
 //!
 //! The functions are listed in each file's `FUNCTIONS` and in the table of
@@ -31,6 +32,7 @@ pub mod mobs;
 pub mod net;
 pub mod pack;
 pub mod player;
+pub mod sound;
 pub mod storage;
 pub mod world;
 
@@ -51,7 +53,7 @@ pub struct Ctx {
 }
 
 /// Every function of every file, in the order the docs list them.
-pub const MODULES: &[&[(&str, &str)]] = &[world::FUNCTIONS, mobs::FUNCTIONS, player::FUNCTIONS, draw::FUNCTIONS, bodies::FUNCTIONS, storage::FUNCTIONS, pack::FUNCTIONS, files::FUNCTIONS, net::FUNCTIONS, effects::FUNCTIONS];
+pub const MODULES: &[&[(&str, &str)]] = &[world::FUNCTIONS, mobs::FUNCTIONS, player::FUNCTIONS, draw::FUNCTIONS, bodies::FUNCTIONS, storage::FUNCTIONS, pack::FUNCTIONS, files::FUNCTIONS, net::FUNCTIONS, effects::FUNCTIONS, sound::FUNCTIONS];
 
 /// All the (signature, what it does) rows.
 pub fn all_functions() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
@@ -77,7 +79,8 @@ pub fn arity_of(sig: &str) -> usize {
 /// Call the host function `name` of one of the files above, if there is one.
 /// `None`: no such function.
 pub(crate) fn call(it: &mut Interp, name: &str, args: &[Value]) -> Option<Res> {
-    let m = MODULES.iter().position(|m| m.iter().any(|f| name_of(f.0) == name))?;
+    // (`play_sound` with more than its id is a call of `sound.rs`; the one-argument form is in `host.rs`.)
+    let m = MODULES.iter().position(|m| m.iter().any(|f| name_of(f.0) == name)).or(if name == "play_sound" { Some(MODULES.len() - 1) } else { None })?;
     let ctx = Ctx { mod_name: String::from(it.mod_name), data_dir: it.host.data_dir() };
     let r: Result<Value, String> = match it.host.session() {
         None => Err(format!("`{}` works only in a running game", name)),
@@ -91,7 +94,8 @@ pub(crate) fn call(it: &mut Interp, name: &str, args: &[Value]) -> Option<Res> {
             6 => pack::call(g, &ctx, name, args),
             7 => files::call(g, &ctx, name, args),
             8 => net::call(g, &ctx, name, args),
-            _ => effects::call(g, &ctx, name, args),
+            9 => effects::call(g, &ctx, name, args),
+            _ => sound::call(g, &ctx, name, args),
         },
     };
     Some(match r {

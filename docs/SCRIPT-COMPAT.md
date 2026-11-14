@@ -88,7 +88,7 @@ has for it (the host calls marked *new* were added in this round for them and fo
 | witherstorm: the summoning ritual, the Super Beacon, `/witherstorm` | `on_block_place`, `scan_blocks`, `on_command` |
 | witherstorm: drawing the storm in pieces, heads, tentacles | `draw_model_posed` (new): one pose for a whole model; separate animation of parts is **missing** |
 | witherstorm: beams (`draw_quads`) | **missing** |
-| witherstorm: sparks, sky, shake, sounds | `draw_speck`, `force_sky` (rain only, not tint), `shake`, `play_sound` (not placed in space) |
+| witherstorm: sparks, sky, shake, sounds | `draw_speck`, `force_sky` (rain only, not tint), `shake`, `play_sound_at` and `loop_sound_at` (new: placed, panned, pitched, looping, with handles to stop, fade and move them), `play_music` (new) |
 | witherstorm: saved state (`witherstorm.txt`) | `state_*` (512 keys of 4 096 bytes); a storm's whole record fits |
 
 Missing host calls, in the order they would unblock the most:
@@ -103,7 +103,7 @@ Missing host calls, in the order they would unblock the most:
 4. **Lit TNT** (`prime_tnt(x, y, z, fuse)`): the Formidibomb and Super TNT (`explode` gives the blast but
    not the burning fuse), and **parts of a model animated apart** (a pose for each named part).
 5. **Bigger or streamed world scans** and a **sky tint**: the storm eating a whole hillside, and its dark sky.
-6. **A positioned sound** (`play_sound_at(id, x, y, z)`).
+6. ~~**A positioned sound**~~ closed: `play_sound_at`, `loop_sound_at`, handles (`stop_sound`, `fade_sound`, `set_sound`, `is_playing`) and one streamed music channel (`play_music`, `stop_music`, `set_music_volume`, `music_playing`), with a MUSIC VOLUME setting (see SCRIPTING.md, "Sound and music").
 
 The first, second and third cannot be done by a script on its own at all; the rest only make
 witherstorm's behaviour exact. Nothing in either mod was edited, and the engine's host calls are written

@@ -165,7 +165,7 @@ pub const HOST_FUNCTIONS: &[(&str, &str)] = &[
     ("remove_effect(who: &str, id: &str) -> bool", "take a status effect (all of them for an empty id) from \"player\" or \"target\"; false if it was not there"),
     ("has_effect(who: &str, id: &str) -> bool", "whether \"player\" or \"target\" has that status effect"),
     ("effect_level(who: &str, id: &str) -> i64", "the level of a status effect on \"player\" or \"target\"; 0 if it is not active"),
-    ("play_sound(id: &str)", "play a sound"),
+    ("play_sound(id: &str)", "play a sound; with four arguments, `play_sound(name, volume, pitch, pan) -> i64`, it plays at that volume (0 to 2), pitch (0.25 to 4) and pan (-1 to 1) and returns a handle for `stop_sound` and the other sound calls"),
     ("run_command(text: &str) -> String", "carry out a chat command as the player (with or without the `/`); returns what it answers"),
     ("rand(n: i64) -> i64", "a random whole number from 0 up to n (not including n)"),
     ("player_health() -> i64", "the player's health (20 is full)"),
@@ -266,6 +266,8 @@ pub(crate) fn call_host_fn(it: &mut Interp, name: &str, args: &[Value]) -> Optio
         "remove_effect" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Bool(it.host.remove_effect(who, id))),
         "has_effect" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Bool(it.host.effect_level(who, id) > 0)),
         "effect_level" => want(name, args, 2).and_then(|_| Ok((text(name, args, 0)?, text(name, args, 1)?))).map(|(who, id)| Value::Int(it.host.effect_level(who, id))),
+        // With a volume, pitch and pan it is the sound call of script/ext/sound.rs.
+        "play_sound" if args.len() > 1 => return crate::script::ext::call(it, name, args),
         "play_sound" => want(name, args, 1).and_then(|_| text(name, args, 0)).map(|id| {
             it.host.play_sound(id);
             Value::Unit

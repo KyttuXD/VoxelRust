@@ -886,7 +886,10 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
 - **AUDIO**: master, effects, footsteps and interface volume, AMBIENCE
   VOLUME (0 to 10, 6 to start with: rain, wind, running water and waves,
   lava, fire and the air of a cave; saved as `ambience_volume` in
-  `settings.txt`), and SUBTITLES
+  `settings.txt`), MUSIC VOLUME (0 to 10, 5 to start with: the music that
+  mods play, together with the master volume; saved as `music_volume`; while
+  music plays the game's own ambience is 3 dB quieter, and the music stops
+  when you leave the world), and SUBTITLES
   FOR SOUNDS, which names what you hear (`THUNDER`, `DOOR`, `WOLF HOWLS`) at
   the right of the screen for a couple of seconds. All sound stops when you
   leave a world. Rain and wind are quieter and duller under a roof, a wash

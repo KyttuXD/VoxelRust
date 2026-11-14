@@ -264,7 +264,7 @@ nothing) unless the player may run them there.
 | `remove_effect(who: &str, id: &str) -> bool` | take a status effect (all of them for an empty id) from `"player"` or `"target"`; false if it was not there |
 | `has_effect(who: &str, id: &str) -> bool` | whether `"player"` or `"target"` has that status effect |
 | `effect_level(who: &str, id: &str) -> i64` | the level of a status effect on `"player"` or `"target"`; 0 if it is not active |
-| `play_sound(id: &str)` | play a sound |
+| `play_sound(id: &str)` | play a sound (with a volume, pitch and pan too, and a handle to control it: see [Sound and music](#sound-and-music)) |
 | `run_command(text: &str) -> String` | carry out a chat command as the player (with or without the `/`); returns what it answers |
 | `rand(n: i64) -> i64` | a random whole number from 0 up to `n` (not including `n`) |
 | `player_health() -> i64` | the player's health (20 is full) |
@@ -434,6 +434,101 @@ Pictures are asked for, not drawn: in `on_update` a script calls `draw_model`,
 | `mob_set_vel(id: i64, x: f64, y: f64, z: f64)` | set a creature's velocity in blocks a second (up to 60 in each direction): a push or a leap |
 | `clear_effect(id: &str) -> bool` | take a status effect off the player (a cure); false if they did not have it |
 | `push_player(x: f64, y: f64, z: f64)` | add to the player's velocity in blocks a second (up to 40 in each direction) |
+
+### Sound and music
+
+`play_sound(id)` (above) plays a sound at full volume with no handle. These calls
+place sounds in the world, pitch and pan them, loop them, change them while they
+play, and play music. All of them are bounded and none waits for the sound
+device: a call that cannot be carried out (the sound does not exist, there is no
+device) returns 0 or false, and the game log says so once.
+
+Sounds are found by name, in this order: the player's own `sounds/` folder in the
+data folder, the sounds the packs declare (`sound <id> ...`, see
+[DATA.md](DATA.md#sounds)), then the mod's own folder: `<mods>/<mod>/sounds/<name>`
+with `.ogg`, `.wav`, `.mp3`, `.flac` or `.aiff` added (a name may also include a
+folder, `boss/roar`, and the extension). Those files are read like any sound file
+(12 seconds at most, played as one channel at 22 050 Hz) and kept after the first
+play. Music files are in `<mods>/<mod>/music/<name>` (or `sounds/`).
+
+| Function | What it does |
+| --- | --- |
+| `play_sound(name: &str, volume: f64, pitch: f64, pan: f64) -> i64` | the four-argument form of `play_sound`: volume 0 to 2, pitch 0.25 to 4 (the playback rate: 2 is an octave up and half as long), pan -1 (left) to 1 (right); returns a handle |
+| `play_sound_at(name: &str, x: f64, y: f64, z: f64, volume: f64, pitch: f64) -> i64` | play a sound from a place: full volume within 4 blocks, then the inverse of the distance (half at 8 blocks), dull with distance, gone at 64; it comes from the side it is on, from the way the player faces. Returns a handle |
+| `loop_sound(name: &str, volume: f64, pitch: f64, pan: f64) -> i64` | like `play_sound`, over and over until `stop_sound`; the last 40 milliseconds (a quarter of a short clip at most) are crossfaded into the start, so the join is smooth. Returns the handle, or 0 if the mod has 4 loops already |
+| `loop_sound_at(name: &str, x: f64, y: f64, z: f64, volume: f64, pitch: f64) -> i64` | a looping sound with a place; move it with `set_sound` (a storm's roar that follows the storm) |
+| `stop_sound(handle: i64)` | stop the sound: it goes quiet within a few milliseconds |
+| `fade_sound(handle: i64, volume: f64, seconds: f64)` | move the volume to a new value over some seconds; 0 stops the sound when it gets there |
+| `set_sound(handle: i64, volume: f64, pitch: f64, pan: f64, x: f64, y: f64, z: f64)` | change a playing sound at once: volume, pitch and pan, and the place of a sound that has one (which then ignores `pan`); a sound without a place ignores `x, y, z` |
+| `is_playing(handle: i64) -> bool` | whether the sound is still playing |
+| `play_music(name: &str, volume: f64, fade_in: f64, looping: bool) -> bool` | start a music track |
+| `stop_music(fade_out: f64)` | fade the music out over some seconds (0: at once) |
+| `set_music_volume(volume: f64)` | the music's volume, 0 to 1 |
+| `music_playing() -> bool` | whether the world has music playing |
+
+**Handles.** A handle is a small whole number (it is never 0). It is checked:
+a handle that is stale (its sound ended, or was stopped) does nothing, even if
+the game has since used the same place for another sound, and a mod cannot
+control another mod's handles. A mod holds at most **8** live handles, **4** of
+them loops, and starts at most 8 sounds in a frame; over the limit a one-shot
+still plays but returns 0 (it cannot be stopped), a loop returns 0 and is not
+played, and sounds over the frame's 8 are dropped. The mixer plays 32 voices at
+once; a new sound that finds none takes the one closest to ending. A handle that
+does not start (a name that does not exist) is over at once: `is_playing` is false
+from the next frame. A mod that is switched off, or whose script fails, loses its
+sounds and its music.
+
+**Music.** One channel per world: `play_music` while a track plays crossfades
+into the new one over `fade_in` seconds (at least a quarter of a second, equal
+power), and the same name again only changes its volume (and whether it loops).
+A track that is not looping ends by itself and the channel is free
+(`music_playing` is false). Only the mod that started the music can stop it or
+set its volume. Files are Ogg Vorbis, MP3 or PCM WAV, up to 16 MB, and are
+streamed: the compressed file is kept and a block is decoded at a time, so a five
+minute track costs the size of its file (a few MB) and about 130 KB for the
+mixer's buffer, and nothing once it stops. (FLAC, AIFF and the ADPCM kinds also
+play but only up to 12 seconds.) The loudness is the track's `volume`, times
+`set_music_volume`, times the player's MUSIC VOLUME in SETTINGS > AUDIO (0 to 10,
+5 to start with) and the master volume. The game's own ambience (rain, wind, water)
+is turned down by 3 dB while music is audible. Music stops when the world closes.
+Music has no subtitle; sounds that have a subtitle line in the data files show it
+as before (a positioned one only when it is near enough to hear).
+
+```rust
+fn on_update(dt: f64) {
+    // A storm roars where it is, and fades in when it comes.
+    let (sx, sy, sz) = (120.0, 70.0, -40.0);
+    if state_get_int("roar", 0) == 0 {
+        let h = loop_sound_at("storm_roar", sx, sy, sz, 0.0, 0.8);
+        if h != 0 {
+            fade_sound(h, 1.0, 4.0);
+            state_set_int("roar", h);
+        }
+    } else {
+        let h = state_get_int("roar", 0);
+        if is_playing(h) {
+            set_sound(h, 1.0, 0.8, 0.0, sx, sy, sz);
+        } else {
+            state_set_int("roar", 0);
+        }
+    }
+}
+
+fn on_command(name: String, args: String) -> bool {
+    if name == "boss" {
+        play_music("boss_theme", 0.9, 3.0, true);
+        play_sound_at("boom", 10.0, 64.0, 10.0, 1.0, 1.0);
+        return true;
+    }
+    if name == "calm" {
+        stop_music(2.0);
+        return true;
+    }
+    false
+}
+```
+
+Native code calls the same through `crate::native::sound` (see MODDING.md).
 
 ### Lines and sections for scripts
 

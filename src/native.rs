@@ -25,6 +25,13 @@ use crate::ui::Ui;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+/// Sound and music for a mod's code: handles, positional and looping sounds,
+/// one channel of streamed music. Call these from a hook with the session
+/// (`sound::play(g, "<mod>", "<sound>", volume, pitch, pan, None, false)` returns
+/// a handle for `sound::stop`, `fade`, `set` and `is_playing`; `sound::play_music`
+/// and its fellows). The limits are the scripts' (see docs/SOUND.md).
+pub use crate::game::mod_sound as sound;
+
 /// The version of the hook interface in this file. It goes up whenever a hook
 /// is removed or its signature changes, never for a new hook; a [`Native`]
 /// says in `api` which version it was written for. See "Stability" in

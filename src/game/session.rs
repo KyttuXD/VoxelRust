@@ -131,6 +131,8 @@ pub struct Session {
     touch_timer: f32,
     /// Sounds asked for by commands, played when the sound system is at hand.
     pub sound_queue: Vec<String>,
+    /// Sounds and music mods control: handles, limits, the queue (see `game/mod_sound.rs`).
+    pub mod_sound: crate::game::mod_sound::ModSound,
     /// What scripts have set for the post-processing shader (`set_shader_uniform`).
     pub shader_uniforms: crate::client::shaders::names::UserUniforms,
     /// How many `/fire` events are being acted on at once (see the `/fire` command).
@@ -534,6 +536,7 @@ impl Session {
             tick_timer: 0.0,
             touch_timer: 0.0,
             sound_queue: Vec::new(),
+            mod_sound: Default::default(),
             shader_uniforms: Default::default(),
             fire_depth: 0,
             sleeping: false,
@@ -2119,6 +2122,7 @@ impl Session {
         for name in core::mem::take(&mut self.sound_queue) {
             audio.play_named(&name, 1.0);
         }
+        crate::game::mod_sound::flush(self, audio, dt);
         if self.pending_hurt > 0 {
             let n = core::mem::take(&mut self.pending_hurt);
             let cause = core::mem::take(&mut self.ev.pending_cause);
