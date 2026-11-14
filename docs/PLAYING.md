@@ -1029,6 +1029,13 @@ marked "From the Earth mod").
 - `craft:<item>` opens the crafting table with the first grid recipe for
   that item (`craft:iron_pick`) laid out in the grid; a recipe too big for a
   table opens the bench or workshop it needs (`craft:big_chest`).
+- `emote` opens the emote wheel; `skinurl` opens the panel for a skin from a
+  web address.
+- `pose:<name>` holds the player's posture whatever happens (`stand`,
+  `crouch`, `sit`, `sleep`, `swim`, `climb`, `fall`, `ride`) and
+  `emote:<id>` or `emote:<id>@<seconds>` plays that emote and keeps it at
+  that moment (default 0.5 s: `emote:wave@0.6`). Use them with `third` or
+  `front`, and `--step 0.1` so that the game moves a frame before the picture.
 - `looks:<name>`, with `creatures`, lines up every look (biome variant) of
   the creatures whose id contains the name (`creatures,looks:boomer`)
   instead of one of each. Hostile creatures show only in survival worlds.

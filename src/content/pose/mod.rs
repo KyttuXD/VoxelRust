@@ -140,6 +140,11 @@ impl Default for Smoother {
 }
 
 impl Smoother {
+    /// Stand in a posture at once, with no change under way (scripted screenshots).
+    pub fn snap(&mut self, k: Kind) {
+        *self = Smoother { from: k, to: k, mix: 1.0 };
+    }
+
     pub fn update(&mut self, target: Kind, dt: f32) {
         if target != self.to {
             if target == self.from && self.mix < 1.0 {

@@ -130,7 +130,7 @@ fn names_in(fs: &dyn Fs, folder: &str) -> Vec<String> {
                 out.push(entry);
             }
         } else if let Some(stem) = entry.strip_suffix(".txt") {
-            if stem != "mods" && stem != "pack" {
+            if stem != "mods" && stem != "pack" && !stem.eq_ignore_ascii_case("README") {
                 out.push(String::from(stem));
             }
         }
@@ -255,6 +255,7 @@ mod tests {
             ("m/plain/.hidden.txt", "no"),
             ("m/serveronly/pack.txt", "client no\nblock s\n"),
             ("m/lone.txt", "block lone\n"),
+            ("m/README.txt", "VoxelRust mods: the game writes this file itself, it is no mod"),
             ("m/nopack/readme.txt", "hello"),
             ("m/bad name/pack.txt", "x"),
             ("m/zipped.zip", "PK"),

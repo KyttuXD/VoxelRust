@@ -26,6 +26,10 @@ pub struct Posing {
     /// The stroke of swimming and climbing, which only runs while moving.
     pub stroke: f32,
     health: i32,
+    /// For scripted screenshots (`--show pose:NAME`, `--show emote:ID@SECONDS`): a posture
+    /// held whatever the player does, and an emote kept at the time it was started at.
+    pub forced: Option<Kind>,
+    pub frozen: bool,
 }
 
 /// What the session knows, for [`Posing::update`].
@@ -49,7 +53,7 @@ pub struct Inputs {
 impl Posing {
     pub fn update(&mut self, i: &Inputs) {
         let speed = crate::math::sqrtf(i.vel[0] * i.vel[0] + i.vel[2] * i.vel[2]);
-        let kind = pose::select(&State {
+        let kind = self.forced.unwrap_or_else(|| pose::select(&State {
             sleeping: i.sleeping,
             sitting: i.sitting,
             riding: i.riding,
@@ -60,7 +64,10 @@ impl Posing {
             speed,
             vy: i.vel[1],
             crouching: i.crouching,
-        });
+        }));
+        if self.forced.is_some() {
+            self.smooth.snap(kind);
+        }
         self.smooth.update(kind, i.dt);
         // The stroke of a swimmer or climber runs with how fast they go.
         let rate = match kind {
@@ -79,9 +86,9 @@ impl Posing {
         let hurt = i.health < self.health;
         self.health = i.health;
         if let Some((n, t)) = self.emote {
-            let t = t + i.dt;
+            let t = if self.frozen { t } else { t + i.dt };
             let over = pose::emote::of(pose::emote::code(n)).map_or(true, |e| e.at(t).is_none());
-            if i.moving || hurt || over || i.dead || i.sleeping || i.in_water {
+            if !self.frozen && (i.moving || hurt || over || i.dead || i.sleeping || i.in_water) {
                 self.emote = None;
             } else {
                 self.emote = Some((n, t));

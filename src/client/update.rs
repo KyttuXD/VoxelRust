@@ -101,6 +101,7 @@ pub fn remember_args(args: &[String]) {
 }
 
 /// The kept command line, quoted for the shell (None if an argument cannot be quoted).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))] // the web build never restarts
 fn restart_args() -> Option<String> {
     let p = RESTART_ARGS.load(Ordering::Acquire);
     if p.is_null() {

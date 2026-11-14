@@ -3849,6 +3849,35 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 }
             }
         }
+        // "pose:NAME" holds the player's posture (stand, crouch, sit, sleep, swim, climb, fall, ride);
+        // "emote:ID" or "emote:ID@SECONDS" plays that emote and keeps it at that moment (default 0.5 s).
+        // Both are for pictures taken with "third" or "front".
+        if let Some(g) = app.session.as_mut() {
+            if let Some(name) = opts.show.split(',').find_map(|w| w.strip_prefix("pose:")) {
+                g.posing.forced = crate::content::pose::KINDS.iter().copied().find(|k| alloc::format!("{:?}", k).eq_ignore_ascii_case(name));
+            }
+            if let Some(spec) = opts.show.split(',').find_map(|w| w.strip_prefix("emote:")) {
+                let (id, at) = match spec.split_once('@') {
+                    Some((id, t)) => (id, t.parse::<f32>().unwrap_or(0.5)),
+                    None => (spec, 0.5),
+                };
+                match reg().emotes.find(id) {
+                    Some(i) if g.posing.start_emote(i) => {
+                        g.posing.emote = Some((i, at));
+                        g.posing.frozen = true;
+                    }
+                    _ => logf!("voxelrust: --show emote:{}: no such emote", id),
+                }
+            }
+        }
+        // "skinurl" opens the panel for a skin from a web address.
+        if opts.show.split(',').any(|w| w == "skinurl") {
+            app.open_skin_url();
+        }
+        // "emote" (alone) opens the emote wheel.
+        if opts.show.split(',').any(|w| w == "emote") {
+            app.set_screen(Screen::Emote);
+        }
         for (word, screen) in [
             ("pause", Screen::Pause),
             ("items", Screen::Inventory),
@@ -4466,6 +4495,7 @@ fn run_server(opts: &Opts, base: &str, pack_text: &[u8], pack_paths: &[String], 
     // The server keeps itself up to date too: an update is installed as soon
     // as it is found, and the server restarts into it once nobody is playing.
     sys::handle_termination(on_terminate);
+    #[allow(unused_variables)] // the web build never restarts
     let restart_exe = sys::exe_path();
     #[cfg(not(target_arch = "wasm32"))]
     let _ = crate::update::consume_restart_marker(base);
