@@ -190,6 +190,8 @@ pub struct ScriptHost {
     pub rng: u32,
     /// The data folder (ending with `/`), where mods' state is kept; empty: not kept.
     pub data_dir: String,
+    /// The mods loaded from the player's own mods folder (see [`ScriptHost::load_local`]).
+    pub local: Vec<String>,
     /// What went wrong, newest last.
     pub problems: Vec<String>,
 }
@@ -233,7 +235,7 @@ fn global() -> *mut ScriptHost {
 
 impl ScriptHost {
     pub fn new() -> ScriptHost {
-        ScriptHost { mods: Vec::new(), rng: 0x2545_F491, data_dir: String::new(), problems: Vec::new() }
+        ScriptHost { mods: Vec::new(), rng: 0x2545_F491, data_dir: String::new(), local: Vec::new(), problems: Vec::new() }
     }
 
     // ---- the global host (what the rest of the game uses)
@@ -254,6 +256,31 @@ impl ScriptHost {
             Some(p) => p,
             None => alloc::vec![String::from("scripts cannot be loaded from inside a script")],
         }
+    }
+
+    /// Load the scripts of the mods in the player's own mods folder, as (mod
+    /// name, the mod's files): the mods loaded this way before are dropped
+    /// first, so a reload leaves exactly the mods that are switched on. The
+    /// scripts of mods a server sent are left alone.
+    pub fn load_local(mods: &[(String, Vec<(String, Vec<u8>)>)]) {
+        let _ = global();
+        with_host(|h| {
+            let old = core::mem::take(&mut h.local);
+            h.mods.retain(|m| !old.contains(&m.name));
+            for (name, files) in mods {
+                h.add_mod(name, files);
+                h.local.push(name.clone());
+            }
+            refresh_live(h);
+        });
+    }
+
+    /// Forget the named mods' scripts.
+    pub fn unload_mods(names: &[String]) {
+        with_host(|h| {
+            h.mods.retain(|m| !names.contains(&m.name));
+            refresh_live(h);
+        });
     }
 
     /// Forget every script (a mod was switched off, or the player left a server).
@@ -452,5 +479,38 @@ fn invoke(host: &mut dyn Host, mod_name: &str, state: &mut ScriptState, s: &mut 
             errors.push(msg);
             None
         }
+    }
+}
+
+/// The script engine as the place downloaded mods' scripts go to (see
+/// `content::mod_runtime`): it remembers which mods it was given, so that
+/// leaving a server drops those and not the player's own mods' scripts.
+pub struct Engine {
+    downloaded: Vec<String>,
+}
+
+impl Engine {
+    pub fn new() -> Engine {
+        Engine { downloaded: Vec::new() }
+    }
+}
+
+impl Default for Engine {
+    fn default() -> Engine {
+        Engine::new()
+    }
+}
+
+impl crate::content::mod_runtime::ScriptHost for Engine {
+    fn load_mod(&mut self, name: &str, _version: &str, files: &[(String, Vec<u8>)]) {
+        let _ = ScriptHost::load_mod(name, files);
+        if !self.downloaded.iter().any(|n| n == name) {
+            self.downloaded.push(String::from(name));
+        }
+    }
+
+    fn unload_all(&mut self) {
+        ScriptHost::unload_mods(&self.downloaded);
+        self.downloaded.clear();
     }
 }

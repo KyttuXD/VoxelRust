@@ -16,6 +16,12 @@ license = "MIT"
 # every shipped build.
 [features]
 update-test = []
+# Compile the native (Rust) code of the mods found in VOXELRUST_MODS_DIR
+# (default ../VoxelRust-Mods) into the program, and let the tests read the
+# mods named in its SHIPPED list. Off by default: the game then ships and
+# builds with no mods at all (the player installs them in <data>/mods, or a
+# server sends them). For development and for one's own builds.
+native-mods = []
 
 [lib]
 name = "voxelrust"

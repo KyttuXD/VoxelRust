@@ -23,8 +23,8 @@ pub mod native;
 /// Mods' plain-text scripts, run by the game (see docs/SCRIPTING.md).
 pub mod script;
 /// The code of the mods found in the mods folder (VOXELRUST_MODS_DIR, default
-/// `../VoxelRust-Mods`) when the game was built (see
-/// [`native`]).
+/// `../VoxelRust-Mods`) when the game was built with the `native-mods`
+/// feature (see [`native`]); empty otherwise.
 pub mod mods {
     include!(concat!(env!("OUT_DIR"), "/native_mods.rs"));
 }

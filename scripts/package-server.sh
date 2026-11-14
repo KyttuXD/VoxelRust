@@ -8,15 +8,12 @@
 #   voxelrust-server/voxelrust      the program (run with --server)
 #   voxelrust-server/run.sh         starts it with the bundled SDL2
 #   voxelrust-server/lib/           SDL2 (libSDL2-2.0.so.0)
-#   voxelrust-server/mods/          the mods that come with the game
 #   voxelrust-server/README.txt     what to do with it
 #
 # SDL2 is taken from $SDL2_LIB if that names the library file, else from the
 # system's copy. The server never opens a window, so SDL2 only has to load.
 set -eu
 cd "$(dirname "$0")/.."
-. scripts/mods-dir.sh
-need_mods
 TOOLCHAIN="${1:-}"
 CARGO="cargo ${TOOLCHAIN:++$TOOLCHAIN}"
 COMMIT="${VOXELRUST_COMMIT:-$(git rev-parse --short=12 HEAD)}"
@@ -32,12 +29,9 @@ $CARGO build --release
 out="$PWD/dist/server"
 stage="$out/voxelrust-server"
 rm -rf "$stage"
-mkdir -p "$stage/lib" "$stage/mods"
+mkdir -p "$stage/lib"
 cp target/release/voxelrust "$stage/voxelrust"
 cp -L "$sdl" "$stage/lib/libSDL2-2.0.so.0"
-for m in $(grep -v '^#' "$MODS/SHIPPED"); do
-  cp -R "$MODS/$m" "$stage/mods/"
-done
 
 cat > "$stage/run.sh" <<'RUN'
 #!/bin/sh
@@ -65,8 +59,18 @@ when the server is stopped (Ctrl-C, or systemctl stop).
 
 The server updates itself from the project's release: when a newer one is
 out it installs it, and restarts into it once nobody is connected. Only the
-program is replaced: the mods folder beside it is not, so download a new
-server package when mods change. ./run.sh --no-update turns this off.
+program is replaced. ./run.sh --no-update turns this off.
+
+No mods come with the server. To use some, put each one in a folder of its
+own inside the data folder's mods folder (with the example above:
+./data/mods/<name>/pack.txt; the server makes the folder, with a README.txt,
+when it starts). Players who join are sent the mods that have only a
+pack.txt, textures, models, sounds and scripts, and keep them for that visit
+only. --serve-mods a,b,c chooses exactly which mods players download (by
+default every mod whose pack.txt does not say "client no"). A mod that needs
+compiled code cannot be sent: build the server with
+  cargo build --release --features native-mods
+and give players a client built the same way.
 
 Options: run ./voxelrust --help. --players N sets the most players at once.
 TXT

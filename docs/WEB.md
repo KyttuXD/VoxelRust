@@ -69,7 +69,7 @@ screenshots (F2 downloads a `.bmp`).
 | Joining a server | A page cannot open TCP sockets | JOIN says COULD NOT CONNECT (NOT POSSIBLE IN A BROWSER) |
 | Hosting a game, `--server` | The same | HOST A GAME says COULD NOT LISTEN... |
 | Earth worlds | The Earth mod is a folder, and the map data is fetched by running `curl`; a page has no folders and cannot run programs | The EARTH terrain is not offered |
-| Mods and packs from a folder | There are no folders (`list_dir` finds nothing) | Only the built-in content. The three mods that come with the game are folders now, so they are not in the browser version: no land vehicles, no disasters, and SETTINGS > MODS says NO MODS FOUND |
+| Mods and packs from a folder | There are no folders (`list_dir` finds nothing) | Only the built-in content. Mods are folders, so there are none in the browser version: no land vehicles, no disasters, and SETTINGS > MODS says NO MODS INSTALLED |
 | Updating itself | The page is the program | No check is made; reload the page to get what the site serves |
 | Command-line options | There is no command line | The game starts at the title screen |
 | Worker threads | The page runs the game on its one thread | Terrain is made a little each frame: loading takes longer, and the frame rate dips while new terrain arrives |

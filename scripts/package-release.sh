@@ -5,8 +5,8 @@
 #
 # Result, in dist/nightly/:
 #   voxelrust-<build>.tar.gz / .zip   what people download: the program (an
-#                                     app on the Mac), the mods that come with
-#                                     the game, the docs
+#                                     app on the Mac) and the docs; no mods
+#                                     come with the game
 #   voxelrust-<build>.bin / .exe      the bare program, for the updater
 #   voxelrust-web.zip                 the browser version
 #   nightly.txt                       commit, and each bare program's
@@ -20,8 +20,6 @@
 # own, and the updater only ever takes its own.
 set -eu
 cd "$(dirname "$0")/.."
-. scripts/mods-dir.sh
-need_mods
 # The updater's list must be signed, so no key means no release: checked now,
 # before the long builds, and the key must be the one the game trusts
 # (src/client/update_key.rs), or no game would accept the list.
@@ -104,11 +102,6 @@ package() { # package NAME PROGRAM-OR-APP FORMAT
   # SDL2 beside the Windows program, when vendor/sdl2 has it.
   case "$2" in
     *.exe) [ -f vendor/sdl2/SDL2.dll ] && cp vendor/sdl2/SDL2.dll "$dir/" ;;
-  esac
-  case "$2" in
-    *.app) ;; # the app carries its mods (and SDL2) inside
-    *) mkdir -p "$dir/mods"
-       for m in $(grep -v '^#' "$MODS/SHIPPED"); do cp -R "$MODS/$m" "$dir/mods/"; done ;;
   esac
   if [ "$3" = "tar.gz" ]; then
     mkdir -p "$dir/share"

@@ -120,6 +120,8 @@ pub struct Session {
     flood: Vec<[i32; 3]>,
     /// Content sent by the server, complete and waiting to be applied.
     pub server_pack: Option<Vec<u8>>,
+    /// On a server: the mods taken from it (see `net::modsync`).
+    pub mod_sync: Option<crate::net::modsync::client::ClientSync>,
     pack_buffer: Vec<u8>,
     /// The pack being sent was too big: its remaining pieces are dropped.
     pack_overflow: bool,
@@ -507,6 +509,7 @@ impl Session {
             weather_tick: 0.0,
             flood: Vec::new(),
             server_pack: None,
+            mod_sync: None,
             pack_buffer: Vec::new(),
             pack_overflow: false,
             held_events: Vec::new(),
@@ -601,6 +604,7 @@ impl Session {
         s.world.log_edits = true;
         s.time = welcome.time;
         s.net = Some(client);
+        s.mod_sync = Some(crate::net::modsync::client::ClientSync::new(base, &host, port));
         s.push_chat(alloc::format!("CONNECTED TO {}", address.to_ascii_uppercase()));
         Ok(s)
     }
@@ -1772,6 +1776,25 @@ impl Session {
                             }
                         }
                         _ => {}
+                    }
+                }
+                crate::netplay::Event::ModList(list) => {
+                    if let Some(sync) = self.mod_sync.as_mut() {
+                        let want = sync.on_list(list);
+                        for line in sync.log.drain(..) {
+                            logf!("voxelrust: {}", line);
+                        }
+                        if let (false, Some(n)) = (want.is_empty(), self.net.as_mut()) {
+                            n.send_mods_want(&want);
+                        }
+                    }
+                }
+                crate::netplay::Event::ModPart(index, last, data) => {
+                    if let Some(sync) = self.mod_sync.as_mut() {
+                        sync.on_part(index, last, &data);
+                        for line in sync.log.drain(..) {
+                            logf!("voxelrust: {}", line);
+                        }
                     }
                 }
                 crate::netplay::Event::Pack(last, data) => {
