@@ -945,8 +945,13 @@ marked "From the Earth mod").
 - `items:<tab>` opens the creative item list at that tab, named as in the
   list (`items:Eggs`); capitals do not matter.
 - `settings:TAB` opens SETTINGS at that tab: `VIDEO`, `AUDIO`, `CONTROLS`,
-  `GAME`, `SKIN` or `MODS`.
+  `GAME`, `SKIN`, `MODS` or `VOICE`.
 - `walking`, with `creatures`, shows the line-up mid-stride.
+- `craft:<item>` opens the crafting table with the first grid recipe for
+  that item (`craft:iron_pick`) laid out in the grid.
+- `looks:<name>`, with `creatures`, lines up every look (biome variant) of
+  the creatures whose id contains the name (`creatures,looks:boomer`)
+  instead of one of each. Hostile creatures show only in survival worlds.
 
 `--version` prints, for example, `voxelrust 0.1.0 (linux-x86_64, commit
 5f38cb02e2e3)`. The first word in brackets is the build name (see

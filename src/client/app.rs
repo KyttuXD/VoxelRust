@@ -74,7 +74,10 @@ Run it with no options for the title screen. Options:
                       title, worlds, newworld, multiplayer, dead, map,
                       settings:TAB, items:TAB (the creative list at that
                       tab), third (camera behind the player), creatures
-                      (one of each) or walking (the same, mid-stride)
+                      (one of each) or walking (the same, mid-stride);
+                      craft:ITEM (the crafting table with that item's recipe
+                      laid out), looks:NAME (with creatures: every look of
+                      the creatures with NAME in their id)
 
 Controls (all can be changed in Settings): WASD move, mouse look, Space jump,
 Ctrl sprint, Space twice to fly (creative), left click break, right click place, middle click pick,
@@ -491,6 +494,8 @@ struct App {
     /// The crafting screen was opened at an oven, not a table.
     at_oven: bool,
     show_walking: bool,
+    /// `--show creatures,looks:NAME`: line up every look of the creatures whose id contains NAME instead.
+    show_looks: Option<String>,
     mods_scroll: i32,
     form_mod_path: String,
     at_furnace: bool,
@@ -2842,17 +2847,26 @@ impl App {
         let p = g.player.pos;
         let fwd = crate::math::forward(g.player.yaw, 0.0);
         let right = [-fwd.z, fwd.x];
-        // One of each model is enough: skip colour variants.
+        // One of each model is enough: skip colour variants. With "looks:NAME", every look of
+        // the creatures with NAME in their id, the plain one first.
         let mut seen = Vec::new();
-        let kinds: Vec<usize> = (0..reg().entities.len()).filter(|&i| {
-            let m = reg().entities[i].model;
-            if seen.contains(&m) {
-                false
-            } else {
-                seen.push(m);
-                true
+        let mut kinds: Vec<(usize, u8)> = Vec::new();
+        for i in 0..reg().entities.len() {
+            if let Some(name) = &self.show_looks {
+                if reg().entities[i].id.contains(name.as_str()) {
+                    for v in 0..=reg().entities[i].x.variants.len() {
+                        kinds.push((i, v as u8));
+                    }
+                }
+                continue;
             }
-        }).collect();
+            let m = reg().entities[i].model;
+            if !seen.contains(&m) {
+                seen.push(m);
+                kinds.push((i, 0));
+            }
+        }
+        logf!("voxelrust: line-up of {} creatures", kinds.len());
         let per_row = 8;
         let total = kinds.len();
         for n in 0..total {
@@ -2868,7 +2882,8 @@ impl App {
             };
             let at = [c[0] as f64 + 0.5, c[1] as f64 + 0.01, c[2] as f64 + 0.5];
             if n < kinds.len() {
-                let i = g.mobs.spawn(kinds[n], at);
+                let i = g.mobs.spawn(kinds[n].0, at);
+                g.mobs.list[i].variant = kinds[n].1;
                 // "walking" shows them mid-stride, each at its own point.
                 if self.show_walking {
                     g.mobs.list[i].stride = 1.0;
@@ -3455,6 +3470,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         want_reload: false,
         at_oven: false,
         show_walking: opts.show.contains("walking"),
+        show_looks: opts.show.split(',').find_map(|w| w.strip_prefix("looks:")).map(String::from),
         mods_scroll: 0,
         form_mod_path: String::new(),
         at_furnace: false,
@@ -3538,6 +3554,30 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 Some(i) => app.inv_tab = i,
                 // Not a tab: what to search for ("items:bed").
                 None => app.inv_search = String::from(tab),
+            }
+        }
+        // "craft:<item>" opens the crafting table with the first recipe for that item laid out.
+        if let Some(want) = opts.show.split(',').find_map(|w| w.strip_prefix("craft:")) {
+            app.screen = Screen::Craft;
+            let r = reg();
+            let one = |it: u16| Some(crate::inventory::Stack { item: it, count: 1 });
+            if let Some(rc) = r.grid_recipes.iter().find(|rc| r.items[rc.out.0 as usize].id == want) {
+                match &rc.pattern {
+                    crate::crafting::Pattern::Shaped { w, h, cells } => {
+                        for y in 0..*h {
+                            for x in 0..*w {
+                                if let Some(ing) = &cells[y * w + x] {
+                                    app.craft.grid.cells[y * 3 + x] = ing.items.first().and_then(|&it| one(it));
+                                }
+                            }
+                        }
+                    }
+                    crate::crafting::Pattern::Shapeless(list) => {
+                        for (i, ing) in list.iter().enumerate() {
+                            app.craft.grid.cells[i] = ing.items.first().and_then(|&it| one(it));
+                        }
+                    }
+                }
             }
         }
         for (word, screen) in [
