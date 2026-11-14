@@ -87,7 +87,8 @@ impl App {
             let emoting = g.posing.emote.is_some();
             let emote_arm = !emoting || crate::content::pose::emote::shows_arm(&g.posing.body(g.activity()));
             if !self.third_person && self.screen == Screen::Game && !g.dead && !g.carried && lying.is_none() && emote_arm {
-                if let Some(hand) = reg().model(arm_models(self.settings.slim_arms).1) {
+                let body = body_for(g, own_id(g), self.settings.slim_arms);
+                if let Some(hand) = reg().model(arm_models(&body, self.settings.slim_arms).1) {
                     let v = g.player.vel;
                     let speed = crate::math::sqrtf(v[0] * v[0] + v[2] * v[2]);
                     let held = if emoting { crate::client::hand::Held::Nothing } else { crate::client::hand::held_of(g.held().map(|h| h.0)) };

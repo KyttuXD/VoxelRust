@@ -147,9 +147,24 @@ fn minimap_arrow(r: &mut Renderer, cx: f32, cy: f32, yaw: f32, s: f32, col: Colo
     }
 }
 
-/// The player model and the first-person hand for classic or slim arms.
-fn arm_models(slim: bool) -> (&'static str, &'static str) {
-    if slim { ("player_slim", "hand_slim") } else { ("player", "hand") }
+/// The player model and the first-person hand for a body model. `player` and
+/// `player_slim` have their own hands; a mod's body (any other id) has none of
+/// its own, so it gets the hand that goes with the arms (`slim`).
+fn arm_models(body: &str, slim: bool) -> (&str, &'static str) {
+    let built_in = body == "player" || body == "player_slim";
+    let hand = if body == "player_slim" || (!built_in && slim) { "hand_slim" } else { "hand" };
+    (body, hand)
+}
+
+/// The body model id for `player`: a mod's choice if one makes it, else the
+/// game's own body for the arms (`slim`).
+fn body_for(g: &Session, player: u16, slim: bool) -> String {
+    crate::native::body_of(g, player).unwrap_or_else(|| String::from(if slim { "player_slim" } else { "player" }))
+}
+
+/// Our own player number in a shared game (0 when playing alone).
+fn own_id(g: &Session) -> u16 {
+    g.net.as_ref().map_or(0, |n| n.id)
 }
 
 /// The player's skin as 64 x 64 RGBA: a tinted copy of the default body, or
@@ -212,8 +227,14 @@ fn skin_pixels(base: &str, name: &str, player: &str) -> Option<Vec<u8>> {
         return if img.w == 64 && img.h == 64 { Some(img.rgba) } else { None };
     }
     // `default` is one of the built-in skins, picked by the player's name; the others are chosen by name.
-    let skin = if name != "default" && crate::settings::SKINS.iter().any(|s| *s == name) { name } else { crate::pack_entities::default_skin_for(player) };
-    Some(crate::pack_entities::skin_image(skin)?.rgba)
+    // A built-in skin, or any skin a pack or mod brings a picture for (`skin_<name>`).
+    // Decode the named skin once: it is both the test and the picture.
+    let named = if name != "default" { crate::pack_entities::skin_image(name) } else { None };
+    let known = named.is_some() || crate::settings::SKINS.iter().any(|s| *s == name);
+    if let (true, Some(img)) = (known, named) {
+        return Some(img.rgba);
+    }
+    Some(crate::pack_entities::skin_image(crate::pack_entities::default_skin_for(player))?.rgba)
 }
 
 /// Everything except the renderer and the frame's input, which are passed

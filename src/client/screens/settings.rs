@@ -106,7 +106,11 @@ impl App {
                 }
                 4 => {
                     // A turning preview on the left, choices on the right.
-                    let model = reg().model(arm_models(st.slim_arms).0);
+                    let body = match self.session.as_ref() {
+                        Some(g) => body_for(g, own_id(g), st.slim_arms),
+                        None => String::from(if st.slim_arms { "player_slim" } else { "player" }),
+                    };
+                    let model = reg().model(arm_models(&body, st.slim_arms).0);
                     ui.panel(x, row(0), 100.0 * s, 150.0 * s);
                     if let Some(model) = model {
                         let pose = crate::model::Pose { phase: ui.clock * 3.0, stride: 0.5, ..Default::default() };

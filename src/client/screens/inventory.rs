@@ -225,7 +225,8 @@ impl App {
 
         // A portrait of the player beside the panel, where there is room.
         if px > 70.0 * s {
-            if let Some(model) = reg().model(arm_models(self.settings.slim_arms).0) {
+            let body = body_for(g, own_id(g), self.settings.slim_arms);
+            if let Some(model) = reg().model(arm_models(&body, self.settings.slim_arms).0) {
                 ui.panel(px - 66.0 * s, py, 60.0 * s, 124.0 * s);
                 let pose = crate::model::Pose { phase: g.clock * 2.0, stride: 0.12, ..Default::default() };
                 ui.r.tex_override = self.skin_tex;
