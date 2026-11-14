@@ -35,7 +35,7 @@ pub use util::image::png;
 pub use util::math::noise;
 pub use util::archive::zip;
 pub use content::{block, textures, hd, painters, palette, font, icon, bbmodel, model, pack_entities, dim_sky, bone_pose, skin_grid};
-pub use terrain::{chunk, world, worldgen, mesh, hd_split, liquid_mesh, lava_look, lod, save, migrate, jobs, weather, sections, visibility, uploads};
+pub use terrain::{chunk, world, worldgen, mesh, hd_split, liquid_mesh, lava_look, lod, save, migrate, jobs, weather, sections, visibility, uploads, surface_rules, block_colour, far_surface, far_dirty};
 pub use game::{gear, player, inventory, interact, entity, entity_explode, entity_variant, path, session, explosion, explosion_hooks, primed, chest_anim, crafting, creature_size, creature_extra, creature_wire, creature_api};
 pub use net::{proto, server, netplay, voice as net_voice, modmsg, skinxfer};
 pub use client::{app, render, ui, audio, update, picker, skinfile};

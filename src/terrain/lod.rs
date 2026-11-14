@@ -4,6 +4,8 @@
 //! so the view can reach kilometres at a small cost.
 
 use crate::block::reg;
+use crate::block_colour::BlockColours;
+use crate::far_surface::{self, FarInput};
 use crate::mesh::{MeshData, Vertex};
 use crate::worldgen::{self, Biome, SEA};
 use alloc::vec::Vec;
@@ -66,6 +68,12 @@ fn tree_colour(biome: Biome, roll: u32) -> Option<[u8; 3]> {
 /// same blocky look as the land nearby. Wooded country gets a blocky tree
 /// on each column that would have trees.
 pub fn build(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8) -> MeshData {
+    build_with(seed, tx, tz, step, trees_setting, &FarInput::default())
+}
+
+/// Like [`build`], with the changes players made (`input`): the columns they
+/// changed show their real top block and height (see `far_surface`).
+pub fn build_with(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8, input: &FarInput) -> MeshData {
     let step = step.clamp(2, 32);
     // Empty space and sky islands have no far-off ground to draw.
     if worldgen::shape() >= 2 {
@@ -77,6 +85,9 @@ pub fn build(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8) -> MeshD
     let mut h = alloc::vec![0i32; n * n];
     let mut c = alloc::vec![[0u8; 3]; n * n];
     let mut trees: Vec<(usize, usize, [u8; 3])> = Vec::new();
+    let mut pal = BlockColours::new();
+    let wk = &reg().wk;
+    let edited = far_surface::EditedColumns::build(seed, input).cells(tx, tz, step, &mut pal);
     for i in 0..n {
         for j in 0..n {
             let (x, z) = (ox + i as i32 * step + step / 2, oz + j as i32 * step + step / 2);
@@ -87,9 +98,9 @@ pub fn build(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8) -> MeshD
             c[i * n + j] = if col.river {
                 [44, 104, 198]
             } else if col.building > 0 {
-                [170, 168, 164]
+                pal.colour(wk.walls[(crate::noise::hash2(seed ^ 0xB11D, x >> 5, z >> 5) % 4) as usize])
             } else if col.road && col.height >= SEA {
-                [86, 88, 94]
+                pal.colour(wk.asphalt)
             } else if col.farm && col.height >= SEA {
                 // Fields in a patchwork of ripe and green.
                 match crate::noise::hash2(seed ^ 0xFA53, x >> 4, z >> 4) % 7 {
@@ -98,13 +109,21 @@ pub fn build(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8) -> MeshD
                     _ => [128, 150, 70],
                 }
             } else if col.paved && col.height >= SEA {
-                [128, 124, 122]
+                pal.colour(wk.gravel)
             } else {
-                colour(col.height, col.biome)
+                far_surface::natural_colour(&mut pal, seed, x, z, &col)
             };
+            // Columns people changed in this cell: their real tops count too.
+            let acc = edited.get(&(i, j));
+            if let Some(a) = acc {
+                c[i * n + j] = a.blend(step, c[i * n + j]);
+                if let Some(t) = a.raised(step) {
+                    h[i * n + j] = t;
+                }
+            }
             // (Only the world's own terrain has woods: flat land and the other
             // dimensions are drawn without far-off trees.)
-            if trees_setting > 0 && dry && step <= 8 && !col.paved && col.building == 0 && !col.farm && worldgen::shape() == 0 {
+            if trees_setting > 0 && acc.is_none() && dry && step <= 8 && !col.paved && col.building == 0 && !col.farm && worldgen::shape() == 0 {
                 let roll = crate::noise::hash2(seed ^ 0x7EE5, x, z);
                 // Denser cover in forest and jungle than at their edges.
                 let chance = match col.biome {
@@ -222,53 +241,7 @@ pub fn step_for(dist: i32) -> i32 {
     }
 }
 
-/// The colour a block shows from a distance: the average of its top picture's
-/// solid pixels. `None` for air and for blocks that are not seen as ground.
-struct Palette {
-    cols: Vec<Option<[u8; 3]>>,
-}
-
-impl Palette {
-    fn new() -> Palette {
-        Palette { cols: alloc::vec![None; reg().blocks.len()] }
-    }
-
-    fn colour(&mut self, b: crate::block::Block) -> [u8; 3] {
-        if let Some(Some(c)) = self.cols.get(b as usize) {
-            return *c;
-        }
-        let r = reg();
-        let d = &r.blocks[b as usize];
-        let col = if d.kind == crate::block::Kind::Liquid {
-            if d.x.fluid.map_or(false, |f| f.0) { [226, 98, 24] } else { [44, 104, 198] }
-        } else {
-            let tile = d.tex[0] as usize;
-            match r.tiles.get(tile) {
-                Some(t) => {
-                    let px = crate::textures::described_pixels(tile, t);
-                    let (mut sum, mut n) = ([0u32; 3], 0u32);
-                    for p in px.chunks(4) {
-                        if p[3] > 128 {
-                            sum = [sum[0] + p[0] as u32, sum[1] + p[1] as u32, sum[2] + p[2] as u32];
-                            n += 1;
-                        }
-                    }
-                    if n == 0 { [128, 128, 128] } else { [(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8] }
-                }
-                None => [128, 128, 128],
-            }
-        };
-        if let Some(slot) = self.cols.get_mut(b as usize) {
-            *slot = Some(col);
-        }
-        col
-    }
-}
-
-fn is_foliage(b: crate::block::Block) -> bool {
-    let d = crate::block::def(b);
-    d.kind == crate::block::Kind::Cutout && (d.id.contains("leaves") || d.id.contains("leaf") || d.id.contains("needle"))
-}
+use crate::block_colour::is_foliage;
 
 fn close(a: [u8; 3], b: [u8; 3]) -> bool {
     (a[0] as i32 - b[0] as i32).abs() + (a[1] as i32 - b[1] as i32).abs() + (a[2] as i32 - b[2] as i32).abs() < 54
@@ -291,21 +264,53 @@ struct Cell {
 /// tile is generated (and the player's `edits` put back), so the builds,
 /// roofs and trees seen from afar are the ones standing there.
 pub fn build_real(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8, edits: &[Vec<(i32, i32, i32, crate::block::Block)>]) -> MeshData {
+    // Per-chunk lists in local coordinates (the tile's chunks in order) become changes at world positions.
+    let mut input = FarInput::default();
+    for (k, list) in edits.iter().enumerate() {
+        let (cx, cz) = (tx * TILE_CHUNKS + k as i32 / TILE_CHUNKS, tz * TILE_CHUNKS + k as i32 % TILE_CHUNKS);
+        for &(x, y, z, b) in list {
+            input.edits.push((cx * 16 + x.rem_euclid(16), y, cz * 16 + z.rem_euclid(16), b));
+        }
+    }
+    build_real_with(seed, tx, tz, step, trees_setting, &input)
+}
+
+/// [`build_real`] with the changes as a [`FarInput`]: world edits go into the
+/// generated chunks, and the tops of changed chunks that are saved (or loaded)
+/// replace the generated columns.
+pub fn build_real_with(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8, input: &FarInput) -> MeshData {
     use crate::chunk::{ChunkData, CH};
     let step = step.clamp(2, 32);
     if worldgen::shape() >= 2 {
         return MeshData::default();
     }
     // The tile's chunks, with what players changed in them.
+    let slot = |x: i32, z: i32| -> Option<usize> {
+        let (i, j) = ((x >> 4) - tx * TILE_CHUNKS, (z >> 4) - tz * TILE_CHUNKS);
+        if (0..TILE_CHUNKS).contains(&i) && (0..TILE_CHUNKS).contains(&j) { Some((i * TILE_CHUNKS + j) as usize) } else { None }
+    };
+    let mut tops: Vec<Vec<far_surface::Top>> = (0..16).map(|_| Vec::new()).collect();
+    for t in input.tops.iter().take(far_surface::MAX_EDITS) {
+        if let Some(k) = slot(t.x, t.z) {
+            tops[k].push(*t);
+        }
+    }
+    let mut edits: Vec<Vec<far_surface::Edit>> = (0..16).map(|_| Vec::new()).collect();
+    for e in input.edits.iter().take(far_surface::MAX_EDITS) {
+        if let Some(k) = slot(e.0, e.2) {
+            edits[k].push(*e);
+        }
+    }
     let mut chunks: Vec<ChunkData> = Vec::with_capacity(16);
     for i in 0..TILE_CHUNKS {
         for j in 0..TILE_CHUNKS {
-            let mut c = worldgen::generate(seed, tx * TILE_CHUNKS + i, tz * TILE_CHUNKS + j);
-            if let Some(list) = edits.get((i * TILE_CHUNKS + j) as usize) {
-                for &(x, y, z, b) in list {
-                    if (0..CH).contains(&y) {
-                        c.blocks[ChunkData::idx(x.rem_euclid(16), y, z.rem_euclid(16))] = b;
-                    }
+            let (cx, cz) = (tx * TILE_CHUNKS + i, tz * TILE_CHUNKS + j);
+            let mut c = worldgen::generate(seed, cx, cz);
+            let k = (i * TILE_CHUNKS + j) as usize;
+            far_surface::apply_tops(&mut c, cx, cz, &tops[k]);
+            for &(x, y, z, b) in &edits[k] {
+                if (0..CH).contains(&y) {
+                    c.blocks[ChunkData::idx(x & 15, y, z & 15)] = b;
                 }
             }
             chunks.push(c);
@@ -313,7 +318,7 @@ pub fn build_real(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8, edi
     }
     let n = (TILE / step) as usize;
     let (ox, oz) = (tx * TILE, tz * TILE);
-    let mut pal = Palette::new();
+    let mut pal = BlockColours::new();
     let mut cells: Vec<Cell> = Vec::with_capacity(n * n);
     for i in 0..n {
         for j in 0..n {
@@ -335,7 +340,7 @@ pub fn build_real(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8, edi
                 y -= 1;
             }
             if y < 0 {
-                cells.push(Cell { ground: ground_y + 1, gcol: colour(info.height, info.biome), stem: None, crown_from: 0, crown: None, top: ground_y + 1 });
+                cells.push(Cell { ground: ground_y + 1, gcol: far_surface::natural_colour(&mut pal, seed, x, z, &info), stem: None, crown_from: 0, crown: None, top: ground_y + 1 });
                 continue;
             }
             let b = col[y as usize];
@@ -353,7 +358,7 @@ pub fn build_real(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8, edi
                 r -= 1;
             }
             let gb = col[ground_y as usize];
-            let gcol = if gb == crate::block::AIR { colour(info.height, info.biome) } else { pal.colour(gb) };
+            let gcol = if gb == crate::block::AIR { far_surface::natural_colour(&mut pal, seed, x, z, &info) } else { pal.colour(gb) };
             let stem = if r > ground_y + 1 && !skip(col[(r - 1) as usize]) { Some(pal.colour(col[(r - 1) as usize])) } else { None };
             let foliage = is_foliage(b);
             if r <= ground_y + 1 {
@@ -361,6 +366,23 @@ pub fn build_real(seed: u32, tx: i32, tz: i32, step: i32, trees_setting: u8, edi
                 cells.push(Cell { ground: ground_y + 1, gcol, stem: Some(top_col), crown_from: y + 1, crown: None, top: y + 1 });
             } else {
                 cells.push(Cell { ground: ground_y + 1, gcol, stem, crown_from: r, crown: Some((top_col, foliage)), top: y + 1 });
+            }
+        }
+    }
+    // Columns people changed in a cell count in its colour and, when they are
+    // most of it, in its height (the sampled column is only one of them).
+    for ((i, j), a) in far_surface::EditedColumns::build(seed, input).cells(tx, tz, step, &mut pal) {
+        if let Some(cell) = cells.get_mut(i * n + j) {
+            match (cell.stem, cell.crown) {
+                (_, Some((col, foliage))) => cell.crown = Some((a.blend(step, col), foliage)),
+                (Some(col), None) => cell.stem = Some(a.blend(step, col)),
+                (None, None) => {
+                    cell.gcol = a.blend(step, cell.gcol);
+                    if let Some(t) = a.raised(step) {
+                        cell.ground = t;
+                        cell.top = t;
+                    }
+                }
             }
         }
     }

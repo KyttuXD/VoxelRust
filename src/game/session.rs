@@ -1278,7 +1278,9 @@ impl Session {
             "/blockat" => match (arg(1).parse::<i32>(), arg(2).parse::<i32>(), arg(3).parse::<i32>()) {
                 (Ok(x), Ok(y), Ok(z)) => {
                     let b = self.world.get(x, y, z);
-                    alloc::format!("BLOCK AT {} {} {}: {} (STATE {}, {} LOADED)", x, y, z, block::def(b).id.to_ascii_uppercase(), b, if self.world.is_loaded(x, z) { "CHUNK" } else { "NO CHUNK" })
+                    // (And the colour distant terrain gives that column, to compare with what you see far off.)
+                    let far = self.world.far_colour_at(x, z);
+                    alloc::format!("BLOCK AT {} {} {}: {} (STATE {}, {} LOADED)  FAR COLOUR {} {} {}", x, y, z, block::def(b).id.to_ascii_uppercase(), b, if self.world.is_loaded(x, z) { "CHUNK" } else { "NO CHUNK" }, far[0], far[1], far[2])
                 }
                 _ => String::from("USE  /BLOCKAT X Y Z"),
             },

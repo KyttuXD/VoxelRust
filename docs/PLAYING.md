@@ -830,6 +830,7 @@ blocks from it.
 | `/gm c`, `/gm s`, `/gm 1`, `/gm 0`, `/gmc`, `/gms` | short forms of the game mode commands (`/gamemode` on a server; operators add a name: `/gm bob c`) | no |
 | `/weather clear`, `rain` or `storm` | hold the weather that way; any other word (or none) gives it back to the game | no |
 | `/seed` | show the world's seed | works |
+| `/blockat X Y Z` | say what block the world holds there, and the colour distant terrain gives that column (FAR COLOUR r g b), to compare what two computers show | works |
 | `/dim NAME`, `/dim home` | go to a dimension, or back (see [Dimensions](#dimensions)) | no |
 | `/say TEXT` | show a line in your own chat area (it is not sent to other players) | works |
 | `/sound ID` | play a sound by its id, for example `/sound chime` | works |
@@ -956,6 +957,17 @@ is kept there as `flag_<id>=1` or `flag_<id>=0`, and a mod's own settings
   coarser farther off). Fine detail and many tiles cost time on a slow
   computer. The settings are `lod_real`, `lod_trees` and `lod_detail` in
   `settings.txt`.
+  Whatever these rows are set to, distant land shows what is really there:
+  each far column takes the colour of the block that the real ground has
+  there (the average colour of its top picture, so badlands bands, desert
+  sand, mountain rock and snow, beaches and the blocks of mods look as they
+  do when you arrive), and what players built or dug, in a shared world, in
+  your own world and in earlier sessions, shows at every distance (a cell of
+  distant terrain blends the changed columns in it; a built-up cell is raised
+  to its height). A tile that covers new changes is made again at most once a
+  second, and the memory used for this is a few megabytes at most. So two
+  computers with different distances now see the same colours; only the
+  sharpness, the trees and the buildings' shapes differ.
 - **AUDIO**: master, effects, footsteps and interface volume, AMBIENCE
   VOLUME (0 to 10, 6 to start with: rain, wind, running water and waves,
   lava, fire and the air of a cave; saved as `ambience_volume` in

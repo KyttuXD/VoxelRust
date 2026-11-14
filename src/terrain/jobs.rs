@@ -18,8 +18,8 @@ pub enum Job {
     /// The 3 x 3 neighbourhood, indexed `(dz + 1) * 3 + (dx + 1)`.
     Mesh { cx: i32, cz: i32, n: [Arc<ChunkData>; 9] },
     /// A distant-terrain tile, sampled every `step` blocks.
-    /// `edits` (when `real`) are the player's edits in the tile's sixteen chunks.
-    Far { tx: i32, tz: i32, step: i32, real: bool, trees: u8, edits: Vec<Vec<(i32, i32, i32, crate::block::Block)>> },
+    /// `input` holds what players changed in the tile's sixteen chunks (see `far_surface`).
+    Far { tx: i32, tz: i32, step: i32, real: bool, trees: u8, input: crate::far_surface::FarInput },
     /// Slow work for a mod's own code (fetching something, say): `run`
     /// is called with `arg` on a worker, and what it returns turns up in
     /// `World::task_results` under the same `tag`.
@@ -40,10 +40,10 @@ pub fn run_job(seed: u32, job: Job) -> JobResult {
             let out = run(&arg);
             JobResult::Task { tag, arg, out }
         }
-        Job::Far { tx, tz, step, real, trees, edits } => JobResult::Far {
+        Job::Far { tx, tz, step, real, trees, input } => JobResult::Far {
             tx,
             tz,
-            mesh: if real { crate::lod::build_real(seed, tx, tz, step, trees, &edits) } else { crate::lod::build(seed, tx, tz, step, trees) },
+            mesh: if real { crate::lod::build_real_with(seed, tx, tz, step, trees, &input) } else { crate::lod::build_with(seed, tx, tz, step, trees, &input) },
         },
         Job::Mesh { cx, cz, n } => {
             let refs: [&ChunkData; 9] = [&n[0], &n[1], &n[2], &n[3], &n[4], &n[5], &n[6], &n[7], &n[8]];
