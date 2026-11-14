@@ -125,6 +125,14 @@ cp "$TARGET"/release/voxelrust       "$out/voxelrust-linux-x86_64.bin"
 cp dist/windows/voxelrust.exe     "$out/voxelrust-windows-x86_64.exe"
 cp dist/macos/voxelrust           "$out/voxelrust-macos-x86_64.bin"
 cp dist/macos-legacy/voxelrust    "$out/voxelrust-macos-legacy-x86_64.bin"
+# The public server's own program: the same game with the compiled mods it runs
+# (SERVER_MODS_DIR is a folder of mod folders). It has its own build name, so
+# a server only ever updates to it, and no player's program takes it.
+if [ -n "${SERVER_MODS_DIR:-}" ]; then
+  VOXELRUST_BUILD=linux-server-x86_64 VOXELRUST_MODS_DIR="$SERVER_MODS_DIR" \
+    $CARGO build --release --features native-mods --target-dir "$TARGET"/server
+  cp "$TARGET"/server/release/voxelrust "$out/voxelrust-linux-server-x86_64.bin"
+fi
 sh scripts/write-nightly-list.sh "$out" "$COMMIT" "$SEQ"
 {
   echo "# build                 file                                   runs on"

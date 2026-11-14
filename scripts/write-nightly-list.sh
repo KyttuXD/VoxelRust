@@ -13,7 +13,8 @@ dir="$1"; commit="$2"; seq="$3"
   echo "commit $commit"
   echo "seq $seq"
   for pair in linux-x86_64:voxelrust-linux-x86_64.bin windows-x86_64:voxelrust-windows-x86_64.exe \
-              macos-x86_64:voxelrust-macos-x86_64.bin macos-legacy-x86_64:voxelrust-macos-legacy-x86_64.bin; do
+              macos-x86_64:voxelrust-macos-x86_64.bin macos-legacy-x86_64:voxelrust-macos-legacy-x86_64.bin \
+              linux-server-x86_64:voxelrust-linux-server-x86_64.bin; do
     build="${pair%%:*}"; file="${pair##*:}"
     [ -f "$dir/$file" ] || continue
     echo "$build $file $(sha256sum "$dir/$file" | cut -d' ' -f1) $(wc -c < "$dir/$file" | tr -d ' ')"
