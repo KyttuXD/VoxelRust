@@ -41,6 +41,16 @@ pub struct SkinSlot {
     /// The number of the last big skin that came, and the one waiting to be taken.
     ticket: u32,
     job: Option<Pending>,
+    /// A skin or piece of this player's was refused or a transfer dropped since
+    /// the server last asked (see [`SkinSlot::take_refused`]); the server then
+    /// tells the player (protocol 14 and later) so they can send it again.
+    refused: bool,
+}
+
+/// Whether a client speaking `proto` is told when its skin is refused (only
+/// clients of protocol 14 and later know the message).
+pub fn sends_refusal(proto: u16) -> bool {
+    proto >= HD_PROTOCOL
 }
 
 impl SkinSlot {
@@ -54,11 +64,33 @@ impl SkinSlot {
         self.job.take()
     }
 
+    /// Whether a refusal is owed since the last call (and clears it).
+    pub fn take_refused(&mut self) -> bool {
+        core::mem::take(&mut self.refused)
+    }
+
+    /// Note a refusal from outside (a job the worker could not take, a piece
+    /// dropped for going too fast).
+    pub fn refuse_now(&mut self) {
+        self.refused = true;
+    }
+
+    /// Drop the transfer in progress (if any) and note the refusal.
+    pub fn abort(&mut self) {
+        self.incoming = None;
+        self.refused = true;
+    }
+
+    fn refuse(&mut self) -> bool {
+        self.refused = true;
+        false
+    }
+
     /// The worker is done with `p`: its 64 x 64 version, or `None` if the
     /// picture was not what its header said. True if the skin was taken (to
     /// be passed on); a skin that a newer one has replaced is ignored.
     pub fn finish(&mut self, p: Pending, legacy: Option<Vec<u8>>) -> bool {
-        let Some(legacy) = legacy else { return false };
+        let Some(legacy) = legacy else { return self.refuse() };
         if p.ticket != self.ticket {
             return false;
         }
@@ -92,18 +124,20 @@ impl SkinSlot {
         if let Some(i) = self.incoming.as_mut() {
             if i.tick(dt) {
                 self.incoming = None;
+                self.refused = true;
             }
         }
     }
 
-    /// A plain [`Msg::Skin`]. True if it was taken (to be passed on).
+    /// A plain [`Msg::Skin`]. True if it was taken (to be passed on); a
+    /// refused one is noted for [`SkinSlot::take_refused`].
     pub fn on_whole(&mut self, png: Vec<u8>, slim: bool) -> bool {
         if png.len() > MAX_SKIN_MSG || self.incoming.is_some() {
-            return false;
+            return self.refuse();
         }
-        let Some(side) = skinxfer::side_of_png(&png) else { return false };
+        let Some(side) = skinxfer::side_of_png(&png) else { return self.refuse() };
         if !self.cool.try_use() {
-            return false;
+            return self.refuse();
         }
         self.keep(png, side, slim)
     }
@@ -111,19 +145,22 @@ impl SkinSlot {
     /// A [`Msg::SkinBegin`]. True if the pieces are welcome now.
     pub fn on_begin(&mut self, size: u32, side: u16, slim: bool) -> bool {
         if self.incoming.is_some() {
-            return false;
+            return self.refuse();
         }
-        let Ok(inc) = Incoming::begin(size, side, slim) else { return false };
+        let Ok(inc) = Incoming::begin(size, side, slim) else { return self.refuse() };
         if !self.cool.try_use() {
-            return false;
+            return self.refuse();
         }
         self.incoming = Some(inc);
         true
     }
 
     /// A [`Msg::SkinPart`]. True if it finished a skin that was taken (to be
-    /// passed on). A transfer that goes wrong is dropped.
+    /// passed on). A transfer that goes wrong is dropped and noted.
     pub fn on_part(&mut self, data: &[u8], last: bool) -> bool {
+        if self.incoming.is_none() {
+            return self.refuse();
+        }
         let Some(inc) = self.incoming.as_mut() else { return false };
         match inc.part(data, last) {
             Ok(Some(png)) => {
@@ -134,20 +171,20 @@ impl SkinSlot {
             Ok(None) => false,
             Err(_) => {
                 self.incoming = None;
-                false
+                self.refuse()
             }
         }
     }
 
     /// Keep a finished skin of `side`, making the 64 x 64 version. False if
-    /// the picture is not what its header said.
+    /// the picture is not what its header said (noted as a refusal).
     fn keep(&mut self, png: Vec<u8>, side: usize, slim: bool) -> bool {
         if self.defer && side > 64 {
             self.ticket = self.ticket.wrapping_add(1);
             self.job = Some(Pending { ticket: self.ticket, png, side, slim });
             return false;
         }
-        let Some(legacy) = skinxfer::legacy_version(&png, side) else { return false };
+        let Some(legacy) = skinxfer::legacy_version(&png, side) else { return self.refuse() };
         self.legacy = legacy;
         self.hd = if side > 64 { png } else { Vec::new() };
         self.side = side;

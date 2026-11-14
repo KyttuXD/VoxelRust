@@ -416,9 +416,17 @@ impl Server {
         out.extend(Msg::ModList { mods: self.cfg.mods.iter().map(|m| m.info()).collect() }.encode());
         // Who runs the creatures and the last lines of chat (see net/sync).
         out.extend(self.sync_intro());
+        // Big skins (clients of protocol 14) are not in this blob: they wait in the
+        // newcomer's skin queue and go a few pieces a tick, so a slow newcomer cannot
+        // hold up the server (see net/skinqueue.rs).
+        let mut backlog: Vec<crate::net::skinqueue::Batch> = Vec::new();
         for other in self.conns.iter().filter(|c| c.joined && !c.gone) {
             out.extend(Msg::Join { id: other.id, name: other.name.clone() }.encode());
-            out.extend(other.skin.wire_for(other.id, version));
+            if version >= crate::net::skinslot::HD_PROTOCOL {
+                backlog.push(alloc::sync::Arc::new(other.skin.messages_for(other.id, version)));
+            } else {
+                out.extend(other.skin.wire_for(other.id, version));
+            }
             if let Some((pos, yaw, pitch, held, pose)) = other.last_move {
                 out.extend(Msg::Move { id: other.id, pos, yaw, pitch, held, pose }.encode());
             }
@@ -451,6 +459,12 @@ impl Server {
         self.conns[i].proto = version;
         self.conns[i].name = name.clone();
         self.conns[i].joined = true;
+        // What the newcomer is owed is allowed to wait, whatever the usual limit.
+        let owed: usize = backlog.iter().map(|b| b.iter().map(|m| m.len()).sum::<usize>()).sum();
+        self.conns[i].skin_out.allow_backlog(owed);
+        for batch in backlog {
+            let _ = self.conns[i].skin_out.push(batch);
+        }
         self.sync.joined += 1;
         self.conns[i].sync.order = self.sync.joined;
         self.pvp_admitted(i);

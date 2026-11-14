@@ -136,6 +136,11 @@ pub struct Server {
 }
 
 const SEND_TIMEOUT: u32 = 3000;
+/// How long a receiver may take to accept a piece of someone's skin (or a
+/// refusal) before it is let go. Pieces are a few per tick, so a receiver
+/// that cannot take one in this time is far behind; a short wait keeps one
+/// such receiver from holding up the tick for long (see `net/skinqueue.rs`).
+const SKIN_SEND_TIMEOUT: u32 = 100;
 /// Mark on a permission line of the permissions file: written since fighting between players had a flag.
 const FILE_HAS_PVP: u8 = 64;
 
@@ -502,17 +507,17 @@ impl Server {
     /// Pass on the skin of the player at `from` to everyone else, the big
     /// original to clients that take it and the 64 x 64 one to the others.
     fn relay_skin(&mut self, from: usize) {
+        use crate::net::skinqueue::{relay_batch, relay_wanted, Batch};
         let id = self.conns[from].id;
-        let new: crate::net::skinqueue::Batch = alloc::sync::Arc::new(self.conns[from].skin.messages_for(id, crate::net::skinslot::HD_PROTOCOL));
-        let old: crate::net::skinqueue::Batch = alloc::sync::Arc::new(self.conns[from].skin.messages_for(id, 0));
+        let new: Batch = alloc::sync::Arc::new(self.conns[from].skin.messages_for(id, crate::net::skinslot::HD_PROTOCOL));
+        let old: Batch = alloc::sync::Arc::new(self.conns[from].skin.messages_for(id, 0));
         // The pieces are not sent here: they wait in each connection's queue and
         // go a few to a tick (a big skin must not hold up the server).
         for (k, c) in self.conns.iter_mut().enumerate() {
-            if k == from || !c.joined || c.gone {
+            if !relay_wanted(k, from, c.joined, c.gone) {
                 continue;
             }
-            let batch = if c.proto >= crate::net::skinslot::HD_PROTOCOL { &new } else { &old };
-            if !c.skin_out.push(batch.clone()) {
+            if !c.skin_out.push(relay_batch(c.proto, &new, &old)) {
                 // Far behind with skins already: let it go rather than grow without end.
                 c.gone = true;
             }
@@ -683,6 +688,11 @@ impl Server {
                                 log.push(alloc::format!("{} was sending far too much and was dropped", self.conns[i].name));
                                 self.conns[i].gone = true;
                                 break;
+                            }
+                            // A skin message over the allowance is dropped and its transfer with it:
+                            // the player is told, so they can send it again later.
+                            if matches!(msg, Msg::Skin { .. } | Msg::SkinBegin { .. } | Msg::SkinPart { .. }) {
+                                self.conns[i].skin.abort();
                             }
                             continue;
                         }
@@ -876,8 +886,17 @@ impl Server {
         // Big skins that came in are unpacked by the worker, not here; the ones it has
         // finished are passed on.
         for c in self.conns.iter_mut().filter(|c| !c.gone) {
+            // A job is handed over only when the worker has room for it: one that does not
+            // fit waits in the slot until the next tick, and is never dropped.
+            if !crate::net::skinwork::has_room() {
+                break;
+            }
             if let Some(pending) = c.skin.take_job() {
-                let _ = crate::net::skinwork::submit(crate::net::skinwork::Job { id: c.id, pending });
+                if !crate::net::skinwork::submit(crate::net::skinwork::Job { id: c.id, pending }) {
+                    // Should not happen (room was checked); the player is told instead of
+                    // being left to wait for a skin that was dropped.
+                    c.skin.refuse_now();
+                }
             }
         }
         for d in crate::net::skinwork::take_done() {
@@ -887,12 +906,20 @@ impl Server {
                 }
             }
         }
+        // Players whose skin was refused, or whose transfer was dropped, are told (only
+        // clients of protocol 14 and later know the message; the others are not sent it).
+        let refusal = Msg::SkinRefused.encode();
+        for c in self.conns.iter_mut().filter(|c| !c.gone) {
+            if c.skin.take_refused() && crate::net::skinslot::sends_refusal(c.proto) && c.stream.send_all(&refusal, SKIN_SEND_TIMEOUT).is_err() {
+                c.gone = true;
+            }
+        }
         // A few pieces of skins for whoever is waiting for them.
         for c in self.conns.iter_mut().filter(|c| !c.gone && !c.skin_out.is_empty()) {
             let mut batch = Vec::new();
             c.skin_out.take(crate::net::skinqueue::PER_TICK, &mut batch);
             for bytes in batch {
-                if c.stream.send_all(&bytes, SEND_TIMEOUT).is_err() {
+                if c.stream.send_all(&bytes, SKIN_SEND_TIMEOUT).is_err() {
                     c.gone = true;
                     c.skin_out.clear();
                     break;
