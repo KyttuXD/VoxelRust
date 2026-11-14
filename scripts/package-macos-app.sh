@@ -54,7 +54,12 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 # framework named on the command line, or the one in vendor/sdl2.
 if [ -n "${1:-}" ]; then
   cp -R "$1" "$APP/Contents/Frameworks/"
-elif [ -d vendor/sdl2/SDL2.framework ]; then
-  cp -R vendor/sdl2/SDL2.framework "$APP/Contents/Frameworks/"
+else
+  # vendor/ is not in git: in a clean checkout or a worktree, use the main checkout's.
+  VENDOR=vendor
+  [ -d vendor/sdl2/SDL2.framework ] || VENDOR="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)/vendor"
+  [ -d "$VENDOR/sdl2/SDL2.framework" ] || { echo "refusing: no SDL2.framework in vendor/sdl2 (see vendor/README.md): the app would not open" >&2; exit 1; }
+  cp -R "$VENDOR/sdl2/SDL2.framework" "$APP/Contents/Frameworks/"
 fi
+[ -f "$APP/Contents/Frameworks/SDL2.framework/Versions/A/SDL2" ] || { echo "refusing: the SDL2.framework inside the app is incomplete" >&2; exit 1; }
 echo "built $APP (for macOS $MIN and later)"

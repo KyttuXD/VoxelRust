@@ -103,7 +103,11 @@ package() { # package NAME PROGRAM-OR-APP FORMAT
   done
   # SDL2 beside the Windows program, when vendor/sdl2 has it.
   case "$2" in
-    *.exe) [ -f vendor/sdl2/SDL2.dll ] && cp vendor/sdl2/SDL2.dll "$dir/" ;;
+    *.exe)
+      dll=vendor/sdl2/SDL2.dll
+      [ -f "$dll" ] || dll="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)/vendor/sdl2/SDL2.dll"
+      [ -f "$dll" ] || { echo "refusing: no SDL2.dll in vendor/sdl2 (see vendor/README.md): the Windows download would not start" >&2; exit 1; }
+      cp "$dll" "$dir/" ;;
   esac
   if [ "$3" = "tar.gz" ]; then
     mkdir -p "$dir/share"
