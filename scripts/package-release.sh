@@ -20,6 +20,8 @@
 # own, and the updater only ever takes its own.
 set -eu
 cd "$(dirname "$0")/.."
+# A shared target folder (CARGO_TARGET_DIR) keeps compiled code between checkouts and scripts.
+TARGET="${CARGO_TARGET_DIR:-target}"
 # The updater's list must be signed, so no key means no release: checked now,
 # before the long builds, and the key must be the one the game trusts
 # (src/client/update_key.rs), or no game would accept the list.
@@ -112,14 +114,14 @@ package() { # package NAME PROGRAM-OR-APP FORMAT
     (cd "$stage" && zip -qry "$out/$1.zip" "$1")
   fi
 }
-package voxelrust-linux-x86_64         target/release/voxelrust     tar.gz
+package voxelrust-linux-x86_64         "$TARGET"/release/voxelrust     tar.gz
 package voxelrust-windows-x86_64       dist/windows/voxelrust.exe   zip
 package voxelrust-macos-x86_64         dist/macos/VoxelRust.app     zip
 package voxelrust-macos-legacy-x86_64  dist/VoxelRust.app           zip
 [ -d dist/web ] && (cd dist && zip -qry "$out/voxelrust-web.zip" web)
 
 # The bare programs and the list the updater reads.
-cp target/release/voxelrust       "$out/voxelrust-linux-x86_64.bin"
+cp "$TARGET"/release/voxelrust       "$out/voxelrust-linux-x86_64.bin"
 cp dist/windows/voxelrust.exe     "$out/voxelrust-windows-x86_64.exe"
 cp dist/macos/voxelrust           "$out/voxelrust-macos-x86_64.bin"
 cp dist/macos-legacy/voxelrust    "$out/voxelrust-macos-legacy-x86_64.bin"

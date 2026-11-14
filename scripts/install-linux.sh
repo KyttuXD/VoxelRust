@@ -4,7 +4,7 @@
 # Usage: scripts/install-linux.sh [path-to-voxelrust-binary]
 set -e
 root=$(cd "$(dirname "$0")/.." && pwd)
-bin=${1:-$root/target/release/voxelrust}
+bin=${1:-${CARGO_TARGET_DIR:-$root/target}/release/voxelrust}
 [ -f "$bin" ] || { echo "no binary at $bin (cargo build --release first)"; exit 1; }
 prefix=${XDG_DATA_HOME:-$HOME/.local/share}
 mkdir -p "$HOME/.local/bin" "$prefix/applications" "$prefix/icons/hicolor/256x256/apps"

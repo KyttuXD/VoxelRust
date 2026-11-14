@@ -1,0 +1,20 @@
+# Cargo settings for working on the game. They change no shipped program:
+# only aliases are set here (no rustflags, so the RUSTFLAGS the release
+# scripts pass, and the macOS, Windows and web builds, are untouched).
+
+[alias]
+# A quick build for trying changes: see [profile.fastdev] in Cargo.toml.
+fastdev = "build --profile fastdev"
+# Type-check the library only (no code generation, no linking): the fastest
+# way to see whether an edit compiles.
+quick = "check --lib"
+
+# About the linker (docs/BUILDING.md, "Faster builds"): nothing is set here
+# on purpose. Rust 1.90 and later link x86_64 Linux programs with the
+# `rust-lld` that ships with the toolchain by default, so there is nothing
+# to gain; for the old 1.77 toolchain, or to use mold if it is installed,
+# put this in your own ~/.cargo/config.toml (not here: not every machine has
+# it, and a missing linker breaks the build):
+#
+#   [target.x86_64-unknown-linux-gnu]
+#   rustflags = ["-C", "link-arg=-fuse-ld=mold"]
