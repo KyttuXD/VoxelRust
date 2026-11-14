@@ -51,8 +51,8 @@ Run it with no options for the title screen. Options:
   --script-check FILE read a mod's script (a .rs file, see docs/SCRIPTING.md) the way
                       the game would, say what is wrong with it, and exit
   --export FILE       with --world NAME: write that world as one file, and exit
-  --texture-pack DIR  use a Minecraft-style texture pack folder (repeat for several, later ones win);
-                      or list them in settings.txt as texture_pack=DIR|DIR
+  --texture-pack DIR  add a Minecraft-style texture pack folder (repeat for several, later ones win);
+                      pictures up to 512 x 512 per texture are used (SETTINGS > VIDEO > TEXTURE SIZE)
   --export-textures DIR   write every texture as a PNG file (and an atlas) in DIR, and exit.
                       Edit them and put them in the data folder's textures/ folder
   --import FILE       with --world NAME: add a world from such a file, and exit

@@ -576,7 +576,11 @@ impl Inbox {
 
 /// Checksum of the block state names, to check both sides have the same content.
 pub fn content_checksum() -> u32 {
-    crate::png::crc32(crate::save::current_palette().join("\n").as_bytes())
+    let mut text = crate::save::current_palette().join("\n");
+    // The sizes of the HD pictures are content too (two ends with the same names and other
+    // sizes disagree). Without HD tiles this adds nothing: the checksum is what it always was.
+    text.push_str(&crate::hd::source::checksum_text(&crate::block::reg().tiles));
+    crate::png::crc32(text.as_bytes())
 }
 
 #[cfg(test)]

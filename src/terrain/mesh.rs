@@ -36,6 +36,8 @@ pub struct MeshData {
     /// Blocks drawn as models rather than as part of the mesh: where in
     /// the chunk each is, and which block.
     pub props: Vec<([u8; 3], crate::block::Block)>,
+    /// The faces of HD tiles (content/hd), taken out of `opaque` and grouped by page of the HD atlas.
+    pub hd: crate::hd_split::HdMesh,
 }
 
 const R: usize = 48;
@@ -241,7 +243,7 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
     let reg_ = Region { blk, light };
     let opaque = |b: Block| b == u16::MAX || r.opaque[b as usize] != 0;
 
-    let mut out = MeshData { opaque: Vec::new(), water: Vec::new(), glass: Vec::new(), ymin: CH, ymax: 0, props: Vec::new() };
+    let mut out = MeshData { opaque: Vec::new(), water: Vec::new(), glass: Vec::new(), ymin: CH, ymax: 0, props: Vec::new(), hd: Default::default() };
     let mut shape: Vec<Bx> = Vec::new();
 
     for lx in 0..CW {
@@ -389,6 +391,8 @@ pub fn build(n: &[&ChunkData; 9]) -> MeshData {
         out.ymin = 0;
         out.ymax = 0;
     }
+    // Faces of HD tiles go to a list of their own (nothing happens when no tile is HD).
+    out.hd = crate::hd_split::split(&mut out.opaque);
     out
 }
 

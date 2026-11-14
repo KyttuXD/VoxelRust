@@ -561,6 +561,32 @@ only. See
 Keep server packs modest: the whole bundle is sent to every player each time
 they join (16 MB at most is accepted).
 
+## HD pictures
+
+A mod's `texture <id> file <picture>` line (PNG, JPEG, GIF, BMP or TGA, the path
+relative to the `pack.txt`) may name a picture bigger than 16 x 16: a **square, a
+multiple of 16 pixels on a side, from 16 to 512** (32, 48, 64, 128, 256, 512...). Blocks
+and items use it like any texture (`tex`, `icon`); nothing else in the pack changes. The game
+keeps the full picture for a separate HD atlas and the tile's 16 x 16 shrunk version in the
+normal one (see [TEXTURING.md](TEXTURING.md#hd-textures) for how it is drawn and what the player's
+TEXTURE SIZE setting does).
+
+- A picture of another shape (24 x 24, 32 x 16) is fitted to 16 x 16 and the log says so; one over
+  512 on a side, or a file over 2 MiB that is an HD tile, is refused (the log names it and the
+  texture is not made).
+- Creature and model pictures (`picture <name> file`, a model's own texture) may also be any
+  size up to 512 x 512; a model's faces are fractions of its declared texture size, so a picture
+  twice as big needs no change to the model.
+- A server sends such a mod like any other (a mod up to 64 MB, 96 MB for all of a server's mods,
+  a file up to 4 MiB). The receiving player's game checks the declared size of a picture before it
+  decodes it and shrinks what the player's TEXTURE SIZE or graphics card cannot hold. A client of an
+  older version does not take a mod bigger than its limit.
+- The memory the pictures cost raises the game's memory limit (see [MEMORY.md](MEMORY.md)); a
+  hundred 512 x 512 tiles are about 140 MB of the HD atlas.
+- The `hd-test` mod of the mods repository has a gradient (64), a checker (128), a test card (512)
+  and a sign item (128) to try it with. Do not replace the game's own pictures with HD ones: the
+  game's textures stay in the house style (see [TEXTURING.md](TEXTURING.md)).
+
 ## Blockbench models
 
 Creature, vehicle and player models are [Blockbench](https://www.blockbench.net)

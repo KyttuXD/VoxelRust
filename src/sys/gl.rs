@@ -34,6 +34,7 @@ pub const FLOAT: u32 = 0x1406;
 pub const NEAREST: i32 = 0x2600;
 pub const LINEAR: i32 = 0x2601;
 pub const NEAREST_MIPMAP_LINEAR: i32 = 0x2702;
+pub const MAX_TEXTURE_SIZE: u32 = 0x0D33;
 pub const TEXTURE_MAG_FILTER: u32 = 0x2800;
 pub const TEXTURE_MIN_FILTER: u32 = 0x2801;
 pub const TEXTURE_WRAP_S: u32 = 0x2802;
@@ -129,6 +130,7 @@ gl_api! {
     fn PointSize(f32);
     fn Hint(u32, u32);
     fn Finish();
+    fn GetIntegerv(u32, *mut i32);
     fn GenBuffers(i32, *mut u32);
     fn BindBuffer(u32, u32);
     fn BufferData(u32, isize, *const c_void, u32);

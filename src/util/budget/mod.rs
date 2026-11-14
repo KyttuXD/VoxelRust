@@ -12,6 +12,9 @@
 //! 3. shorten how far distant terrain reaches, down to off;
 //! 4. shrink the view distance, one chunk at a time, down to [`MIN_VIEW`].
 //!
+//! HD pictures (textures, skins) the player asked for raise the limit by what they
+//! cost, up to a hard ceiling for the whole game (`allowance.rs`).
+//!
 //! When memory has been well under the limit for a while, the steps are taken
 //! back in the opposite order, one at a time.
 
@@ -19,6 +22,9 @@ use alloc::string::String;
 
 pub mod ladder;
 pub use ladder::{Action, Effective, Ladder, Wanted};
+/// Memory spent on HD pictures raises the limit (see `allowance.rs`).
+pub mod allowance;
+pub use allowance::{add_allowance, allowance, current_limit, remove_allowance, set_allowance, Allow, HARD_CEILING};
 
 /// What the memory is spent on.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
