@@ -591,8 +591,11 @@ TEXTURE SIZE setting does).
 - Creature and model pictures (`picture <name> file`, a model's own texture) may also be any
   size up to 512 x 512; a model's faces are fractions of its declared texture size, so a picture
   twice as big needs no change to the model.
-- A server sends such a mod like any other (a mod up to 64 MB, 96 MB for all of a server's mods,
-  a file up to 4 MiB). The receiving player's game checks the declared size of a picture before it
+- A server sends such a mod like any other (a mod up to 64 MiB, 96 MiB for all of a server's mods).
+  Each file of it is sent only if it is at most 4 MiB and of a type a mod may send; a bigger file, or
+  one of another type, is left out, and the server's log names every file it leaves out. Nothing
+  else about the mod changes, so a mod that needs such a file may not work for the players who join.
+  The receiving player's game checks the declared size of a picture before it
   decodes it and shrinks what the player's TEXTURE SIZE or graphics card cannot hold. A client of an
   older version does not take a mod bigger than its limit.
 - The memory the pictures cost raises the game's memory limit (see [MEMORY.md](MEMORY.md)); a
@@ -779,7 +782,7 @@ SETTINGS > SKIN shows a turning preview of your character.
 - **Your own skin**: a square picture in the usual player-skin layout, **64 x
   64** or an HD one: any side that is a multiple of 64, up to **4096 x 4096**
   (128, 192, 256, 512, 1024...; see [IMAGES.md](IMAGES.md) and
-  [PLAYING.md](PLAYING.md#skins)). The older 2:1 layout (**64 x 32**, 128 x 64...)
+  [PLAYING.md](PLAYING.md#skins)). The older **64 x 32** layout
   works too; the game mirrors the arm and leg to make the left ones, at the
   picture's own scale. Click CHOOSE A SKIN FILE... to open the file
   browser (below), pick the picture, and click SELECT (or double click it).

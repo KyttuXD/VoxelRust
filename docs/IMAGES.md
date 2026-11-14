@@ -15,7 +15,7 @@ picture code is its own, in `src/util/image/`:
 ## The encoder
 
 `crate::png::encode(w, h, rgba)` writes 8-bit RGBA pixels as a PNG. It used to store
-the data uncompressed (a 128 x 128 skin was 65 KB); now:
+the data uncompressed (a 128 x 128 skin was 64 KiB); now:
 
 1. **Colour type.** If the picture has **256 colours or fewer**, it is written
    indexed (colour type 3, one byte a pixel, a `PLTE` chunk, and a `tRNS` chunk
@@ -50,20 +50,21 @@ is unpacked on the client's worker as well (`client/skins/work.rs`, `Job::Load`)
 with the built-in skin and changes to the custom one when it is ready. A 64 x 64 skin that came in
 pieces and is bigger than one plain message is packed again (smaller) for those who are sent it
 as one. Averaging pictures down (`resize.rs`) uses 64-bit sums, so even a 4096 skin to a single
-pixel is exact. The decoder takes up to 4096 x 4096; the largest filtered data it unpacks is 72 MB
-(a 4096 x 4096 RGBA picture is 67 MB).
+pixel is exact. The decoder takes up to 4096 x 4096; the largest filtered data it unpacks is 72 MiB
+(a 4096 x 4096 RGBA picture is 64 MiB of pixels).
 
 ## Skins
 
 See [PLAYING.md](PLAYING.md#skins) for what a player sees. In the code:
 
 - `content/skin_grid.rs`: which sizes are skins (a multiple of 64 from 64 to 4096,
-  square, or 2:1 for the old layout), the grid scale (`W / 64`), the words for a
+  square, or 64 x 32 for the old layout; nothing else), the grid scale (`W / 64`), the words for a
   refused picture. The player models declare a 64 x 64 texture and their coordinates
   are fractions of it, so a skin of any of these sizes lines up.
-- `client/skinfile.rs`: turning a picked picture into a square skin (the old 2:1
+- `client/skinfile.rs`: turning a picked picture into a square skin (the old 64 x 32
   layout is mirrored at its own scale), the slim-arms test (works at any size).
-- `client/skinweb.rs`: the download from a web address (1 MiB, 24 MiB unpacked).
+- `client/skinweb.rs`: the download from a web address (at most 24 MiB of file, the
+  decoder's limit; the 1 MiB wire limit applies only to the packed copy sent to others).
 - `net/skinxfer.rs`, `net/skinslot.rs`: the wire (below) and what the server keeps.
 - `client/skins/`: `work.rs` (packing and unpacking on a worker), `budget.rs` (the
   texture memory budget and the distance tiers), `hub.rs` (keeps them in step).
@@ -92,7 +93,7 @@ second, as a plain `Skin`.
 ### Memory
 
 The unpacked pixels of a skin exist only while it is being uploaded; after that the
-picture is on the card only. Other players' skins are limited to 64 MB of card
+picture is on the card only. Other players' skins are limited to 64 MiB of card
 memory (`client/skins/budget.rs`): the size of each is chosen by the player's distance
 (48 blocks: full size, 96: 256 x 256, beyond: 64 x 64, with a margin of 6 blocks so a
 skin does not flicker at a border), and when the total would be more, the skins whose

@@ -226,8 +226,9 @@ impl App {
         // A portrait of the player beside the panel, where there is room, with
         // the four armour slots down its left side (client/screens/armor_slots.rs).
         if px > 70.0 * s {
-            let body = body_for(g, own_id(g), self.settings.slim_arms);
-            if let Some(model) = reg().model(arm_models(&body, self.settings.slim_arms).0) {
+            let slim = self.slim();
+            let body = body_for(g, own_id(g), slim);
+            if let Some(model) = reg().model(arm_models(&body, slim).0) {
                 let slots = px > 94.0 * s;
                 let (pl, pwid) = if slots { (px - 90.0 * s, 84.0 * s) } else { (px - 66.0 * s, 60.0 * s) };
                 ui.panel(pl, py, pwid, 124.0 * s);
