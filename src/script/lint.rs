@@ -17,7 +17,7 @@ const BUILTIN_CALLS: &[&str] = &["Some", "Ok", "Err", "min", "max", "drop", "swa
 
 /// The number of parameters of the host function `name`, if it is one.
 pub fn host_arity(name: &str) -> Option<usize> {
-    HOST_FUNCTIONS.iter().map(|f| f.0).chain(all_functions().map(|f| f.0)).find(|sig| name_of(sig) == name).map(arity_of)
+    HOST_FUNCTIONS.iter().chain(crate::script::host_ui::UI_FUNCTIONS).map(|f| f.0).chain(all_functions().map(|f| f.0)).find(|sig| name_of(sig) == name).map(arity_of)
 }
 
 struct Walk<'a> {

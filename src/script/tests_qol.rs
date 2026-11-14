@@ -131,7 +131,7 @@ fn the_qol_scripts_only_call_host_functions_that_exist() {
                 if known_words.contains(&word) || own.contains(&word) {
                     continue;
                 }
-                assert!(HOST_FUNCTIONS.iter().any(|(sig, _)| sig.split('(').next() == Some(word)), "{}: `{}(` is neither the script's own function nor a host function", name, word);
+                assert!(HOST_FUNCTIONS.iter().chain(crate::script::host_ui::UI_FUNCTIONS).any(|(sig, _)| sig.split('(').next() == Some(word)), "{}: `{}(` is neither the script's own function nor a host function", name, word);
             }
         }
     }
